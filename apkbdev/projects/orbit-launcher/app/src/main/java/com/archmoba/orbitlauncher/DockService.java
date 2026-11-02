@@ -15,6 +15,10 @@ import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
+import android.app.KeyguardManager;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.View;
@@ -45,6 +49,22 @@ public final class DockService extends Service {
     private DockMotion motion;
     private boolean screenReceiverRegistered;
     private boolean sleeping;
+    private boolean dockHiddenForMenu;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private int wakeChecks;
+    private final Runnable checkUnlock = new Runnable() {
+        @Override public void run() {
+            if (stopped || dockHiddenForMenu || !sleeping) return;
+            if (isDeviceUnlocked()) {
+                wakeChecks = 0;
+                sleeping = false;
+                OrbitNotificationListener.scanOnUnlock(DockService.this);
+                renderDock();
+            } else if (++wakeChecks < 20 && isScreenInteractive()) {
+                mainHandler.postDelayed(this, 500L);
+            }
+        }
+    };
     private final Map<String, View> badgeViews = new HashMap<>();
 
     /**
@@ -61,11 +81,12 @@ public final class DockService extends Service {
             }
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 sleeping = true;
+                mainHandler.removeCallbacks(checkUnlock);
                 removeDock();
-            } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
-                sleeping = false;
-                OrbitNotificationListener.scanOnUnlock(DockService.this);
-                renderDock();
+            } else if (Intent.ACTION_SCREEN_ON.equals(action)
+                    || Intent.ACTION_USER_PRESENT.equals(action)) {
+                if (sleeping) scheduleUnlockCheck();
+                else if (dock == null && !dockHiddenForMenu && isDeviceUnlocked()) renderDock();
             }
         }
     };
@@ -77,6 +98,7 @@ public final class DockService extends Service {
 
         IntentFilter screenEvents = new IntentFilter();
         screenEvents.addAction(Intent.ACTION_SCREEN_OFF);
+        screenEvents.addAction(Intent.ACTION_SCREEN_ON);
         screenEvents.addAction(Intent.ACTION_USER_PRESENT);
         screenEvents.addAction(NotificationBadgeStore.ACTION_CHANGED);
         // Son broadcasts exclusivos del sistema; registro no exportado.
@@ -88,6 +110,7 @@ public final class DockService extends Service {
         }
         screenReceiverRegistered = true;
 
+        sleeping = !isDeviceUnlocked();
         startNotification();
     }
 
@@ -103,8 +126,15 @@ public final class DockService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (ACTION_HIDE.equals(action)) removeDock();
-        else if (!sleeping) renderDock();
+        if (ACTION_HIDE.equals(action)) {
+            dockHiddenForMenu = true;
+            removeDock();
+        } else {
+            dockHiddenForMenu = false;
+            sleeping = !isDeviceUnlocked();
+            if (!sleeping) renderDock();
+            else if (isScreenInteractive()) scheduleUnlockCheck();
+        }
         return START_STICKY;
     }
 
@@ -136,6 +166,22 @@ public final class DockService extends Service {
                 .setOngoing(true)
                 .build();
         startForeground(2001, notification);
+    }
+
+    private boolean isScreenInteractive() {
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        return pm == null || pm.isInteractive();
+    }
+
+    private boolean isDeviceUnlocked() {
+        KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+        return isScreenInteractive() && (km == null || !km.isKeyguardLocked());
+    }
+
+    private void scheduleUnlockCheck() {
+        mainHandler.removeCallbacks(checkUnlock);
+        wakeChecks = 0;
+        mainHandler.post(checkUnlock);
     }
 
     private void renderDock() {
@@ -319,6 +365,7 @@ public final class DockService extends Service {
     }
 
     @Override public void onDestroy() {
+        mainHandler.removeCallbacks(checkUnlock);
         removeDock();
         if (screenReceiverRegistered) {
             unregisterReceiver(screenStateReceiver);
