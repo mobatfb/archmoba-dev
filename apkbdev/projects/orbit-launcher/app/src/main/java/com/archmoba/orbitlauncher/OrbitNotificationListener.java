@@ -1,6 +1,9 @@
 package com.archmoba.orbitlauncher;
 
 import android.app.Notification;
+import android.os.PowerManager;
+import java.util.HashSet;
+import java.util.Set;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 
@@ -10,12 +13,12 @@ import android.service.notification.StatusBarNotification;
  */
 public final class OrbitNotificationListener extends NotificationListenerService {
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
-        if (!eligible(sbn)) return;
+        if (!eligible(sbn) || !interactive()) return;
         NotificationBadgeStore.mark(this, sbn.getPackageName(), sbn.getPostTime());
     }
 
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
-        if (sbn == null) return;
+        if (sbn == null || !interactive()) return;
         String pkg = sbn.getPackageName();
         try {
             StatusBarNotification[] remaining = getActiveNotifications();
@@ -32,8 +35,47 @@ public final class OrbitNotificationListener extends NotificationListenerService
 
     @Override public void onListenerConnected() {
         super.onListenerConnected();
+        instance = this;
         // Intencionadamente NO reactivamos los puntos desde notificaciones antiguas.
         // Los nuevos eventos onNotificationPosted se procesan normalmente.
+    }
+
+    private boolean interactive() {
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        return pm == null || pm.isInteractive();
+    }
+
+    /** Un solo escaneo al desbloquear; nunca reactivar notificaciones viejas. */
+    static void scanOnUnlock(android.content.Context context) {
+        // La consulta se ejecuta desde el listener conectado.
+        synchronized (OrbitNotificationListener.class) {
+            if (instance != null) instance.reconcileNow();
+        }
+    }
+
+    private static volatile OrbitNotificationListener instance;
+
+    @Override public void onDestroy() {
+        if (instance == this) instance = null;
+        super.onDestroy();
+    }
+
+    private void reconcileNow() {
+        Set<String> active = new HashSet<>();
+        if (!interactive()) return;
+        try {
+            StatusBarNotification[] notifications = getActiveNotifications();
+            if (notifications != null) {
+                for (StatusBarNotification sbn : notifications) {
+                    if (eligible(sbn)
+                            && BadgeFreshnessPolicy.isNew(sbn.getPostTime(),
+                                NotificationBadgeStore.lastOpen(this, sbn.getPackageName()))) {
+                        active.add(sbn.getPackageName());
+                    }
+                }
+            }
+            NotificationBadgeStore.reconcile(this, active);
+        } catch (SecurityException | IllegalStateException ignored) {}
     }
 
     private boolean eligible(StatusBarNotification sbn) {
