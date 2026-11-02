@@ -19,6 +19,7 @@ import java.util.Set;
 final class AppStore {
     private static final String PREFS = "orbit_dock_preferences";
     private static final String KEY = "selected_packages";
+    private static final String BADGES = "green_badges";
 
     static List<String> selected(Context context) {
         String data = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -60,9 +61,24 @@ final class AppStore {
         return true;
     }
 
+    static boolean isMarked(Context context, String pkg) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getStringSet(BADGES, Collections.emptySet()).contains(pkg);
+    }
+
+    static void toggleMarked(Context context, String pkg) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        Set<String> set = new HashSet<>(prefs.getStringSet(BADGES, Collections.emptySet()));
+        if (!set.add(pkg)) set.remove(pkg);
+        prefs.edit().putStringSet(BADGES, set).apply();
+    }
+
     static void remove(Context context, String packageName) {
         List<String> values = selected(context);
         if (values.remove(packageName)) write(context, values);
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        Set<String> markers = new HashSet<>(prefs.getStringSet(BADGES, Collections.emptySet()));
+        if (markers.remove(packageName)) prefs.edit().putStringSet(BADGES, markers).apply();
     }
 
     static List<ResolveInfo> available(Context context) {
