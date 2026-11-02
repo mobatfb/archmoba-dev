@@ -43,9 +43,9 @@ jobs:
       - name: Publicar APK en rama de prueba
         run: |
           mkdir -p dist
-          cp orbit-launcher/app/build/outputs/apk/debug/app-debug.apk dist/OrbitLauncher-v0.1.apk
+          cp orbit-launcher/app/build/outputs/apk/debug/app-debug.apk dist/OrbitLauncher-v0.2.apk
           git config user.name "Orbit APK builder"
           git config user.email "actions@users.noreply.github.com"
-          git add -f dist/OrbitLauncher-v0.1.apk
+          git add -f dist/OrbitLauncher-v0.2.apk
           git commit -m "build: publicar Orbit Launcher APK" || true
           git push origin HEAD:feature/orbit-launcher-apk-20261101 || true

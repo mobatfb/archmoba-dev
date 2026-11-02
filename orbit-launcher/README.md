@@ -1,22 +1,20 @@
-# Orbit Launcher v0.1 (ARCHMOBA)
+# Orbit Launcher v0.2 — ARCHMOBA
 
-APK de prueba para Android. Interfaz negra con bordes azules neón, iconos de aplicaciones instaladas alrededor y un visor central.
+Versión experimental para Android que organiza accesos en los cuatro bordes.
 
-## Dos modalidades
+## Corrección de contenido cortado (v0.2)
 
-1. **Vista directa (Android 8+):** el servicio superpone cuatro barras con iconos en los bordes. El centro queda libre, por lo que se ve y se puede tocar directamente la aplicación que está detrás. **No redimensiona la app**: los bordes esconden las áreas de la app que queden debajo de ellos.
-2. **Modo ESPEJO (Android 14 QPR2+):** usa MediaProjection, previa selección y consentimiento del usuario, para transmitir la ventana de una app al visor central ajustado a escala. **Solo muestra la imagen: el visor no transmite pulsaciones táctiles**. Si eliges capturar toda la pantalla en vez de una sola app, pueden producirse efectos de repetición infinita.
+En v0.1, los iconos superpuestos tapaban los extremos de la aplicación. v0.2 ofrece dos estrategias:
 
-## Permisos
+1. **Ventana central ajustada**: si Android anuncia soporte de `FEATURE_FREEFORM_WINDOW_MANAGEMENT`, el launcher pide abrir la app con límites ajustados al centro (`ActivityOptions.setLaunchBounds`). El fabricante y cada app pueden ignorar la solicitud. **No es una garantía de ventana redimensionable.**
+2. **Pantalla completa sin recortes**: en teléfonos que no admiten ventanas libres, Orbit oculta automáticamente las barras al lanzar una app, dejando solo un pequeño botón flotante ◎ en el lateral. Toca ◎ para reabrir los iconos. Así puedes usar la aplicación completa en lugar de verla cortada.
 
-- **Mostrar sobre otras apps:** necesario para mostrar los iconos en los bordes.
-- **Compartir la pantalla:** consentimiento de Android en cada sesión de espejo.
-- **Servicio en primer plano y notificación:** mantiene activo el dock y permite cerrarlo desde la notificación.
-
-No requiere root, internet, cuentas ni servidor. No graba ni envía las imágenes capturadas. La captura se procesa solamente en memoria. Algunas apps bloquean captura de pantalla por seguridad y se mostrarán en negro.
+Adicionalmente, **ESPEJO** (Android 14 QPR2 o posterior) permite compartir UNA aplicación mediante MediaProjection, que transmite el contenido redimensionado al panel central. En el cuadro de permiso elige **Una aplicación**, no pantalla completa. La imagen en este modo **no es interactiva**: los toques sobre el visor no se trasladan a la aplicación.
 
 ## Instalar
 
-Abre el APK, autoriza la instalación externa si Android lo solicita, abre Orbit Launcher, concede "Mostrar sobre otras apps" y pulsa un icono. Para transmisión usa **ESPEJO**, elige **Una sola aplicación** en el diálogo de Android y acepta compartir.
+Desinstala Orbit Launcher v0.1 antes de instalar v0.2, porque cada compilación de prueba puede tener distinta firma de depuración. Luego instala el nuevo APK, abre Orbit y concede **Mostrar sobre otras apps**.
 
-**Limitación importante:** este es un prototipo que debe probarse en un teléfono real. No implica que Android permita incrustar todas las aplicaciones con control táctil y escalado simultáneos.
+En dispositivos con ventanas libres, selecciona una aplicación con APPS para pedir ajuste central. Si no se ajusta, el sistema la está abriendo a pantalla completa: pulsa el control ◁ del dock para ocultar los bordes. En dispositivos sin ventanas libres, los iconos se ocultan automáticamente al abrir aplicaciones.
+
+El modo ESPEJO solicita consentimiento cada vez. Las imágenes no se almacenan ni se transmiten por internet. Algunas apps con protección contra capturas mostrarán negro. Android no ofrece una API pública que permita incrustar universalmente cualquier aplicación en un rectángulo interactivo de terceros.
