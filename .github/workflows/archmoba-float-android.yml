@@ -5,6 +5,8 @@ on:
     paths:
       - "apps/archmoba-floating-launcher/source.tar.xz.b64"
       - ".github/workflows/archmoba-float-android.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
