@@ -6,7 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
-import android.content.pm.ResolveInfo;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.IBinder;
@@ -16,198 +16,190 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.util.ArrayList;
 import java.util.List;
 
+/** Unico elemento permanente de Orbit: columna flotante en el borde derecho. */
 public final class DockService extends Service {
-    static final String STOP = "com.archmoba.orbitlauncher.STOP";
-    private final List<View> windows = new ArrayList<>();
+    static final String ACTION_ADD = "com.archmoba.orbitlauncher.ADD";
+    static final String ACTION_REMOVE = "com.archmoba.orbitlauncher.REMOVE";
+    static final String ACTION_REFRESH = "com.archmoba.orbitlauncher.REFRESH";
+    static final String ACTION_HIDE = "com.archmoba.orbitlauncher.HIDE";
+    static final String ACTION_STOP = "com.archmoba.orbitlauncher.STOP";
+
     private WindowManager manager;
-    private List<ResolveInfo> apps;
-    private boolean expanded;
+    private LinearLayout dock;
+    private boolean stopped;
 
     @Override public void onCreate() {
         super.onCreate();
-        foreground();
         manager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        apps = OrbitUtil.apps(this);
-        if (!android.provider.Settings.canDrawOverlays(this)) stopSelf();
+        startNotification();
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && STOP.equals(intent.getAction())) {
-            stopService(new Intent(this, CaptureService.class));
+        String action = intent == null ? ACTION_REFRESH : intent.getAction();
+        if (ACTION_STOP.equals(action)) {
+            stopped = true;
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (!android.provider.Settings.canDrawOverlays(this)) {
+        if (Build.VERSION.SDK_INT >= 23
+                && !android.provider.Settings.canDrawOverlays(this)) {
             stopSelf();
             return START_NOT_STICKY;
         }
-        boolean compact = intent != null && intent.getBooleanExtra("compact", false);
-        updateDock(!compact);
-        return START_NOT_STICKY;
+        if (ACTION_HIDE.equals(action)) removeDock();
+        else renderDock();
+        return START_STICKY;
     }
 
-    private void foreground() {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        nm.createNotificationChannel(new NotificationChannel(
-                "orbit_dock", "Orbit en pantalla", NotificationManager.IMPORTANCE_LOW));
-        Intent stop = new Intent(this, DockService.class).setAction(STOP);
-        PendingIntent pending = PendingIntent.getService(this, 100, stop,
+    private void startNotification() {
+        NotificationManager notifications = (NotificationManager)
+                getSystemService(NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= 26) {
+            notifications.createNotificationChannel(new NotificationChannel(
+                    "orbit_right_dock", "Orbit Launcher flotante",
+                    NotificationManager.IMPORTANCE_LOW));
+        }
+        Intent stop = new Intent(this, DockService.class).setAction(ACTION_STOP);
+        PendingIntent stopAction = PendingIntent.getService(this, 123, stop,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification notice = new Notification.Builder(this, "orbit_dock")
-                .setSmallIcon(android.R.drawable.ic_menu_view)
+        Intent open = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent openAction = PendingIntent.getActivity(this, 124, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, "orbit_right_dock")
+                : new Notification.Builder(this);
+        Notification notification = builder
+                .setSmallIcon(android.R.drawable.ic_menu_add)
                 .setContentTitle("Orbit Launcher")
-                .setContentText("Dock en pantalla. Pulsa para detener.")
-                .setContentIntent(pending).setOngoing(true).build();
-        startForeground(1001, notice);
+                .setContentText("Accesos flotantes en el lado derecho")
+                .setContentIntent(openAction)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                        "Cerrar", stopAction)
+                .setOngoing(true)
+                .build();
+        startForeground(2001, notification);
     }
 
-    private LinearLayout bar(boolean horizontal) {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        bar.setGravity(Gravity.CENTER);
-        bar.setBackgroundColor(OrbitUtil.BG);
-        return bar;
-    }
+    private void renderDock() {
+        removeDock();
+        if (stopped) return;
 
-    private int horizontalIconSize() {
-        DisplayMetrics dm = new DisplayMetrics();
-        manager.getDefaultDisplay().getRealMetrics(dm);
-        return Math.min(OrbitUtil.dp(this, 43),
-                Math.max(OrbitUtil.dp(this, 27),
-                        (dm.widthPixels - OrbitUtil.dp(this, 14)) / 6 - OrbitUtil.dp(this, 6)));
-    }
+        List<String> selected = AppStore.selected(this);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        // Sin fondo de barra: flotan solamente los iconos que el usuario eligio.
+        root.setBackgroundColor(Color.TRANSPARENT);
 
-    private void updateDock(boolean showExpanded) {
-        clearWindows();
-        expanded = showExpanded;
-        if (showExpanded) showExpandedDock();
-        else showHandle();
-    }
-
-    private void showHandle() {
-        TextView bubble = new TextView(this);
-        bubble.setText("◎");
-        bubble.setTextColor(OrbitUtil.CYAN);
-        bubble.setTextSize(30);
-        bubble.setGravity(Gravity.CENTER);
-        bubble.setBackground(OrbitUtil.background(this, OrbitUtil.PANEL, OrbitUtil.CYAN, 20));
-        bubble.setOnClickListener(v -> updateDock(true));
-        addWindow(bubble, OrbitUtil.dp(this, 43), OrbitUtil.dp(this, 48), Gravity.LEFT | Gravity.CENTER_VERTICAL);
-    }
-
-    private void showExpandedDock() {
-        int topSize = horizontalIconSize();
-        LinearLayout top = bar(true);
-        control(top, "◉", this::home, topSize);
-        addIcons(top, 0, 4, topSize);
-        control(top, "▦", this::home, topSize);
-        addWindow(top, -1, topSize + OrbitUtil.dp(this, 12), Gravity.TOP);
-
-        LinearLayout left = bar(false);
-        addIcons(left, 4, 5, OrbitUtil.dp(this, 44));
-        addWindow(left, OrbitUtil.dp(this, 61), -1, Gravity.LEFT);
-
-        LinearLayout right = bar(false);
-        addIcons(right, 9, 5, OrbitUtil.dp(this, 44));
-        addWindow(right, OrbitUtil.dp(this, 61), -1, Gravity.RIGHT);
-
-        LinearLayout bottom = bar(true);
-        control(bottom, "⌂", this::home, topSize);
-        addIcons(bottom, 14, 2, topSize);
-        control(bottom, "▣", this::mirror, topSize);
-        control(bottom, "◁", () -> updateDock(false), topSize);
-        control(bottom, "×", this::closeDock, topSize);
-        addWindow(bottom, -1, topSize + OrbitUtil.dp(this, 13), Gravity.BOTTOM);
-    }
-
-    private void addIcons(LinearLayout bar, int from, int count, int iconSize) {
-        for (int i = from; i < Math.min(from + count, apps.size()); i++) {
-            ResolveInfo app = apps.get(i);
-            ImageView icon = OrbitUtil.appIcon(this, app);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(iconSize, iconSize);
-            p.setMargins(OrbitUtil.dp(this, 2), OrbitUtil.dp(this, 3),
-                    OrbitUtil.dp(this, 2), OrbitUtil.dp(this, 3));
-            bar.addView(icon, p);
-            icon.setOnClickListener(v -> open(app.activityInfo.packageName));
+        final int step = OrbitUtil.dp(this, 56);
+        final int width = OrbitUtil.dp(this, 56);
+        LinearLayout icons = new LinearLayout(this);
+        icons.setOrientation(LinearLayout.VERTICAL);
+        icons.setGravity(Gravity.CENTER_HORIZONTAL);
+        int visible = 0;
+        for (String pkg : selected) {
+            if (getPackageManager().getLaunchIntentForPackage(pkg) == null) continue;
+            ImageView icon = new ImageView(this);
+            try {
+                icon.setImageDrawable(getPackageManager()
+                        .getApplicationIcon(pkg));
+            } catch (Exception ignored) {
+                continue;
+            }
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            icon.setContentDescription(AppStore.label(this, pkg));
+            int inset = OrbitUtil.dp(this, 8);
+            icon.setPadding(inset, inset, inset, inset);
+            icon.setBackground(OrbitUtil.bubble(this, false));
+            icon.setElevation(OrbitUtil.dp(this, 4));
+            LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(
+                    OrbitUtil.dp(this, 48), OrbitUtil.dp(this, 48));
+            item.setMargins(0, OrbitUtil.dp(this, 4), 0, OrbitUtil.dp(this, 4));
+            icons.addView(icon, item);
+            icon.setOnClickListener(v -> OrbitUtil.launch(this, pkg));
             icon.setOnLongClickListener(v -> {
-                Toast.makeText(this, icon.getContentDescription(), Toast.LENGTH_SHORT).show();
+                openPicker(ACTION_REMOVE, pkg);
                 return true;
             });
+            visible++;
         }
-    }
 
-    private void control(LinearLayout bar, String label, Runnable click, int iconSize) {
-        TextView control = new TextView(this);
-        control.setText(label);
-        control.setTextColor(OrbitUtil.CYAN);
-        control.setTextSize(22);
-        control.setGravity(Gravity.CENTER);
-        control.setBackground(OrbitUtil.background(this, OrbitUtil.PANEL, OrbitUtil.CYAN, 12));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(iconSize, iconSize);
-        p.setMargins(OrbitUtil.dp(this, 2), OrbitUtil.dp(this, 3),
-                OrbitUtil.dp(this, 2), OrbitUtil.dp(this, 3));
-        bar.addView(control, p);
-        control.setOnClickListener(v -> click.run());
-    }
+        if (visible > 0) {
+            ScrollView scroll = new ScrollView(this);
+            scroll.setFillViewport(false);
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            scroll.addView(icons);
+            DisplayMetrics display = new DisplayMetrics();
+            manager.getDefaultDisplay().getRealMetrics(display);
+            int availableHeight = Math.max(OrbitUtil.dp(this, 100),
+                    display.heightPixels - OrbitUtil.dp(this, 188));
+            int iconsHeight = Math.min(visible * step, availableHeight);
+            root.addView(scroll, new LinearLayout.LayoutParams(width, iconsHeight));
+        }
 
-    private void addWindow(View view, int width, int height, int gravity) {
-        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
-                width, height, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        TextView plus = new TextView(this);
+        plus.setText("+");
+        plus.setTextColor(OrbitUtil.CYAN);
+        plus.setTextSize(34);
+        plus.setTypeface(null, 1);
+        plus.setGravity(Gravity.CENTER);
+        plus.setContentDescription("Añadir aplicación");
+        plus.setBackground(OrbitUtil.bubble(this, true));
+        plus.setElevation(OrbitUtil.dp(this, 6));
+        LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(
+                OrbitUtil.dp(this, 49), OrbitUtil.dp(this, 49));
+        plusParams.setMargins(0, OrbitUtil.dp(this, 4), 0, OrbitUtil.dp(this, 4));
+        root.addView(plus, plusParams);
+        plus.setOnClickListener(v -> openPicker(ACTION_ADD, null));
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                width, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
-        lp.gravity = gravity;
+        params.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
+        params.x = OrbitUtil.dp(this, 6);
         try {
-            manager.addView(view, lp);
-            windows.add(view);
+            manager.addView(root, params);
+            dock = root;
         } catch (Exception ignored) {
-            Toast.makeText(this, "No se pudo mostrar el dock", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "No se pudo mostrar el botón flotante",
+                    Toast.LENGTH_LONG).show();
+            stopSelf();
         }
     }
 
-    private void open(String pkg) {
-        stopService(new Intent(this, CaptureService.class));
-        boolean fit = OrbitUtil.supportsFreeform(this);
-        if (!fit) updateDock(false);
-        OrbitUtil.launch(this, pkg, fit);
-    }
-
-    private void mirror() {
-        stopService(new Intent(this, CaptureService.class));
-        Intent intent = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .putExtra("mirror", true);
-        startActivity(intent);
-        stopSelf();
-    }
-
-    private void home() {
-        stopService(new Intent(this, CaptureService.class));
-        Intent intent = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(intent);
-        stopSelf();
-    }
-
-    private void closeDock() {
-        stopService(new Intent(this, CaptureService.class));
-        stopSelf();
-    }
-
-    private void clearWindows() {
-        for (View view : windows) {
-            try { manager.removeViewImmediate(view); } catch (Exception ignored) {}
+    private void openPicker(String action, String packageName) {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setAction(action);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        if (packageName != null) intent.putExtra("package", packageName);
+        try {
+            startActivity(intent);
+        } catch (Exception ignored) {
+            Toast.makeText(this, "No se pudo abrir el selector",
+                    Toast.LENGTH_SHORT).show();
         }
-        windows.clear();
+    }
+
+    private void removeDock() {
+        if (dock != null && manager != null) {
+            try { manager.removeViewImmediate(dock); } catch (Exception ignored) {}
+            dock = null;
+        }
     }
 
     @Override public void onDestroy() {
-        if (manager != null) clearWindows();
+        removeDock();
         super.onDestroy();
     }
 

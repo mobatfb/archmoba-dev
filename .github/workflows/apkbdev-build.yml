@@ -15,7 +15,7 @@ on:
         default: 'orbit-launcher'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   android-apk:
@@ -55,10 +55,24 @@ jobs:
       - name: Compilar proyecto Android
         run: python3 apkbdev/tools/build_apk.py --project "$PROJECT_SLUG"
 
-      - name: Publicar APK descargable
+      - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: APKBDEV-${{ env.PROJECT_SLUG }}
           path: apkbdev/dist/**/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publicar Release de pruebas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="apkbdev-${PROJECT_SLUG}-run-${GITHUB_RUN_NUMBER}"
+          FILE="apkbdev/dist/${PROJECT_SLUG}/${PROJECT_SLUG}-debug.apk"
+          gh release create "$TAG" "$FILE#${PROJECT_SLUG}-debug.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "APKBDEV ${PROJECT_SLUG} build ${GITHUB_RUN_NUMBER}" \
+            --notes "APK debug de prueba. Proyecto: ${PROJECT_SLUG}. Construido desde APKBDEV con GitHub Actions." \
+            --prerelease

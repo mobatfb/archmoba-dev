@@ -3,230 +3,212 @@ package com.archmoba.orbitlauncher;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
-import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.FrameLayout;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
+/**
+ * Actividad efimera: no abre ninguna pantalla principal.
+ * La interfaz permanente es unicamente el dock flotante en el lado derecho.
+ */
 public final class MainActivity extends Activity {
-    private static final int OVERLAY_REQUEST = 41;
-    private static final int PROJECTION_REQUEST = 42;
-    private List<ResolveInfo> apps;
-    private String selectedPackage;
-    private boolean preferWindow = true;
-    private boolean requestMirrorMode = false;
+    private static final int REQUEST_OVERLAY = 101;
+    private boolean restored;
 
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
-        getWindow().setStatusBarColor(Color.BLACK);
-        getWindow().setNavigationBarColor(Color.BLACK);
-        stopService(new Intent(this, DockService.class));
-        stopService(new Intent(this, CaptureService.class));
-        apps = OrbitUtil.apps(this);
-        render();
-        if (getIntent().getBooleanExtra("mirror", false)) {
-            new Handler(Looper.getMainLooper()).postDelayed(this::mirrorMode, 250);
-        }
-    }
-
-    private void render() {
-        int gap = OrbitUtil.dp(this, 4);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(OrbitUtil.BG);
-        root.setPadding(gap, gap, gap, gap);
-        setContentView(root);
-
-        TextView title = new TextView(this);
-        title.setText("◉  ORBIT LAUNCHER · 0.2");
-        title.setTextColor(OrbitUtil.CYAN);
-        title.setTextSize(17);
-        title.setTypeface(null, 1);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title, new LinearLayout.LayoutParams(-1, OrbitUtil.dp(this, 43)));
-
-        LinearLayout top = row(true);
-        root.addView(top, new LinearLayout.LayoutParams(-1, OrbitUtil.dp(this, 56)));
-        addIcons(top, 0, 4, true);
-
-        LinearLayout middle = row(true);
-        root.addView(middle, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        LinearLayout left = row(false);
-        middle.addView(left, new LinearLayout.LayoutParams(OrbitUtil.dp(this, 52), -1));
-        addIcons(left, 4, 5, false);
-
-        FrameLayout viewport = new FrameLayout(this);
-        viewport.setBackground(OrbitUtil.background(this, Color.WHITE, OrbitUtil.CYAN, 17));
-        viewport.setContentDescription("Visor central. Selecciona una aplicación.");
-        viewport.setOnClickListener(v -> picker(true));
-        LinearLayout.LayoutParams center = new LinearLayout.LayoutParams(0, -1, 1);
-        center.setMargins(gap, gap, gap, gap);
-        middle.addView(viewport, center);
-
-        LinearLayout right = row(false);
-        middle.addView(right, new LinearLayout.LayoutParams(OrbitUtil.dp(this, 52), -1));
-        addIcons(right, 9, 5, false);
-
-        LinearLayout bottom = row(true);
-        root.addView(bottom, new LinearLayout.LayoutParams(-1, OrbitUtil.dp(this, 55)));
-        addIcons(bottom, 14, 3, true);
-
-        TextView status = new TextView(this);
-        boolean freeform = OrbitUtil.supportsFreeform(this);
-        status.setText(freeform
-                ? "Ventana ajustada disponible según compatibilidad de cada app."
-                : "Sin ventana libre: ORBIT ocultará los bordes para mostrar la app completa.");
-        status.setTextColor(0xFF9CB1CA);
-        status.setTextSize(10);
-        status.setGravity(Gravity.CENTER);
-        root.addView(status, new LinearLayout.LayoutParams(-1, OrbitUtil.dp(this, 36)));
-
-        LinearLayout actions = row(true);
-        root.addView(actions, new LinearLayout.LayoutParams(-1, OrbitUtil.dp(this, 54)));
-        action(actions, "APPS", () -> picker(true));
-        action(actions, "COMPLETA", () -> picker(false));
-        action(actions, "ESPEJO", this::mirrorMode);
-        action(actions, "SALIR", this::finish);
-    }
-
-    private LinearLayout row(boolean horizontal) {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        bar.setGravity(Gravity.CENTER);
-        return bar;
-    }
-
-    private void addIcons(LinearLayout bar, int first, int count, boolean horizontal) {
-        int size = OrbitUtil.dp(this, 42);
-        if (horizontal) {
-            int available = getResources().getDisplayMetrics().widthPixels - OrbitUtil.dp(this, 14);
-            size = Math.min(size, Math.max(OrbitUtil.dp(this, 27),
-                    available / Math.max(4, count) - OrbitUtil.dp(this, 7)));
-        }
-        for (int i = first; i < Math.min(first + count, apps.size()); i++) {
-            ResolveInfo app = apps.get(i);
-            ImageView iv = OrbitUtil.appIcon(this, app);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(size, size);
-            p.setMargins(OrbitUtil.dp(this, 3), OrbitUtil.dp(this, 3),
-                    OrbitUtil.dp(this, 3), OrbitUtil.dp(this, 3));
-            bar.addView(iv, p);
-            iv.setOnClickListener(v -> launch(app.activityInfo.packageName, true));
-            iv.setOnLongClickListener(v -> {
-                Toast.makeText(this, iv.getContentDescription(), Toast.LENGTH_SHORT).show();
-                return true;
-            });
-        }
-    }
-
-    private void action(LinearLayout parent, String label, Runnable callback) {
-        TextView view = new TextView(this);
-        view.setText(label);
-        view.setGravity(Gravity.CENTER);
-        view.setTextSize(10);
-        view.setTypeface(null, 1);
-        view.setTextColor(OrbitUtil.CYAN);
-        view.setBackground(OrbitUtil.background(this, OrbitUtil.PANEL, OrbitUtil.CYAN, 12));
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, OrbitUtil.dp(this, 43), 1);
-        p.setMargins(OrbitUtil.dp(this, 2), 0, OrbitUtil.dp(this, 2), 0);
-        parent.addView(view, p);
-        view.setOnClickListener(v -> callback.run());
-    }
-
-    private void picker(boolean adjusted) {
-        if (apps.isEmpty()) {
-            Toast.makeText(this, "No se encontraron aplicaciones", Toast.LENGTH_LONG).show();
-            return;
-        }
-        CharSequence[] names = new CharSequence[apps.size()];
-        for (int i = 0; i < apps.size(); i++)
-            names[i] = apps.get(i).loadLabel(getPackageManager());
-        new AlertDialog.Builder(this)
-                .setTitle(adjusted ? "Aplicación en ventana central" : "Aplicación a pantalla completa")
-                .setItems(names, (dialog, which) ->
-                        launch(apps.get(which).activityInfo.packageName, adjusted))
-                .setNegativeButton("Cancelar", null).show();
-    }
-
-    private void launch(String pkg, boolean adjusted) {
-        selectedPackage = pkg;
-        preferWindow = adjusted;
-        requestMirrorMode = false;
-        ensureOverlay();
-    }
-
-    private void mirrorMode() {
-        if (Build.VERSION.SDK_INT < 34) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Espejo de una aplicación")
-                    .setMessage("La captura individual de apps requiere Android 14 QPR2 o posterior. En este teléfono puedes usar COMPLETA para verla sin recortes o intentar ventanas libres si tu sistema las admite.")
-                    .setPositiveButton("COMPLETA", (d, w) -> picker(false))
-                    .setNegativeButton("Cerrar", null).show();
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Transmisión al centro")
-                .setMessage("En el permiso de Android selecciona «Una aplicación», NO «Toda la pantalla». La imagen se ajustará dentro del rectángulo. Esta transmisión es visual; los toques en el visor no controlan la app.")
-                .setPositiveButton("Continuar", (d, w) -> {
-                    selectedPackage = null;
-                    requestMirrorMode = true;
-                    ensureOverlay();
-                }).setNegativeButton("Cancelar", null).show();
-    }
-
-    private void ensureOverlay() {
+    @Override public void onCreate(Bundle savedState) {
+        super.onCreate(savedState);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Activa «Mostrar sobre otras aplicaciones»", Toast.LENGTH_LONG).show();
-            startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())), OVERLAY_REQUEST);
-        } else proceed();
-    }
-
-    private void proceed() {
-        if (requestMirrorMode) {
-            MediaProjectionManager pm = (MediaProjectionManager)
-                    getSystemService(MEDIA_PROJECTION_SERVICE);
-            startActivityForResult(pm.createScreenCaptureIntent(), PROJECTION_REQUEST);
-        } else if (selectedPackage != null) {
-            boolean fit = preferWindow && OrbitUtil.supportsFreeform(this);
-            startDock(!fit);
-            if (OrbitUtil.launch(this, selectedPackage, fit)) finish();
+            new AlertDialog.Builder(this)
+                    .setTitle("Permitir botón flotante")
+                    .setMessage("Orbit necesita permiso para mostrar únicamente el botón + y tus aplicaciones elegidas al lado derecho.")
+                    .setPositiveButton("Conceder permiso", (dialog, which) -> {
+                        Intent settings = new Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivityForResult(settings, REQUEST_OVERLAY);
+                    })
+                    .setNegativeButton("Cancelar", (dialog, which) -> finish())
+                    .setOnCancelListener(dialog -> finish())
+                    .show();
+        } else {
+            handleAction();
         }
     }
 
-    private void startDock(boolean compact) {
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_OVERLAY) {
+            if (Settings.canDrawOverlays(this)) handleAction();
+            else {
+                Toast.makeText(this, "Se necesita el permiso para mostrar el botón +",
+                        Toast.LENGTH_LONG).show();
+                finish();
+            }
+        }
+    }
+
+    private void handleAction() {
+        String action = getIntent().getAction();
+        if (DockService.ACTION_ADD.equals(action)) {
+            command(DockService.ACTION_HIDE);
+            showPicker();
+        } else if (DockService.ACTION_REMOVE.equals(action)) {
+            command(DockService.ACTION_HIDE);
+            showRemoveDialog(getIntent().getStringExtra("package"));
+        } else {
+            // Primera apertura: servicio inicia con lista vacia => solo "+".
+            command(DockService.ACTION_REFRESH);
+            finish();
+        }
+    }
+
+    private void command(String action) {
         Intent intent = new Intent(this, DockService.class);
-        intent.putExtra("compact", compact);
+        intent.setAction(action);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
         else startService(intent);
     }
 
-    @Override protected void onActivityResult(int requestCode, int code, Intent data) {
-        super.onActivityResult(requestCode, code, data);
-        if (requestCode == OVERLAY_REQUEST) {
-            if (Settings.canDrawOverlays(this)) proceed();
-            else Toast.makeText(this, "Falta permiso para mostrar los iconos", Toast.LENGTH_LONG).show();
-        } else if (requestCode == PROJECTION_REQUEST && code == RESULT_OK && data != null) {
-            startDock(false);
-            Intent intent = new Intent(this, CaptureService.class);
-            intent.putExtra("code", code);
-            intent.putExtra("data", data);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
-            else startService(intent);
-            finish();
+    private void restoreAndFinish() {
+        if (restored) return;
+        restored = true;
+        command(DockService.ACTION_REFRESH);
+        finish();
+    }
+
+    private void showPicker() {
+        final List<ResolveInfo> installed = AppStore.available(this);
+        if (installed.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Añadir aplicación")
+                    .setMessage("No quedan aplicaciones para añadir al panel.")
+                    .setPositiveButton("Aceptar", null)
+                    .setOnDismissListener(d -> restoreAndFinish())
+                    .show();
+            return;
         }
+
+        final PackageManager pm = getPackageManager();
+        final List<ResolveInfo> filtered = new ArrayList<>(installed);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        int padding = OrbitUtil.dp(this, 12);
+        content.setPadding(padding, padding, padding, padding);
+
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setTextSize(16);
+        search.setHint("Buscar aplicación instalada");
+        search.setCompoundDrawablesWithIntrinsicBounds(
+                android.R.drawable.ic_menu_search, 0, 0, 0);
+        content.addView(search, new LinearLayout.LayoutParams(-1,
+                OrbitUtil.dp(this, 52)));
+
+        ListView list = new ListView(this);
+        list.setDividerHeight(0);
+        final ArrayAdapter<ResolveInfo> adapter = new ArrayAdapter<ResolveInfo>(
+                this, android.R.layout.simple_list_item_1, filtered) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                ResolveInfo item = getItem(position);
+                LinearLayout row = new LinearLayout(MainActivity.this);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(OrbitUtil.dp(MainActivity.this, 9),
+                        OrbitUtil.dp(MainActivity.this, 5),
+                        OrbitUtil.dp(MainActivity.this, 9),
+                        OrbitUtil.dp(MainActivity.this, 5));
+
+                ImageView icon = new ImageView(MainActivity.this);
+                icon.setImageDrawable(item.loadIcon(pm));
+                row.addView(icon, new LinearLayout.LayoutParams(
+                        OrbitUtil.dp(MainActivity.this, 40),
+                        OrbitUtil.dp(MainActivity.this, 40)));
+
+                TextView label = new TextView(MainActivity.this);
+                label.setText(String.valueOf(item.loadLabel(pm)));
+                label.setTextSize(16);
+                label.setTextColor(Color.WHITE);
+                label.setGravity(Gravity.CENTER_VERTICAL);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, OrbitUtil.dp(MainActivity.this, 55), 1);
+                lp.leftMargin = OrbitUtil.dp(MainActivity.this, 12);
+                row.addView(label, lp);
+                return row;
+            }
+        };
+        list.setAdapter(adapter);
+        content.addView(list, new LinearLayout.LayoutParams(-1,
+                OrbitUtil.dp(this, 390)));
+
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence text, int start,
+                                                    int count, int after) {}
+            @Override public void onTextChanged(CharSequence text, int start,
+                                                int before, int count) {
+                String query = text.toString().trim().toLowerCase(Locale.ROOT);
+                adapter.clear();
+                for (ResolveInfo app : installed) {
+                    String name = String.valueOf(app.loadLabel(pm))
+                            .toLowerCase(Locale.ROOT);
+                    if (name.contains(query)
+                            || app.activityInfo.packageName.toLowerCase(Locale.ROOT)
+                                .contains(query)) adapter.add(app);
+                }
+                adapter.notifyDataSetChanged();
+            }
+            @Override public void afterTextChanged(Editable edit) {}
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Añadir al lado derecho")
+                .setView(content)
+                .setNegativeButton("Cancelar", null)
+                .setOnDismissListener(d -> restoreAndFinish())
+                .create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            ResolveInfo app = adapter.getItem(position);
+            if (app != null && AppStore.add(this, app.activityInfo.packageName)) {
+                Toast.makeText(this, "Añadida: " + app.loadLabel(pm),
+                        Toast.LENGTH_SHORT).show();
+            }
+            dialog.dismiss();
+        });
+        dialog.show();
+    }
+
+    private void showRemoveDialog(String packageName) {
+        if (packageName == null || packageName.trim().isEmpty()) {
+            restoreAndFinish();
+            return;
+        }
+        String label = AppStore.label(this, packageName);
+        new AlertDialog.Builder(this)
+                .setTitle("Quitar del panel")
+                .setMessage("¿Quitar " + label + " del lado derecho? La aplicación no se desinstalará.")
+                .setPositiveButton("Quitar", (dialog, which) ->
+                        AppStore.remove(this, packageName))
+                .setNegativeButton("Cancelar", null)
+                .setOnDismissListener(dialog -> restoreAndFinish())
+                .show();
     }
 }
