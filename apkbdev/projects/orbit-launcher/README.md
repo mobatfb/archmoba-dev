@@ -1,26 +1,23 @@
-# Orbit Launcher v0.6 — Semicírculos sensibles al giro | ARCHMOBA
+# Orbit Launcher v0.7 — Restaurar posición horizontal | ARCHMOBA
 
-## Novedades
+## Cambio solicitado
 
-- Solo la **mitad de cada círculo** queda visible: el panel flotante se desplaza 25 dp fuera del borde derecho de la pantalla.
-- Los iconos responden en vivo a la inclinación física del móvil usando el sensor de gravedad (o acelerómetro de respaldo), con filtrado de movimiento para evitar saltos.
-- Al cambiar la orientación del teléfono entre vertical y horizontal, el servicio reconstruye el panel en el lado derecho, ajusta su altura y recalibra los sensores.
-- Se conservan la posición vertical de v0.5 (52 dp por encima del centro) y la lista elegida por el usuario.
+- **Posición horizontal restaurada a v0.5:** los iconos y el círculo + vuelven a ser **completamente visibles**, alineados con el borde derecho (`params.x = 0`).
+- No se modificó la altura del panel: continúa subido un espacio de icono respecto del centro (`params.y = -step`, 52 dp).
+- Se quitó `FLAG_LAYOUT_NO_LIMITS` porque ya no hace falta sacar el círculo fuera de la pantalla.
 
-## Funciones
+## Funcionalidad conservada
 
-1. Al iniciar por primera vez, se muestra únicamente el botón `+` medio oculto en el borde derecho.
-2. Pulsa el lado visible de `+` para elegir las apps que quieres añadir.
-3. Pulsa un icono para abrir la aplicación.
-4. Mantén pulsado el icono para **Subir un lugar**, **Bajar un lugar** o **Quitar**. El orden se guarda.
-5. Con muchas apps puedes desplazar la columna verticalmente.
+- Al comenzar por primera vez solo aparece el botón `+`.
+- El usuario escoge qué aplicaciones aparecen en la columna derecha.
+- Pulsación larga: **Subir un lugar / Bajar un lugar / Quitar**.
+- Lista desplazable y orden persistente.
+- Sensor de gravedad o acelerómetro para reaccionar suavemente a la inclinación del teléfono.
+- Actualización del dock al cambiar entre vertical y horizontal si el sistema comunica el giro.
+- Permiso **Mostrar sobre otras aplicaciones** y servicio en primer plano con notificación.
 
 ## Compatibilidad
 
-Android 8.0+. Requiere el permiso de superposición. Los sensores no necesitan permisos especiales. Android puede impedir que algunas ventanas de superposición se extiendan fuera de la pantalla, de modo que **el recorte exacto de media circunferencia depende del fabricante**. El giro de pantalla depende de la rotación que permita Android/la aplicación activa.
+Android 8.0 o posterior. Según el fabricante, Android puede limitar superposiciones o la rotación de pantalla.
 
-El launcher no graba pantalla, no requiere Internet, no redimensiona apps ajenas. El servicio se detiene desde su notificación.
-
-## Instalación
-
-El ID de paquete sigue siendo `com.archmoba.orbitlauncher`. Una APK debug firmada con certificado diferente puede requerir desinstalar la versión anterior, lo que borra las preferencias guardadas. Fuente en `apkbdev/projects/orbit-launcher`.
+Para instalar una APK debug firmada con una clave distinta de la anterior, puede ser necesario desinstalar la versión previa (se perderán las preferencias). El código se guarda en `apkbdev/projects/orbit-launcher` y la compilación se realiza con GitHub Actions.

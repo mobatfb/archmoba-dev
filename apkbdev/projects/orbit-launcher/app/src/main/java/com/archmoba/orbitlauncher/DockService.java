@@ -183,12 +183,11 @@ public final class DockService extends Service {
                 width, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
-        // Media anchura de un circulo (25 dp) fuera del borde derecho.
-        params.x = -OrbitUtil.dp(this, 25);
+        // Posicion horizontal de v0.5: completamente visible junto al borde derecho.
+        params.x = 0;
         params.y = -step; // Mantener el desplazamiento vertical de v0.5.
         try {
             manager.addView(root, params);
