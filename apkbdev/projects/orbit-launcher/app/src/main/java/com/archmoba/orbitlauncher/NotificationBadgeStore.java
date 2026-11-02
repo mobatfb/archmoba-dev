@@ -39,7 +39,9 @@ final class NotificationBadgeStore {
         catch (Exception ignored) {}
         Set<String> set = new HashSet<>(prefs.getStringSet(PENDING, Collections.emptySet()));
         set.remove(pkg);
-        prefs.edit().putString(LAST_OPEN, json.toString()).putStringSet(PENDING, set).commit();
+        // apply() actualiza inmediatamente el estado en memoria y guarda a disco
+        // sin bloquear el toque que abre la aplicacion.
+        prefs.edit().putString(LAST_OPEN, json.toString()).putStringSet(PENDING, set).apply();
         notifyDock(context);
     }
 
@@ -51,6 +53,20 @@ final class NotificationBadgeStore {
             prefs.edit().putStringSet(PENDING, set).apply();
             notifyDock(context);
         }
+    }
+
+    /**
+     * Actualizacion unica del estado tras el desbloqueo.
+     * Solo conserva apps con notificaciones activas POSTERIORES al ultimo toque.
+     * Un mensaje anterior no puede volver a encender el indicador.
+     */
+    static synchronized void reconcile(Context context, Set<String> activeNewPackages) {
+        SharedPreferences prefs = preferences(context);
+        Set<String> updated = new HashSet<>(activeNewPackages);
+        Set<String> current = prefs.getStringSet(PENDING, Collections.emptySet());
+        if (current.equals(updated)) return;
+        prefs.edit().putStringSet(PENDING, updated).apply();
+        notifyDock(context);
     }
 
     /** Se utiliza al retirarse la ultima notificacion nueva de una app. */
