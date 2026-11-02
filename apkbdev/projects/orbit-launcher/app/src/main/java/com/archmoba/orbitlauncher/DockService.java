@@ -27,6 +27,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /** Unico elemento permanente de Orbit: columna flotante en el borde derecho. */
 public final class DockService extends Service {
@@ -42,6 +44,7 @@ public final class DockService extends Service {
     private boolean stopped;
     private DockMotion motion;
     private boolean screenReceiverRegistered;
+    private final Map<String, View> badgeViews = new HashMap<>();
 
     /**
      * Los broadcasts de pantalla NO se declaran en el manifest:
@@ -49,8 +52,13 @@ public final class DockService extends Service {
      */
     private final BroadcastReceiver screenStateReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            if (intent == null || motion == null) return;
+            if (intent == null) return;
             String action = intent.getAction();
+            if (NotificationBadgeStore.ACTION_CHANGED.equals(action)) {
+                refreshBadges();
+                return;
+            }
+            if (motion == null) return;
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                 motion.pause();
             } else if (Intent.ACTION_SCREEN_ON.equals(action) && dock != null) {
@@ -67,6 +75,7 @@ public final class DockService extends Service {
         IntentFilter screenEvents = new IntentFilter();
         screenEvents.addAction(Intent.ACTION_SCREEN_OFF);
         screenEvents.addAction(Intent.ACTION_SCREEN_ON);
+        screenEvents.addAction(NotificationBadgeStore.ACTION_CHANGED);
         // Son broadcasts exclusivos del sistema; registro no exportado.
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(screenStateReceiver, screenEvents,
@@ -178,14 +187,19 @@ public final class DockService extends Service {
             green.setStroke(OrbitUtil.dp(this, 1.5f), Color.WHITE);
             dot.setBackground(green);
             dot.setElevation(OrbitUtil.dp(this, 5));
-            dot.setVisibility(AppStore.isMarked(this, pkg) ? View.VISIBLE : View.GONE);
+            dot.setVisibility(NotificationBadgeStore.pending(this, pkg)
+                    ? View.VISIBLE : View.GONE);
+            badgeViews.put(pkg, dot);
             FrameLayout.LayoutParams dotParams = new FrameLayout.LayoutParams(
                     OrbitUtil.dp(this, 13), OrbitUtil.dp(this, 13),
                     Gravity.RIGHT | Gravity.TOP);
             wrapper.addView(dot, dotParams);
             icons.addView(wrapper, item);
             rotateTargets.add(icon);
-            wrapper.setOnClickListener(v -> OrbitUtil.launch(this, pkg));
+            wrapper.setOnClickListener(v -> {
+                NotificationBadgeStore.acknowledge(this, pkg);
+                OrbitUtil.launch(this, pkg);
+            });
             wrapper.setOnLongClickListener(v -> {
                 openPicker(ACTION_MANAGE, pkg);
                 return true;
@@ -284,7 +298,16 @@ public final class DockService extends Service {
         if (dock != null && !stopped) renderDock();
     }
 
+    private void refreshBadges() {
+        for (Map.Entry<String, View> entry : badgeViews.entrySet()) {
+            entry.getValue().setVisibility(
+                    NotificationBadgeStore.pending(this, entry.getKey())
+                            ? View.VISIBLE : View.GONE);
+        }
+    }
+
     private void removeDock() {
+        badgeViews.clear();
         if (motion != null) motion.stop();
         if (dock != null && manager != null) {
             try { manager.removeViewImmediate(dock); } catch (Exception ignored) {}
