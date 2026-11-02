@@ -1,3 +1,7 @@
+# Orbit Launcher v0.19 — Panel vertical ajustable
+
+Nueva funcion: un tirador cian pequeno sobre el panel permite arrastrar el conjunto entero hacia arriba o abajo, sin desplazamiento horizontal. La ubicacion se guarda en preferencias y se restaura al volver del bloqueo y al reiniciar el servicio, ajustada a los limites de la pantalla. Los iconos conservan toque, pulsacion larga y desplazamiento interno para listas extensas. Se mantienen los circulos 55%, giro y avisos verdes.
+
 # Orbit Launcher v0.18 — Reposo profundo durante bloqueo
 
 Al apagar la pantalla, Orbit retira el dock flotante, detiene el sensor y no procesa notificaciones. Mantiene solamente el servicio en primer plano y un receptor de desbloqueo para volver a funcionar. No se puede apagar absolutamente todo y reactivarse de manera garantizada.
