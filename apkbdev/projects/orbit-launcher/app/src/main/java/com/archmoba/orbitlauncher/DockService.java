@@ -100,7 +100,8 @@ public final class DockService extends Service {
 
         // Mantener el tamaño de los iconos, con menos separación para ver más.
         final int step = OrbitUtil.dp(this, 52);
-        final int width = OrbitUtil.dp(this, 56);
+        // Panel más pegado al borde derecho: iconos 48 dp en una columna de 50 dp.
+        final int width = OrbitUtil.dp(this, 50);
         LinearLayout icons = new LinearLayout(this);
         icons.setOrientation(LinearLayout.VERTICAL);
         icons.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -146,7 +147,11 @@ public final class DockService extends Service {
             // Limitar su altura util para no cubrir barras de sistema ni perder "+".
             int desiredHeight = display.heightPixels - OrbitUtil.dp(this, 188)
                     + (2 * step);
-            int safeHeight = usableDisplay.heightPixels - OrbitUtil.dp(this, 73);
+            // Como el dock se desplaza 1 icono (52 dp) hacia arriba,
+            // dejar margen suficiente para no recortar el primer icono ni el botón +.
+            // Reservamos dos veces ese desplazamiento, más el alto del botón + y sus márgenes.
+            int safeHeight = usableDisplay.heightPixels - (2 * step)
+                    - OrbitUtil.dp(this, 78);
             int availableHeight = Math.max(step, Math.min(desiredHeight, safeHeight));
             int iconsHeight = Math.min(visible * step, availableHeight);
             root.addView(scroll, new LinearLayout.LayoutParams(width, iconsHeight));
@@ -174,7 +179,8 @@ public final class DockService extends Service {
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
-        params.x = OrbitUtil.dp(this, 6);
+        params.x = 0;            // Pegado completamente al borde derecho.
+        params.y = -step;        // Un espacio de icono (52 dp) más arriba.
         try {
             manager.addView(root, params);
             dock = root;
