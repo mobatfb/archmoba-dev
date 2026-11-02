@@ -21,6 +21,7 @@ import android.os.PowerManager;
 import android.app.KeyguardManager;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
@@ -49,6 +50,8 @@ public final class DockService extends Service {
     private DockMotion motion;
     private boolean screenReceiverRegistered;
     private boolean sleeping;
+    private static final String POSITION_PREFS = "orbit_panel_position";
+    private static final String OFFSET_KEY = "vertical_offset_dp";
     private boolean dockHiddenForMenu;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int wakeChecks;
@@ -203,6 +206,19 @@ public final class DockService extends Service {
         LinearLayout icons = new LinearLayout(this);
         icons.setOrientation(LinearLayout.VERTICAL);
         icons.setGravity(Gravity.CENTER_HORIZONTAL);
+        // Tirador discreto: desplaza el conjunto completo sin interferir con
+        // toques, pulsaciones largas ni el scroll de listas extensas.
+        View handle = new View(this);
+        GradientDrawable handleShape = new GradientDrawable();
+        handleShape.setColor(Color.argb(180, 70, 218, 238));
+        handleShape.setCornerRadius(OrbitUtil.dp(this, 4));
+        handle.setBackground(handleShape);
+        handle.setContentDescription("Arrastrar el panel de Orbit arriba o abajo");
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(
+                OrbitUtil.dp(this, 26), OrbitUtil.dp(this, 6));
+        handleParams.setMargins(0, 0, 0, OrbitUtil.dp(this, 5));
+        root.addView(handle, handleParams);
+
         int visible = 0;
         for (String pkg : selected) {
             if (getPackageManager().getLaunchIntentForPackage(pkg) == null) continue;
@@ -313,7 +329,59 @@ public final class DockService extends Service {
         params.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
         // Posicion horizontal de v0.5: completamente visible junto al borde derecho.
         params.x = 0;
-        params.y = -step; // Mantener el desplazamiento vertical de v0.5.
+        final int baseY = -step; // Referencia original del panel.
+        android.content.SharedPreferences positionPrefs =
+                getSharedPreferences(POSITION_PREFS, MODE_PRIVATE);
+        int savedDp = positionPrefs.getInt(OFFSET_KEY, 0);
+        int savedPx = OrbitUtil.dp(this, savedDp);
+        params.y = baseY + savedPx;
+        // Ajustar dentro de la pantalla, incluso al cambiar orientacion.
+        DisplayMetrics bounds = new DisplayMetrics();
+        manager.getDefaultDisplay().getMetrics(bounds);
+        final int screenHeight = bounds.heightPixels;
+        final int estimatedHeight = OrbitUtil.dp(this, visible == 0 ? 60 :
+                15 + Math.min(visible * 52, Math.max(52, (int) (screenHeight
+                        / getResources().getDisplayMetrics().density) - 182)));
+        final int travel = Math.max(0, (screenHeight - estimatedHeight
+                - OrbitUtil.dp(this, 24)) / 2);
+        params.y = Math.max(-travel, Math.min(travel, params.y));
+        final int[] currentY = {params.y};
+        final float[] startRawY = {0f};
+        final int[] startY = {params.y};
+        final boolean[] moving = {false};
+        handle.setOnTouchListener((v, event) -> {
+            if (dock == null) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    startRawY[0] = event.getRawY();
+                    startY[0] = currentY[0];
+                    moving[0] = false;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int difference = Math.round(event.getRawY() - startRawY[0]);
+                    if (Math.abs(difference) > OrbitUtil.dp(this, 3))
+                        moving[0] = true;
+                    int requested = Math.max(-travel, Math.min(travel,
+                            startY[0] + difference));
+                    if (requested != currentY[0]) {
+                        currentY[0] = requested;
+                        params.y = requested;
+                        try { manager.updateViewLayout(root, params); }
+                        catch (IllegalArgumentException ignored) {}
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (moving[0]) {
+                        int dp = Math.round((currentY[0] - baseY)
+                                / getResources().getDisplayMetrics().density);
+                        positionPrefs.edit().putInt(OFFSET_KEY, dp).apply();
+                    }
+                    return true;
+                default:
+                    return true;
+            }
+        });
         try {
             manager.addView(root, params);
             dock = root;
