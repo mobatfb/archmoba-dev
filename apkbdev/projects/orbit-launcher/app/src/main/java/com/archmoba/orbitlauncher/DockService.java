@@ -44,6 +44,7 @@ public final class DockService extends Service {
     private boolean stopped;
     private DockMotion motion;
     private boolean screenReceiverRegistered;
+    private boolean sleeping;
     private final Map<String, View> badgeViews = new HashMap<>();
 
     /**
@@ -55,14 +56,16 @@ public final class DockService extends Service {
             if (intent == null) return;
             String action = intent.getAction();
             if (NotificationBadgeStore.ACTION_CHANGED.equals(action)) {
-                refreshBadges();
+                if (!sleeping) refreshBadges();
                 return;
             }
-            if (motion == null) return;
             if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                motion.pause();
-            } else if (Intent.ACTION_SCREEN_ON.equals(action) && dock != null) {
-                motion.resume();
+                sleeping = true;
+                removeDock();
+            } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                sleeping = false;
+                OrbitNotificationListener.scanOnUnlock(DockService.this);
+                renderDock();
             }
         }
     };
@@ -74,7 +77,7 @@ public final class DockService extends Service {
 
         IntentFilter screenEvents = new IntentFilter();
         screenEvents.addAction(Intent.ACTION_SCREEN_OFF);
-        screenEvents.addAction(Intent.ACTION_SCREEN_ON);
+        screenEvents.addAction(Intent.ACTION_USER_PRESENT);
         screenEvents.addAction(NotificationBadgeStore.ACTION_CHANGED);
         // Son broadcasts exclusivos del sistema; registro no exportado.
         if (Build.VERSION.SDK_INT >= 33) {
@@ -101,7 +104,7 @@ public final class DockService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_HIDE.equals(action)) removeDock();
-        else renderDock();
+        else if (!sleeping) renderDock();
         return START_STICKY;
     }
 
@@ -137,7 +140,7 @@ public final class DockService extends Service {
 
     private void renderDock() {
         removeDock();
-        if (stopped) return;
+        if (stopped || sleeping) return;
 
         List<String> selected = AppStore.selected(this);
         LinearLayout root = new LinearLayout(this);
@@ -295,7 +298,7 @@ public final class DockService extends Service {
         super.onConfigurationChanged(newConfig);
         // La pantalla cambia entre vertical y horizontal mientras otras apps estan abiertas.
         // Reconstruir geometria del dock y recalibrar el sensor sin perder la lista.
-        if (dock != null && !stopped) renderDock();
+        if (dock != null && !stopped && !sleeping) renderDock();
     }
 
     private void refreshBadges() {
