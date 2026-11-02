@@ -1,23 +1,9 @@
-# Orbit Launcher v0.16 — Novedad hasta abrir la app
+# Orbit Launcher v0.17 — Reposo profundo durante bloqueo
 
-## Comportamiento de los indicadores verdes
+Al apagar la pantalla, Orbit retira el dock flotante, detiene el sensor y no procesa notificaciones. Mantiene solamente el servicio en primer plano y un receptor de desbloqueo para volver a funcionar. No se puede apagar absolutamente todo y reactivarse de manera garantizada.
 
-1. Al llegar una notificación nueva y elegible a una aplicación, se enciende el punto verde.
-2. El punto permanece hasta que se toque el icono de Orbit o se retiren las notificaciones pendientes.
-3. Al tocar el icono, el punto se apaga inmediatamente y se abre la app.
-4. **Las notificaciones antiguas no vuelven a encenderlo**: únicamente una publicación posterior al toque puede activarlo.
-5. El reconocimiento se conserva en las preferencias locales. Al reiniciar el servicio no se reactivan avisos antiguos.
+Al desbloquear (ACTION_USER_PRESENT), consulta una sola vez las notificaciones activas, conserva solo las posteriores al ultimo toque por aplicacion, reconstruye el dock y reactiva los sensores. Al tocar un icono desaparece su punto verde hasta una notificacion posterior. Mientras el telefono esta desbloqueado, los avisos nuevos siguen siendo instantaneos.
 
-La marca es por **aplicación**, no por mensaje. Android puede actualizar notificaciones existentes o entregarlas con tiempos distintos; las actualizaciones se consideran nuevas cuando el sistema les asigna una fecha posterior al toque. Esta implementación no altera ni borra las notificaciones reales.
+Se conserva el estilo de circulos glass con 55 % de opacidad, posicion derecha, + solo en lista vacia, menu Añadir/Subir/Bajar/Quitar, y giro suave con ahorro de bateria.
 
-## Acceso y privacidad
-
-Para detectar automáticamente nuevas notificaciones es imprescindible habilitar el acceso opcional **Orbit - Notificaciones** en ajustes Android. Es un permiso sensible que puede provocar restricciones en APK instaladas fuera de tiendas verificadas. Este código usa solo la identidad de la aplicación y el tiempo de publicación. No extrae ni guarda texto, imágenes o conversaciones, ni transmite datos a servidores.
-
-## Sin cambios visuales
-
-Se conservan la columna a la derecha, los círculos glass al 55% de opacidad, el punto verde con borde blanco, el botón + fijo solo sin apps, el menú de gestión y la rotación suave optimizada de batería.
-
-## Instalación
-
-Android 8+. APK debug experimental, sin firma estable entre compilaciones en CI. Si Android bloquea esta APK por el permiso sensible, respeta la protección; no es necesario desactivar Play Protect para usar la versión manual v0.15. El código se encuentra en apkbdev/projects/orbit-launcher.
+Importante: el acceso a notificaciones es opcional y sensible; Play Protect puede bloquear la instalacion de APKs de prueba. Android puede suspender servicios por politicas de ahorro de energia. El efecto del ahorro necesita mediciones en un dispositivo real.
