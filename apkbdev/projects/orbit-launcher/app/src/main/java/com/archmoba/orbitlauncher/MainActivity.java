@@ -73,6 +73,9 @@ public final class MainActivity extends Activity {
         if (DockService.ACTION_ADD.equals(action)) {
             command(DockService.ACTION_HIDE);
             showPicker();
+        } else if (DockService.ACTION_MANAGE.equals(action)) {
+            command(DockService.ACTION_HIDE);
+            showManageDialog(getIntent().getStringExtra("package"));
         } else if (DockService.ACTION_REMOVE.equals(action)) {
             command(DockService.ACTION_HIDE);
             showRemoveDialog(getIntent().getStringExtra("package"));
@@ -192,6 +195,50 @@ public final class MainActivity extends Activity {
                         Toast.LENGTH_SHORT).show();
             }
             dialog.dismiss();
+        });
+        dialog.show();
+    }
+
+    private void showManageDialog(String packageName) {
+        if (packageName == null || packageName.trim().isEmpty()) {
+            restoreAndFinish();
+            return;
+        }
+        List<String> selected = AppStore.selected(this);
+        int index = selected.indexOf(packageName);
+        if (index < 0) {
+            restoreAndFinish();
+            return;
+        }
+
+        String[] choices = {
+            index == 0 ? "↑ Subir un lugar (ya está primero)" : "↑ Subir un lugar",
+            index == selected.size() - 1 ? "↓ Bajar un lugar (ya está último)"
+                    : "↓ Bajar un lugar",
+            "✕ Quitar del panel"
+        };
+        final boolean[] openingConfirmation = {false};
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(AppStore.label(this, packageName))
+                .setItems(choices, (d, option) -> {
+                    if (option == 2) {
+                        openingConfirmation[0] = true;
+                        showRemoveDialog(packageName);
+                    } else {
+                        int direction = option == 0 ? -1 : 1;
+                        if (!AppStore.move(this, packageName, direction)) {
+                            Toast.makeText(this,
+                                    direction == -1 ? "Ya está en el primer lugar"
+                                            : "Ya está en el último lugar",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                        restoreAndFinish();
+                    }
+                })
+                .setNegativeButton("Cancelar", null)
+                .create();
+        dialog.setOnDismissListener(d -> {
+            if (!openingConfirmation[0]) restoreAndFinish();
         });
         dialog.show();
     }

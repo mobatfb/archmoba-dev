@@ -25,6 +25,7 @@ import java.util.List;
 public final class DockService extends Service {
     static final String ACTION_ADD = "com.archmoba.orbitlauncher.ADD";
     static final String ACTION_REMOVE = "com.archmoba.orbitlauncher.REMOVE";
+    static final String ACTION_MANAGE = "com.archmoba.orbitlauncher.MANAGE";
     static final String ACTION_REFRESH = "com.archmoba.orbitlauncher.REFRESH";
     static final String ACTION_HIDE = "com.archmoba.orbitlauncher.HIDE";
     static final String ACTION_STOP = "com.archmoba.orbitlauncher.STOP";
@@ -97,7 +98,8 @@ public final class DockService extends Service {
         // Sin fondo de barra: flotan solamente los iconos que el usuario eligio.
         root.setBackgroundColor(Color.TRANSPARENT);
 
-        final int step = OrbitUtil.dp(this, 56);
+        // Mantener el tamaño de los iconos, con menos separación para ver más.
+        final int step = OrbitUtil.dp(this, 52);
         final int width = OrbitUtil.dp(this, 56);
         LinearLayout icons = new LinearLayout(this);
         icons.setOrientation(LinearLayout.VERTICAL);
@@ -120,11 +122,11 @@ public final class DockService extends Service {
             icon.setElevation(OrbitUtil.dp(this, 4));
             LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(
                     OrbitUtil.dp(this, 48), OrbitUtil.dp(this, 48));
-            item.setMargins(0, OrbitUtil.dp(this, 4), 0, OrbitUtil.dp(this, 4));
+            item.setMargins(0, OrbitUtil.dp(this, 2), 0, OrbitUtil.dp(this, 2));
             icons.addView(icon, item);
             icon.setOnClickListener(v -> OrbitUtil.launch(this, pkg));
             icon.setOnLongClickListener(v -> {
-                openPicker(ACTION_REMOVE, pkg);
+                openPicker(ACTION_MANAGE, pkg);
                 return true;
             });
             visible++;
@@ -138,8 +140,14 @@ public final class DockService extends Service {
             scroll.addView(icons);
             DisplayMetrics display = new DisplayMetrics();
             manager.getDefaultDisplay().getRealMetrics(display);
-            int availableHeight = Math.max(OrbitUtil.dp(this, 100),
-                    display.heightPixels - OrbitUtil.dp(this, 188));
+            DisplayMetrics usableDisplay = new DisplayMetrics();
+            manager.getDefaultDisplay().getMetrics(usableDisplay);
+            // Extender la columna en dos espacios de iconos respecto de v0.3.
+            // Limitar su altura util para no cubrir barras de sistema ni perder "+".
+            int desiredHeight = display.heightPixels - OrbitUtil.dp(this, 188)
+                    + (2 * step);
+            int safeHeight = usableDisplay.heightPixels - OrbitUtil.dp(this, 73);
+            int availableHeight = Math.max(step, Math.min(desiredHeight, safeHeight));
             int iconsHeight = Math.min(visible * step, availableHeight);
             root.addView(scroll, new LinearLayout.LayoutParams(width, iconsHeight));
         }

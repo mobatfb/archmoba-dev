@@ -48,6 +48,18 @@ final class AppStore {
         return true;
     }
 
+    /** Reordena un icono exactamente una posición: -1 arriba, +1 abajo. */
+    static boolean move(Context context, String packageName, int direction) {
+        if (direction != -1 && direction != 1) return false;
+        List<String> values = selected(context);
+        int index = values.indexOf(packageName);
+        int destination = index + direction;
+        if (index < 0 || destination < 0 || destination >= values.size()) return false;
+        Collections.swap(values, index, destination);
+        write(context, values);
+        return true;
+    }
+
     static void remove(Context context, String packageName) {
         List<String> values = selected(context);
         if (values.remove(packageName)) write(context, values);

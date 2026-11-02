@@ -1,26 +1,33 @@
-# Orbit Launcher v0.3 — Solo dock derecho | ARCHMOBA
+# Orbit Launcher v0.4 — Dock derecho personalizado | ARCHMOBA
 
-## Comportamiento
+## Novedades de v0.4
 
-- **Al abrir por primera vez solo se muestra un botón flotante `+` en el lado derecho.** Ninguna app se añade automáticamente.
-- Al pulsar `+`, aparece un listado de aplicaciones instaladas con buscador.
-- Al elegir una app, su icono se añade a la columna flotante del borde derecho, **sin abrirla de inmediato**.
-- Al tocar el icono, Android abre la aplicación real, normalmente a pantalla completa, y el dock permanece flotando a la derecha.
-- **Mantener pulsado un icono** permite quitarlo del panel (no desinstala la aplicación).
-- Se conserva el orden de incorporación y la selección persiste tras cerrar la app y reiniciar el servicio.
-- Si hay muchos iconos, se pueden deslizar verticalmente, mientras el `+` sigue accesible al final de la columna.
-- La notificación del servicio ofrece **Cerrar** para detener el dock, y abrir Orbit nuevamente lo restaura.
+- La columna del lado derecho tiene espacio adicional para mostrar **aproximadamente dos iconos más** antes de necesitar desplazamiento, según el tamaño y los límites del dispositivo.
+- Los iconos conservan 48 dp, y el espacio vertical por elemento pasa de 56 dp a 52 dp.
+- **Mantener pulsado un icono** abre un menú con tres opciones:
+  1. **Subir un lugar:** intercambia el icono con el inmediatamente superior.
+  2. **Bajar un lugar:** intercambia el icono con el inmediatamente inferior.
+  3. **Quitar:** solicita confirmación y retira el acceso del panel; **no desinstala** la app.
+- El orden modificado y la lista elegida se guardan en las preferencias locales del teléfono.
+- Cuando un icono es el primero o el último, la opción correspondiente muestra un aviso y no cambia el orden.
 
-## Eliminado respecto de v0.2
+## Funcionamiento básico
 
-Se eliminaron las barras superior, inferior e izquierda, los iconos predeterminados, el fondo, la ventana central, el visor de captura, el modo espejo, y los botones APPS, COMPLETA, ESPEJO, SALIR. Solo queda el panel de accesos elegido por el usuario en la derecha.
+1. Al instalar y abrir por primera vez, solo aparece el botón flotante `+` en el lado derecho.
+2. Pulsa `+` para buscar una aplicación instalada y añadirla.
+3. Pulsa su icono para abrir la aplicación real.
+4. Mantén pulsado el icono para subirlo, bajarlo o quitarlo.
+5. Si añades muchos accesos, puedes desplazar la lista verticalmente. El `+` permanece visible al final.
+6. La notificación del servicio incluye **Cerrar**; vuelve a abrir Orbit para restaurar los accesos.
 
-## Permisos y compatibilidad
+No hay fondo, visor central ni barras en la parte superior, inferior o izquierda.
 
-Necesita `SYSTEM_ALERT_WINDOW` (Mostrar sobre otras aplicaciones) para mantener el botón y los iconos flotantes; solicita el permiso en el primer arranque. Usa un servicio en primer plano para conservar el panel visible. No necesita conexión a Internet, acceso a datos privados ni grabación de pantalla.
+## Requisitos
 
-El sistema Android y algunos fabricantes pueden limitar las ventanas flotantes o el inicio de aplicaciones desde segundo plano. No se redimensionan las apps ni se intercepta el contenido de otras ventanas.
+Android 8.0 o superior. Debes habilitar **Mostrar sobre otras aplicaciones**. El teléfono puede limitar la superposición y el lanzamiento desde segundo plano. Esta app no captura la pantalla, no necesita Internet y no controla ni redimensiona otras aplicaciones.
 
-## Instalación
+## Actualización
 
-Si el APK anterior se firmó con otra clave debug, desinstala Orbit Launcher v0.2 antes de instalar v0.3. Se perderán las preferencias del Orbit anterior, pero esta versión inicia vacía como se solicitó. Abre Orbit, acepta **Mostrar sobre otras apps**, y toca **+** para elegir los accesos.
+La versión 0.4 usa el mismo ID de aplicación que v0.3. Si los paquetes de prueba están firmados con certificados distintos, Android puede exigir desinstalar la versión anterior; eso borra las preferencias guardadas. Si la firma es compatible, los accesos y su orden se conservan.
+
+El APK se construye desde `apkbdev/projects/orbit-launcher` usando `.github/workflows/apkbdev-build.yml`.
