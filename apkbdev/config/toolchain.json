@@ -1,0 +1,12 @@
+{
+  "toolkit_version": "1.0.0",
+  "java_version": "17",
+  "gradle_version": "8.7",
+  "android_gradle_plugin": "8.5.2",
+  "compile_sdk": 35,
+  "build_tools": "35.0.0",
+  "min_sdk": 26,
+  "target_sdk": 33,
+  "default_project": "orbit-launcher",
+  "build_type": "debug"
+}

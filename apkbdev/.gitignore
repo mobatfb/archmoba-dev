@@ -1,0 +1,17 @@
+# Archivos generados; nunca subir firmas ni claves al repositorio.
+/**/.gradle/
+/**/build/
+/**/local.properties
+/**/.idea/
+/**/.cxx/
+/**/.externalNativeBuild/
+/dist/
+*.jks
+*.keystore
+*.aab
+*.apk
+*.log
+*.iml
+.DS_Store
+__pycache__/
+*.pyc

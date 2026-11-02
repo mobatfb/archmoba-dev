@@ -1,0 +1,64 @@
+name: APKBDEV - Android APK Builder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apkbdev/**'
+      - '.github/workflows/apkbdev-build.yml'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Nombre de carpeta dentro de apkbdev/projects'
+        required: true
+        type: string
+        default: 'orbit-launcher'
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PROJECT_SLUG: ${{ github.event.inputs.project || 'orbit-launcher' }}
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Activar Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Configurar Android SDK del runner
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}" >> "$GITHUB_ENV"
+
+      - name: Instalar Android SDK 35
+        run: python3 apkbdev/tools/prepare_sdk.py
+
+      - name: Validar dependencias
+        run: python3 apkbdev/tools/doctor.py --strict
+
+      - name: Probar generador de apps
+        run: python3 -m unittest discover -s apkbdev/tests -p 'test_*.py' -v
+
+      - name: Compilar proyecto Android
+        run: python3 apkbdev/tools/build_apk.py --project "$PROJECT_SLUG"
+
+      - name: Publicar APK descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: APKBDEV-${{ env.PROJECT_SLUG }}
+          path: apkbdev/dist/**/*.apk
+          if-no-files-found: error
+          retention-days: 30
