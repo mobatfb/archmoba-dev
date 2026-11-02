@@ -24,13 +24,5 @@
         </activity>
         <service android:name=".DockService"
             android:exported="false"/>
-        <service android:name=".OrbitNotificationListener"
-            android:label="Orbit - Indicadores de notificacion"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService"/>
-            </intent-filter>
-        </service>
     </application>
 </manifest>
