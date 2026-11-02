@@ -5,77 +5,128 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.SystemClock;
 import android.view.View;
+import android.view.WindowManager;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Movimiento continuo y ligero usando gravedad o acelerometro.
- * Compensa la inclinacion del telefono sin rotar toda la columna.
- * En giro de pantalla Android, DockService reconstruye el dock y se recalibra.
+ * Mantiene cada acceso alineado con la orientacion visible de Android.
+ * La gravedad es absoluta; NO tomamos la primera lectura como "vertical".
+ * De esa manera, una app que arranca con el movil girado no se queda al reves.
  */
 final class DockMotion implements SensorEventListener {
-    private final SensorManager manager;
-    private final Sensor sensor;
+    private static final float MIN_XY_SQUARED = 16f;
+    private static final float DEAD_ZONE_DEGREES = 7f;
+    private static final float SMOOTHING = 0.40f;
+    private static final long ROTATION_SETTLE_MS = 250;
+
+    private final SensorManager sensorManager;
+    private final Sensor gravitySensor;
+    private final WindowManager windowManager;
     private final List<View> targets = new ArrayList<>();
+
     private boolean listening;
-    private boolean calibrated;
-    private float baselineAngle;
-    private float displayedAngle;
+    private float displayedAngle = 0f;
+    private int displayRotation = -1;
+    private long lastRotationChangeMs = 0L;
 
     DockMotion(Context context) {
-        manager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
-        Sensor preferred = null;
-        if (manager != null) {
-            preferred = manager.getDefaultSensor(Sensor.TYPE_GRAVITY);
-            if (preferred == null) {
-                preferred = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
+        windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        Sensor found = null;
+        if (sensorManager != null) {
+            found = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+            if (found == null) {
+                found = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             }
         }
-        sensor = preferred;
+        gravitySensor = found;
     }
 
     void start(List<View> views) {
         stop();
         targets.addAll(views);
-        if (sensor != null && manager != null) {
-            listening = manager.registerListener(this, sensor,
-                    SensorManager.SENSOR_DELAY_GAME);
+        displayedAngle = 0f;
+        displayRotation = currentDisplayRotation();
+        // Se inicia derecho de inmediato, antes de la primera lectura.
+        applyAngle(0f);
+        if (sensorManager != null && gravitySensor != null) {
+            listening = sensorManager.registerListener(
+                    this, gravitySensor, SensorManager.SENSOR_DELAY_GAME);
         }
     }
 
     void stop() {
-        if (listening && manager != null) manager.unregisterListener(this);
+        if (listening && sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
         listening = false;
-        calibrated = false;
-        displayedAngle = 0f;
         targets.clear();
+        displayedAngle = 0f;
+        displayRotation = -1;
+        lastRotationChangeMs = 0L;
     }
 
-    private static float shortest(float angle) {
-        while (angle > 180f) angle -= 360f;
-        while (angle < -180f) angle += 360f;
-        return angle;
+    private int currentDisplayRotation() {
+        if (windowManager == null) return 0;
+        return windowManager.getDefaultDisplay().getRotation();
+    }
+
+    private void applyAngle(float value) {
+        for (View view : targets) {
+            if (view != null) view.setRotation(value);
+        }
     }
 
     @Override public void onSensorChanged(SensorEvent event) {
-        if (!listening || targets.isEmpty() || event.sensor.getType() != sensor.getType())
-            return;
-        float x = event.values[0], y = event.values[1];
-        // Cerca de la posicion horizontal no hay direccion gravitacional fiable en XY.
-        if (x * x + y * y < 12f) return;
-        float angle = (float) Math.toDegrees(Math.atan2(-x, y));
-        if (!calibrated) {
-            baselineAngle = angle;
-            calibrated = true;
+        if (!listening || gravitySensor == null || targets.isEmpty() || event == null
+                || event.sensor.getType() != gravitySensor.getType()) return;
+
+        int nowRotation = currentDisplayRotation();
+        if (nowRotation != displayRotation) {
+            // Android acaba de rotar su interfaz: no repetir ese giro en los iconos.
+            displayRotation = nowRotation;
+            displayedAngle = 0f;
+            lastRotationChangeMs = SystemClock.elapsedRealtime();
+            applyAngle(0f);
             return;
         }
-        // Giro inverso suave: los logos responden en tiempo real a la inclinacion.
-        float target = shortest(baselineAngle - angle);
-        float difference = shortest(target - displayedAngle);
-        if (Math.abs(difference) < 0.5f) return;
-        displayedAngle = shortest(displayedAngle + difference * 0.32f);
-        for (View view : targets) view.setRotation(displayedAngle);
+
+        if (SystemClock.elapsedRealtime() - lastRotationChangeMs
+                < ROTATION_SETTLE_MS) return;
+
+        float x = event.values[0], y = event.values[1];
+        if (x * x + y * y < MIN_XY_SQUARED) {
+            // Telefonos apoyados casi planos: no forzar giros de datos ambiguos.
+            if (Math.abs(displayedAngle) > 0.1f) {
+                displayedAngle = 0f;
+                applyAngle(0f);
+            }
+            return;
+        }
+
+        float target = DockOrientation.correctedAngle(x, y, nowRotation);
+        // "Telefono derecho" = iconos 100% derechos, sin vibracion +/- 1 grado.
+        if (Math.abs(target) < DEAD_ZONE_DEGREES) target = 0f;
+
+        float difference = DockOrientation.normalize(target - displayedAngle);
+        if (Math.abs(difference) < 0.4f) {
+            if (target == 0f && displayedAngle != 0f) {
+                displayedAngle = 0f;
+                applyAngle(0f);
+            }
+            return;
+        }
+
+        displayedAngle = DockOrientation.normalize(
+                displayedAngle + difference * SMOOTHING);
+
+        if (target == 0f && Math.abs(displayedAngle) <= 1.5f) {
+            displayedAngle = 0f;
+        }
+        applyAngle(displayedAngle);
     }
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) {}

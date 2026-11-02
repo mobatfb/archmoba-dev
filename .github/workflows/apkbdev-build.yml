@@ -52,6 +52,14 @@ jobs:
       - name: Probar generador de apps
         run: python3 -m unittest discover -s apkbdev/tests -p 'test_*.py' -v
 
+      - name: Probar sincronizacion de sensores Orbit (Java)
+        run: |
+          mkdir -p "$RUNNER_TEMP/orbit-orientation"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/orbit-orientation" \
+            apkbdev/projects/orbit-launcher/app/src/main/java/com/archmoba/orbitlauncher/DockOrientation.java \
+            apkbdev/tests/OrbitOrientationTest.java
+          java -cp "$RUNNER_TEMP/orbit-orientation" com.archmoba.orbitlauncher.OrbitOrientationTest
+
       - name: Compilar proyecto Android
         run: python3 apkbdev/tools/build_apk.py --project "$PROJECT_SLUG"
 
