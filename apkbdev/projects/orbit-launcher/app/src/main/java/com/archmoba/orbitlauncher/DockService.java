@@ -127,8 +127,8 @@ public final class DockService extends Service {
             icon.setBackground(OrbitUtil.bubble(this, false));
             // Recortar siempre el contenido de la imagen al contorno circular.
             icon.setClipToOutline(true);
-            // Al 80% se atenúan juntos icono, fondo circular y borde.
-            icon.setAlpha(0.80f);
+            // Al 55% se atenúan juntos icono, fondo circular y borde.
+            icon.setAlpha(0.55f);
             icon.setElevation(OrbitUtil.dp(this, 4));
             LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(
                     OrbitUtil.dp(this, 48), OrbitUtil.dp(this, 48));
@@ -181,7 +181,7 @@ public final class DockService extends Service {
             plus.setBackground(OrbitUtil.bubble(this, true));
             plus.setClipToOutline(true);
             // Incluye el simbolo "+" y su contenedor; mantiene el giro fijo.
-            plus.setAlpha(0.80f);
+            plus.setAlpha(0.55f);
             plus.setElevation(OrbitUtil.dp(this, 6));
             LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(
                     OrbitUtil.dp(this, 49), OrbitUtil.dp(this, 49));

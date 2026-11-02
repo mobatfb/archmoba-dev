@@ -19,17 +19,17 @@ final class OrbitUtil {
      * blanco-azul en la parte superior a azul marino en la inferior.
      *
      * La opacidad del contenido completo (incluido el icono o el signo "+")
-     * se aplica en DockService mediante View.setAlpha(0.80f).
+     * se aplica en DockService mediante View.setAlpha(0.55f).
      */
     static GradientDrawable bubble(Context context, boolean plus) {
         GradientDrawable shape = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 new int[] {
-                    Color.argb(170, 54, 82, 107),
-                    Color.argb(191, 7, 16, 32)
+                    Color.argb(140, 54, 82, 107),
+                    Color.argb(160, 7, 16, 32)
                 });
         shape.setShape(GradientDrawable.OVAL);
-        shape.setStroke(dp(context, 2), Color.argb(204, 27, 207, 255));
+        shape.setStroke(dp(context, 2), Color.argb(190, 27, 207, 255));
         return shape;
     }
 
