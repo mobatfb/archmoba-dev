@@ -12,6 +12,12 @@ public final class OrbitOrientationTest {
         }
     }
 
+    private static void checkCondition(String name, boolean actual, boolean expected) {
+        checks++;
+        if (actual != expected) throw new AssertionError(name
+                + ": esperaba " + expected + " obtenido " + actual);
+    }
+
     public static void main(String[] args) {
         // Telefono vertical normal: jamas girar el icono 90 o 180 grados.
         check("vertical natural", DockOrientation.correctedAngle(0f, 9.81f, 0), 0f);
@@ -30,6 +36,15 @@ public final class OrbitOrientationTest {
                 DockOrientation.correctedAngle(-4.905f, 8.496f, 0), -30f);
         check("cruce de -360 a 0", DockOrientation.normalize(-360f), 0f);
         check("cruce de +360 a 0", DockOrientation.normalize(360f), 0f);
-        System.out.println("OK: " + checks + " pruebas de orientacion aprobadas");
+        // Reglas de ahorro: evitar dibujar cuando no hay cambio visible,
+        // cuando llega el sensor demasiado rapido o si el angulo cruza 360.
+        checkCondition("sin cambio no dibuja", DockMotionPolicy.shouldDraw(0f, 0f, 100L), false);
+        checkCondition("microtemblor no dibuja", DockMotionPolicy.shouldDraw(0f, 0.7f, 100L), false);
+        checkCondition("frame demasiado frecuente", DockMotionPolicy.shouldDraw(0f, 30f, 20L), false);
+        checkCondition("movimiento suficiente", DockMotionPolicy.shouldDraw(0f, 15f, 60L), true);
+        checkCondition("normalizacion 360", DockMotionPolicy.shouldDraw(179f, -179f, 60L), true);
+        checkCondition("salto de un grado no dibuja", DockMotionPolicy.shouldDraw(180f, 179f, 60L), false);
+        checkCondition("tasa solicitada prudente", DockMotionPolicy.SENSOR_PERIOD_US >= 50_000, true);
+        System.out.println("OK: " + checks + " pruebas de orientacion y energia aprobadas");
     }
 }

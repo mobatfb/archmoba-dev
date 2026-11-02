@@ -6,6 +6,9 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -36,11 +39,41 @@ public final class DockService extends Service {
     private LinearLayout dock;
     private boolean stopped;
     private DockMotion motion;
+    private boolean screenReceiverRegistered;
+
+    /**
+     * Los broadcasts de pantalla NO se declaran en el manifest:
+     * se escuchan dinamicamente durante la vida del servicio.
+     */
+    private final BroadcastReceiver screenStateReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null || motion == null) return;
+            String action = intent.getAction();
+            if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                motion.pause();
+            } else if (Intent.ACTION_SCREEN_ON.equals(action) && dock != null) {
+                motion.resume();
+            }
+        }
+    };
 
     @Override public void onCreate() {
         super.onCreate();
         manager = (WindowManager) getSystemService(WINDOW_SERVICE);
         motion = new DockMotion(this);
+
+        IntentFilter screenEvents = new IntentFilter();
+        screenEvents.addAction(Intent.ACTION_SCREEN_OFF);
+        screenEvents.addAction(Intent.ACTION_SCREEN_ON);
+        // Son broadcasts exclusivos del sistema; registro no exportado.
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(screenStateReceiver, screenEvents,
+                    Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(screenStateReceiver, screenEvents);
+        }
+        screenReceiverRegistered = true;
+
         startNotification();
     }
 
@@ -244,6 +277,10 @@ public final class DockService extends Service {
 
     @Override public void onDestroy() {
         removeDock();
+        if (screenReceiverRegistered) {
+            unregisterReceiver(screenStateReceiver);
+            screenReceiverRegistered = false;
+        }
         super.onDestroy();
     }
 
