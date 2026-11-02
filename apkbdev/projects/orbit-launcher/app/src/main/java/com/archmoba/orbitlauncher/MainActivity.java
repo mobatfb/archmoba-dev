@@ -32,6 +32,7 @@ import java.util.Locale;
  */
 public final class MainActivity extends Activity {
     private static final int REQUEST_OVERLAY = 101;
+    private static final int REQUEST_NOTIFICATION_ACCESS = 102;
     private boolean restored;
 
     @Override public void onCreate(Bundle savedState) {
@@ -65,6 +66,9 @@ public final class MainActivity extends Activity {
                         Toast.LENGTH_LONG).show();
                 finish();
             }
+        } else if (requestCode == REQUEST_NOTIFICATION_ACCESS) {
+            // El permiso es opcional: con o sin acceso, recuperamos el dock.
+            restoreAndFinish();
         }
     }
 
@@ -80,9 +84,17 @@ public final class MainActivity extends Activity {
             command(DockService.ACTION_HIDE);
             showRemoveDialog(getIntent().getStringExtra("package"));
         } else {
-            // Primera apertura: servicio inicia con lista vacia => solo "+".
-            command(DockService.ACTION_REFRESH);
-            finish();
+            // Primera apertura de v0.14 con apps guardadas: una sola oferta
+            // de activacion opcional. Con lista vacia no solicita acceso.
+            if (!AppStore.selected(this).isEmpty()
+                    && NotificationBadgeStore.shouldOffer(this)
+                    && !NotificationBadgeStore.hasAccess(this)) {
+                NotificationBadgeStore.markOffered(this);
+                showNotificationAccessDialog();
+            } else {
+                command(DockService.ACTION_REFRESH);
+                finish();
+            }
         }
     }
 
@@ -182,20 +194,61 @@ public final class MainActivity extends Activity {
             @Override public void afterTextChanged(Editable edit) {}
         });
 
+        final boolean[] showingPermission = {false};
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Añadir al lado derecho")
                 .setView(content)
                 .setNegativeButton("Cancelar", null)
-                .setOnDismissListener(d -> restoreAndFinish())
+                .setOnDismissListener(d -> {
+                    if (!showingPermission[0]) restoreAndFinish();
+                })
                 .create();
         list.setOnItemClickListener((parent, view, position, id) -> {
             ResolveInfo app = adapter.getItem(position);
-            if (app != null && AppStore.add(this, app.activityInfo.packageName)) {
+            boolean added = app != null
+                    && AppStore.add(this, app.activityInfo.packageName);
+            if (added) {
                 Toast.makeText(this,
-                        "Añadida: " + app.loadLabel(pm) + ". Mantén pulsado un icono para añadir más.",
+                        "Añadida: " + app.loadLabel(pm) + ". Mantén pulsado para administrar.",
                         Toast.LENGTH_LONG).show();
             }
+            boolean offer = added && !NotificationBadgeStore.hasAccess(this)
+                    && NotificationBadgeStore.shouldOffer(this);
+            if (offer) {
+                showingPermission[0] = true;
+                NotificationBadgeStore.markOffered(this);
+            }
             dialog.dismiss();
+            if (offer) showNotificationAccessDialog();
+        });
+        dialog.show();
+    }
+
+    private void showNotificationAccessDialog() {
+        final boolean[] openingSystemSettings = {false};
+        boolean alreadyEnabled = NotificationBadgeStore.hasAccess(this);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Indicadores de notificación")
+                .setMessage(alreadyEnabled
+                        ? "El acceso está habilitado. Los puntos verdes indican notificaciones activas. Puedes desactivarlo en los ajustes del teléfono."
+                        : "¿Quieres mostrar automáticamente un punto verde cuando una aplicación tenga notificaciones activas? Android solicitará acceso a tus notificaciones. Este permiso permite acceso amplio, aunque Orbit solo utiliza el identificador de la app, sin leer ni guardar los mensajes. Es opcional.")
+                .setPositiveButton("Abrir ajustes", (d, which) -> {
+                    openingSystemSettings[0] = true;
+                    try {
+                        Intent settings = new Intent(
+                                Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+                        startActivityForResult(settings, REQUEST_NOTIFICATION_ACCESS);
+                    } catch (Exception ignored) {
+                        Toast.makeText(this,
+                                "Abre Ajustes > Acceso a notificaciones > Orbit",
+                                Toast.LENGTH_LONG).show();
+                        restoreAndFinish();
+                    }
+                })
+                .setNegativeButton("Ahora no", null)
+                .create();
+        dialog.setOnDismissListener(d -> {
+            if (!openingSystemSettings[0]) restoreAndFinish();
         });
         dialog.show();
     }
@@ -218,7 +271,9 @@ public final class MainActivity extends Activity {
             index == selected.size() - 1 ? "↓ Bajar un lugar (ya está último)"
                     : "↓ Bajar un lugar",
             "✕ Quitar del panel",
-            AppStore.isMarked(this, packageName) ? "● Quitar punto verde" : "● Marcar novedad"
+            NotificationBadgeStore.hasAccess(this)
+                    ? "● Configurar indicadores verdes"
+                    : "● Activar indicadores verdes"
         };
         // Los formularios secundarios reponen el dock al cerrar. El menu
         // principal no debe cerrarlos prematuramente desde su OnDismissListener.
@@ -233,8 +288,8 @@ public final class MainActivity extends Activity {
                         openingChild[0] = true;
                         showRemoveDialog(packageName);
                     } else if (option == 4) {
-                        AppStore.toggleMarked(this, packageName);
-                        restoreAndFinish();
+                        openingChild[0] = true;
+                        showNotificationAccessDialog();
                     } else {
                         int direction = option == 1 ? -1 : 1;
                         if (!AppStore.move(this, packageName, direction)) {
