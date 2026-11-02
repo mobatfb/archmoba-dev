@@ -61,6 +61,14 @@ jobs:
             apkbdev/tests/OrbitOrientationTest.java
           java -cp "$RUNNER_TEMP/orbit-orientation" com.archmoba.orbitlauncher.OrbitOrientationTest
 
+      - name: Probar indicador de notificaciones nuevas (Java)
+        run: |
+          mkdir -p "$RUNNER_TEMP/orbit-badges"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/orbit-badges" \
+            apkbdev/projects/orbit-launcher/app/src/main/java/com/archmoba/orbitlauncher/BadgeFreshnessPolicy.java \
+            apkbdev/tests/BadgeFreshnessTest.java
+          java -cp "$RUNNER_TEMP/orbit-badges" com.archmoba.orbitlauncher.BadgeFreshnessTest
+
       - name: Compilar proyecto Android
         run: python3 apkbdev/tools/build_apk.py --project "$PROJECT_SLUG"
 
