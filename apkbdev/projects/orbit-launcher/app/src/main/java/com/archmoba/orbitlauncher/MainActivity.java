@@ -217,7 +217,8 @@ public final class MainActivity extends Activity {
             index == 0 ? "↑ Subir un lugar (ya está primero)" : "↑ Subir un lugar",
             index == selected.size() - 1 ? "↓ Bajar un lugar (ya está último)"
                     : "↓ Bajar un lugar",
-            "✕ Quitar del panel"
+            "✕ Quitar del panel",
+            AppStore.isMarked(this, packageName) ? "● Quitar punto verde" : "● Marcar novedad"
         };
         // Los formularios secundarios reponen el dock al cerrar. El menu
         // principal no debe cerrarlos prematuramente desde su OnDismissListener.
@@ -231,6 +232,9 @@ public final class MainActivity extends Activity {
                     } else if (option == 3) {
                         openingChild[0] = true;
                         showRemoveDialog(packageName);
+                    } else if (option == 4) {
+                        AppStore.toggleMarked(this, packageName);
+                        restoreAndFinish();
                     } else {
                         int direction = option == 1 ? -1 : 1;
                         if (!AppStore.move(this, packageName, direction)) {
