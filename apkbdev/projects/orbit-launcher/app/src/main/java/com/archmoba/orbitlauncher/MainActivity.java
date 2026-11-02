@@ -32,6 +32,7 @@ import java.util.Locale;
  */
 public final class MainActivity extends Activity {
     private static final int REQUEST_OVERLAY = 101;
+    private static final int REQUEST_NOTIFICATIONS = 102;
     private boolean restored;
 
     @Override public void onCreate(Bundle savedState) {
@@ -58,7 +59,9 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_OVERLAY) {
+        if (requestCode == REQUEST_NOTIFICATIONS) {
+            restoreAndFinish();
+        } else if (requestCode == REQUEST_OVERLAY) {
             if (Settings.canDrawOverlays(this)) handleAction();
             else {
                 Toast.makeText(this, "Se necesita el permiso para mostrar el botón +",
@@ -81,8 +84,15 @@ public final class MainActivity extends Activity {
             showRemoveDialog(getIntent().getStringExtra("package"));
         } else {
             // Primera apertura: servicio inicia con lista vacia => solo "+".
-            command(DockService.ACTION_REFRESH);
-            finish();
+            if (!AppStore.selected(this).isEmpty()
+                    && !hasListenerAccess()
+                    && !getPreferences(0).getBoolean("notification_offer_shown", false)) {
+                getPreferences(0).edit().putBoolean("notification_offer_shown", true).apply();
+                showNotificationSettings();
+            } else {
+                command(DockService.ACTION_REFRESH);
+                finish();
+            }
         }
     }
 
@@ -200,6 +210,37 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
 
+    private boolean hasListenerAccess() {
+        android.app.NotificationManager manager = (android.app.NotificationManager)
+                getSystemService(NOTIFICATION_SERVICE);
+        return android.os.Build.VERSION.SDK_INT >= 27
+                && manager != null && manager.isNotificationListenerAccessGranted(
+                new android.content.ComponentName(this, OrbitNotificationListener.class));
+    }
+
+    private void showNotificationSettings() {
+        final boolean[] opening = {false};
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Punto verde automático")
+                .setMessage("Para detectar avisos nuevos, Android necesita autorizar el acceso a notificaciones. Es opcional y puede revelar información sensible. Orbit solo utiliza la aplicación y la fecha de publicación, no el texto.")
+                .setPositiveButton("Configurar", (d, which) -> {
+                    opening[0] = true;
+                    try {
+                        startActivityForResult(
+                                new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
+                                REQUEST_NOTIFICATIONS);
+                    } catch (Exception e) {
+                        restoreAndFinish();
+                    }
+                })
+                .setNegativeButton("Ahora no", null)
+                .create();
+        dialog.setOnDismissListener(d -> {
+            if (!opening[0]) restoreAndFinish();
+        });
+        dialog.show();
+    }
+
     private void showManageDialog(String packageName) {
         if (packageName == null || packageName.trim().isEmpty()) {
             restoreAndFinish();
@@ -218,7 +259,7 @@ public final class MainActivity extends Activity {
             index == selected.size() - 1 ? "↓ Bajar un lugar (ya está último)"
                     : "↓ Bajar un lugar",
             "✕ Quitar del panel",
-            AppStore.isMarked(this, packageName) ? "● Quitar indicador verde" : "● Activar indicador verde"
+            "● Configurar notificaciones automáticas"
         };
         // Los formularios secundarios reponen el dock al cerrar. El menu
         // principal no debe cerrarlos prematuramente desde su OnDismissListener.
@@ -233,8 +274,8 @@ public final class MainActivity extends Activity {
                         openingChild[0] = true;
                         showRemoveDialog(packageName);
                     } else if (option == 4) {
-                        AppStore.toggleMarked(this, packageName);
-                        restoreAndFinish();
+                        openingChild[0] = true;
+                        showNotificationSettings();
                     } else {
                         int direction = option == 1 ? -1 : 1;
                         if (!AppStore.move(this, packageName, direction)) {
