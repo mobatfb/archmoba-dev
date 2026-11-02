@@ -14,11 +14,15 @@ final class OrbitUtil {
         return (int) (size * context.getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    /**
+     * Ambos contenedores son ovalos reales, no rectangulos con esquinas redondas.
+     * Color del fondo al 75% de opacidad para dejar ver la app subyacente.
+     */
     static GradientDrawable bubble(Context context, boolean plus) {
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(SURFACE);
-        shape.setCornerRadius(dp(context, plus ? 28 : 18));
-        shape.setStroke(dp(context, 2), CYAN);
+        shape.setShape(GradientDrawable.OVAL);
+        shape.setColor(Color.argb(191, 7, 16, 32));
+        shape.setStroke(dp(context, 2), Color.argb(217, 27, 207, 255));
         return shape;
     }
 

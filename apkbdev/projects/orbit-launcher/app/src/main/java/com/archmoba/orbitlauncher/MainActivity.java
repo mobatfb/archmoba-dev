@@ -191,8 +191,9 @@ public final class MainActivity extends Activity {
         list.setOnItemClickListener((parent, view, position, id) -> {
             ResolveInfo app = adapter.getItem(position);
             if (app != null && AppStore.add(this, app.activityInfo.packageName)) {
-                Toast.makeText(this, "Añadida: " + app.loadLabel(pm),
-                        Toast.LENGTH_SHORT).show();
+                Toast.makeText(this,
+                        "Añadida: " + app.loadLabel(pm) + ". Mantén pulsado un icono para añadir más.",
+                        Toast.LENGTH_LONG).show();
             }
             dialog.dismiss();
         });
@@ -212,20 +213,26 @@ public final class MainActivity extends Activity {
         }
 
         String[] choices = {
+            "+ Añadir aplicación",
             index == 0 ? "↑ Subir un lugar (ya está primero)" : "↑ Subir un lugar",
             index == selected.size() - 1 ? "↓ Bajar un lugar (ya está último)"
                     : "↓ Bajar un lugar",
             "✕ Quitar del panel"
         };
-        final boolean[] openingConfirmation = {false};
+        // Los formularios secundarios reponen el dock al cerrar. El menu
+        // principal no debe cerrarlos prematuramente desde su OnDismissListener.
+        final boolean[] openingChild = {false};
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(AppStore.label(this, packageName))
                 .setItems(choices, (d, option) -> {
-                    if (option == 2) {
-                        openingConfirmation[0] = true;
+                    if (option == 0) {
+                        openingChild[0] = true;
+                        showPicker();
+                    } else if (option == 3) {
+                        openingChild[0] = true;
                         showRemoveDialog(packageName);
                     } else {
-                        int direction = option == 0 ? -1 : 1;
+                        int direction = option == 1 ? -1 : 1;
                         if (!AppStore.move(this, packageName, direction)) {
                             Toast.makeText(this,
                                     direction == -1 ? "Ya está en el primer lugar"
@@ -238,7 +245,7 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Cancelar", null)
                 .create();
         dialog.setOnDismissListener(d -> {
-            if (!openingConfirmation[0]) restoreAndFinish();
+            if (!openingChild[0]) restoreAndFinish();
         });
         dialog.show();
     }

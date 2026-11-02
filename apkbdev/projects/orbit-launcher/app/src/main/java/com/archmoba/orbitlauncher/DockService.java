@@ -125,6 +125,9 @@ public final class DockService extends Service {
             int inset = OrbitUtil.dp(this, 8);
             icon.setPadding(inset, inset, inset, inset);
             icon.setBackground(OrbitUtil.bubble(this, false));
+            // Recortar siempre el contenido de la imagen al contorno circular.
+            icon.setClipToOutline(true);
+            icon.setAlpha(0.93f);
             icon.setElevation(OrbitUtil.dp(this, 4));
             LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(
                     OrbitUtil.dp(this, 48), OrbitUtil.dp(this, 48));
@@ -163,21 +166,27 @@ public final class DockService extends Service {
             root.addView(scroll, new LinearLayout.LayoutParams(width, iconsHeight));
         }
 
-        TextView plus = new TextView(this);
-        plus.setText("+");
-        plus.setTextColor(OrbitUtil.CYAN);
-        plus.setTextSize(34);
-        plus.setTypeface(null, 1);
-        plus.setGravity(Gravity.CENTER);
-        plus.setContentDescription("Añadir aplicación");
-        plus.setBackground(OrbitUtil.bubble(this, true));
-        plus.setElevation(OrbitUtil.dp(this, 6));
-        LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(
-                OrbitUtil.dp(this, 49), OrbitUtil.dp(this, 49));
-        plusParams.setMargins(0, OrbitUtil.dp(this, 4), 0, OrbitUtil.dp(this, 4));
-        root.addView(plus, plusParams);
-        rotateTargets.add(plus);
-        plus.setOnClickListener(v -> openPicker(ACTION_ADD, null));
+        // "+" solo cuando no hay ninguna app visible. Nunca rota.
+        // Si hay iconos, "Añadir" queda dentro de su menu de pulsacion larga.
+        if (visible == 0) {
+            TextView plus = new TextView(this);
+            plus.setText("+");
+            plus.setTextColor(OrbitUtil.CYAN);
+            plus.setTextSize(34);
+            plus.setTypeface(null, 1);
+            plus.setGravity(Gravity.CENTER);
+            plus.setRotation(0f);
+            plus.setContentDescription("Añadir aplicación");
+            plus.setBackground(OrbitUtil.bubble(this, true));
+            plus.setClipToOutline(true);
+            plus.setElevation(OrbitUtil.dp(this, 6));
+            LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(
+                    OrbitUtil.dp(this, 49), OrbitUtil.dp(this, 49));
+            plusParams.setMargins(0, OrbitUtil.dp(this, 4),
+                    0, OrbitUtil.dp(this, 4));
+            root.addView(plus, plusParams);
+            plus.setOnClickListener(v -> openPicker(ACTION_ADD, null));
+        }
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 width, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -192,7 +201,8 @@ public final class DockService extends Service {
         try {
             manager.addView(root, params);
             dock = root;
-            motion.start(rotateTargets);
+            // Sin apps no se inicia el sensor, y el "+" permanece recto.
+            if (!rotateTargets.isEmpty()) motion.start(rotateTargets);
         } catch (Exception ignored) {
             Toast.makeText(this, "No se pudo mostrar el botón flotante",
                     Toast.LENGTH_LONG).show();

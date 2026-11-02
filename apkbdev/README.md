@@ -2,7 +2,7 @@
 
 **Kit reutilizable de creación, compilación y distribución de APK** del repositorio archmoba-dev.
 
-El entorno incluye herramientas, configuraciones y plantilla Android nativa Java, y el código de **Orbit Launcher v0.8** como proyecto de referencia. El SDK/JDK/Gradle se instalan en el entorno de compilación, no se guardan binarios pesados dentro de git.
+El entorno incluye herramientas, configuraciones y plantilla Android nativa Java, y el código de **Orbit Launcher v0.9** como proyecto de referencia. El SDK/JDK/Gradle se instalan en el entorno de compilación, no se guardan binarios pesados dentro de git.
 
 | Ruta | Función |
 | --- | --- |
@@ -12,7 +12,7 @@ El entorno incluye herramientas, configuraciones y plantilla Android nativa Java
 | `tools/prepare_sdk.py` | Instalar componentes del SDK con `sdkmanager`. |
 | `tools/doctor.py` | Validar el entorno y las dependencias. |
 | `templates/native-java/` | Plantilla autónoma de nueva app Android. |
-| `projects/orbit-launcher/` | Orbit v0.8: iconos flotantes completos a la derecha y sensores sincronizados con la orientacion de pantalla. |
+| `projects/orbit-launcher/` | Orbit v0.9: contenedores circulares y translúcidos a la derecha; + fijo solo sin iconos, gestión desde pulsación larga. |
 | `tests/` | Pruebas automáticas del generador. |
 | `docs/` | Guías de compilación, ambiente, CI y firma. |
 
@@ -46,4 +46,4 @@ Los commits a `main` dentro de APKBDEV compilan Orbit como comprobación.
 - Utilizar los scripts compartidos en `apkbdev/tools/`.
 - No guardar contraseñas, tokens, keystores, SDKs o archivos APK debug dentro del árbol de código.
 - Para producción, publicar APK firmadas por el responsable del proyecto, no builds debug.
-- Orbit v0.8 mantiene el visor central y las barras perimetrales eliminados: únicamente se muestra `+` y los accesos añadidos voluntariamente por el usuario en el lado derecho.
+- Orbit v0.9 mantiene solo los accesos elegidos por el usuario a la derecha. Si no existen accesos aparece `+`; con iconos añadidos, el menú de pulsación larga permite añadir, subir, bajar o quitar.

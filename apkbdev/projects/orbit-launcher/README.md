@@ -1,29 +1,32 @@
-# Orbit Launcher v0.8 — Sensor sincronizado con pantalla | ARCHMOBA
+# Orbit Launcher v0.9 — Círculos, transparencia y menú único | ARCHMOBA
 
-## Correccion del problema de iconos invertidos
+## Cambios solicitados
 
-En v0.7 `DockMotion` tomaba la **primera lectura del sensor** como calibracion y calculaba giros relativos, sin considerar `Display.getRotation()`. Al iniciar la app con el movil inclinado, abrir otras apps o pasar de vertical a horizontal, un icono podia quedar girado aunque la pantalla ya estuviera derecha.
+- **Círculos reales obligatorios:** el fondo de cada app y el del botón `+` usan `GradientDrawable.OVAL`. No se utilizan rectángulos con esquinas redondas. Los iconos se recortan al contorno con `setClipToOutline(true)`.
+- **Transparencia:** relleno oscuro con **75 % de opacidad**, borde cian semitransparente, icono de aplicación al 93 % de opacidad.
+- **`+` sin giro:** no se añade al grupo de vistas que rotan con el sensor; se define `setRotation(0)`. El sensor no se activa si la lista está vacía.
+- **`+` solo cuando no hay iconos:** una vez que el usuario añade la primera app, desaparece el `+`; al quitar la última vuelve a aparecer.
+- **Un solo menú para administrar:** mantener pulsado cualquier icono de aplicación abre `Añadir aplicación`, `Subir un lugar`, `Bajar un lugar`, `Quitar del panel`. `Añadir` abre el mismo buscador de apps que el `+` inicial.
+- El orden y las aplicaciones elegidas siguen almacenados localmente entre sesiones.
 
-La version 0.8 aplica:
-1. Gravedad o acelerometro con orientacion **absoluta** en los ejes naturales del dispositivo.
-2. Compensacion de rotacion de pantalla mediante `Display.getRotation()` (0/90/180/270).
-3. El angulo 0 representa **movil recto e iconos derechos**, sin calibracion inicial arbitraria.
-4. Zona muerta de 7 grados para evitar temblores de sensor al sostener el telefono derecho.
-5. Filtro suave de giro; cuando Android cambia de orientacion, se evita aplicar la rotacion dos veces.
-6. Ante telefono casi plano (gravedad XY poco fiable), se deja el icono derecho en vez de inventar angulos.
-7. Pruebas Java en `apkbdev/tests/OrbitOrientationTest.java` para vertical, horizontal en ambos sentidos, invertida, inclinaciones, pantalla bloqueada y modulo 360.
+## Uso
 
-## Se conserva
+1. Instala y abre Orbit. Concede **Mostrar sobre otras aplicaciones**.
+2. Si la lista está vacía, aparece solo el círculo `+` a la derecha; púlsalo para añadir tu primera app.
+3. Cuando existe al menos una app, **ya no aparece `+`**.
+4. Mantén pulsado cualquier icono para añadir más, moverlo hacia arriba/abajo o quitarlo.
+5. Al borrar el último icono reaparece `+`.
 
-- Los iconos **totalmente visibles** al lado derecho, horizontal v0.5/v0.7, no medio ocultos.
-- El panel elevado 52 dp.
-- Primera apertura: solo boton `+`; seleccionar apps desde lista de instaladas.
-- Pulsacion larga: **Subir un lugar**, **Bajar un lugar** y **Quitar**.
-- Seleccion y orden persistentes; lista con desplazamiento vertical.
-- No necesita acceso a pantalla ni Internet.
+## Se conserva de v0.8
 
-## Instalacion
+- Iconos completamente visibles junto al borde derecho, posición vertical desplazada -52 dp.
+- Movimiento de los iconos por sensor de gravedad/acelerómetro, sincronizado con la orientación visible de Android. Solo los iconos de apps rotan, no el botón `+`.
+- Scroll vertical cuando el usuario añade muchas aplicaciones.
+- Servicio flotante en primer plano y opción de detenerlo en la notificación.
+- Compatible con Android 8.0+.
 
-Android 8+. Si el certificado de la APK debug difiere de la version anterior, Android puede exigir desinstalar la anterior (se perderian las preferencias). Es una version de prueba: revisar la respuesta de los sensores en un telefono real.
+## Instalación
 
-Compilacion GitHub Actions: `.github/workflows/apkbdev-build.yml`.
+APK debug de pruebas. Si la firma de v0.8 difiere de la nueva, Android puede pedir desinstalar la versión anterior, lo que borraría los accesos seleccionados. La compilación por CI comprueba la compilación nativa y las pruebas de orientación; la interacción debe verificarse en un teléfono real.
+
+Código: `apkbdev/projects/orbit-launcher`. Build: `.github/workflows/apkbdev-build.yml`.
