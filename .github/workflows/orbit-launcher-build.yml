@@ -1,0 +1,49 @@
+name: Orbit Launcher - Compilar APK
+
+on:
+  push:
+    branches:
+      - feature/orbit-launcher-apk-20261101
+    paths:
+      - 'orbit-launcher/**'
+      - '.github/workflows/orbit-launcher-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Instalar Android 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Compilar APK
+        run: gradle --no-daemon --project-dir orbit-launcher assembleDebug
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrbitLauncher-APK
+          path: orbit-launcher/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publicar APK en rama de prueba
+        run: |
+          mkdir -p dist
+          cp orbit-launcher/app/build/outputs/apk/debug/app-debug.apk dist/OrbitLauncher-v0.1.apk
+          git config user.name "Orbit APK builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f dist/OrbitLauncher-v0.1.apk
+          git commit -m "build: publicar Orbit Launcher APK" || true
+          git push origin HEAD:feature/orbit-launcher-apk-20261101 || true
