@@ -1,32 +1,21 @@
-# Orbit Launcher v0.9 — Círculos, transparencia y menú único | ARCHMOBA
+# Orbit Launcher v0.10 — Glass 80% | ARCHMOBA
 
-## Cambios solicitados
+## Novedad
 
-- **Círculos reales obligatorios:** el fondo de cada app y el del botón `+` usan `GradientDrawable.OVAL`. No se utilizan rectángulos con esquinas redondas. Los iconos se recortan al contorno con `setClipToOutline(true)`.
-- **Transparencia:** relleno oscuro con **75 % de opacidad**, borde cian semitransparente, icono de aplicación al 93 % de opacidad.
-- **`+` sin giro:** no se añade al grupo de vistas que rotan con el sensor; se define `setRotation(0)`. El sensor no se activa si la lista está vacía.
-- **`+` solo cuando no hay iconos:** una vez que el usuario añade la primera app, desaparece el `+`; al quitar la última vuelve a aparecer.
-- **Un solo menú para administrar:** mantener pulsado cualquier icono de aplicación abre `Añadir aplicación`, `Subir un lugar`, `Bajar un lugar`, `Quitar del panel`. `Añadir` abre el mismo buscador de apps que el `+` inicial.
-- El orden y las aplicaciones elegidas siguen almacenados localmente entre sesiones.
+- Toda la interfaz flotante usa **80% de opacidad**, incluyendo el icono de la app, el texto del botón `+`, el fondo circular y el borde, mediante `setAlpha(0.80f)` en cada vista.
+- El círculo mantiene su forma **OVAL real** con `GradientDrawable.OVAL`. No es un rectángulo de esquinas redondeadas.
+- Nuevo acabado **glass**: gradiente diagonal azul grisáceo hacia azul marino, relleno translúcido y contorno cian semitransparente.
+- El relleno parte de una transparencia adicional, por lo que el resultado final puede verse más ligero que un 80% opaco puro.
 
-## Uso
+## Funciones preservadas
 
-1. Instala y abre Orbit. Concede **Mostrar sobre otras aplicaciones**.
-2. Si la lista está vacía, aparece solo el círculo `+` a la derecha; púlsalo para añadir tu primera app.
-3. Cuando existe al menos una app, **ya no aparece `+`**.
-4. Mantén pulsado cualquier icono para añadir más, moverlo hacia arriba/abajo o quitarlo.
-5. Al borrar el último icono reaparece `+`.
-
-## Se conserva de v0.8
-
-- Iconos completamente visibles junto al borde derecho, posición vertical desplazada -52 dp.
-- Movimiento de los iconos por sensor de gravedad/acelerómetro, sincronizado con la orientación visible de Android. Solo los iconos de apps rotan, no el botón `+`.
-- Scroll vertical cuando el usuario añade muchas aplicaciones.
-- Servicio flotante en primer plano y opción de detenerlo en la notificación.
-- Compatible con Android 8.0+.
+- **`+` no gira**. Solo aparece cuando no existe ninguna aplicación añadida.
+- Con apps agregadas, mantener pulsado cualquier icono abre **Añadir aplicación**, **Subir un lugar**, **Bajar un lugar**, **Quitar del panel**.
+- Iconos alineados con el borde derecho y desplazados 52 dp por encima del centro.
+- Los iconos de apps siguen respondiendo al sensor de gravedad, con corrección según orientación de pantalla. El `+` nunca entra en la lista de vistas que giran.
+- Orden y selección persistentes; lista desplazable verticalmente.
+- Servicio flotante sin grabación de pantalla ni Internet.
 
 ## Instalación
 
-APK debug de pruebas. Si la firma de v0.8 difiere de la nueva, Android puede pedir desinstalar la versión anterior, lo que borraría los accesos seleccionados. La compilación por CI comprueba la compilación nativa y las pruebas de orientación; la interacción debe verificarse en un teléfono real.
-
-Código: `apkbdev/projects/orbit-launcher`. Build: `.github/workflows/apkbdev-build.yml`.
+Android 8+. Permiso **Mostrar sobre otras aplicaciones** necesario. El archivo es una APK debug, no una versión publicada para producción. Si la firma difiere de una versión anterior, Android podría exigir desinstalarla (borrando los accesos elegidos). Compilar desde `apkbdev/projects/orbit-launcher` con GitHub Actions.
