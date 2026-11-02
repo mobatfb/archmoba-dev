@@ -1,15 +1,23 @@
-# Orbit Launcher v0.15 — Indicador verde sin acceso sensible
+# Orbit Launcher v0.16 — Novedad hasta abrir la app
 
-Esta versión responde al bloqueo mostrado por Google Play Protect en la v0.14.
+## Comportamiento de los indicadores verdes
 
-- Se eliminó **NotificationListenerService** y cualquier petición de acceso a notificaciones.
-- El indicador verde sigue siendo un pequeño círculo con borde blanco en la esquina superior derecha, ahora activable manualmente manteniendo pulsado un icono.
-- Menú contextual: **Añadir / Subir / Bajar / Quitar / Activar o quitar indicador verde**.
-- No intenta leer mensajes, ni notificaciones ni su contenido.
-- Se mantiene el dock derecho, círculos, 55 % de opacidad, botón + solo sin iconos y sensor optimizado.
+1. Al llegar una notificación nueva y elegible a una aplicación, se enciende el punto verde.
+2. El punto permanece hasta que se toque el icono de Orbit o se retiren las notificaciones pendientes.
+3. Al tocar el icono, el punto se apaga inmediatamente y se abre la app.
+4. **Las notificaciones antiguas no vuelven a encenderlo**: únicamente una publicación posterior al toque puede activarlo.
+5. El reconocimiento se conserva en las preferencias locales. Al reiniciar el servicio no se reactivan avisos antiguos.
 
-## Compatibilidad
+La marca es por **aplicación**, no por mensaje. Android puede actualizar notificaciones existentes o entregarlas con tiempos distintos; las actualizaciones se consideran nuevas cuando el sistema les asigna una fecha posterior al toque. Esta implementación no altera ni borra las notificaciones reales.
 
-Android 8+. Necesita exclusivamente el permiso de superposición para el dock y el servicio en primer plano. **No se garantiza que Play Protect permita la instalación**: la evaluación también considera firma, reputación y otras señales. No desactives Play Protect para instalar Orbit.
+## Acceso y privacidad
 
-En el futuro, las notificaciones automáticas pueden requerir revisión del modelo de permisos y una distribución confiable. El proyecto de prueba se compila en `apkbdev` con GitHub Actions.
+Para detectar automáticamente nuevas notificaciones es imprescindible habilitar el acceso opcional **Orbit - Notificaciones** en ajustes Android. Es un permiso sensible que puede provocar restricciones en APK instaladas fuera de tiendas verificadas. Este código usa solo la identidad de la aplicación y el tiempo de publicación. No extrae ni guarda texto, imágenes o conversaciones, ni transmite datos a servidores.
+
+## Sin cambios visuales
+
+Se conservan la columna a la derecha, los círculos glass al 55% de opacidad, el punto verde con borde blanco, el botón + fijo solo sin apps, el menú de gestión y la rotación suave optimizada de batería.
+
+## Instalación
+
+Android 8+. APK debug experimental, sin firma estable entre compilaciones en CI. Si Android bloquea esta APK por el permiso sensible, respeta la protección; no es necesario desactivar Play Protect para usar la versión manual v0.15. El código se encuentra en apkbdev/projects/orbit-launcher.
