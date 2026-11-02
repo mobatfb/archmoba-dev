@@ -2,7 +2,7 @@
 
 **Kit reutilizable de creación, compilación y distribución de APK** del repositorio archmoba-dev.
 
-El entorno incluye herramientas, configuraciones y plantilla Android nativa Java, y el código de **Orbit Launcher v0.17** como proyecto de referencia. El SDK/JDK/Gradle se instalan en el entorno de compilación, no se guardan binarios pesados dentro de git.
+El entorno incluye herramientas, configuraciones y plantilla Android nativa Java, y el código de **Orbit Launcher v0.18** como proyecto de referencia. El SDK/JDK/Gradle se instalan en el entorno de compilación, no se guardan binarios pesados dentro de git.
 
 | Ruta | Función |
 | --- | --- |
@@ -12,7 +12,7 @@ El entorno incluye herramientas, configuraciones y plantilla Android nativa Java
 | `tools/prepare_sdk.py` | Instalar componentes del SDK con `sdkmanager`. |
 | `tools/doctor.py` | Validar el entorno y las dependencias. |
 | `templates/native-java/` | Plantilla autónoma de nueva app Android. |
-| `projects/orbit-launcher/` | Orbit v0.17: puntos verdes automaticos que se apagan al abrir la app (permiso opcional de notificaciones) y dock glass al 55% con sensores optimizados. |
+| `projects/orbit-launcher/` | Orbit v0.18: puntos verdes automaticos que se apagan al abrir la app (permiso opcional de notificaciones) y dock glass al 55% con sensores optimizados. |
 | `tests/` | Pruebas automáticas del generador. |
 | `docs/` | Guías de compilación, ambiente, CI y firma. |
 
@@ -46,4 +46,4 @@ Los commits a `main` dentro de APKBDEV compilan Orbit como comprobación.
 - Utilizar los scripts compartidos en `apkbdev/tools/`.
 - No guardar contraseñas, tokens, keystores, SDKs o archivos APK debug dentro del árbol de código.
 - Para producción, publicar APK firmadas por el responsable del proyecto, no builds debug.
-- Orbit v0.17 mantiene solo los accesos elegidos por el usuario a la derecha. Si no existen accesos aparece `+`; con iconos añadidos, el menú de pulsación larga permite añadir, subir, bajar o quitar.
+- Orbit v0.18 mantiene solo los accesos elegidos por el usuario a la derecha. Si no existen accesos aparece `+`; con iconos añadidos, el menú de pulsación larga permite añadir, subir, bajar o quitar.
