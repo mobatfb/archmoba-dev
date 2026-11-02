@@ -1,25 +1,26 @@
-# Orbit Launcher v0.5 — Dock derecho elevado | ARCHMOBA
+# Orbit Launcher v0.6 — Semicírculos sensibles al giro | ARCHMOBA
 
-## Cambios en v0.5
+## Novedades
 
-- **Más a la derecha:** la columna flotante se pega al borde derecho del dispositivo. Se ha reducido el ancho del panel de 56 dp a 50 dp, manteniendo cada icono de 48 dp.
-- **Un icono más arriba:** el panel completo (iconos seleccionados y botón `+`) sube 52 dp, el equivalente a un espacio de icono. Se ajusta el límite de altura para no recortar los controles cuando hay muchas apps.
-- Se conserva todo lo incorporado en v0.4: botón **+** como único elemento inicial, apps elegidas manualmente, iconos flotantes únicamente a la derecha, guardado del orden y gestión mediante pulsación larga (**Subir un lugar / Bajar un lugar / Quitar**).
+- Solo la **mitad de cada círculo** queda visible: el panel flotante se desplaza 25 dp fuera del borde derecho de la pantalla.
+- Los iconos responden en vivo a la inclinación física del móvil usando el sensor de gravedad (o acelerómetro de respaldo), con filtrado de movimiento para evitar saltos.
+- Al cambiar la orientación del teléfono entre vertical y horizontal, el servicio reconstruye el panel en el lado derecho, ajusta su altura y recalibra los sensores.
+- Se conservan la posición vertical de v0.5 (52 dp por encima del centro) y la lista elegida por el usuario.
 
-## Funcionamiento
+## Funciones
 
-1. Abre Orbit y concede **Mostrar sobre otras apps** si Android lo solicita.
-2. Al principio solo aparece el `+` a la derecha, ahora más cerca del borde y un icono más alto.
-3. Pulsa `+` para seleccionar una app instalada.
-4. Pulsa un icono para abrirla. Mantén pulsado para cambiar su orden o quitarlo.
-5. Cuando los accesos excedan la altura disponible, desliza la columna verticalmente.
+1. Al iniciar por primera vez, se muestra únicamente el botón `+` medio oculto en el borde derecho.
+2. Pulsa el lado visible de `+` para elegir las apps que quieres añadir.
+3. Pulsa un icono para abrir la aplicación.
+4. Mantén pulsado el icono para **Subir un lugar**, **Bajar un lugar** o **Quitar**. El orden se guarda.
+5. Con muchas apps puedes desplazar la columna verticalmente.
 
 ## Compatibilidad
 
-Android 8.0 o posterior. La ubicación puede variar ligeramente según la barra de estado/navegación y la personalización del fabricante. No graba ni transmite la pantalla.
+Android 8.0+. Requiere el permiso de superposición. Los sensores no necesitan permisos especiales. Android puede impedir que algunas ventanas de superposición se extiendan fuera de la pantalla, de modo que **el recorte exacto de media circunferencia depende del fabricante**. El giro de pantalla depende de la rotación que permita Android/la aplicación activa.
 
-## Actualización
+El launcher no graba pantalla, no requiere Internet, no redimensiona apps ajenas. El servicio se detiene desde su notificación.
 
-El ID de paquete sigue siendo `com.archmoba.orbitlauncher`. Los datos se conservan al actualizar si las firmas APK coinciden. Los APK debug generados en distintos entornos pueden tener firmas diferentes; en ese caso Android puede requerir desinstalar la versión anterior y se perderán los iconos elegidos.
+## Instalación
 
-Código fuente: `apkbdev/projects/orbit-launcher`; compilación: `.github/workflows/apkbdev-build.yml`.
+El ID de paquete sigue siendo `com.archmoba.orbitlauncher`. Una APK debug firmada con certificado diferente puede requerir desinstalar la versión anterior, lo que borra las preferencias guardadas. Fuente en `apkbdev/projects/orbit-launcher`.

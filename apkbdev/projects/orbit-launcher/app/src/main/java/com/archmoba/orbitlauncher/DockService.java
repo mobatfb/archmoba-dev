@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.os.Build;
@@ -19,6 +20,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Unico elemento permanente de Orbit: columna flotante en el borde derecho. */
@@ -33,10 +35,12 @@ public final class DockService extends Service {
     private WindowManager manager;
     private LinearLayout dock;
     private boolean stopped;
+    private DockMotion motion;
 
     @Override public void onCreate() {
         super.onCreate();
         manager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        motion = new DockMotion(this);
         startNotification();
     }
 
@@ -102,6 +106,7 @@ public final class DockService extends Service {
         final int step = OrbitUtil.dp(this, 52);
         // Panel más pegado al borde derecho: iconos 48 dp en una columna de 50 dp.
         final int width = OrbitUtil.dp(this, 50);
+        final List<View> rotateTargets = new ArrayList<>();
         LinearLayout icons = new LinearLayout(this);
         icons.setOrientation(LinearLayout.VERTICAL);
         icons.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -125,6 +130,7 @@ public final class DockService extends Service {
                     OrbitUtil.dp(this, 48), OrbitUtil.dp(this, 48));
             item.setMargins(0, OrbitUtil.dp(this, 2), 0, OrbitUtil.dp(this, 2));
             icons.addView(icon, item);
+            rotateTargets.add(icon);
             icon.setOnClickListener(v -> OrbitUtil.launch(this, pkg));
             icon.setOnLongClickListener(v -> {
                 openPicker(ACTION_MANAGE, pkg);
@@ -170,20 +176,24 @@ public final class DockService extends Service {
                 OrbitUtil.dp(this, 49), OrbitUtil.dp(this, 49));
         plusParams.setMargins(0, OrbitUtil.dp(this, 4), 0, OrbitUtil.dp(this, 4));
         root.addView(plus, plusParams);
+        rotateTargets.add(plus);
         plus.setOnClickListener(v -> openPicker(ACTION_ADD, null));
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 width, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
-        params.x = 0;            // Pegado completamente al borde derecho.
-        params.y = -step;        // Un espacio de icono (52 dp) más arriba.
+        // Media anchura de un circulo (25 dp) fuera del borde derecho.
+        params.x = -OrbitUtil.dp(this, 25);
+        params.y = -step; // Mantener el desplazamiento vertical de v0.5.
         try {
             manager.addView(root, params);
             dock = root;
+            motion.start(rotateTargets);
         } catch (Exception ignored) {
             Toast.makeText(this, "No se pudo mostrar el botón flotante",
                     Toast.LENGTH_LONG).show();
@@ -205,7 +215,15 @@ public final class DockService extends Service {
         }
     }
 
+    @Override public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // La pantalla cambia entre vertical y horizontal mientras otras apps estan abiertas.
+        // Reconstruir geometria del dock y recalibrar el sensor sin perder la lista.
+        if (dock != null && !stopped) renderDock();
+    }
+
     private void removeDock() {
+        if (motion != null) motion.stop();
         if (dock != null && manager != null) {
             try { manager.removeViewImmediate(dock); } catch (Exception ignored) {}
             dock = null;
