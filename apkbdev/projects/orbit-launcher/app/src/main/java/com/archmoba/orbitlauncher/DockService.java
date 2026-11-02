@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
@@ -19,6 +20,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -166,10 +168,23 @@ public final class DockService extends Service {
             LinearLayout.LayoutParams item = new LinearLayout.LayoutParams(
                     OrbitUtil.dp(this, 48), OrbitUtil.dp(this, 48));
             item.setMargins(0, OrbitUtil.dp(this, 2), 0, OrbitUtil.dp(this, 2));
-            icons.addView(icon, item);
+            // El punto verde queda fijo sobre el icono que responde al giro.
+            FrameLayout wrapper = new FrameLayout(this);
+            wrapper.addView(icon, new FrameLayout.LayoutParams(-1, -1));
+            View dot = new View(this);
+            GradientDrawable green = new GradientDrawable();
+            green.setShape(GradientDrawable.OVAL);
+            green.setColor(Color.rgb(37, 234, 55));
+            dot.setBackground(green);
+            dot.setVisibility(AppStore.isMarked(this, pkg) ? View.VISIBLE : View.GONE);
+            FrameLayout.LayoutParams dotParams = new FrameLayout.LayoutParams(
+                    OrbitUtil.dp(this, 13), OrbitUtil.dp(this, 13),
+                    Gravity.RIGHT | Gravity.TOP);
+            wrapper.addView(dot, dotParams);
+            icons.addView(wrapper, item);
             rotateTargets.add(icon);
-            icon.setOnClickListener(v -> OrbitUtil.launch(this, pkg));
-            icon.setOnLongClickListener(v -> {
+            wrapper.setOnClickListener(v -> OrbitUtil.launch(this, pkg));
+            wrapper.setOnLongClickListener(v -> {
                 openPicker(ACTION_MANAGE, pkg);
                 return true;
             });
