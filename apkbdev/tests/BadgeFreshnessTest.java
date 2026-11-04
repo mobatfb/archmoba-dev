@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 public final class BadgeFreshnessTest {
     private static void test(boolean condition, String name) {
