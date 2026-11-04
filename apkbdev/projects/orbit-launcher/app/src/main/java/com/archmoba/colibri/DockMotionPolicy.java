@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 /**
  * Reglas del consumo de recursos del sensor. Independiente del Android SDK

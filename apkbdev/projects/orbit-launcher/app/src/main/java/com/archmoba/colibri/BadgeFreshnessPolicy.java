@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 /**
  * Regla determinista para saber si una notificacion es posterior

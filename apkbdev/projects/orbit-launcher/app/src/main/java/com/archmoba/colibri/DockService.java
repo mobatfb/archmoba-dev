@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -37,12 +37,12 @@ import java.util.HashMap;
 
 /** Unico elemento permanente de Orbit: columna flotante en el borde derecho. */
 public final class DockService extends Service {
-    static final String ACTION_ADD = "com.archmoba.orbitlauncher.ADD";
-    static final String ACTION_REMOVE = "com.archmoba.orbitlauncher.REMOVE";
-    static final String ACTION_MANAGE = "com.archmoba.orbitlauncher.MANAGE";
-    static final String ACTION_REFRESH = "com.archmoba.orbitlauncher.REFRESH";
-    static final String ACTION_HIDE = "com.archmoba.orbitlauncher.HIDE";
-    static final String ACTION_STOP = "com.archmoba.orbitlauncher.STOP";
+    static final String ACTION_ADD = "com.archmoba.colibri.ADD";
+    static final String ACTION_REMOVE = "com.archmoba.colibri.REMOVE";
+    static final String ACTION_MANAGE = "com.archmoba.colibri.MANAGE";
+    static final String ACTION_REFRESH = "com.archmoba.colibri.REFRESH";
+    static final String ACTION_HIDE = "com.archmoba.colibri.HIDE";
+    static final String ACTION_STOP = "com.archmoba.colibri.STOP";
 
     private WindowManager manager;
     private LinearLayout dock;

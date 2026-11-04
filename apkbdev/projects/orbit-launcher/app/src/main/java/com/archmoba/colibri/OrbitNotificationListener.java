@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 import android.app.Notification;
 import android.os.PowerManager;

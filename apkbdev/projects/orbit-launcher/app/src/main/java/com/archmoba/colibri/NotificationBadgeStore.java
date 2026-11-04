@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 import android.content.Context;
 import android.content.Intent;
@@ -10,7 +10,7 @@ import java.util.Set;
 
 /** Solo almacena paquetes, fechas de apertura y un estado booleano local. */
 final class NotificationBadgeStore {
-    static final String ACTION_CHANGED = "com.archmoba.orbitlauncher.BADGE_CHANGED";
+    static final String ACTION_CHANGED = "com.archmoba.colibri.BADGE_CHANGED";
     private static final String PREFS = "orbit_live_notification_badges";
     private static final String PENDING = "pending_packages";
     private static final String LAST_OPEN = "last_open_by_package";

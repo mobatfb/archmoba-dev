@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 /**
  * Correccion geometrica del sensor (en ejes fisicos del dispositivo)
