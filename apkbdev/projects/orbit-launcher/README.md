@@ -1,6 +1,10 @@
+# COLIBRÍ v0.21 — identificador Android propio
+
+La aplicación usa `applicationId` y `namespace` **`com.archmoba.colibri`** y su código Java se organiza en el paquete `com.archmoba.colibri`. Se conserva el nombre visible **COLIBRÍ** y su icono del colibrí. Android tratará esta versión como una aplicación distinta de las ediciones anteriores; no se migran automáticamente la lista de iconos, la posición ni los permisos. Puede instalarse junto a la aplicación anterior.
+
 # COLIBRÍ v0.20 — icono oficial y nombre de aplicación
 
-Nombre visible: COLIBRÍ by ARCHMOBA. Icono visual: tercer concepto aprobado, colibrí azul eléctrico con halo, integrado como WebP optimizado 192x192 en res/drawable/colibri_icon.webp. Se conserva applicationId com.archmoba.orbitlauncher y todas las funciones previas (puntos verdes, giro, arrastre, reposo).
+Nombre visible: COLIBRÍ by ARCHMOBA. Icono visual: tercer concepto aprobado, colibrí azul eléctrico con halo, integrado como WebP optimizado 192x192 en res/drawable/colibri_icon.webp. En esta versión se conservaba el identificador anterior y todas las funciones previas (puntos verdes, giro, arrastre, reposo).
 
 # Orbit Launcher v0.19 — Panel vertical ajustable
 
