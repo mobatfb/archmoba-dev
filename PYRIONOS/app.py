@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.1.0
+"""PYRION OS Desktop v0.1.1
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -31,7 +31,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads")
 
@@ -334,6 +334,7 @@ except ImportError:
 if QT_READY:
     PALETTE = """
     QWidget { background-color: #0D1423; color: #EAF1FB; font-family: 'Segoe UI', 'Noto Sans', sans-serif; font-size: 13px; }
+    QLabel { background-color: transparent; border: none; } /* Evita las bandas oscuras en textos */
     QMainWindow, QWidget#DesktopRoot { background-color: #0B1220; }
     QFrame#TopBar { background-color: #101B2C; border-bottom: 1px solid #263B55; }
     QFrame#Sidebar { background-color: #0D182A; border-right: 1px solid #24344C; }
@@ -901,7 +902,7 @@ if QT_READY:
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(title)
             subtitle = label(
-                "Describe tu tarea. PYRION abrirá una herramienta existente o guardará tu solicitud para el futuro motor de IA.",
+                "Describe tu tarea. PYRION buscará una forma de resolverla y guardará las solicitudes que aún no pueda procesar.",
                 "Muted", wrap=True
             )
             subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -910,17 +911,11 @@ if QT_READY:
             search_row = QHBoxLayout()
             self.search_box = QLineEdit()
             self.search_box.setMinimumHeight(47)
-            self.search_box.setPlaceholderText("Ej.: PDF a Word, editar CSV, calculadora...")
+            self.search_box.setPlaceholderText("Escribe lo que necesitas hacer...")
             self.search_box.returnPressed.connect(self.search)
             search_row.addWidget(self.search_box, 1)
             search_row.addWidget(button("Ejecutar  ↗", self.search, "primary"))
             layout.addLayout(search_row)
-            chips = QHBoxLayout()
-            chips.addStretch()
-            for text in ("PDF a Word", "Imágenes a PDF", "Editor CSV", "Calculadora"):
-                chips.addWidget(button(text, lambda checked=False, value=text: self.select_example(value)))
-            chips.addStretch()
-            layout.addLayout(chips)
             outer.addWidget(hero)
             panel = QFrame()
             panel.setObjectName("Panel")
@@ -931,45 +926,31 @@ if QT_READY:
             self.result_title = label("Sistema listo", "SmallTitle")
             panel_lay.addWidget(self.result_title)
             self.result_desc = label(
-                "El escritorio está funcionando. Las herramientas incluidas se pueden abrir ahora. "
-                "La creación automática de nuevas aplicaciones mediante IA todavía no está implementada.",
+                "El escritorio está listo. Describe una tarea en el buscador para comenzar. "
+                "La generación automática de nuevas aplicaciones mediante IA todavía no está implementada.",
                 "Muted", wrap=True
             )
             panel_lay.addWidget(self.result_desc)
             self.result_actions = QHBoxLayout()
             panel_lay.addLayout(self.result_actions)
             outer.addWidget(panel)
-            outer.addWidget(label("HERRAMIENTAS DISPONIBLES", "Tiny"))
-            grid = QGridLayout()
-            grid.setSpacing(13)
-            for index, (key, name, desc, symbol) in enumerate(TOOLS):
-                card = QFrame()
-                card.setObjectName("ToolCard")
-                lay = QVBoxLayout(card)
-                lay.setContentsMargins(15, 13, 15, 13)
-                lay.addWidget(label(f"{symbol}   {name}", "SmallTitle"))
-                lay.addWidget(label(desc, "Muted", wrap=True))
-                lay.addWidget(button("Abrir", lambda checked=False, tool=key: self.launch(tool)))
-                grid.addWidget(card, index // 2, index % 2)
-            outer.addLayout(grid)
             outer.addStretch()
 
         def _build_tools(self):
             page, outer = self._base_page()
             self.pages["tools"] = page
             outer.addWidget(label("Mis herramientas", "SectionTitle"))
-            outer.addWidget(label("Estas aplicaciones están incorporadas; no necesitan un generador de IA.", "Muted"))
-            for key, name, desc, symbol in TOOLS:
-                card = QFrame()
-                card.setObjectName("ToolCard")
-                lay = QHBoxLayout(card)
-                lay.setContentsMargins(20, 18, 20, 18)
-                t = QVBoxLayout()
-                t.addWidget(label(f"{symbol}   {name}", "SmallTitle"))
-                t.addWidget(label(desc, "Muted", wrap=True))
-                lay.addLayout(t, 1)
-                lay.addWidget(button("Abrir", lambda checked=False, tool=key: self.launch(tool), "primary"))
-                outer.addWidget(card)
+            pane = QFrame()
+            pane.setObjectName("Panel")
+            lay = QVBoxLayout(pane)
+            lay.setContentsMargins(24, 24, 24, 24)
+            lay.addWidget(label("Biblioteca de aplicaciones", "SmallTitle"))
+            lay.addWidget(label(
+                "Aquí aparecerán las aplicaciones integradas a PYRION OS. "
+                "Por ahora no se muestran herramientas predeterminadas en el escritorio.",
+                "Muted", wrap=True
+            ))
+            outer.addWidget(pane)
             outer.addStretch()
 
         def _build_history(self):
