@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.1.1
+"""PYRION OS Desktop v0.2.0
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -24,16 +24,402 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
+import threading
 import sys
 import tempfile
 import unicodedata
 import uuid
 from typing import Any
 
+# Motor de herramientas y dependencias integrado para que app.py sea autónomo.
+import ast
+import base64
+import csv
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
+import importlib.metadata
+import io
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import threading
+import unicodedata
+import urllib.request
+from typing import Callable
+
+REPOSITORY = "mobatfb/archmoba-dev"
+BASE_URL = f"https://api.github.com/repos/{REPOSITORY}/contents/PYRIONOS"
+GUIDE_URL = f"https://raw.githubusercontent.com/{REPOSITORY}/main/PTM/guide.csv"
+MAX_SOURCE_BYTES = 12 * 1024 * 1024
+MAX_CATALOG_BYTES = 1024 * 1024
+ALIASES = {
+    "PIL": "Pillow", "cv2": "opencv-python", "docx": "python-docx",
+    "pptx": "python-pptx", "fitz": "PyMuPDF", "yaml": "PyYAML",
+    "bs4": "beautifulsoup4", "sklearn": "scikit-learn", "serial": "pyserial",
+    "dateutil": "python-dateutil", "dotenv": "python-dotenv",
+    "Crypto": "pycryptodome", "pygame": "pygame", "vlc": "python-vlc",
+    "pdf2docx": "pdf2docx", "mutagen": "mutagen", "psutil": "psutil",
+}
+STOP = set("yo quiero necesito un una unos unas el la los las de del en para por al que se me mi con sin hacer crear usar abrir ver tengo favor puedes necesito convertir a archivo archivos me gustaria quisiera".split())
+PKG_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*(?:\[[A-Za-z0-9_.,-]+\])?(?:\s*(?:==|!=|<=|>=|~=|<|>)\s*[A-Za-z0-9.*+!_-]+)?$")
+_slug_pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,90}$")
+
+
+def normalize(text: str) -> str:
+    text = unicodedata.normalize("NFKD", str(text).lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return " ".join(re.findall(r"[a-z0-9]+", text))
+
+
+def safe_slug(value: str) -> str:
+    if not _slug_pattern.fullmatch(value):
+        raise ValueError("Identificador de herramienta invalido")
+    return value
+
+
+def atomic_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".pyriontmp")
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def safe_requirement(spec: str) -> str:
+    spec = spec.strip()
+    if not PKG_PATTERN.fullmatch(spec):
+        raise ValueError(f"Dependencia no admitida sin revision: {spec[:100]}")
+    return spec
+
+
+def git_sha(data: bytes) -> str:
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\x00" + data).hexdigest()
+
+
+@dataclass(frozen=True)
+class Tool:
+    slug: str
+    name: str
+    description: str
+    keywords: str
+    category: str
+    repo_file: str
+    file_type: str
+    declared: tuple[str, ...] = ()
+    main: str = "app.py"
+
+
+class ToolCatalog:
+    def __init__(self, root: Path, source_dir: Path):
+        self.root = Path(root)
+        self.source_dir = Path(source_dir)
+        self.guide_cache = self.root / "data" / "guide.csv"
+        self.tools: dict[str, Tool] = {}
+        self.reload()
+
+    @staticmethod
+    def _download(url: str, limit: int) -> bytes:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "PYRION-OS/0.2.0", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=22) as response:
+            data = response.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError("Descarga excede el limite permitido")
+        return data
+
+    @staticmethod
+    def _rows(raw: bytes) -> list[dict]:
+        reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";")
+        return list(reader)
+
+    def reload(self) -> None:
+        choices = [self.source_dir / "guide.csv", self.guide_cache]
+        result: dict[str, Tool] = {}
+        for file in choices:
+            if not file.is_file():
+                continue
+            try:
+                rows = self._rows(file.read_bytes())
+            except (OSError, ValueError, UnicodeError):
+                continue
+            for row in rows:
+                if str(row.get("activo", "1")).strip().lower() not in ("1", "true", "si", "yes"):
+                    continue
+                relative = str(row.get("ruta", "")).replace("\\", "/").strip().lstrip("/")
+                parts = Path(relative).parts
+                if len(parts) != 2 or parts[0] != "tools" or not parts[1].lower().endswith((".py", ".zip")):
+                    continue
+                slug = str(row.get("slug", "")).strip()
+                try:
+                    safe_slug(slug)
+                except ValueError:
+                    continue
+                declared = tuple(p.strip() for p in re.split(r"[,;\n]+", row.get("dependencias") or "") if p.strip())
+                result[slug] = Tool(
+                    slug, str(row.get("titulo") or slug), str(row.get("descripcion") or ""),
+                    str(row.get("keywords") or ""), str(row.get("categoria") or ""),
+                    relative, parts[1].rsplit(".", 1)[-1].lower(), declared,
+                    str(row.get("archivo_principal") or "app.py"),
+                )
+            if result:
+                break
+        # Cabezal ARGUMENTOS: para herramientas aun no incluidas en el CSV.
+        tool_dir = self.source_dir / "tools"
+        if tool_dir.is_dir():
+            for file in tool_dir.glob("*.py"):
+                slug = file.stem.lower()
+                if not _slug_pattern.fullmatch(slug) or slug in result:
+                    continue
+                try:
+                    header = file.open("r", encoding="utf-8-sig").read(800)
+                    match = re.search(r"(?m)^# ARGUMENTOS:\s*(.*)$", header)
+                except OSError:
+                    match = None
+                result[slug] = Tool(slug, file.stem.replace("_", " ").title(), "", match.group(1) if match else "", "Local", "tools/" + file.name, "py")
+        self.tools = result
+
+    def sync(self) -> int:
+        """Update cache from the official repo. Can be called from worker only."""
+        raw = self._download(GUIDE_URL, MAX_CATALOG_BYTES)
+        rows = self._rows(raw)
+        if not rows or "slug" not in rows[0] or "ruta" not in rows[0]:
+            raise ValueError("Catalogo remoto invalido")
+        atomic_bytes(self.guide_cache, raw)
+        self.reload()
+        return len(self.tools)
+
+    def search(self, phrase: str, limit: int = 6) -> list[tuple[int, Tool]]:
+        query = normalize(phrase)
+        terms = [w for w in query.split() if w not in STOP and len(w) > 1]
+        if not terms:
+            return []
+        scored = []
+        for tool in self.tools.values():
+            title, kw, desc = (normalize(tool.name), normalize(tool.keywords), normalize(tool.description))
+            filename = normalize(Path(tool.repo_file).stem)
+            fields = ((title, 45), (filename, 35), (kw, 28), (desc, 13), (normalize(tool.category), 7))
+            score = 0
+            matched = 0
+            for term in terms:
+                best = 0
+                for haystack, weight in fields:
+                    words = haystack.split()
+                    if term in words:
+                        best = max(best, weight)
+                    elif len(term) >= 4 and any(w.startswith(term) for w in words):
+                        best = max(best, int(weight * 0.72))
+                if best:
+                    matched += 1
+                    score += best
+            if query == title or query == filename:
+                score += 110
+            if matched:
+                score += int(35 * matched / len(terms))
+                # A conversion "pdf word" favors the specific tool over generic converter.
+                if "pdf" in terms and any(t in terms for t in ("word", "docx")):
+                    if tool.slug == "convertidor_pdf_word":
+                        score += 65
+                    elif tool.slug == "conversor_multiple":
+                        score -= 10
+                if matched >= max(1, (len(terms) + 1) // 2):
+                    scored.append((max(1, score), tool))
+        return sorted(scored, key=lambda t: (-t[0], t[1].name))[:limit]
+
+    def source(self, tool: Tool, notify: Callable[[str], None] = lambda _: None) -> Path:
+        safe_slug(tool.slug)
+        relative = Path(tool.repo_file)
+        if len(relative.parts) != 2 or relative.parts[0] != "tools":
+            raise ValueError("Ruta de herramienta fuera del catalogo")
+        local = self.source_dir / relative
+        if local.is_file():
+            return local
+        output = self.root / "apps" / tool.slug / relative.name
+        if output.is_file() and output.stat().st_size:
+            return output
+        notify("Descargando fuente de la herramienta desde ARCHMOBA...")
+        remote_path = "/".join(relative.parts)
+        raw = self._download(f"{BASE_URL}/{remote_path}?ref=main", MAX_SOURCE_BYTES * 2)
+        payload = json.loads(raw.decode("utf-8"))
+        if payload.get("encoding") != "base64":
+            raise ValueError("GitHub no entrego contenido verificable")
+        data = base64.b64decode(payload["content"], validate=False)
+        if len(data) > MAX_SOURCE_BYTES or git_sha(data) != payload.get("sha"):
+            raise ValueError("Integridad de descarga incorrecta")
+        atomic_bytes(output, data)
+        notify("Fuente descargada y SHA verificado.")
+        return output
+
+
+class DependencyManager:
+    """Install Python wheels only in the persistent data volume, never globally."""
+
+    def __init__(self, root: Path, python: str | None = None):
+        self.root = Path(root)
+        self.python = str(python or sys.executable)
+        self.env_root = self.root / "envs"
+        self.pip_runtime = self.root / "runtime" / "pip"
+        self.cache_dir = self.root / "cache" / "pip"
+        self.lock = threading.RLock()
+        for folder in (self.env_root, self.pip_runtime, self.cache_dir):
+            folder.mkdir(parents=True, exist_ok=True)
+
+    def site(self, tool: Tool) -> Path:
+        return self.env_root / safe_slug(tool.slug) / "site-packages"
+
+    def manifest(self, tool: Tool) -> Path:
+        return self.env_root / safe_slug(tool.slug) / "manifest.json"
+
+    def subprocess_env(self, tool: Tool) -> dict[str, str]:
+        env = os.environ.copy()
+        current = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = os.pathsep.join([str(self.site(tool))] + ([current] if current else []))
+        env["PYTHONNOUSERSITE"] = "1"
+        env["PIP_CACHE_DIR"] = str(self.cache_dir)
+        return env
+
+    @staticmethod
+    def _module_imports(source: Path) -> set[str]:
+        if source.suffix.lower() != ".py":
+            return set()
+        tree = ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source))
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(alias.name.split(".", 1)[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names.add(node.module.split(".", 1)[0])
+        return names
+
+    def requirements(self, tool: Tool, source: Path) -> list[str]:
+        packages = []
+        seen = set()
+        stdlib = set(getattr(sys, "stdlib_module_names", set())) | set(sys.builtin_module_names)
+        for item in tool.declared:
+            clean = safe_requirement(item)
+            key = re.split(r"[<>=!~\[]", clean, 1)[0].lower().replace("_", "-")
+            if key not in seen:
+                packages.append(clean)
+                seen.add(key)
+        for module in sorted(self._module_imports(source)):
+            if module in stdlib or (source.parent / (module + ".py")).exists() or (source.parent / module).exists():
+                continue
+            package = ALIASES.get(module, module)
+            key = package.lower().replace("_", "-")
+            if key not in seen:
+                packages.append(safe_requirement(package))
+                seen.add(key)
+        return packages
+
+    def already_installed(self, tool: Tool, reqs: list[str]) -> bool:
+        path = self.manifest(tool)
+        if not reqs:
+            return path.is_file()
+        if not path.is_file():
+            return False
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("requirements") != reqs or data.get("python") != f"{sys.version_info.major}.{sys.version_info.minor}":
+                return False
+            installed_names = {
+                str(dist.metadata["Name"]).lower().replace("_", "-")
+                for dist in importlib.metadata.distributions(path=[str(self.site(tool))])
+            }
+            return all(re.split(r"[<>=!~\[]", r, 1)[0].lower().replace("_", "-") in installed_names for r in reqs)
+        except (OSError, ValueError, KeyError):
+            return False
+
+    def _pip_cmd(self, notify: Callable[[str], None]) -> tuple[list[str], dict[str, str]]:
+        env = os.environ.copy()
+        env["PYTHONNOUSERSITE"] = "1"
+        env["PIP_CACHE_DIR"] = str(self.cache_dir)
+        cmd = [self.python, "-m", "pip"]
+        result = subprocess.run(cmd + ["--version"], env=env, capture_output=True, timeout=30)
+        if result.returncode == 0:
+            return cmd, env
+        env["PYTHONPATH"] = os.pathsep.join([str(self.pip_runtime), env.get("PYTHONPATH", "")]).strip(os.pathsep)
+        if subprocess.run(cmd + ["--version"], env=env, capture_output=True, timeout=30).returncode == 0:
+            return cmd, env
+        notify("Python no incluye pip; preparando pip en pyrionos/runtime/pip...")
+        url = "https://bootstrap.pypa.io/get-pip.py"
+        bootstrap = self.root / "runtime" / "get-pip.py"
+        bootstrap.parent.mkdir(parents=True, exist_ok=True)
+        script = ToolCatalog._download(url, 3 * 1024 * 1024)
+        atomic_bytes(bootstrap, script)
+        try:
+            cmd_boot = [self.python, str(bootstrap), "--no-warn-script-location", "--disable-pip-version-check", "--target", str(self.pip_runtime)]
+            complete = subprocess.run(cmd_boot, env=env, capture_output=True, text=True, timeout=420)
+            if complete.returncode != 0:
+                raise RuntimeError("No fue posible preparar pip: " + complete.stdout[-1000:] + complete.stderr[-1000:])
+        finally:
+            bootstrap.unlink(missing_ok=True)
+        if subprocess.run(cmd + ["--version"], env=env, capture_output=True, timeout=30).returncode != 0:
+            raise RuntimeError("pip no funciona en el runtime persistente")
+        return cmd, env
+
+    def install(self, tool: Tool, packages: list[str], notify: Callable[[str], None] = lambda _: None) -> bool:
+        """Called on a worker thread, after explicit user approval of new packages."""
+        if self.already_installed(tool, packages):
+            notify("Librerias persistentes verificadas. No es necesario reinstalar.")
+            return False
+        if not packages:
+            if not self.manifest(tool).is_file():
+                report = {
+                    "tool": tool.slug, "requirements": [],
+                    "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+                    "installed_at": datetime.now(timezone.utc).isoformat(),
+                    "site_packages": str(self.site(tool)),
+                }
+                atomic_bytes(self.manifest(tool), (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode())
+            notify("Esta herramienta no requiere librerias adicionales.")
+            return False
+        with self.lock:
+            if self.already_installed(tool, packages):
+                return False
+            for spec in packages:
+                safe_requirement(spec)
+            target = self.site(tool)
+            target.mkdir(parents=True, exist_ok=True)
+            cmd, env = self._pip_cmd(notify)
+            command = cmd + ["--isolated", "install", "--disable-pip-version-check", "--no-input", "--index-url", "https://pypi.org/simple", "--prefer-binary", "--only-binary=:all:", "--upgrade", "--target", str(target), "--cache-dir", str(self.cache_dir)] + packages
+            notify("Instalando librerias exclusivamente en " + str(target))
+            lines = []
+            with subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1) as p:
+                assert p.stdout is not None
+                for line in p.stdout:
+                    stripped = line.strip()
+                    if stripped:
+                        notify(stripped[:200])
+                        lines.append(stripped[:300])
+                        if len(lines) > 20:
+                            lines.pop(0)
+                ret = p.wait()
+            if ret != 0:
+                raise RuntimeError("Error de pip (codigo " + str(ret) + "):\n" + "\n".join(lines[-8:]))
+            report = {
+                "tool": tool.slug, "requirements": packages,
+                "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+                "installed_at": datetime.now(timezone.utc).isoformat(),
+                "site_packages": str(target),
+            }
+            atomic_bytes(self.manifest(tool), (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode())
+            notify("Instalacion terminada y manifest persistente guardado.")
+            return True
+
+
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.2.0"
 DIR_NAME = "pyrionos"
-SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads")
+SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
 
 class StorageError(RuntimeError):
@@ -324,7 +710,7 @@ try:
         QApplication, QMainWindow, QWidget, QDialog, QFrame, QVBoxLayout, QHBoxLayout,
         QLabel, QPushButton, QLineEdit, QTextEdit, QStackedWidget, QFileDialog,
         QMessageBox, QScrollArea, QGridLayout, QTableWidget, QTableWidgetItem,
-        QHeaderView, QSizePolicy, QAbstractItemView,
+        QHeaderView, QSizePolicy, QAbstractItemView, QTabWidget, QPlainTextEdit,
     )
     QT_READY = True
 except ImportError:
@@ -361,6 +747,10 @@ if QT_READY:
     QScrollArea { border: none; background: transparent; }
     QScrollBar:vertical { background: #101C2D; width: 9px; }
     QScrollBar::handle:vertical { background: #35516F; border-radius: 4px; }
+    QTabWidget::pane { border: none; background: #0B1220; }
+    QTabBar::tab { background: #17293F; color: #AEC5DB; padding: 10px 19px; border-right: 1px solid #34485D; }
+    QTabBar::tab:selected { background: #264866; color: #F1F9FF; }
+    QPlainTextEdit { background: #0B1728; color: #AACAD9; border: 1px solid #29425C; border-radius: 8px; }
     QTableWidget { background-color: #132238; gridline-color: #38506B; alternate-background-color: #1B3046; }
     QHeaderView::section { background-color: #284465; border: 1px solid #3B5773; padding: 6px; font-weight: bold; }
     """
@@ -409,43 +799,44 @@ if QT_READY:
     class PdfWorker(QObject):
         finished = Signal(bool, str)
 
-        def __init__(self, source: str, destination: str):
+        def __init__(self, source: str, destination: str, env: dict | None = None):
             super().__init__()
             self.source = source
             self.destination = destination
+            self.env = env or os.environ.copy()
 
         @Slot()
         def run(self):
-            try:
-                from pdf2docx import Converter
-            except ImportError:
-                self.finished.emit(False, "Falta pdf2docx. Instálalo con: python -m pip install pdf2docx")
-                return
-            converter = None
             destination = Path(self.destination)
             temporary = destination.with_name(".pyrion-" + uuid.uuid4().hex + ".docx")
+            script = (
+                "import sys\n"
+                "from pdf2docx import Converter\n"
+                "c = Converter(sys.argv[1])\n"
+                "try: c.convert(sys.argv[2])\n"
+                "finally: c.close()\n"
+            )
             try:
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                converter = Converter(self.source)
-                converter.convert(str(temporary))
-                converter.close()
-                converter = None
+                finished = subprocess.run(
+                    [sys.executable, "-c", script, self.source, str(temporary)],
+                    env=self.env, capture_output=True, text=True, timeout=900,
+                )
+                if finished.returncode or not temporary.exists():
+                    detail = (finished.stderr or finished.stdout or "Conversion fallida")[-1500:]
+                    raise RuntimeError(detail)
                 os.replace(temporary, destination)
                 self.finished.emit(True, f"Documento creado: {self.destination}")
             except Exception as exc:
                 self.finished.emit(False, f"Error de conversión: {exc}")
             finally:
-                if converter is not None:
-                    try:
-                        converter.close()
-                    except Exception:
-                        pass
                 temporary.unlink(missing_ok=True)
 
     class PdfToWordDialog(QDialog):
-        def __init__(self, store: PersistentStore, parent=None):
+        def __init__(self, store: PersistentStore, parent=None, deps_env=None):
             super().__init__(parent)
             self.store = store
+            self.deps_env = deps_env
             self.setWindowTitle("PYRION · PDF a Word")
             self.resize(610, 275)
             self.worker_thread = None
@@ -499,7 +890,7 @@ if QT_READY:
             self.convert_btn.setEnabled(False)
             self.message.setText("Convirtiendo... el tiempo depende del tamaño del PDF.")
             self.worker_thread = QThread(self)
-            worker = PdfWorker(str(source), str(destination))
+            worker = PdfWorker(str(source), str(destination), self.deps_env)
             self.worker = worker
             worker.moveToThread(self.worker_thread)
             self.worker_thread.started.connect(worker.run)
@@ -783,6 +1174,12 @@ if QT_READY:
             except (SyntaxError, ValueError, ZeroDivisionError, OverflowError) as exc:
                 QMessageBox.warning(self, "Operación inválida", str(exc))
 
+    class RuntimeSignals(QObject):
+        progress = Signal(str, str)
+        analyzed = Signal(str, object)
+        done = Signal(str, bool, str)
+        catalog = Signal(str)
+
     class PyrionDesktop(QMainWindow):
         def __init__(self, store: PersistentStore):
             super().__init__()
@@ -793,6 +1190,14 @@ if QT_READY:
             self.setStyleSheet(PALETTE)
             self.nav = {}
             self.pages = {}
+            self.tool_tabs = {}
+            self.catalog = ToolCatalog(store.root, Path(__file__).resolve().parent)
+            self.deps = DependencyManager(store.root)
+            self.events = RuntimeSignals(self)
+            self.events.progress.connect(self._tool_progress)
+            self.events.analyzed.connect(self._tool_analyzed)
+            self.events.done.connect(self._tool_finished)
+            self.events.catalog.connect(self._catalog_status)
             self.main_root = QWidget()
             self.main_root.setObjectName("DesktopRoot")
             self.setCentralWidget(self.main_root)
@@ -804,8 +1209,13 @@ if QT_READY:
             body.setSpacing(0)
             shell.addLayout(body, 1)
             self._build_sidebar(body)
+            self.tabs = QTabWidget()
+            self.tabs.setTabsClosable(True)
+            self.tabs.setTabBarAutoHide(True)
+            self.tabs.tabCloseRequested.connect(self._close_tab)
+            body.addWidget(self.tabs, 1)
             self.stack = QStackedWidget()
-            body.addWidget(self.stack, 1)
+            self.tabs.addTab(self.stack, "⌂  Inicio")
             self._build_home()
             self._build_tools()
             self._build_history()
@@ -816,6 +1226,7 @@ if QT_READY:
             self.clock_timer.timeout.connect(self._update_clock)
             self.clock_timer.start(30_000)
             self._update_clock()
+            QTimer.singleShot(150, self._sync_catalog)
 
         def _build_topbar(self, shell):
             top = QFrame()
@@ -946,10 +1357,13 @@ if QT_READY:
             lay.setContentsMargins(24, 24, 24, 24)
             lay.addWidget(label("Biblioteca de aplicaciones", "SmallTitle"))
             lay.addWidget(label(
-                "Aquí aparecerán las aplicaciones integradas a PYRION OS. "
-                "Por ahora no se muestran herramientas predeterminadas en el escritorio.",
+                "Las aplicaciones se localizan desde el buscador de Inicio y se preparan "
+                "en pestañas. Esta biblioteca muestra las que ya tienen un entorno persistente.",
                 "Muted", wrap=True
             ))
+            self.installed_list = QVBoxLayout()
+            lay.addLayout(self.installed_list)
+            self._refresh_installed_list()
             outer.addWidget(pane)
             outer.addStretch()
 
@@ -1004,6 +1418,8 @@ if QT_READY:
                 button("Abrir carpeta de datos", self.open_data_folder),
                 button("Verificar almacenamiento", self.test_storage),
             ))
+            lay.addWidget(label("Entornos Python: " + str(self.store.root / "envs"), "Muted", wrap=True))
+            lay.addWidget(label("Cache de paquetes: " + str(self.store.root / "cache" / "pip"), "Muted", wrap=True))
             outer.addWidget(pane)
             note = QFrame()
             note.setObjectName("Panel")
@@ -1019,6 +1435,7 @@ if QT_READY:
             outer.addStretch()
 
         def goto(self, key: str):
+            self.tabs.setCurrentIndex(0)
             self.stack.setCurrentWidget(self.pages[key])
             for name, widget in self.nav.items():
                 widget.setProperty("role", "selected" if name == key else "nav")
@@ -1039,57 +1456,252 @@ if QT_READY:
                 self.result_actions.addWidget(button(action_text, action, "primary"))
             self.result_actions.addStretch()
 
+        def _sync_catalog(self):
+            def work():
+                try:
+                    number = self.catalog.sync()
+                    self.events.catalog.emit(f"Catálogo actualizado: {number} herramientas.")
+                except Exception as exc:
+                    self.events.catalog.emit(f"Sin actualización en línea: {exc}")
+            threading.Thread(target=work, daemon=True).start()
+
+        def _catalog_status(self, message):
+            self.disk_indicator.setToolTip(str(self.store.root) + "\n" + message)
+
         def search(self):
             query = self.search_box.text().strip()
             if not query:
                 self._result("Escribe una tarea", "Indica lo que necesitas hacer.")
                 return
+            matches = self.catalog.search(query)
+            if matches:
+                best = matches[0][1]
+                try:
+                    self.store.record(f"Buscar: {query}", "herramienta encontrada")
+                except (OSError, StorageError):
+                    pass
+                self._result("Herramienta encontrada: " + best.name,
+                             best.description or "Aplicación de la biblioteca PYRION.",
+                             lambda t=best: self.open_tool(t), "Preparar y abrir")
+                for score, candidate in matches[1:4]:
+                    self.result_actions.addWidget(button(candidate.name,
+                        lambda checked=False, t=candidate: self.open_tool(t)))
+                return
             tool_id = identify_tool(query)
             if tool_id:
-                name = next(name for key, name, _, _ in TOOLS if key == tool_id)
-                self.store.record(f"Buscar: {query}", "herramienta encontrada")
-                self._result(
-                    f"Herramienta disponible: {name}",
-                    "Esta función ya existe en el escritorio y puede utilizarse ahora.",
-                    lambda: self.launch(tool_id), "Abrir herramienta"
-                )
-                self.launch(tool_id)
-            else:
+                if tool_id == "pdf_word":
+                    tool = Tool("convertidor_pdf_word", "PDF a Word", "Conversor PDF DOCX",
+                                "pdf word docx convertir", "Documentos",
+                                "tools/convertidor_pdf_word.py", "py", ("pdf2docx",))
+                    self.open_tool(tool)
+                else:
+                    self.launch(tool_id)
+                return
+            try:
+                self.store.append("solicitudes", {
+                    "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "solicitud": query, "estado": "pendiente_ia",
+                })
+                self.store.record(f"Solicitar: {query}", "pendiente de IA")
+            except (OSError, StorageError) as exc:
+                QMessageBox.critical(self, "No se pudo guardar", str(exc))
+                return
+            self._result("Solicitud guardada", "«" + query + "» se guardó. "
+                         "Todavía no hay IA conectada para generar una herramienta nueva.",
+                         lambda: self.goto("history"), "Ver historial")
+
+        def _add_tool_tab(self, key, name):
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(25, 22, 25, 22)
+            layout.setSpacing(12)
+            layout.addWidget(label(name, "SectionTitle"))
+            status = label("Preparando aplicación...", "Muted", wrap=True)
+            layout.addWidget(status)
+            log = QPlainTextEdit()
+            log.setReadOnly(True)
+            log.setMaximumBlockCount(400)
+            log.setMinimumHeight(100)
+            layout.addWidget(log)
+            self.tabs.addTab(page, name[:25])
+            self.tabs.setCurrentWidget(page)
+            self.tool_tabs[key] = {"page": page, "layout": layout, "status": status,
+                                   "log": log, "busy": False}
+            return self.tool_tabs[key]
+
+        def open_tool(self, tool: Tool):
+            key = "catalog:" + tool.slug
+            if key in self.tool_tabs:
+                self.tabs.setCurrentWidget(self.tool_tabs[key]["page"])
+                return
+            state = self._add_tool_tab(key, tool.name)
+            state["tool"] = tool
+            state["busy"] = True
+            def worker():
                 try:
-                    self.store.append("solicitudes", {
-                        "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
-                        "solicitud": query,
-                        "estado": "pendiente_ia",
-                    })
-                    self.store.record(f"Solicitar: {query}", "pendiente de IA")
-                except (OSError, StorageError) as exc:
-                    QMessageBox.critical(self, "No se pudo guardar", str(exc))
-                    return
-                self._result(
-                    "Solicitud guardada", f"«{query}» se ha guardado en el disco. "
-                    "Todavía no hay un modelo de IA conectado, así que no se ha generado "
-                    "ni ejecutado ninguna aplicación.",
-                    lambda: self.goto("history"), "Ver historial"
+                    src = self.catalog.source(tool,
+                        lambda msg: self.events.progress.emit(key, msg))
+                    requirements = self.deps.requirements(tool, src)
+                    self.events.analyzed.emit(key, requirements)
+                except Exception as exc:
+                    self.events.done.emit(key, False, str(exc))
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _tool_progress(self, key, message):
+            state = self.tool_tabs.get(key)
+            if state:
+                state["log"].appendPlainText(message)
+
+        def _tool_analyzed(self, key, packages):
+            state = self.tool_tabs.get(key)
+            if not state:
+                return
+            tool = state["tool"]
+            state["status"].setText("Dependencias detectadas: " + (
+                ", ".join(packages) if packages else "ninguna"))
+            if not self.deps.already_installed(tool, packages) and packages:
+                answer = QMessageBox.question(
+                    self, "PYRION · librerías persistentes",
+                    "Instalar en el disco persistente las librerías de «" + tool.name + "»?\n\n"
+                    + "\n".join("• " + x for x in packages)
+                    + "\n\nUbicación: " + str(self.deps.site(tool))
+                    + "\nOrigen: PyPI (paquetes de terceros).",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
                 )
+                if answer != QMessageBox.StandardButton.Yes:
+                    state["busy"] = False
+                    state["status"].setText("Instalación cancelada. No se modificó el Python del sistema.")
+                    state["layout"].addWidget(button("Reintentar", lambda t=tool,k=key: self._retry_tool(k,t)))
+                    return
+            self._install_tool(key, tool, packages)
+
+        def _retry_tool(self, key, tool):
+            state = self.tool_tabs.get(key)
+            if not state or state["busy"]:
+                return
+            state["busy"] = True
+            def worker():
+                try:
+                    src = self.catalog.source(tool, lambda text: self.events.progress.emit(key, text))
+                    self.events.analyzed.emit(key, self.deps.requirements(tool, src))
+                except Exception as exc:
+                    self.events.done.emit(key, False, str(exc))
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _install_tool(self, key, tool, packages):
+            state = self.tool_tabs.get(key)
+            if not state:
+                return
+            state["status"].setText("Verificando e instalando librerías persistentes...")
+            def worker():
+                try:
+                    self.deps.install(tool, packages,
+                        lambda text: self.events.progress.emit(key, text))
+                    self.events.done.emit(key, True, "Entorno listo")
+                except Exception as exc:
+                    self.events.done.emit(key, False, str(exc))
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _tool_finished(self, key, ok, detail):
+            state = self.tool_tabs.get(key)
+            if not state:
+                return
+            state["busy"] = False
+            state["log"].appendPlainText(detail)
+            tool = state["tool"]
+            if not ok:
+                state["status"].setText("No se pudo preparar la herramienta: " + detail)
+                state["layout"].addWidget(button("Reintentar", lambda t=tool,k=key: self._retry_tool(k,t)))
+                return
+            self._refresh_installed_list()
+            try:
+                self.store.record("Preparar: " + tool.name, "dependencias listas")
+            except (OSError, StorageError):
+                pass
+            if tool.slug == "convertidor_pdf_word":
+                state["status"].setText("Herramienta preparada. Conversión dentro de PYRION OS.")
+                state["log"].setMaximumHeight(95)
+                widget = PdfToWordDialog(self.store, state["page"], self.deps.subprocess_env(tool))
+                widget.setWindowFlags(Qt.WindowType.Widget)
+                state["layout"].addWidget(widget, 1)
+                state["widget"] = widget
+            else:
+                state["status"].setText("Dependencias listas y conservadas en " + str(self.deps.site(tool)))
+                state["layout"].addWidget(label(
+                    "Esta herramienta utiliza una interfaz heredada (Tkinter u otra). "
+                    "Se requiere adaptarla a Qt para mostrarla dentro de una pestaña PYRION. "
+                    "No se abrirá una ventana externa ni se ejecutará código no adaptado.",
+                    "Muted", wrap=True))
+            state["layout"].addStretch()
 
         def launch(self, tool_id: str):
-            types = {
-                "pdf_word": PdfToWordDialog,
-                "image_pdf": ImagesToPdfDialog,
-                "csv": CsvEditorDialog,
-                "calc": CalculatorDialog,
-            }
+            if tool_id == "pdf_word":
+                tool = Tool("convertidor_pdf_word", "PDF a Word", "Convertidor DOCX",
+                            "pdf word", "Documentos", "tools/convertidor_pdf_word.py",
+                            "py", ("pdf2docx",))
+                self.open_tool(tool)
+                return
+            types = {"image_pdf": ImagesToPdfDialog,
+                     "csv": CsvEditorDialog, "calc": CalculatorDialog}
             dialog_type = types.get(tool_id)
             if dialog_type is None:
                 QMessageBox.warning(self, "Herramienta no disponible", "No existe esta herramienta.")
                 return
+            key = "native:" + tool_id
+            if key in self.tool_tabs:
+                self.tabs.setCurrentWidget(self.tool_tabs[key]["page"])
+                return
+            name = next(n for k,n,d,i in TOOLS if k == tool_id)
+            state = self._add_tool_tab(key, name)
+            state["log"].hide()
+            state["status"].hide()
+            widget = dialog_type(self.store, state["page"])
+            widget.setWindowFlags(Qt.WindowType.Widget)
+            state["layout"].addWidget(widget, 1)
+            state["widget"] = widget
             try:
-                self.store.record(f"Abrir: {tool_id}", "iniciado")
-            except (StorageError, OSError) as exc:
-                QMessageBox.warning(self, "Aviso de almacenamiento", str(exc))
-            dialog = dialog_type(self.store, self)
-            dialog.setStyleSheet(PALETTE)
-            dialog.exec()
+                self.store.record("Abrir: " + name, "iniciado")
+            except (StorageError, OSError):
+                pass
+
+        def _refresh_installed_list(self):
+            if not hasattr(self, "installed_list"):
+                return
+            clear_layout(self.installed_list)
+            installed = 0
+            for tool in sorted(self.catalog.tools.values(), key=lambda t:t.name):
+                if self.deps.manifest(tool).is_file():
+                    self.installed_list.addWidget(button(
+                        "▦  " + tool.name, lambda checked=False,t=tool: self.open_tool(t)))
+                    installed += 1
+            if not installed:
+                self.installed_list.addWidget(label("Todavía no se han instalado herramientas adicionales.", "Muted"))
+
+        def _close_tab(self, index):
+            if index == 0:
+                return
+            page = self.tabs.widget(index)
+            key = next((k for k,v in self.tool_tabs.items() if v["page"] is page), None)
+            if key:
+                if self.tool_tabs[key]["busy"]:
+                    QMessageBox.information(self, "Instalación activa", "Finaliza la preparación de dependencias antes de cerrar esta pestaña.")
+                    return
+                widget = self.tool_tabs[key].get("widget")
+                if widget is not None and getattr(widget, "worker_thread", None) is not None:
+                    if widget.worker_thread.isRunning():
+                        QMessageBox.information(self, "Proceso activo", "Deja finalizar la operación antes de cerrar la pestaña.")
+                        return
+                del self.tool_tabs[key]
+            self.tabs.removeTab(index)
+            page.deleteLater()
+
+        def closeEvent(self, event):
+            if any(state["busy"] for state in self.tool_tabs.values()):
+                QMessageBox.information(self, "Instalación activa", "Deja finalizar la instalación de librerías antes de salir.")
+                event.ignore()
+                return
+            super().closeEvent(event)
 
         def refresh_history(self):
             clear_layout(self.history_list)
