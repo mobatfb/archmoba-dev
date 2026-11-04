@@ -1,4 +1,4 @@
-package com.archmoba.orbitlauncher;
+package com.archmoba.colibri;
 
 /** Pruebas de sincronizacion de sensor con pantalla, ejecutadas con javac. */
 public final class OrbitOrientationTest {
