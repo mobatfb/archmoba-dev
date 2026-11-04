@@ -11,6 +11,7 @@ No instala paquetes ni modifica el Python global.
 """
 from __future__ import annotations
 
+import base64
 import ctypes
 from datetime import datetime, timezone
 import hashlib
@@ -24,12 +25,13 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -329,14 +331,73 @@ def fail_dialog(message: str) -> None:
 
 
 def fetch_bytes(url: str, limit: int = DOWNLOAD_LIMIT) -> bytes:
+    """Descarga acotada: evita cambios del Python global y respuestas gigantes."""
     req = urllib.request.Request(url, headers={
-        "User-Agent": "PYRION-OS-bootstrap/1.0", "Cache-Control": "no-cache",
+        "User-Agent": "PYRION-OS-bootstrap/1.1",
+        "Accept": "application/vnd.github+json" if "api.github.com" in url else "*/*",
+        "Cache-Control": "no-cache",
     })
-    with urllib.request.urlopen(req, timeout=7) as response:
+    with urllib.request.urlopen(req, timeout=12) as response:
         body = response.read(limit + 1)
     if len(body) > limit:
         raise ValueError("La descarga excede el limite autorizado")
     return body
+
+
+def fetch_github_api_file(path: str, ref: str, limit: int = DOWNLOAD_LIMIT) -> bytes:
+    """Ruta alternativa cuando raw.githubusercontent.com falla o queda bloqueado."""
+    safe_parts = [urllib.parse.quote(p, safe="") for p in path.split("/")]
+    api_path = "/".join(safe_parts)
+    api_url = (
+        f"https://api.github.com/repos/{REPO}/contents/{api_path}"
+        f"?ref={urllib.parse.quote(ref, safe='')}"
+    )
+    # El API devuelve Base64 y metadatos, por ello necesita un margen adicional.
+    payload = fetch_bytes(api_url, int(limit * 1.5) + 65536)
+    response = json.loads(payload.decode("utf-8-sig"))
+    if not isinstance(response, dict) or response.get("encoding") != "base64":
+        raise ValueError(f"GitHub API no devolvio el archivo {path} codificado en Base64")
+    encoded = response.get("content", "")
+    if not isinstance(encoded, str):
+        raise ValueError(f"Respuesta invalida de GitHub API para {path}")
+    data = base64.b64decode(encoded, validate=False)
+    if len(data) > limit:
+        raise ValueError(f"El archivo {path} excede el limite autorizado")
+    return data
+
+
+def download_manifest() -> dict[str, str]:
+    """Consulta Github RAW y, si falla, su API; reporta la causa real."""
+    failures = []
+    urls = (
+        ("GitHub RAW", lambda: fetch_bytes(REMOTE_MANIFEST + f"?check={time.time_ns()}", 32768)),
+        ("GitHub API", lambda: fetch_github_api_file("PYRIONOS/config.json", "main", 32768)),
+    )
+    for channel, getter in urls:
+        try:
+            return parse_remote_manifest(getter())
+        except (OSError, ValueError, UnicodeError, json.JSONDecodeError, RuntimeError) as exc:
+            failures.append(f"{channel}: {type(exc).__name__}: {exc}")
+    raise RuntimeError("No se pudo consultar config.json. " + " | ".join(failures))
+
+
+def download_verified_release_file(commit: str, filename: str, checksum: str) -> bytes:
+    """Nunca utiliza contenido recibido si no coincide con el SHA-256 publicado."""
+    path = f"PYRIONOS/{filename}"
+    failures = []
+    methods = (
+        ("GitHub RAW", lambda: fetch_bytes(f"https://raw.githubusercontent.com/{REPO}/{commit}/{path}")),
+        ("GitHub API", lambda: fetch_github_api_file(path, commit)),
+    )
+    for channel, getter in methods:
+        try:
+            data = getter()
+            if hashlib.sha256(data).hexdigest() != checksum:
+                raise ValueError("SHA-256 no coincide con config.json")
+            return data
+        except (OSError, ValueError, UnicodeError, RuntimeError) as exc:
+            failures.append(f"{channel}: {type(exc).__name__}: {exc}")
+    raise RuntimeError(f"Fallo al descargar {filename}. " + " | ".join(failures))
 
 
 def parse_remote_manifest(data: bytes) -> dict[str, str]:
@@ -433,7 +494,28 @@ def cached_release(system_dir: Path, state: dict, field: str) -> tuple[str, Path
     return None
 
 
-def install_release(system_dir: Path, manifest: dict[str, str], notify) -> str:
+def find_verified_release(system_dir: Path, skip: str = "") -> tuple[str, Path] | None:
+    """Recupera releases intactos aunque state.json haya quedado sin guardar."""
+    folder = system_dir / "releases"
+    if not folder.is_dir() or folder.is_symlink():
+        return None
+    valid = []
+    for path in folder.iterdir():
+        if path.name == skip or not RELEASE_ID_RE.fullmatch(path.name):
+            continue
+        info = release_info(system_dir, path.name)
+        if not info:
+            continue
+        version = info[1]["version"]
+        numbers = tuple(int(x) for x in version.split("-")[0].split(".")[:3])
+        valid.append((numbers, path.name, info[0]))
+    if not valid:
+        return None
+    _, name, desktop = max(valid)
+    return name, desktop
+
+
+def install_release(system_dir: Path, manifest: dict[str, str], notify, source_dir: Path | None = None) -> str:
     """Descarga staging + SHA-256 + verificacion de sintaxis antes de publicar."""
     name = release_id(manifest)
     if release_info(system_dir, name):
@@ -449,11 +531,14 @@ def install_release(system_dir: Path, manifest: dict[str, str], notify) -> str:
             ("desktop.py", manifest["desktop_sha256"]),
             ("guide.csv", manifest["catalog_sha256"]),
         ):
-            url = f"https://raw.githubusercontent.com/{REPO}/{commit}/PYRIONOS/{filename}"
-            notify(f"Descargando {filename}...")
-            data = fetch_bytes(url)
-            if hashlib.sha256(data).hexdigest() != checksum:
-                raise ValueError(f"SHA-256 invalido para {filename}")
+            if source_dir is not None:
+                notify(f"Validando copia local de {filename}...")
+                data = (source_dir / filename).read_bytes()
+                if hashlib.sha256(data).hexdigest() != checksum:
+                    raise ValueError(f"SHA-256 invalido para la copia local de {filename}")
+            else:
+                notify(f"Descargando {filename}...")
+                data = download_verified_release_file(commit, filename, checksum)
             if filename == "desktop.py":
                 compile(data.decode("utf-8-sig"), filename, "exec")
             target = stage / filename
@@ -485,43 +570,97 @@ def install_release(system_dir: Path, manifest: dict[str, str], notify) -> str:
             shutil.rmtree(stage, ignore_errors=True)
 
 
+def seed_local_release(store: PersistentStore, notify) -> str | None:
+    """Permite primer arranque offline desde copia completa/clon del repositorio.
+
+    Solo acepta una copia cuando desktop.py y guide.csv coinciden exactamente
+    con las huellas SHA-256 indicadas en config.json del mismo directorio.
+    """
+    candidates = [Path(__file__).resolve().parent]
+    from_amdev = os.environ.get("AMDEV_LOCAL_ROOT", "").strip()
+    if from_amdev:
+        candidates.append(Path(from_amdev).expanduser() / "PYRIONOS")
+    for directory in dict.fromkeys(candidates):
+        try:
+            if not all((directory / p).is_file() for p in ("desktop.py", "guide.csv", "config.json")):
+                continue
+            manifest = parse_remote_manifest((directory / "config.json").read_bytes())
+            if not hash_ok(directory / "desktop.py", manifest["desktop_sha256"]):
+                continue
+            if not hash_ok(directory / "guide.csv", manifest["catalog_sha256"]):
+                continue
+            notify("Copia local completa encontrada; preparando primer inicio offline...")
+            return install_release(store.root / "system", manifest, notify, source_dir=directory)
+        except (OSError, ValueError, UnicodeError, RuntimeError) as exc:
+            notify(f"Copia local descartada ({type(exc).__name__}: {exc})")
+    return None
+
+
 def select_release(store: PersistentStore, offline: bool = False) -> tuple[str, Path, dict]:
-    """Intenta actualizacion; si falla, usa la copia persistente verificada."""
+    """Actualiza si es posible; ante fallo usa la version persistente valida."""
     system_dir = store.root / "system"
     system_dir.mkdir(parents=True, exist_ok=True)
     state = safe_state(system_dir)
     active = cached_release(system_dir, state, "current")
     backup = cached_release(system_dir, state, "previous")
+    last_error = "Modo sin conexion: no se consulto el repositorio" if offline else ""
     if not offline:
         try:
             announce(store, "Buscando version actual en el repositorio...")
-            manifest_url = REMOTE_MANIFEST + f"?check={time.time_ns()}"
-            manifest = parse_remote_manifest(fetch_bytes(manifest_url, 32768))
+            manifest = download_manifest()
             name = release_id(manifest)
             if name == state.get("failed_release") and active:
                 announce(store, "Actualizacion previamente fallida; manteniendo version estable")
             else:
                 installed = install_release(system_dir, manifest, lambda msg: announce(store, msg))
                 if not active or active[0] != installed:
-                    new_state = dict(state)
-                    new_state["previous"] = active[0] if active else ""
-                    new_state["current"] = installed
-                    new_state.pop("failed_release", None)
-                    save_state(system_dir, new_state)
-                    state = new_state
+                    state = {
+                        **state,
+                        "previous": active[0] if active else "",
+                        "current": installed,
+                    }
+                    state.pop("failed_release", None)
+                    save_state(system_dir, state)
                     active = cached_release(system_dir, state, "current")
                     backup = cached_release(system_dir, state, "previous")
         except (OSError, TimeoutError, ValueError, UnicodeError, json.JSONDecodeError,
                 urllib.error.URLError, RuntimeError) as exc:
-            announce(store, f"Sin actualizacion disponible ({type(exc).__name__}: {exc})")
+            last_error = f"{type(exc).__name__}: {exc}"
+            announce(store, f"Actualizacion no disponible ({last_error})")
     if active:
         return active[0], active[1], state
     if backup:
         announce(store, "La version principal no es valida; usando respaldo")
         return backup[0], backup[1], state
+    recovered = find_verified_release(system_dir, state.get("failed_release", ""))
+    if recovered:
+        announce(store, f"Recuperada copia persistente verificada: {recovered[0]}")
+        state = {**state, "current": recovered[0]}
+        save_state(system_dir, state)
+        return recovered[0], recovered[1], state
+
+    # Si alguien inicia desde un checkout local del repositorio, puede comenzar
+    # offline sin necesitar un primer download (con los 3 archivos verificados).
+    try:
+        seeded = seed_local_release(store, lambda msg: announce(store, msg))
+        if seeded:
+            state = {**state, "current": seeded}
+            save_state(system_dir, state)
+            active = cached_release(system_dir, state, "current")
+            if active:
+                return active[0], active[1], state
+    except (OSError, ValueError, RuntimeError) as exc:
+        announce(store, f"No fue posible importar escritorio local: {exc}")
+    reason = (last_error or "No hay datos remotos suficientes")[-900:]
+    log_file = store.root / "logs" / "autoupdate.log"
     raise RuntimeError(
-        "PYRION no tiene una copia valida del escritorio en el disco persistente "
-        "y no pudo descargarla. Conecta Internet al menos una vez."
+        "PYRION no tiene una version valida guardada en el disco. "
+        "Tampoco fue posible preparar la descarga.\n\n"
+        f"Motivo tecnico: {reason}\n\n"
+        f"Registro de diagnostico: {log_file}\n\n"
+        "Conecta Internet y comprueba acceso HTTPS a GitHub; luego vuelve a abrir PYRION. "
+        "En el primer inicio offline hace falta una copia local de "
+        "desktop.py, guide.csv y config.json."
     )
 
 
