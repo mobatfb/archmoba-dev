@@ -1308,7 +1308,7 @@ class Editor(QMainWindow):
             file.parent.mkdir(parents=True, exist_ok=True)
             if not file.exists():
                 source = self.free_blanket()
-                file.write_text(json.dumps(source, ensure_ascii=False, indent=2)+"\\n",
+                file.write_text(json.dumps(source, ensure_ascii=False, indent=2)+"\n",
                                 encoding="utf-8")
             else:
                 source = json.loads(file.read_text(encoding="utf-8"))
