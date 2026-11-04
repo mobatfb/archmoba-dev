@@ -7,13 +7,6 @@
       "description": "Buscador y lanzador de herramientas Python",
       "config": "PTM/config.json",
       "active": true
-    },
-    {
-      "id": "pyrionos",
-      "name": "PYRION OS",
-      "description": "Escritorio inteligente desarrollado en Python",
-      "config": "PYRIONOS/config.json",
-      "active": true
     }
   ]
 }

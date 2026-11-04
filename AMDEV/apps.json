@@ -21,6 +21,13 @@
       "description": "Editor de mallas 3D con coordenadas XYZ y visor interactivo",
       "config": "PYRION/engine3d/visor3d/config.json",
       "active": true
+    },
+    {
+      "id": "pyrionos",
+      "name": "PYRION OS",
+      "description": "Escritorio inteligente desarrollado en Python",
+      "config": "PYRIONOS/config.json",
+      "active": true
     }
   ]
 }
