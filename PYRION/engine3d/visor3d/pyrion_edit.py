@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-APP_VERSION = "1.4.14"
+APP_VERSION = "1.4.15"
 
 def ensure_pyside6():
     required = ["PySide6.QtCore", "PySide6.QtWidgets", "PySide6.QtWebEngineWidgets", "PySide6.QtWebChannel"]
@@ -497,7 +497,7 @@ class Editor(QMainWindow):
           QGroupBox{border:1px solid #384260;border-radius:8px;margin-top:14px;padding:10px;font-weight:bold}
           QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px}
           QCheckBox{spacing:8px}""")
-        self.load_remote()
+        self.load_free_project()
 
     def animate_update(self):
         self.update_dots = self.update_dots % 3 + 1
@@ -586,7 +586,7 @@ class Editor(QMainWindow):
         left.addWidget(heading)
         files_section = ExpandableSection("Archivos y GitHub", False)
         left.addWidget(files_section)
-        for label, fn in [("Abrir .mesh", self.open_file), ("Cargar CHEST de GitHub", self.load_remote),
+        for label, fn in [("Proyecto local FREE (9x9)", self.load_free_project), ("Abrir .mesh", self.open_file), ("Cargar CHEST de GitHub", self.load_remote),
                           ("Guardar .mesh", self.save_file), ("Guardar como...", self.save_as),
                           ("Guardar en GitHub", self.save_github)]:
             b = QPushButton(label)
@@ -1275,6 +1275,49 @@ class Editor(QMainWindow):
     def reset_transform(self):
         if not self.mesh:return
         for s in self.spins:s.setValue(0)
+
+    @staticmethod
+    def free_blanket():
+        """Create a fully connected, flat 9 by 9 quad mesh."""
+        verts = [[float(x)-4.5, 0.0, float(z)-4.5]
+                 for z in range(10) for x in range(10)]
+        faces = []
+        colors = []
+        for z in range(9):
+            for x in range(9):
+                a = z*10+x
+                faces.append([a, a+1, a+11, a+10])
+                colors.append("#8A9FC7" if (x+z)%2 else "#9CB2DD")
+        return {
+            "format": "pyrion.mesh", "version": "1.0.0", "name": "free",
+            "primitive": "quad_grid", "topology": "connected_quads",
+            "units": "world", "vertices": verts, "faces": faces,
+            "face_ids": list(range(1, 82)), "face_colors": colors,
+            "render": {"flat_shading": True, "double_sided": True},
+            "groups": [{"name": "manta_9x9", "face_start": 0,
+                        "face_count": 81, "vertex_start": 0, "vertex_count": 100}],
+            "modeling": {"system": "pyrion-origami", "editable": True,
+                         "face_mode": "quads", "render_mode": "triangulate_on_load"},
+            "notes": "FREE: manta 9x9 con 81 quads y 100 vertices compartidos."
+        }
+
+    def load_free_project(self):
+        """Create FREE on this Windows computer once; preserve subsequent edits."""
+        file = Path.home() / "PYRION" / "projects" / "free" / "free.mesh"
+        try:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            if not file.exists():
+                source = self.free_blanket()
+                file.write_text(json.dumps(source, ensure_ascii=False, indent=2)+"\\n",
+                                encoding="utf-8")
+            else:
+                source = json.loads(file.read_text(encoding="utf-8"))
+            self.set_mesh(source, str(file))
+            if "mirror" in self.toggles:
+                self.toggles["mirror"].setChecked(False)
+            self.status.setText("FREE local | Manta 9x9 | " + str(file))
+        except Exception as exc:
+            QMessageBox.warning(self, "Proyecto FREE", str(exc))
 
     def open_file(self):
         p,_=QFileDialog.getOpenFileName(self,"Abrir malla","","Mallas PYRION (*.mesh);;JSON (*.json)")
