@@ -4,5 +4,6 @@
   "description": "Escritorio inteligente de Linux basado en Python, con almacenamiento persistente",
   "version": "0.1.0",
   "app_path": "PYRIONOS/app.py",
+  "release_commit": "c60985a0abc8c4a4c4c20ddb51d9e35a89839977",
   "maintenance": false
 }
