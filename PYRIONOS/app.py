@@ -31,7 +31,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.3.3"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -560,8 +560,12 @@ def install_release(system_dir: Path, manifest: dict[str, str], notify, source_d
             if filename == "desktop.py":
                 compile(data.decode("utf-8-sig"), filename, "exec")
             target = stage / filename
-            target.write_bytes(data)
-            with target.open("rb") as handle:
+            # En Windows os.fsync() requiere un descriptor con permiso de
+            # escritura. Abrir en 'rb' devuelve EBADF (Errno 9). Nunca
+            # reabrir un archivo en modo lectura para sincronizarlo.
+            with target.open("wb") as handle:
+                handle.write(data)
+                handle.flush()
                 os.fsync(handle.fileno())
         release_meta = {
             **manifest,
@@ -676,9 +680,10 @@ def select_release(store: PersistentStore, offline: bool = False) -> tuple[str, 
         "Tampoco fue posible preparar la descarga.\n\n"
         f"Motivo tecnico: {reason}\n\n"
         f"Registro de diagnostico: {log_file}\n\n"
-        "Conecta Internet y comprueba acceso HTTPS a GitHub; luego vuelve a abrir PYRION. "
-        "En el primer inicio offline hace falta una copia local de "
-        "desktop.py, guide.csv y config.json."
+        "Comprueba el motivo tecnico y el registro indicado. Si el fallo es "
+        "de conexion, verifica el acceso HTTPS a GitHub y vuelve a abrir PYRION. "
+        "Para el primer inicio sin Internet se requiere una copia local "
+        "verificada de desktop.py, guide.csv y config.json."
     )
 
 
