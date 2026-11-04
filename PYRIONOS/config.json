@@ -1,0 +1,8 @@
+{
+  "app": "PYRION OS",
+  "name": "PYRION OS",
+  "description": "Escritorio inteligente de Linux basado en Python, con almacenamiento persistente",
+  "version": "0.1.0",
+  "app_path": "PYRIONOS/app.py",
+  "maintenance": false
+}
