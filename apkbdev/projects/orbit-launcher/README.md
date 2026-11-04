@@ -1,3 +1,7 @@
+# COLIBRÍ v0.20 — icono oficial y nombre de aplicación
+
+Nombre visible: COLIBRÍ by ARCHMOBA. Icono visual: tercer concepto aprobado, colibrí azul eléctrico con halo, integrado como WebP optimizado 192x192 en res/drawable/colibri_icon.webp. Se conserva applicationId com.archmoba.orbitlauncher y todas las funciones previas (puntos verdes, giro, arrastre, reposo).
+
 # Orbit Launcher v0.19 — Panel vertical ajustable
 
 Nueva funcion: un tirador cian pequeno sobre el panel permite arrastrar el conjunto entero hacia arriba o abajo, sin desplazamiento horizontal. La ubicacion se guarda en preferencias y se restaura al volver del bloqueo y al reiniciar el servicio, ajustada a los limites de la pantalla. Los iconos conservan toque, pulsacion larga y desplazamiento interno para listas extensas. Se mantienen los circulos 55%, giro y avisos verdes.
