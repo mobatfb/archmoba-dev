@@ -31,7 +31,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -308,21 +308,39 @@ VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[.\-][A-Za-z0-9.]+)?$")
 RELEASE_ID_RE = re.compile(r"^[0-9A-Za-z.\-]+-[0-9a-f]{16}$")
 
 
+def _safe_console_write(message: str, *, error: bool = False) -> None:
+    """Un pythonw.exe de Windows puede carecer de stdout/stderr validos.
+
+    El arranque no debe fallar por intentar registrar un mensaje en una
+    consola inexistente. Escribir en el registro persistente es prioritario.
+    """
+    stream = getattr(sys, "stderr" if error else "stdout", None)
+    if stream is None:
+        return
+    try:
+        stream.write(str(message) + "\n")
+        stream.flush()
+    except (OSError, ValueError, AttributeError):
+        # En pythonw.exe suelen ser None; tambien pueden existir pero estar
+        # cerrados (OSError EBADF / Errno 9).
+        pass
+
+
 def announce(store: PersistentStore | None, message: str) -> None:
     line = f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] PYRION: {message}"
-    print(line, flush=True)
     if store is not None:
         try:
             destination = store.root / "logs" / "autoupdate.log"
             destination.parent.mkdir(parents=True, exist_ok=True)
             with destination.open("a", encoding="utf-8") as log:
                 log.write(line + "\n")
-        except OSError:
+        except (OSError, ValueError):
             pass
+    _safe_console_write(line)
 
 
 def fail_dialog(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+    _safe_console_write(message, error=True)
     if os.name == "nt":
         try:
             ctypes.windll.user32.MessageBoxW(None, message, "PYRION OS", 0x10)
