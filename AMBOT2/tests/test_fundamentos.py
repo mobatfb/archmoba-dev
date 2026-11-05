@@ -65,9 +65,12 @@ class BasisTests(unittest.TestCase):
         grasp.sync()
         point=teacher.all_fingertips()[("izquierda",1)]
         obj=lab.spawn("caja",pos=tuple(point),size=(1.0,1.0,1.0),mass=.5)
-        lab.step(.015)
         ok,contacts=grasp.inspect("izquierda",obj)
         self.assertTrue(ok,contacts)
+        obj.np.setPos(5,5,3)
+        no_touch,_=grasp.inspect("izquierda",obj)
+        self.assertFalse(no_touch)
+        obj.np.setPos(point)
         success,msg=grasp.try_grasp("izquierda",obj)
         self.assertTrue(success,msg)
         self.assertIn("izquierda",grasp.held())

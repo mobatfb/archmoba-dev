@@ -97,7 +97,7 @@ class AMBOT2App(ShowBase):
         self.grasp=GraspSystem(self.lab,self.teacher)
         self.learner=ObservationLearner(self.data_dir/"motor.json")
         self.language=LanguageMind(self.data_dir/"lenguaje.json")
-        self.recorder=DemonstrationRecorder()
+        self.demo_recorder=DemonstrationRecorder()
         self.last_skill=""
         self.last_message="Soy AMBOT. ¿Que vas a ensenarme?"
         self.last_teacher_action="Laboratorio iniciado."
@@ -247,7 +247,6 @@ class AMBOT2App(ShowBase):
 
     def try_grasp(self):
         self.grasp.sync()
-        self.lab.step(.015)
         result=self.grasp.try_nearest(self.teacher.selected_hand)
         self.say(result)
         return result
@@ -285,14 +284,14 @@ class AMBOT2App(ShowBase):
     def begin_demonstration(self,label=None):
         skill=label or "movimiento"
         try:
-            self.recorder.begin(skill,self.teacher.pose())
+            self.demo_recorder.begin(skill,self.teacher.pose())
             self.say("Grabando: "+skill+". Mueve tu cuerpo y pulsa P para terminar.")
         except ValueError as exc:
             self.say(str(exc))
 
     def end_demonstration(self):
         try:
-            label,frames=self.recorder.stop(self.teacher.pose())
+            label,frames=self.demo_recorder.stop(self.teacher.pose())
             answer=self.learner.observe(label,frames)
             self.last_skill=label
             self.say(answer)
@@ -470,7 +469,7 @@ class AMBOT2App(ShowBase):
         self.grasp.sync()
         self.lab.step(dt)
         self.grasp.auto_check()
-        self.recorder.record(self.teacher.pose(),dt)
+        self.demo_recorder.record(self.teacher.pose(),dt)
         self._gui_clock+=dt
         if self._gui_clock>.16:
             self._gui_clock=0
