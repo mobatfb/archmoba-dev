@@ -1024,6 +1024,24 @@ class RobotTests(unittest.TestCase):
             gui.hardware.close()
             pygame.quit()
 
+    def test_ambot_observa_al_humano_al_moverse_y_sentarse(self):
+        human=self.robot.human
+        brain=self.robot.brain
+        self.assertEqual(self.robot.training.confidence["caminar"],0.0)
+        self.assertIn("moviste",human.move(3))
+        self.assertGreater(self.robot.training.confidence["caminar"],0)
+        self.assertTrue(any(
+            e["source"]=="observacion_humano"
+            for e in brain.episodes))
+        human.x,human.z=6,3
+        self.assertIn("sentaste",human.sit())
+        self.assertTrue(any(
+            q["topic"]=="demostracion:sentarse"
+            for q in brain.questions))
+        self.assertTrue(any(
+            e["source"]=="observacion_humano"
+            for e in Robot(self.robot.memory_path).brain.episodes))
+
     def test_3d_projection(self):
         import pygame
         pygame.init()

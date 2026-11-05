@@ -335,3 +335,11 @@ El editor pausa el movimiento autonomo y bloquea Arduino hasta
 cerrarlo. Conservar los archivos JSON de versiones anteriores.
 La ventana y el cerebro se ejecutan enteramente en el mismo
 programa Python de PC; Arduino sigue siendo opcional.
+
+
+**Observar al usuario:** AMBOT registra las acciones del avatar
+(movimiento, articulaciones, sentarse y posturas) como experiencias
+corporales en \`cerebro.json\`. Al verte caminar recibe una señal
+basica para practicar; si te ve sentarte puede formularte una
+pregunta. Este mecanismo es una primera simulacion de observacion,
+**no significa que sepa copiar cualquier movimiento articulado**.

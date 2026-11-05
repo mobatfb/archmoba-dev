@@ -1808,6 +1808,20 @@ class HumanAvatar:
             chairs.append((4,5))
         return chairs
 
+    def _notify(self,action):
+        """Simular una observacion corporal del usuario desde AMBOT."""
+        brain=self.robot.brain
+        observation=("x="+str(self.x)+" z="+str(self.z)+
+                     " sentado="+str(self.seated)+
+                     " articulaciones="+str(self.joints))
+        brain.episode("observacion_humano",action,observation)
+        if action.startswith("mover"):
+            self.robot.training.lesson("caminar",.013,"observacion_humano")
+        if action=="sentarse":
+            brain.ask("demostracion:sentarse",
+                      "¿Como puedo flexionar mis piernas y sentarme como tu?")
+        brain.save()
+
     def move(self,direction):
         if type(direction) is not int or direction not in range(4):
             return "Direccion no valida."
@@ -1821,6 +1835,7 @@ class HumanAvatar:
         self.z+=dz
         self.steps+=1
         self.save()
+        self._notify("mover "+ORIENTATIONS[direction])
         return "Te moviste a X="+str(self.x)+" Z="+str(self.z)+"."
 
     def sit(self):
@@ -1836,6 +1851,7 @@ class HumanAvatar:
         self.x,self.z=self.seat
         self.seated=True
         self.save()
+        self._notify("sentarse")
         return "Te sentaste en la silla. Usa LEVANTARSE para salir."
 
     def stand(self):
@@ -1850,6 +1866,7 @@ class HumanAvatar:
         self.seat=None
         self.seated=False
         self.save()
+        self._notify("levantarse")
         return "Te levantaste de la silla."
 
     def change_joint(self,name,delta):
@@ -1857,6 +1874,7 @@ class HumanAvatar:
             return "Esa articulacion no existe."
         self.joints[name]=max(-85,min(85,self.joints[name]+int(delta)))
         self.save()
+        self._notify("articular "+name)
         return HUMAN_JOINTS[name]+": "+str(self.joints[name])+" grados."
 
     def pose(self,name):
@@ -1875,6 +1893,7 @@ class HumanAvatar:
         else:
             return "Postura no reconocida."
         self.save()
+        self._notify("postura "+name)
         return "Postura aplicada: "+name+"."
 
     def _load(self):
@@ -3611,7 +3630,7 @@ class DesktopApp:
                 self.input_focus=False
             elif e.key==pg.K_BACKSPACE:
                 self.input_value=self.input_value[:-1]
-            elif e.unicode and e.unicode.isprintable() and len(self.input_value)<150:
+            elif e.unicode and e.unicode.isprintable() and len(self.input_value)<600:
                 self.input_value+=e.unicode
             return
         if self.editor_mode and e.key==pg.K_ESCAPE:
