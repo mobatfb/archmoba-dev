@@ -154,6 +154,9 @@ class Movable:
     radius: float = .22
     y: float = .22
     vy: float = 0.0
+    vx: float = 0.0
+    vz: float = 0.0
+    mass: float = 1.0
     held_by: str = ""
     moved: float = 0.0
 
@@ -234,7 +237,7 @@ class TrainingLab:
         self.items = {
             "cubo": Movable("cubo", 6.0, 4.0, "box", (252, 119, 143)),
             "pelota": Movable("pelota", 6.0, 6.0, "ball", (89, 176, 254)),
-            "bloque": Movable("bloque", 7.0, 6.0, "box", (244, 198, 117)),
+            "bloque": Movable("bloque", 7.0, 6.0, "box", (244, 198, 117),mass=1.7),
         }
         self.guides = [
             Guide("ANDA", "CAMINAR", 3, 3, 2, (106, 230, 190),
@@ -409,8 +412,23 @@ class TrainingLab:
                     item.z=holder.z+facing[1]*.48
                     item.y=1.10
                     item.vy=0
+                    item.vx=item.vz=0.0
                     continue
                 item.held_by=""
+            # Fisica horizontal con friccion y limites del espacio.
+            if abs(item.vx)+abs(item.vz)>.008:
+                nx=item.x+item.vx*dt
+                nz=item.z+item.vz*dt
+                ix,iz=int(round(nx)),int(round(nz))
+                if self.baby.free(ix,iz):
+                    item.moved+=math.hypot(nx-item.x,nz-item.z)
+                    item.x,item.z=nx,nz
+                else:
+                    item.vx*=-.25
+                    item.vz*=-.25
+                drag=max(.0,1.0-3.4*dt)
+                item.vx*=drag
+                item.vz*=drag
             # Fisica vertical sencilla: gravedad, suelo y pequeno rebote.
             if item.y>item.radius or item.vy!=0:
                 item.vy-=9.81*dt
@@ -431,6 +449,34 @@ class TrainingLab:
             self.baby.posture="stumble"
             self.baby.last_decision="Perdi el equilibrio. Debo ajustar el movimiento."
             self.save()
+
+    def object_in_cell(self,x,z):
+        """Colision con objeto movil apoyado en el suelo."""
+        for item in self.items.values():
+            if not item.held_by and self.distance(x,z,item.x,item.z)<.57:
+                return item
+        return None
+
+    def push(self,object_item,dx,dz):
+        """Empujar produce desplazamiento horizontal, limitado por muros."""
+        baby=self.baby
+        nx,nz=object_item.x+dx*.87,object_item.z+dz*.87
+        # El bebe no conoce el mapa: solo se utiliza para fisica externa.
+        if not baby.free(int(round(nx)),int(round(nz))):
+            self.attempts+=1
+            self.save()
+            return "Empujo, pero el objeto no puede avanzar: hay una barrera."
+        if self.object_in_cell(nx,nz):
+            return "El objeto choca con otro objeto."
+        object_item.x=nx
+        object_item.z=nz
+        force=.87/max(.65,object_item.mass)
+        object_item.vx=dx*force
+        object_item.vz=dz*force
+        object_item.moved+=abs(force)
+        self.practice("transportar",True)
+        baby.last_decision="Al tocar algo, pude cambiar su posicion."
+        return "Siento resistencia y consigo empujar algo."
 
     def try_grab(self):
         baby=self.baby
@@ -600,6 +646,10 @@ class Robot:
             dx, dz = -dx, -dz
         if not self.free(self.x + dx, self.z + dz):
             return "SEGURIDAD: hay un obstaculo. No avanzo."
+        if hasattr(self,"training"):
+            object_item=self.training.object_in_cell(self.x+dx,self.z+dz)
+            if object_item:
+                return self.training.push(object_item,dx,dz)
         if hasattr(self,"training"):
             stability=self.training.confidence["caminar"]
             if self.training.rng.random()<.28*(1-stability):
