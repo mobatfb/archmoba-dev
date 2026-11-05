@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.3.3
+"""PYRION OS Desktop v0.3.4
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
 un disco montado y accesible. La ubicación se busca en cada inicio.
 
-Instalacion: python -m pip install PySide6
-Ejecucion:   python PYRION_OS.py
+PySide6 se instala automaticamente en el almacenamiento persistente si falta.
+Ejecucion:   python desktop.py
 
 NOTA: esto es una interfaz de escritorio, no un reemplazo del kernel ni
 un compositor Wayland. El generador automatico de apps mediante IA es
@@ -417,7 +417,7 @@ class DependencyManager:
 
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.3"
+APP_VERSION = "0.3.4"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -701,6 +701,147 @@ def identify_tool(request: str) -> str | None:
         return "calc"
     return None
 
+
+# Instalador del escritorio: se ejecuta ANTES de importar cualquier clase Qt.
+# No necesita pip del sistema y nunca instala paquetes globalmente.
+DESKTOP_QT_FAILURE = ""
+DESKTOP_QT_LOG = ""
+DESKTOP_QT_PACKAGE = "PySide6-Essentials>=6.5,<7"
+
+
+def _qt_setup_notify(root: Path, message: str) -> None:
+    """Registrar el arranque incluso si AMDEV usa pythonw sin consola."""
+    line = f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] {message}"
+    try:
+        log_path = root / "logs" / "desktop_setup.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except OSError:
+        pass
+    stream = getattr(sys, "stderr", None)
+    if stream is not None:
+        try:
+            stream.write("PYRION: " + message + "\n")
+            stream.flush()
+        except (OSError, ValueError, AttributeError):
+            pass
+
+
+def _qt_import_probe(site_dir: Path) -> tuple[bool, str]:
+    """Comprobar Qt en proceso separado sin contaminar el proceso del desktop."""
+    environment = os.environ.copy()
+    current = environment.get("PYTHONPATH", "")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(site_dir)] + ([current] if current else [])
+    )
+    environment["PYTHONNOUSERSITE"] = "1"
+    check = (
+        "from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QUrl, QSize, QRectF; "
+        "from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QPdfWriter, QPageSize, QImage; "
+        "from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QTabWidget"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", check], env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, errors="replace", timeout=40, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"No se pudo comprobar Qt: {type(exc).__name__}: {exc}"
+    if result.returncode == 0:
+        return True, ""
+    return False, (result.stderr or result.stdout or f"Error {result.returncode}")[-1400:]
+
+
+def _activate_persistent_qt(site_dir: Path) -> None:
+    """Importar desde el volumen persistente sin modificar sys.path global del OS."""
+    directory = str(site_dir)
+    if directory in sys.path:
+        sys.path.remove(directory)
+    sys.path.insert(0, directory)
+    current = os.environ.get("PYTHONPATH", "")
+    parts = [p for p in current.split(os.pathsep) if p and p != directory]
+    os.environ["PYTHONPATH"] = os.pathsep.join([directory] + parts)
+
+
+def ensure_desktop_qt() -> None:
+    """Instala solo los modulos Qt usados por PYRION en pyrionos/envs/desktop."""
+    global DESKTOP_QT_LOG
+    store = PersistentStore()  # Respeta PYRIONOS_DATA_DIR pasado por app.py.
+    root = store.root
+    os.environ["PYRIONOS_DATA_DIR"] = str(root)
+    DESKTOP_QT_LOG = str(root / "logs" / "desktop_setup.log")
+    manager = DependencyManager(root)
+    target = root / "envs" / "desktop" / "site-packages"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    notify = lambda msg: _qt_setup_notify(root, msg)
+    valid, diagnosis = _qt_import_probe(target)
+    if valid:
+        _activate_persistent_qt(target)
+        notify("PySide6 disponible. Se reutiliza la instalacion existente.")
+        return
+
+    notify("PySide6 no esta disponible; iniciando instalacion automatica persistente.")
+    notify("Ubicacion de instalacion: " + str(target))
+    if diagnosis:
+        notify("Comprobacion inicial: " + diagnosis.replace("\n", " ")[-350:])
+
+    # Las ruedas son independientes del Python del sistema. La instalacion se
+    # realiza en staging y solo se publica si se pueden importar los modulos.
+    stage = target.parent / (".desktop-qt-install-" + uuid.uuid4().hex)
+    backup = target.parent / (".desktop-qt-backup-" + uuid.uuid4().hex)
+    try:
+        stage.mkdir(mode=0o700)
+        pip_cmd, pip_env = manager._pip_cmd(notify)
+        cmd = pip_cmd + [
+            "--isolated", "install", "--disable-pip-version-check", "--no-input",
+            "--only-binary=:all:", "--prefer-binary", "--timeout", "30",
+            "--retries", "2", "--target", str(stage), "--cache-dir",
+            str(root / "cache" / "pip"), DESKTOP_QT_PACKAGE,
+        ]
+        notify("Instalando PySide6-Essentials y shiboken6 en el disco persistente...")
+        completed = subprocess.run(
+            cmd, env=pip_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, errors="replace", timeout=900, check=False,
+        )
+        if completed.returncode != 0:
+            tail = (completed.stdout or "")[-2500:]
+            raise RuntimeError(
+                f"pip termino con codigo {completed.returncode}: " + tail
+            )
+        passed, reason = _qt_import_probe(stage)
+        if not passed:
+            raise RuntimeError(
+                "PySide6 fue descargado pero no pudo importarse: " + reason
+            )
+        if target.exists():
+            os.replace(target, backup)
+        try:
+            os.replace(stage, target)
+        except Exception:
+            if backup.exists() and not target.exists():
+                os.replace(backup, target)
+            raise
+        _activate_persistent_qt(target)
+        notify("PySide6 instalado y comprobado correctamente. Se abrira el escritorio.")
+    except Exception as exc:
+        notify(f"No se pudo instalar PySide6: {type(exc).__name__}: {exc}")
+        raise
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage, ignore_errors=True)
+        if backup.exists() and target.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+
+
+# Si se ejecuta directamente, el instalador corre antes de definir las
+# ventanas Qt. Si se importa como modulo para pruebas, no hace descargas.
+if __name__ == "__main__":
+    try:
+        ensure_desktop_qt()
+    except Exception as _qt_exc:
+        DESKTOP_QT_FAILURE = f"{type(_qt_exc).__name__}: {_qt_exc}"
 
 # Solo el escritorio necesita PySide6. El almacenamiento anterior usa Python puro.
 try:
@@ -1739,8 +1880,21 @@ if QT_READY:
 
 def main() -> int:
     if not QT_READY:
-        print("PYRION OS necesita PySide6.\nInstala con: python -m pip install PySide6", file=sys.stderr)
-        return 2
+        reason = DESKTOP_QT_FAILURE or "PySide6 no esta disponible en el Python seleccionado."
+        message = (
+            "No fue posible preparar PySide6 automaticamente en el almacenamiento "
+            "persistente de PYRION.\n"
+            + reason
+            + ("\nRegistro: " + DESKTOP_QT_LOG if DESKTOP_QT_LOG else "")
+            + "\nComprueba Internet, espacio disponible y compatibilidad del Linux."
+        )
+        stream = getattr(sys, "stderr", None)
+        if stream is not None:
+            try:
+                print(message, file=stream)
+            except (OSError, ValueError):
+                pass
+        return 20
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)

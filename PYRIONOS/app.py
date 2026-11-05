@@ -31,7 +31,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.3"
+APP_VERSION = "0.3.4"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -699,6 +699,10 @@ def start_desktop(store: PersistentStore, name: str, desktop: Path, state: dict)
         code = 1
     if code == 0:
         return 0
+    if code == 20:
+        announce(store, "Fallo de instalacion de PySide6; la version persistente sigue siendo valida.")
+        announce(store, "Revisa " + str(store.root / "logs" / "desktop_setup.log"))
+        return code
 
     system_dir = store.root / "system"
     announce(store, f"Escritorio termino con error ({code}); buscando recuperacion")
