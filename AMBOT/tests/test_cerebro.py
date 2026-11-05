@@ -496,6 +496,7 @@ class RobotTests(unittest.TestCase):
             p=gui.scene.project((x,.02,z))
             click=(round(p[0]),round(p[1]))
             self.assertTrue(gui.view.collidepoint(click))
+            self.assertFalse(gui.editor_rect.colliderect(gui.view))
             self.assertFalse(gui.editor_rect.collidepoint(click))
             self.assertFalse(gui.training_rect.collidepoint(click))
             pygame.event.post(pygame.event.Event(

@@ -204,7 +204,7 @@ y alta), ademas de la silla existente junto a la mesa.
 Para agregar otras, abrir AMBOT y:
 
 1. Pulsar **+ AÑADIR** en la esquina superior derecha del escenario 3D.
-2. Seleccionar **SILLA CLASICA**, **SILLA DE OFICINA** o **SILLA ALTA**.
+2. En el panel izquierdo, seleccionar **SILLA CLASICA**, **SILLA DE OFICINA** o **SILLA ALTA**.
 3. Si se desea, usar **GIRAR 90°** para orientar el respaldo.
 4. Mover el raton sobre el suelo: **verde** significa ubicacion libre y
    **rosa** significa ubicacion prohibida.

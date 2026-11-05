@@ -2340,8 +2340,8 @@ class DesktopApp:
         if not self.editor_mode:
             self.editor_rect=pg.Rect(0,0,1,1)
             return
-        w=216
-        r=pg.Rect(self.view.right-w-12,self.view.y+128,w,225)
+        w=self.portrait_view.width-20
+        r=pg.Rect(self.portrait_view.x+10,self.portrait_view.y+140,w,225)
         self.editor_rect=r
         self.panel(r,fill=(6,26,43),border=COLOR["cyan"],radius=11)
         self.text((r.x+12,r.y+8),"AÑADIR · SILLA",16,COLOR["cyan"])
