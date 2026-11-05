@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "Robot bebe autonomo con curiosidad, preguntas, memoria persistente y puente Arduino seguro",
-  "version": "0.5.0",
+  "description": "AMBOT autonómo en entorno 3D con botón AÑADIR, selector y colocación de sillas, curiosidad y puente Arduino",
+  "version": "0.6.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "6b3d79904f8715d07c75c868af1a1869217bd07c",
+  "release_commit": "6520d0b955ca9c286e4a80302820a390cd66ba9c",
   "maintenance": false
 }
