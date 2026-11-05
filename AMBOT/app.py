@@ -1879,12 +1879,33 @@ class HumanAvatar:
                       "¿Como puedo flexionar mis piernas y sentarme como tu?")
         brain.save()
 
-    def move(self,direction):
+    def turn(self,direction):
+        """Tank control: izquierda/derecha solo orientan el cuerpo."""
+        if direction not in ("izquierda","derecha"):
+            return "Giro no valido."
+        if self.seated:
+            return "Estas sentado. Levantate antes de girar el cuerpo."
+        difference=-1 if direction=="izquierda" else 1
+        self.facing=(self.facing+difference)%4
+        self.save()
+        self._notify("girar "+direction)
+        return "Giraste a la "+direction+". Ahora miras al "+ORIENTATIONS[self.facing]+"."
+
+    def advance(self,reverse=False):
+        """Tank control: desplazamiento segun la orientacion, sin strafe.
+
+        Retroceder conserva la direccion a la que esta mirando.
+        """
+        direction=(self.facing+2)%4 if reverse else self.facing
+        return self.move(direction,keep_facing=True)
+
+    def move(self,direction,keep_facing=False):
         if type(direction) is not int or direction not in range(4):
             return "Direccion no valida."
         if self.seated:
             return "Estas sentado. Primero pulsa LEVANTARSE."
-        self.facing=direction
+        if not keep_facing:
+            self.facing=direction
         dx,dz=DIRECTIONS[direction]
         if not self._valid_floor(self.x+dx,self.z+dz):
             return "No puedes atravesar muebles, paredes, objetos ni robots."
@@ -1892,7 +1913,7 @@ class HumanAvatar:
         self.z+=dz
         self.steps+=1
         self.save()
-        self._notify("mover "+ORIENTATIONS[direction])
+        self._notify("mover "+("atras" if keep_facing and direction!=(self.facing) else "adelante"))
         return "Te moviste a X="+str(self.x)+" Z="+str(self.z)+"."
 
     def sit(self):
@@ -2323,6 +2344,10 @@ class Scene3D:
         self.pg = pg
         self.yaw = 0.72
         self.pitch = 0.88
+        self.human_angle=None
+        self.human_rx=None
+        self.human_rz=None
+        self.frame_dt=.016
         self.distance = 18.2
         self.rx, self.rz = 6.0, 5.0
         self.angle = math.pi/2
@@ -2343,7 +2368,7 @@ class Scene3D:
         return ((x-(len(WORLD[0])-1)/2)*TILE, (z-(len(WORLD)-1)/2)*TILE)
 
     def orient(self, facing):
-        return ((0, math.pi/2, math.pi, -math.pi/2)[facing])
+        return facing_radians(facing)
 
     def camera_update(self, rect):
         self.rect = rect
@@ -2779,8 +2804,10 @@ class Scene3D:
         self.is_moving=moved
         self.walk+=dt*(12 if moved else 2.5)
         target=self.orient(robot.facing)
-        diff=(target-self.angle+math.pi)%(2*math.pi)-math.pi
-        self.angle+=diff*speed
+        if tint is not None and hasattr(robot,"heading"):
+            self.angle=robot.heading
+        else:
+            self.angle=rotate_towards(self.angle,target,TANK_ROTATION_RATE*dt)
         bx,bz=self.world(self.rx,self.rz)
         if posture=="lying" and tint is None:
             # Al acostarse, el bebe se apoya en la cama sin desplazar su
@@ -2850,8 +2877,22 @@ class Scene3D:
 
     def build_human(self, person, elapsed=0):
         """Esqueleto 3D articulado del USUARIO, distinto a AMBOT y a maestros."""
-        bx,bz=self.world(person.x,person.z)
-        dx,dz=DIRECTIONS[person.facing]
+        dt=max(0.0,min(.05,getattr(self,"frame_dt",.016)))
+        if self.human_angle is None:
+            self.human_angle=facing_radians(person.facing)
+        else:
+            self.human_angle=rotate_towards(
+                self.human_angle,facing_radians(person.facing),
+                TANK_ROTATION_RATE*dt)
+        if self.human_rx is None:
+            self.human_rx=float(person.x)
+            self.human_rz=float(person.z)
+        else:
+            speed=min(1.0,dt*9)
+            self.human_rx+=(person.x-self.human_rx)*speed
+            self.human_rz+=(person.z-self.human_rz)*speed
+        bx,bz=self.world(self.human_rx,self.human_rz)
+        dx,dz=math.sin(self.human_angle),-math.cos(self.human_angle)
         side=(-dz,dx)
         selected=person.joints
         def pt(s,y,front=0):
@@ -2942,7 +2983,7 @@ class Scene3D:
         old=(self.rx,self.rz,self.angle,self.walk,self.is_moving)
         for guide in training.guides:
             self.rx,self.rz=guide.x,guide.z
-            self.angle=self.orient(guide.facing)
+            self.angle=guide.heading
             self.walk=guide.walk
             self.is_moving=guide.moving
             self.build_robot(guide,0,elapsed,force_moving=guide.moving,tint=guide.color)
@@ -2972,6 +3013,7 @@ class Scene3D:
         pg.draw.rect(surface,(5,16,29),rect,border_radius=12)
         self.camera_update(rect)
         self.faces=[]
+        self.frame_dt=dt
         self.build_world(robot)
         self.build_robot(robot,dt,elapsed)
         if hasattr(robot,"training"):
