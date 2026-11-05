@@ -2062,9 +2062,9 @@ class DesktopApp:
             self.add_log("SISTEMA","Robot en pausa.",COLOR["yellow"])
             self.say("Me detengo. Espero nuevas instrucciones.",4.0)
         elif key=="reset":
-            self.auto=False
             self.hardware.stop()
             self.robot.reset()
+            self.auto=not self.smoke
             self.add_log("SISTEMA","Robot reiniciado. Memoria conservada.",COLOR["green"])
             self.say("He vuelto al inicio. ¡Vamos a descubrir!",5.0)
         else:
@@ -2237,7 +2237,7 @@ class DesktopApp:
         if not value:value="Escribe un comando y pulsa ENTER"
         self.text((x+9,inputy+12),value,13,COLOR["ink"] if self.input_value else COLOR["muted"],inner-20)
         self.draw_guides_and_skills(self.view)
-        self.text((23,h-45),"AUTO POR DEFECTO · ESPACIO PAUSA · P PREGUNTAS · F TOMAR · TAB CONVERSAR",
+        self.text((23,h-45),"AUTO POR DEFECTO · ESPACIO PAUSA · P PROGRESO · F TOMAR · TAB CONVERSAR",
                   14,COLOR["muted"])
         self.text((w-220,h-45),"ARCHMOBA / AMBOT "+APP_VERSION,14,COLOR["cyan"])
         pg.display.flip()

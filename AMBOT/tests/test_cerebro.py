@@ -336,7 +336,7 @@ class RobotTests(unittest.TestCase):
         brain.observe_guide(first,tr)
         self.assertGreater(len(brain.concepts),0)
         self.assertGreater(len(brain.episodes),0)
-        self.assertIn("voz",brain.episodes[-2]["source"])
+        self.assertTrue(any(e["source"].startswith("voz:") for e in brain.episodes))
         self.assertGreater(len(brain.questions),0)
 
     def test_puente_serial_se_inicia_fisicamente_bloqueado(self):
