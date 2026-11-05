@@ -5,5 +5,5 @@
   "app_path": "AMBOT2/AMDEV_entry.py",
   "description": "AMBOT2: observa al maestro automaticamente, pregunta nombre despues de cada accion y memoriza aprendizaje",
   "maintenance": false,
-  "release_commit": "abd7476ce6c514c7602aaaeac916eae6bcf6c83b"
+  "release_commit": "28cd865e4968be9ab23e1d6cbbe93dd63a04ed0c"
 }
