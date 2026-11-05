@@ -2,10 +2,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+import time
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from app import APP_VERSION, WORLD, Robot, Scene3D, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
+from app import APP_VERSION, WORLD, Robot, Scene3D, ArduinoBridge, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
 
 class RobotTests(unittest.TestCase):
     def setUp(self):
@@ -14,7 +15,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.4.0")
+        self.assertEqual(APP_VERSION,"0.5.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -264,6 +265,137 @@ class RobotTests(unittest.TestCase):
             self.assertGreater(gui.robot.training.attempts,0)
             gui.draw(.017)
         finally:
+            pygame.quit()
+
+    def test_cerebro_nace_sin_conocimientos_previos(self):
+        brain=self.robot.brain
+        self.assertEqual(brain.concepts,{})
+        self.assertEqual(brain.relations,{})
+        self.assertEqual(brain.number_patterns,{})
+        self.assertEqual(brain.action_models,{})
+        self.assertEqual(brain.questions,[])
+        self.assertEqual(list(brain.episodes),[])
+
+    def test_curiosidad_inicia_sin_esperar_ordenes(self):
+        brain=self.robot.brain
+        self.assertTrue(brain.sense(self.robot.training)["shapes"])
+        for _ in range(13):
+            brain.autonomous_step()
+            self.robot.training.update(.05)
+        self.assertGreater(brain.tick_count,0)
+        self.assertGreater(len(brain.questions),0)
+        self.assertGreater(len(brain.action_models),0)
+        self.assertTrue(brain.current_goal)
+        self.assertTrue(brain.pending_question())
+        self.assertTrue(brain.last_thought)
+
+    def test_preguntas_originales_y_respuestas_guardadas(self):
+        brain=self.robot.brain
+        question=brain.ask("experimento","¿Por que cambia la forma?")
+        self.assertIn("Por que",question)
+        n=len(brain.questions)
+        brain.ask("experimento","¿Por que cambia la forma?")
+        self.assertEqual(len(brain.questions),n)
+        answer=self.robot.command("responde la fuerza puede cambiar la posicion")
+        self.assertIn("Guarde tu explicacion",answer)
+        self.assertFalse(brain.pending_question())
+        self.assertIn("fuerza",brain.concepts)
+        recovered=Robot(self.robot.memory_path).brain
+        self.assertEqual(recovered.relations["respuesta:experimento"],
+                         "la fuerza puede cambiar la posicion")
+        self.assertEqual(recovered.questions[-1]["answer"],
+                         "la fuerza puede cambiar la posicion")
+
+    def test_lectura_y_conceptos_de_materias_nuevas(self):
+        brain=self.robot.brain
+        self.assertIn("palabras",self.robot.command(
+            "leer La fotosintesis convierte energia luminosa en energia quimica."))
+        self.assertEqual(brain.concepts["energia"]["n"],2)
+        self.assertEqual(brain.concepts["fotosintesis"]["n"],1)
+        self.assertGreater(brain.concepts["energia"]["neighbors"].get("quimica",0),0)
+        self.assertIn("palabras",self.robot.command(
+            "ensename La astronomia estudia los astros y sus movimientos."))
+        self.assertIn("astronomia",brain.concepts)
+        self.assertIn("experiencias",self.robot.command("cerebro"))
+        next_brain=Robot(self.robot.memory_path).brain
+        self.assertEqual(next_brain.text_samples,2)
+
+    def test_patrones_numericos_observados(self):
+        brain=self.robot.brain
+        result=self.robot.command("contar")
+        self.assertIn("Juntos cuento 3",result)
+        self.assertEqual(brain.number_patterns["2+1=3"],1)
+        self.robot.command("matematicas")
+        self.assertEqual(brain.number_patterns["2+1=3"],2)
+
+    def test_escucha_a_los_guias_y_conserva_observaciones(self):
+        tr=self.robot.training
+        tr.update(.05)
+        brain=self.robot.brain
+        first=tr.messages[0]
+        brain.observe_guide(first,tr)
+        self.assertGreater(len(brain.concepts),0)
+        self.assertGreater(len(brain.episodes),0)
+        self.assertIn("voz",brain.episodes[-2]["source"])
+        self.assertGreater(len(brain.questions),0)
+
+    def test_puente_serial_se_inicia_fisicamente_bloqueado(self):
+        link=ArduinoBridge()
+        self.assertFalse(link.armed)
+        self.assertFalse(link.connected)
+        self.assertFalse(link.send_motion("FORWARD",25,100))
+        self.assertIn("desconectado",link.status())
+
+    def test_arduino_solo_actua_con_sensores_reales_y_limites(self):
+        class SerialFake:
+            is_open=True
+            in_waiting=0
+            def __init__(self):self.writes=[]
+            def write(self,raw):self.writes.append(raw);return len(raw)
+            def close(self):self.is_open=False
+        fake=SerialFake()
+        link=ArduinoBridge()
+        link.serial=fake
+        link.port="TEST"
+        link.ready=True
+        link.telemetry={"distance_cm":-1,"battery_pct":-1}
+        link.last_rx=time.monotonic()
+        self.assertIn("NO habilitado",link.arm())
+        self.assertFalse(link.send_motion("FORWARD"))
+        link.telemetry={"distance_cm":65,"battery_pct":87}
+        link.last_rx=time.monotonic()
+        self.assertIn("habilitado",link.arm())
+        self.assertTrue(link.send_motion("FORWARD",100,600))
+        self.assertIn(b"MOVE FORWARD 35 120\n",fake.writes)
+        link.telemetry["distance_cm"]=9
+        link.poll()
+        self.assertFalse(link.armed)
+        self.assertIn(b"STOP\n",fake.writes)
+        link.close()
+        self.assertFalse(fake.is_open)
+
+    def test_ventana_real_inicia_aprendizaje_automatico(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=False)
+        try:
+            self.assertTrue(gui.auto)
+            gui.toggle_auto()
+            self.assertFalse(gui.auto)
+            self.assertFalse(gui.hardware.armed)
+            gui.toggle_auto()
+            self.assertTrue(gui.auto)
+            gui.robot.training.update(.05)
+            gui.poll_guides()
+            gui.robot.brain.autonomous_step()
+            gui.draw(.017)
+            self.assertIsNotNone(gui.last_portrait_state)
+            self.assertGreater(len(gui.robot.brain.action_models),0)
+        finally:
+            gui.hardware.close()
             pygame.quit()
 
     def test_3d_projection(self):

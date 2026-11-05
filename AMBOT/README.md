@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.4.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.5.0** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -106,3 +106,91 @@ a recostarse cuando esta junto a la cama y ya ha visto demostraciones
 suficientes. Cada ensayo puede fallar; las consecuencias y el progreso
 quedan guardados. Las rutinas de los guias permanecen independientes del
 cerebro del bebe.
+
+
+## v0.5.0 - Cerebro autonomo en el PC (Python)
+
+**AMBOT inicia su aprendizaje automaticamente al abrir la ventana.** No
+espera una orden para observar, intentar movimientos, investigar formas,
+contar objetos o preguntarse por lo desconocido. ESPACIO pausa/reanuda.
+Los tres robots guia siguen activos, pero el bebe elige experiencias
+mediante un criterio simple de curiosidad y diversidad de ensayos.
+
+- **Percepcion:** distancias, formas de objetos cercanos y consecuencias
+  basicas de movimientos, contacto y equilibrio.
+- **Memoria:** experiencias recientes, asociaciones de palabras,
+  modelos de resultados de acciones y preguntas, con persistencia en
+  \`%LOCALAPPDATA%\ARCHMOBA\AMBOT\cerebro.json\`.
+- **Curiosidad:** elige acciones poco exploradas y plantea preguntas
+  sin recibir instrucciones; tambien escucha las demostraciones.
+- **Lenguaje/lectura inicial:** observa texto proporcionado por el usuario
+  o los guias, detecta palabras y asociaciones frecuentes. Esto **no**
+  constituye comprension general, lectura audiovisual ni habla real.
+- **Matematica inicial:** distingue grupos visibles por forma y registra
+  ejemplos observados de cantidades, como 2+1=3. No generaliza
+  automaticamente toda la aritmetica.
+- **Conversacion:** permite que una persona responda preguntas y aporte
+  ejemplos de materias no previstas, como astronomia o biologia.
+  Las explicaciones son aportes del interlocutor, no hechos verificados.
+- **Experiencia:** registra si las acciones cambiaron el estado percibido,
+  para orientar futuras exploraciones. Los movimientos y la fisica siguen
+  siendo una simulacion simplificada.
+
+### Comandos del cerebro
+
+| Comando | Accion |
+|---|---|
+| \`cerebro\` | Resumen de experiencias, conceptos y preguntas |
+| \`pregunta\` | Ver una pregunta que AMBOT genero por su cuenta |
+| \`responde [explicacion]\` | Contestar la pregunta pendiente |
+| \`leer [texto]\` | Presentar material escrito para observar |
+| \`ensename [texto]\` | Aportar un ejemplo, de cualquier materia |
+| \`contar\` o \`matematicas\` | Comparar grupos de objetos visibles |
+| \`curiosidad\` | Provocar otro ensayo autonomo |
+
+### Entrenamiento autonomo sin ventana
+
+\`python AMBOT/app.py --train-steps 1000 --no-install\`
+
+Ejecuta 1.000 pasos de simulacion sin abrir una ventana y guarda
+lo aprendido. **No se ejecuta si el programa esta cerrado**: para
+practicar de forma continua, el proceso de Python debe permanecer activo.
+
+## Puente Arduino fisico, preparado para conexion USB
+
+El **cerebro y las memorias permanecen en \`AMBOT/app.py\` en el PC**.
+El Arduino actuaria como un controlador de motores y sensores.
+La conexion serie USB usa **115200 baudios** y el paquete \`pyserial\`,
+que se instala en una carpeta privada cuando el usuario pide conectar
+una placa si no esta disponible.
+
+| Comando | Accion |
+|---|---|
+| \`arduino puertos\` | Ver puertos disponibles |
+| \`arduino conectar COM4\` | Conectar por USB (cambiar COM4) |
+| \`arduino estado\` | Consultar estado y sensores |
+| \`arduino habilitar\` | Solicitar permiso de movimiento fisico |
+| \`arduino bloquear\` | Orden de parada de emergencia por serie |
+| \`arduino desconectar\` | Bloquear y desconectar |
+
+**Seguridad:** los motores estan bloqueados por defecto. Incluso tras
+conectar la placa, el cerebro requiere habilitacion explicita y
+telemetria valida y reciente (distancia >=25 cm, bateria >=20%).
+Los comandos motores estan acotados a potencia <=35% y pulsos
+<=120 ms; las perdidas de telemetria causan bloqueo. La parada por
+serie **no sustituye** un interruptor de emergencia cableado.
+
+El boceto de Arduino
+\`AMBOT/arduino/AMBOT_Puente_Seguro.ino\` admite USB, PING y STOP,
+pero **no acciona ningun motor**: reporta valores de sensores -1,
+ya que los pines y los dispositivos fisicos todavia no estan definidos.
+Por tanto, no permite el movimiento fisico hasta adaptar
+controladores, sensores, bateria, frenos, watchdog y un boton de
+parada al hardware real. Nunca sustituir lecturas reales por
+valores inventados para habilitar movimientos.
+
+**Alcance real:** aprendizaje incremental basado en reglas
+de exploracion y asociacion, no una inteligencia artificial general
+ni un modelo multimodal entrenado desde cero. Para aprender lenguaje,
+matematica avanzada, imagenes de camara, voz o manipulacion fisica
+real se necesitaran mecanismos y entrenamientos adicionales.

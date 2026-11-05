@@ -26,6 +26,8 @@ jobs:
         run: python -m compileall -q AMBOT
       - name: Probar cerebro y escena 3D
         run: python -m unittest discover -s AMBOT/tests -p "test_*.py" -v
+      - name: Entrenamiento autonomo sin ventana
+        run: python AMBOT/app.py --train-steps 30 --no-install
       - name: Abrir ventana nativa (SDL sin monitor)
         run: python AMBOT/app.py --smoke --no-install --frames 8
         env:
