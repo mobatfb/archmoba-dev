@@ -1124,6 +1124,22 @@ CHAIR_STYLES = {
     "oficina": "SILLA DE OFICINA",
     "alta": "SILLA ALTA",
 }
+ADD_CATALOG = {
+    "silla_clasica":"SILLA CLASICA",
+    "silla_oficina":"SILLA DE OFICINA",
+    "silla_alta":"SILLA ALTA",
+    "cama":"CAMA",
+    "mesa":"MESA",
+    "armario":"ARMARIO",
+    "cubo":"CUBO",
+    "pelota":"PELOTA",
+    "bloque":"BLOQUE",
+}
+MOVABLE_COLORS = {
+    "cubo":(252,119,143),
+    "pelota":(89,176,254),
+    "bloque":(244,198,117),
+}
 
 
 class FurnitureEditor:
@@ -1137,6 +1153,9 @@ class FurnitureEditor:
         self.removed_fixed = set()
         self.removed_movables = set()
         self.removed_guides = set()
+        self.extra_fixtures = []
+        self.extra_objects = {}
+        self.next_id = 1
         self.history = []
         if self.path.exists():
             self._load()
@@ -1152,9 +1171,18 @@ class FurnitureEditor:
                     })
             self.save()
 
+    @staticmethod
+    def occupied_cells(kind,x,z,orientation=0):
+        if kind=="cama":
+            return ((x,z),(x+1,z)) if orientation%2==0 else ((x,z),(x,z+1))
+        return ((x,z),)
+
     def fixture_blocks(self,x,z):
-        return any(name not in self.removed_fixed and (x,z) in cells
-                   for name,cells in ROOM_OBJECTS.items())
+        return (any(name not in self.removed_fixed and (x,z) in cells
+                    for name,cells in ROOM_OBJECTS.items())
+                or any((x,z) in self.occupied_cells(
+                    item["kind"],item["x"],item["z"],item["orientation"])
+                    for item in self.extra_fixtures))
 
     def _open_floor(self,x,z,occupied):
         return (0<=z<len(WORLD) and 0<=x<len(WORLD[z])
@@ -1222,6 +1250,73 @@ class FurnitureEditor:
         self.save()
         return True,CHAIR_STYLES[style]+" colocada en X="+str(x)+" Z="+str(z)+"."
 
+    def next_extra_name(self,base):
+        while True:
+            name=base+"_"+str(self.next_id)
+            self.next_id+=1
+            if (name not in self.robot.training.items
+                    and not any(p["id"]==name for p in self.extra_fixtures)):
+                return name
+
+    def can_place_object(self,kind,x,z,orientation=2):
+        if kind in ("silla_clasica","silla_oficina","silla_alta"):
+            return self.can_place(x,z)
+        if kind not in ADD_CATALOG:
+            return False,"Solo se puede anadir un objeto del catalogo."
+        if type(x) is not int or type(z) is not int:
+            return False,"Selecciona una casilla del suelo."
+        if type(orientation) is not int or orientation not in range(4):
+            return False,"Orientacion invalida."
+        if len(self.extra_fixtures)+len(self.extra_objects)>=70:
+            return False,"Maximo de 70 objetos adicionales."
+        cells=self.occupied_cells(kind,x,z,orientation)
+        if kind in ("cama","mesa","armario"):
+            if len(self.extra_fixtures)>=25:
+                return False,"Maximo de 25 muebles adicionales."
+        for cx,cz in cells:
+            if not self._open_floor(cx,cz,self.occupied()):
+                return False,"El sitio esta ocupado o fuera del suelo disponible."
+            if (cx,cz) in ((self.robot.x,self.robot.z),(6,5),ROOM_DOOR):
+                return False,"Reserva la salida y el espacio del robot."
+            if any(math.hypot(g.x-cx,g.z-cz)<.7
+                   for g in self.robot.training.guides):
+                return False,"Un maestro esta en ese sitio."
+            if any(math.hypot(o.x-cx,o.z-cz)<.65
+                   for o in self.robot.training.items.values()):
+                return False,"Ya hay un objeto en ese lugar."
+            if (hasattr(self.robot,"human") and not self.robot.human.seated
+                    and (self.robot.human.x,self.robot.human.z)==(cx,cz)):
+                return False,"Tu personaje ocupa esa casilla."
+        if kind in ("cama","mesa","armario"):
+            occupied=self.occupied()|set(cells)
+            if not self._route_exists(occupied):
+                return False,"El mueble bloquearia la salida."
+            if not self._route_exists(occupied,(self.robot.x,self.robot.z)):
+                return False,"AMBOT quedaria encerrado."
+        return True,"Posicion disponible."
+
+    def place_object(self,kind,x,z,orientation=2):
+        if kind in ("silla_clasica","silla_oficina","silla_alta"):
+            return self.place(kind.split("_",1)[1],x,z,orientation)
+        allowed,why=self.can_place_object(kind,x,z,orientation)
+        if not allowed:return False,why
+        identifier=self.next_extra_name(kind)
+        if kind in ("cama","mesa","armario"):
+            item={"id":identifier,"kind":kind,
+                  "x":x,"z":z,"orientation":orientation}
+            self.extra_fixtures.append(item)
+            self._push_history({"kind":"create_fixture","id":identifier})
+        else:
+            shape="ball" if kind=="pelota" else "box"
+            radius=.24 if kind=="pelota" else .22
+            obj=Movable(identifier,float(x),float(z),shape,
+                        MOVABLE_COLORS[kind],radius=radius,y=radius*TILE)
+            self.robot.training.items[identifier]=obj
+            self.extra_objects[identifier]=asdict(obj)
+            self._push_history({"kind":"create_movable","id":identifier})
+        self.save()
+        return True,ADD_CATALOG[kind]+" colocado en X="+str(x)+" Z="+str(z)+"."
+
     def _push_history(self, action):
         self.history.append(action)
         self.history=self.history[-24:]
@@ -1238,6 +1333,16 @@ class FurnitureEditor:
                     self.save()
                     return True,"Silla eliminada en X="+str(gone["x"])+" Z="+str(gone["z"])+"."
             return False,"No hay una silla en ese lugar."
+        if kind=="fixture_added":
+            item=next((f for f in self.extra_fixtures if f["id"]==key),None)
+            if item is None:return False,"Ese mueble no existe."
+            index=self.extra_fixtures.index(item)
+            self.extra_fixtures.remove(item)
+            self._push_history({
+                "kind":"remove_fixture_added","item":dict(item),"index":index
+            })
+            self.save()
+            return True,"Mueble retirado: "+item["kind"]+"."
         if kind=="fixture":
             if key not in tuple(ROOM_OBJECTS)+("ventana","alfombra"):
                 return False,"Solo puedes quitar objetos del entorno."
@@ -1277,8 +1382,14 @@ class FurnitureEditor:
                 if guide.holding==key:guide.holding=None
             snapshot=asdict(item)
             snapshot["held_by"]=""
-            self.removed_movables.add(key)
-            self._push_history({"kind":"remove_movable","item":snapshot})
+            extra=key in self.extra_objects
+            if extra:
+                self.extra_objects.pop(key,None)
+            else:
+                self.removed_movables.add(key)
+            self._push_history({
+                "kind":"remove_movable","item":snapshot,"extra":extra
+            })
             self.save()
             return True,"Objeto eliminado: "+str(key)+"."
         return False,"Solo se pueden quitar objetos, no paredes ni robots."
@@ -1319,6 +1430,33 @@ class FurnitureEditor:
             self.history.pop()
             self.save()
             return True,"Restaure: "+str(name)+"."
+        if kind=="create_fixture":
+            identifier=action.get("id")
+            item=next((f for f in self.extra_fixtures if f["id"]==identifier),None)
+            if item is None:return False,"El mueble ya no esta."
+            self.extra_fixtures.remove(item)
+            self.history.pop()
+            self.save()
+            return True,"Deshice la adicion del mueble."
+        if kind=="remove_fixture_added":
+            item=dict(action["item"])
+            ok,why=self.can_place_object(
+                item["kind"],item["x"],item["z"],item["orientation"])
+            if not ok:return False,"No se puede restaurar: "+why
+            idx=max(0,min(len(self.extra_fixtures),int(action.get("index",0))))
+            self.extra_fixtures.insert(idx,item)
+            self.history.pop()
+            self.save()
+            return True,"Mueble adicional restaurado."
+        if kind=="create_movable":
+            name=action.get("id")
+            if name not in self.extra_objects:
+                return False,"Ese objeto ya no esta."
+            self.robot.training.items.pop(name,None)
+            self.extra_objects.pop(name,None)
+            self.history.pop()
+            self.save()
+            return True,"Deshice la adicion del objeto."
         if kind=="remove_guide":
             name=action.get("name")
             if name not in self.removed_guides:
@@ -1343,7 +1481,10 @@ class FurnitureEditor:
             restored["color"]=tuple(restored["color"])
             restored["held_by"]=""
             self.robot.training.items[name]=Movable(**restored)
-            self.removed_movables.discard(name)
+            if action.get("extra"):
+                self.extra_objects[name]=asdict(self.robot.training.items[name])
+            else:
+                self.removed_movables.discard(name)
             self.history.pop()
             self.save()
             return True,"Restaure: "+str(name)+"."
@@ -1368,13 +1509,17 @@ class FurnitureEditor:
                 if g.name not in self.removed_guides]
             self.robot.training.focus=(self.robot.training.focus %
                                        max(1,len(self.robot.training.guides)))
+            try:self.next_id=max(1,int(data.get("next_id",1)))
+            except (TypeError,ValueError):self.next_id=1
             entries=data.get("history",[])
             if isinstance(entries,list):
                 self.history=[record for record in entries[-24:]
                               if isinstance(record,dict)
                               and record.get("kind") in (
                                   "place_chair","remove_chair","remove_fixture",
-                                  "remove_movable","remove_guide")]
+                                  "remove_movable","remove_guide",
+                                  "create_fixture","remove_fixture_added",
+                                  "create_movable")]
             for item in data["chairs"][:self.MAX_CHAIRS]:
                 if not isinstance(item,dict):continue
                 style,x,z,rot=(item.get("style"),item.get("x"),item.get("z"),
@@ -1387,6 +1532,39 @@ class FurnitureEditor:
                     self.chairs.append({
                         "style":style,"x":x,"z":z,"orientation":rot
                     })
+            for entry in data.get("extra_fixtures",[])[:25]:
+                if not isinstance(entry,dict):continue
+                name,kind=entry.get("id"),entry.get("kind")
+                x,z,rot=entry.get("x"),entry.get("z"),entry.get("orientation",2)
+                if not isinstance(name,str) or not re.fullmatch(r"(cama|mesa|armario)_\d+",name):
+                    continue
+                if kind not in ("cama","mesa","armario"):continue
+                valid,_=self.can_place_object(kind,x,z,rot)
+                if valid and not any(f["id"]==name for f in self.extra_fixtures):
+                    self.extra_fixtures.append({
+                        "id":name,"kind":kind,"x":x,"z":z,"orientation":rot
+                    })
+            data_objects=data.get("extra_objects",{})
+            if isinstance(data_objects,dict):
+                for name,state in list(data_objects.items())[:45]:
+                    if (not isinstance(name,str) or not isinstance(state,dict)
+                            or not re.fullmatch(r"(cubo|pelota|bloque)_\d+",name)):
+                        continue
+                    try:
+                        kind=name.split("_",1)[0]
+                        x,z=float(state["x"]),float(state["z"])
+                        if not math.isfinite(x) or not math.isfinite(z):
+                            continue
+                        if not self._open_floor(round(x),round(z),self.occupied()):
+                            continue
+                        obj=Movable(name,x,z,"ball" if kind=="pelota" else "box",
+                                    MOVABLE_COLORS[kind])
+                        obj.radius=.24 if kind=="pelota" else .22
+                        obj.y=obj.radius*TILE
+                        self.robot.training.items[name]=obj
+                        self.extra_objects[name]=asdict(obj)
+                    except (KeyError,TypeError,ValueError):
+                        continue
         except (OSError,ValueError,TypeError,AttributeError):
             pass
 
@@ -1398,6 +1576,9 @@ class FurnitureEditor:
             "removed_fixed":sorted(self.removed_fixed),
             "removed_movables":sorted(self.removed_movables),
             "removed_guides":sorted(self.removed_guides),
+            "extra_fixtures":self.extra_fixtures,
+            "extra_objects":self.extra_objects,
+            "next_id":self.next_id,
             "history":self.history[-24:]
         },ensure_ascii=False,indent=2),encoding="utf-8")
         tmp.replace(self.path)
