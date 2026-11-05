@@ -1481,7 +1481,10 @@ class FurnitureEditor:
         if kind=="remove_movable":
             snapshot=action["item"]
             name=snapshot.get("name")
-            if name not in self.removed_movables:
+            if action.get("extra"):
+                if name in self.extra_objects or name in self.robot.training.items:
+                    return False,"El objeto adicional ya esta presente."
+            elif name not in self.removed_movables:
                 return False,"El objeto ya esta presente."
             x,z=float(snapshot.get("x",0)),float(snapshot.get("z",0))
             if (not self.robot.free(round(x),round(z))
