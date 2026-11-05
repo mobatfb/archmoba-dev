@@ -504,6 +504,9 @@ class AMBOT2App(ShowBase):
             self.mouse_prev=Point2(m)
         self._camera()
         self.grasp.sync()
+        acquired=self.grasp.auto_acquire()
+        if acquired and not self.headless:
+            self.say("Contacto confirmado: "+" / ".join(acquired))
         self.lab.step(dt)
         self.grasp.auto_check()
         self.demo_recorder.record(self.teacher.pose(),dt)

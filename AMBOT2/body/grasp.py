@@ -94,8 +94,19 @@ class GraspSystem:
         ok,contacts=self.inspect(hand,obj)
         if not ok:
             return False,"No hay apoyo suficiente: necesito pulgar y dos dedos en contacto."
-        if obj.mass>sum(self._capacity(h) for h in HAND_NAMES if h in self.grabbed or h==hand):
-            return False,"Demasiada masa para esta sujecion."
+        available=[hand]
+        for other in HAND_NAMES:
+            if other==hand:
+                continue
+            if other in self.grabbed:
+                if self.grabbed[other][0]==obj.oid:
+                    available.append(other)
+            elif self.inspect(other,obj)[0]:
+                # Ambas manos hacen contacto: la capacidad puede sumarse
+                # aunque aun no se haya creado el segundo anclaje.
+                available.append(other)
+        if obj.mass>sum(self._capacity(h) for h in available):
+            return False,"Demasiada masa: hacen falta mas dedos o la otra mano."
         # Dos o mas pivotes independientes al sujetar una tabla con ambas manos.
         palm=self.palms[hand]
         world_point=palm.getPos(self.lab.root)
@@ -108,6 +119,26 @@ class GraspSystem:
         obj.np.node().setActive(True)
         self.log.append(("agarre",hand,obj.oid))
         return True,f"{hand.capitalize()}: apoyo confirmado, objeto sujeto."
+
+    def auto_acquire(self):
+        """Detectar agarre real al cerrar dedos, sin pulsar boton.
+
+        No se activa si faltan contactos opuestos. Un solo objeto puede
+        quedar sujeto por dos restricciones, una por cada mano.
+        """
+        results=[]
+        for hand in HAND_NAMES:
+            if hand in self.grabbed:
+                continue
+            for obj in self.lab.objects.values():
+                # Una vez que los dedos estan cerrados y tocando suficiente
+                # superficie, intentar el anclaje fisico.
+                if self.inspect(hand,obj)[0]:
+                    ok,msg=self.try_grasp(hand,obj)
+                    if ok:
+                        results.append(msg)
+                        break
+        return results
 
     def auto_check(self):
         """Soltar por apertura, carga excesiva o pérdida de soporte."""

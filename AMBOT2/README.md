@@ -33,7 +33,9 @@ Los datos persistentes están en:
 | R / F | Cerrar / abrir toda la mano |
 | Z / X | Retraer / extender brazos |
 | C / V | Bajar / elevar manos |
-| T / G | Intentar agarrar / soltar |\n| 3 / 4 | Cerrar / abrir ambas manos |\n| B / N | Intentar agarre simultáneo / soltar ambas |
+| T / G | Intentar agarrar / soltar |
+| 3 / 4 | Cerrar / abrir ambas manos |
+| B / N | Intentar agarre simultáneo / soltar ambas |
 | 5, 6, 7, 8 | Crear cubo, pelota, cuadro o caja |
 | O / P | Iniciar / finalizar demostración |
 | H | Intentar habilidad observada |
@@ -131,3 +133,5 @@ Panda3D sin monitor en Windows/Linux.
 - Diálogo de mayor cobertura y entrada/salida por voz.
 
 Se comprueba además el agarre simultáneo de un cuadro con dos restricciones Bullet independientes y la liberación de una sola mano.
+
+El cierre espontáneo de los dedos, si forma contacto de pinza válido, activa el agarre sin necesidad de pulsar T. El botón sigue siendo una alternativa.

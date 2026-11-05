@@ -107,6 +107,24 @@ class BasisTests(unittest.TestCase):
         grasp.release_all()
         self.assertEqual(len(lab.physics.constraints),0)
 
+    def test_agarre_por_cerrar_dedos_sin_boton(self):
+        root=NodePath("plano")
+        lab=LabWorld(root)
+        teacher=Humanoid(root,"MAESTRO",(.3,.8,.9,1),teacher=True)
+        grasp=GraspSystem(lab,teacher)
+        finger=teacher.all_fingertips()[("izquierda",1)]
+        item=lab.spawn("caja",pos=tuple(finger),size=(1,1,1),mass=1)
+        grasp.sync()
+        self.assertEqual(grasp.auto_acquire(),[])
+        teacher.hand_close("izquierda",1)
+        grasp.sync()
+        acquired=grasp.auto_acquire()
+        self.assertTrue(acquired,"Al tocar y cerrar los dedos debe sujetar")
+        self.assertIn("izquierda",grasp.held())
+        teacher.hand_close("izquierda",0)
+        grasp.auto_check()
+        self.assertEqual(grasp.held(),{})
+
     def test_pronombres_contextuales(self):
         roles=Pronouns()
         self.assertEqual(roles.resolve("yo","maestro","ambot"),["maestro"])
