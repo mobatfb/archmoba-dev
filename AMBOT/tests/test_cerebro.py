@@ -1113,7 +1113,8 @@ class RobotTests(unittest.TestCase):
             self.assertEqual((human.x,human.z),(10,5))
             self.assertEqual(human.facing,2)
             self.assertEqual(len(gui._tank_held),1)
-            gui.update_tank_controls(.37)
+            for _ in range(8):
+                gui.update_tank_controls(.05)
             self.assertEqual(human.facing,1)
             self.assertEqual((human.x,human.z),(10,5))
             gui.events()
@@ -1126,7 +1127,8 @@ class RobotTests(unittest.TestCase):
             gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_UP,
                                            unicode=""))
             self.assertEqual((human.x,human.z),(11,5))
-            gui.update_tank_controls(.38)
+            for _ in range(8):
+                gui.update_tank_controls(.05)
             self.assertEqual((human.x,human.z),(12,5))
             pygame.event.post(pygame.event.Event(pygame.KEYUP,
                                                   key=pygame.K_UP))
