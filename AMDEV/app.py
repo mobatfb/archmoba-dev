@@ -16,8 +16,8 @@ from tkinter import messagebox
 
 APP_NAME = "ArchMomaDEV"
 APP_SHORT = "AMDEV"
-APP_VERSION = "1.0.23"
-APP_UPDATE_DATE = "29/10/2026"
+APP_VERSION = "1.0.24"
+APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "16:30"
 
 REPO_OWNER = "mobatfb"
@@ -1194,16 +1194,16 @@ class AMDEVApp(tk.Tk):
                 "env": child_env,
             }
 
-            if os.name != "nt":
-                # Conservar el error real de arranque en MiniLinux/Linux.
-                log_handle = open(
-                    launch_log,
-                    "w",
-                    encoding="utf-8",
-                    buffering=1,
-                )
-                popen_kwargs["stdout"] = log_handle
-                popen_kwargs["stderr"] = subprocess.STDOUT
+            # Capturar la salida de las aplicaciones tambien en Windows.
+            # Es importante cuando la aplicacion Python termina al iniciar.
+            log_handle = open(
+                launch_log,
+                "w",
+                encoding="utf-8",
+                buffering=1,
+            )
+            popen_kwargs["stdout"] = log_handle
+            popen_kwargs["stderr"] = subprocess.STDOUT
 
             process = subprocess.Popen(
                 [_windowless_python(), str(local_app)],
@@ -1277,7 +1277,7 @@ class AMDEVApp(tk.Tk):
                 messagebox.showerror(
                     APP_SHORT,
                     (
-                        f"{app_name} no pudo iniciar en Linux/MiniLinux.\n\n"
+                        f"{app_name} no pudo iniciar en {('Windows' if os.name == 'nt' else 'Linux/MiniLinux')}.\n\n"
                         f"{details[-3500:]}"
                     ),
                     parent=self,
