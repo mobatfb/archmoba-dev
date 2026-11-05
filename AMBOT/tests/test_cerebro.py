@@ -14,7 +14,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.2.1")
+        self.assertEqual(APP_VERSION,"0.3.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -65,6 +65,55 @@ class RobotTests(unittest.TestCase):
             scene.camera_update(pygame.Rect(0,0,900,550))
             scene.build_room_details()
             self.assertGreater(len(scene.faces), 60)
+        finally:
+            pygame.quit()
+
+    def test_visor_3d_sincronizado_y_burbuja(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+        import pygame
+        from app import DesktopApp
+        gui = DesktopApp(pygame, smoke=True)
+        try:
+            gui.draw(0.016)
+            self.assertIsNotNone(gui.last_portrait_state)
+            self.assertAlmostEqual(gui.scene.angle, gui.portrait_scene.angle)
+            self.assertAlmostEqual(gui.scene.walk, gui.portrait_scene.walk)
+            self.assertEqual(gui.scene.rx, gui.portrait_scene.rx)
+            self.assertEqual(gui.scene.rz, gui.portrait_scene.rz)
+            before = gui.scene.angle
+            gui.execute("gira derecha", quiet=True)
+            gui.draw(0.045)
+            self.assertNotEqual(before, gui.scene.angle)
+            self.assertAlmostEqual(gui.scene.angle, gui.portrait_scene.angle)
+            self.assertTrue(gui.bubble_text)
+            self.assertGreater(gui.bubble_until, gui.elapsed)
+            gui.toggle_auto()
+            self.assertIn("explorando", gui.bubble_text.lower())
+            self.assertIs(gui.auto, True)
+            gui.draw(0.016)
+            self.assertEqual(gui.portrait_scene.walk, gui.scene.walk)
+        finally:
+            pygame.quit()
+
+    def test_burbuja_texto_largo_no_desborda(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        try:
+            font=gui.fonts[13]
+            lines=gui.wrap_text("Palabraextremadamentelargasinseparadores"*7,
+                                font,180,max_lines=4)
+            self.assertLessEqual(len(lines),4)
+            for line in lines:
+                self.assertLessEqual(font.size(line)[0],180)
+            gui.say("¿Qué es este lugar?")
+            self.assertIn("lugar", gui.bubble_text)
+            gui.draw(0.016)
         finally:
             pygame.quit()
 

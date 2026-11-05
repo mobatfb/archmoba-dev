@@ -20,9 +20,9 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.3.0"
 APP_UPDATE_DATE = "05/11/2026"
-APP_UPDATE_TIME = "01:40"
+APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
 ROOT = Path(__file__).resolve().parent
 USER_ROOT = (Path(os.environ["LOCALAPPDATA"]) / "ARCHMOBA" / "AMBOT"
@@ -374,6 +374,7 @@ class Scene3D:
         self.focal = 1
         self.rect = pg.Rect(0, 0, 960, 600)
         self.faces = []
+        self.is_moving = False
 
     @staticmethod
     def world(x, z):
@@ -549,12 +550,15 @@ class Scene3D:
         self.line((bx,.08,bz),(bx+dx*d,.08,bz+dz*d),COLOR["cyan"],.04)
         self.ball((bx+dx*d,.08,bz+dz*d),.09,COLOR["pink"])
 
-    def build_robot(self, robot, dt, elapsed):
+    def build_robot(self, robot, dt, elapsed, force_moving=None):
         speed=min(1,dt*9)
         oldx,oldz=self.rx,self.rz
         self.rx+=(robot.x-self.rx)*speed
         self.rz+=(robot.z-self.rz)*speed
         moved=abs(oldx-self.rx)+abs(oldz-self.rz)>.001
+        if force_moving is not None:
+            moved=bool(force_moving)
+        self.is_moving=moved
         self.walk+=dt*(12 if moved else 2.5)
         target=self.orient(robot.facing)
         diff=(target-self.angle+math.pi)%(2*math.pi)-math.pi
@@ -604,15 +608,10 @@ class Scene3D:
         bone((0,2.58,0),(0,2.78,0),COLOR["cyan"],.035)
         node((0,2.81,0),.066,COLOR["pink"])
 
-    def render(self, surface, rect, robot, dt, elapsed):
+    def paint_faces(self, surface, rect):
+        """Compartir el pintor de poligonos entre las dos camaras 3D."""
         pg=self.pg
-        pg.draw.rect(surface,(5,16,29),rect,border_radius=12)
-        self.camera_update(rect)
-        self.faces=[]
-        self.build_world(robot)
-        self.build_robot(robot,dt,elapsed)
-        # Dibujo de atras hacia delante: perspectiva de camara orbital.
-        self.faces.sort(key=lambda x:x[0],reverse=True)
+        self.faces.sort(key=lambda face:face[0],reverse=True)
         clip=surface.get_clip()
         surface.set_clip(rect)
         for _,kind,pts,c,size in self.faces:
@@ -623,7 +622,49 @@ class Scene3D:
             else:
                 pg.draw.circle(surface,c,pts,size)
         surface.set_clip(clip)
+
+    def render(self, surface, rect, robot, dt, elapsed):
+        pg=self.pg
+        pg.draw.rect(surface,(5,16,29),rect,border_radius=12)
+        self.camera_update(rect)
+        self.faces=[]
+        self.build_world(robot)
+        self.build_robot(robot,dt,elapsed)
+        self.paint_faces(surface,rect)
         pg.draw.rect(surface,COLOR["line"],rect,2,border_radius=12)
+
+    def render_portrait(self, surface, rect, robot, source_scene, elapsed):
+        """Otra camara del MISMO stickman: pose, giro y ciclo de marcha compartidos.
+
+        No aplica un segundo movimiento ni incrementa la animacion: recibe
+        las coordenadas interpoladas y el reloj de la escena principal.
+        """
+        pg=self.pg
+        self.rx,self.rz=source_scene.rx,source_scene.rz
+        self.angle=source_scene.angle
+        self.walk=source_scene.walk
+        self.is_moving=source_scene.is_moving
+        x,z=self.world(self.rx,self.rz)
+        self.target=(x,1.42,z)
+        self.yaw=1.31
+        self.pitch=.12
+        self.distance=4.9
+        pg.draw.rect(surface,(5,20,34),rect,border_radius=10)
+        clip=surface.get_clip()
+        surface.set_clip(rect)
+        # Luz ambiental y marca sobre el suelo del escenario de retrato.
+        pg.draw.ellipse(surface,(13,46,65),
+                        (rect.centerx-rect.width*.34,rect.bottom-49,rect.width*.68,33),1)
+        for i in range(5):
+            py=rect.y+40+i*(rect.height-80)/5
+            pg.draw.line(surface,(12,37,54),
+                         (rect.x+4,int(py)),(rect.right-4,int(py)),1)
+        surface.set_clip(clip)
+        self.camera_update(rect)
+        self.faces=[]
+        self.build_robot(robot,0,elapsed,force_moving=source_scene.is_moving)
+        self.paint_faces(surface,rect)
+        pg.draw.rect(surface,COLOR["line"],rect,1,border_radius=10)
 
 
 class DesktopApp:
@@ -634,15 +675,19 @@ class DesktopApp:
         if smoke:
             self.screen=pg.display.set_mode((1120,690))
         else:
-            self.screen=pg.display.set_mode((1220,735),pg.RESIZABLE)
+            self.screen=pg.display.set_mode((1320,760),pg.RESIZABLE)
         pg.display.set_caption(TITLE + " v" + APP_VERSION)
         self.clock=pg.time.Clock()
         self.fonts={i:pg.font.SysFont("Segoe UI",i) for i in (13,14,16,17,18,20,23,27)}
         self.robot=Robot()
         self.scene=Scene3D(pg)
+        self.portrait_scene=Scene3D(pg)
         self.auto=False
         self.auto_clock=0.0
         self.elapsed=0.0
+        self.bubble_text="Hola, estoy listo para conocer este mundo."
+        self.bubble_until=float("inf")
+        self.bubble_kind="hello"
         self.input_focus=False
         self.input_value=""
         self.messages=deque(maxlen=24)
@@ -652,7 +697,9 @@ class DesktopApp:
         self.mouse=(0,0)
         self.buttons={}
         self.input_rect=pg.Rect(0,0,1,1)
-        self.view=pg.Rect(20,84,800,500)
+        self.view=pg.Rect(290,83,650,565)
+        self.portrait_view=pg.Rect(20,83,250,565)
+        self.last_portrait_state=None
 
     def text(self,pos,value,size=16,color=None,max_width=None):
         font=self.fonts.get(size,self.fonts[16])
@@ -680,6 +727,98 @@ class DesktopApp:
         self.screen.blit(label,label.get_rect(center=r.center))
         self.buttons[key]=r
 
+    def say(self, text, duration=5.0, kind="normal"):
+        """Presenta una respuesta del cerebro sin modificar la logica del robot."""
+        self.bubble_text=str(text).strip() or "..."
+        self.bubble_until=self.elapsed+max(1.0,float(duration))
+        self.bubble_kind=kind
+
+    def wrap_text(self, text, font, max_width, max_lines=4):
+        """Envuelve texto por anchura, recortando palabras largas sin desbordes."""
+        lines=[]
+        current=""
+        for word in str(text).replace("\n"," ").split():
+            proposed=(current+" "+word).strip()
+            if font.size(proposed)[0]<=max_width:
+                current=proposed
+                continue
+            if current:
+                lines.append(current)
+                current=""
+            while word and font.size(word)[0]>max_width:
+                piece=""
+                for char in word:
+                    if font.size(piece+char)[0]>max_width:
+                        break
+                    piece+=char
+                if not piece:
+                    break
+                lines.append(piece)
+                word=word[len(piece):]
+            current=word
+        if current:
+            lines.append(current)
+        if not lines:
+            lines=["..."]
+        if len(lines)>max_lines:
+            lines=lines[:max_lines]
+            tail=lines[-1]
+            while tail and font.size(tail+"...")[0]>max_width:
+                tail=tail[:-1]
+            lines[-1]=tail+"..."
+        return lines
+
+    def draw_character_viewer(self, rect):
+        """Visor 3D de primer plano enlazado al cuerpo de la escena central."""
+        pg=self.pg
+        self.panel(rect)
+        self.text((rect.x+14,rect.y+12),"PERSONAJE / EN VIVO",16,COLOR["cyan"])
+        status="AUTO" if self.auto else ("EN MOVIMIENTO" if self.scene.is_moving else "EN ESPERA")
+        self.text((rect.x+14,rect.y+36),"● "+status,13,COLOR["green"] if self.auto else COLOR["muted"])
+
+        # Reservar franja superior para la burbuja sin tapar al stickman.
+        camera=pg.Rect(rect.x+12,rect.y+124,rect.width-24,
+                       max(190,rect.height-201))
+        self.portrait_scene.render_portrait(
+            self.screen,camera,self.robot,self.scene,self.elapsed)
+        self.last_portrait_state=(
+            self.portrait_scene.rx,self.portrait_scene.rz,
+            self.portrait_scene.angle,self.portrait_scene.walk)
+        self.text((rect.x+18,rect.bottom-63),"CÁMARA / SEGUIMIENTO",13,COLOR["muted"])
+        self.text((rect.x+18,rect.bottom-40),
+                  "DIRECCIÓN: "+ORIENTATIONS[self.robot.facing],14,COLOR["ink"])
+        self.text((rect.x+18,rect.bottom-22),
+                  "BATERÍA "+str(round(self.robot.battery))+"%",13,
+                  COLOR["yellow"] if self.robot.battery<15 else COLOR["cyan"])
+
+    def draw_speech_bubble(self, left):
+        """Burbuja en el panel del personaje, con cola hacia su cámara."""
+        if not self.bubble_text or self.elapsed>=self.bubble_until:
+            return
+        pg=self.pg
+        font=self.fonts[13]
+        padding=12
+        width=left.width-24
+        lines=self.wrap_text(self.bubble_text,font,width-2*padding,4)
+        line_height=17
+        bubble_h=max(36,len(lines)*line_height+19)
+        rect=pg.Rect(left.x+12,left.y+60,width,bubble_h)
+        if rect.bottom>left.y+138:
+            rect.y=left.y+138-bubble_h
+        fill=(235,248,255)
+        outline=COLOR["pink"] if self.bubble_kind=="alert" else COLOR["cyan"]
+        pg.draw.rect(self.screen,fill,rect,border_radius=11)
+        pg.draw.rect(self.screen,outline,rect,1,border_radius=11)
+        tip=(left.centerx,rect.bottom+8)
+        pg.draw.polygon(self.screen,fill,[
+            (left.centerx-9,rect.bottom-1),
+            (left.centerx+9,rect.bottom-1),tip,
+        ])
+        for i,line in enumerate(lines):
+            self.screen.blit(
+                font.render(line,True,(25,46,63)),
+                (rect.x+padding,rect.y+9+i*line_height))
+
     def add_log(self,who,text,color=None):
         for part in str(text).splitlines():
             if not part:
@@ -697,14 +836,18 @@ class DesktopApp:
             self.auto=False
         if not quiet:self.add_log("TU",command,COLOR["ink"])
         answer=self.robot.command(command)
+        if answer:
+            mood="alert" if "SEGURIDAD" in answer.upper() else "normal"
+            self.say(answer,5.5 if not quiet else 3.4,mood)
         if not quiet:self.add_log("AMBOT",answer,COLOR["green"])
-        self.scene.walk=self.scene.walk
 
     def toggle_auto(self):
         self.auto=not self.auto
         self.auto_clock=.45
+        message="Estoy explorando por mi cuenta." if self.auto else "He detenido mi exploración."
         self.add_log("SISTEMA","Autonomo " + ("activado" if self.auto else "detenido") + ".",
                      COLOR["green"] if self.auto else COLOR["yellow"])
+        self.say(message,duration=4.0)
 
     def handle_button(self,key):
         if key=="auto":
@@ -712,10 +855,12 @@ class DesktopApp:
         elif key=="stop":
             self.auto=False
             self.add_log("SISTEMA","Robot en pausa.",COLOR["yellow"])
+            self.say("Me detengo. Espero nuevas instrucciones.",4.0)
         elif key=="reset":
             self.auto=False
             self.robot.reset()
             self.add_log("SISTEMA","Robot reiniciado. Memoria conservada.",COLOR["green"])
+            self.say("He vuelto al inicio. ¡Vamos a descubrir!",5.0)
         else:
             actions={
                 "forward":"avanza","left":"gira izquierda","right":"gira derecha",
@@ -757,7 +902,7 @@ class DesktopApp:
         for e in pg.event.get():
             if e.type==pg.QUIT:return False
             if e.type==pg.VIDEORESIZE:
-                self.screen=pg.display.set_mode((max(980,e.w),max(650,e.h)),pg.RESIZABLE)
+                self.screen=pg.display.set_mode((max(1120,e.w),max(650,e.h)),pg.RESIZABLE)
             if e.type==pg.KEYDOWN:self.keydown(e)
             if e.type==pg.MOUSEBUTTONDOWN and e.button==1:
                 if self.input_rect.collidepoint(e.pos):
@@ -789,10 +934,19 @@ class DesktopApp:
         self.text((23,22),"AMBOT",27,COLOR["ink"])
         self.text((132,30),"ARCHMOBA ROBOTICS  /  LABORATORIO 3D",14,COLOR["muted"])
         self.text((w-200,30),"PYTHON NATIVO  ·  v"+APP_VERSION,14,COLOR["cyan"])
-        side_w=max(320,min(355,w//3))
-        self.view=pg.Rect(20,83,w-side_w-53,h-146)
-        side=pg.Rect(self.view.right+15,83,w-self.view.right-35,h-146)
+        # Tres paneles: visor de personaje / mundo 3D / cerebro.
+        gap=13
+        left_w=max(225,min(265,int(w*.205)))
+        right_w=max(315,min(355,int(w*.27)))
+        left=pg.Rect(20,83,left_w,h-146)
+        center_x=left.right+gap
+        center_w=w-center_x-right_w-gap-20
+        self.view=pg.Rect(center_x,83,center_w,h-146)
+        side=pg.Rect(self.view.right+gap,83,right_w,h-146)
         self.scene.render(surf,self.view,self.robot,dt,self.elapsed)
+        self.portrait_view=left
+        self.draw_character_viewer(left)
+        self.draw_speech_bubble(left)
         # Vista e indicadores superpuestos.
         stamp=pg.Rect(self.view.x+13,self.view.y+12,262,29)
         pg.draw.rect(surf,COLOR["panel"],stamp,border_radius=7)
@@ -854,9 +1008,9 @@ class DesktopApp:
         if len(value)>38:value="…"+value[-37:]
         if not value:value="Escribe un comando y pulsa ENTER"
         self.text((x+9,inputy+12),value,13,COLOR["ink"] if self.input_value else COLOR["muted"],inner-20)
-        self.text((23,h-45),"W / A / S / D  ·  E EXPLORAR  ·  ESPACIO AUTO  ·  R REINICIAR  ·  TAB ESCRIBIR",
+        self.text((23,h-45),"W/A/S/D · E EXPLORAR · ESPACIO AUTO · R REINICIAR · TAB ESCRIBIR",
                   14,COLOR["muted"])
-        self.text((w-230,h-45),"ARCHMOBA  /  AMBOT 0.2",14,COLOR["cyan"])
+        self.text((w-222,h-45),"ARCHMOBA  /  AMBOT "+APP_VERSION,14,COLOR["cyan"])
         pg.display.flip()
 
     def run(self,frames=0):
@@ -871,8 +1025,11 @@ class DesktopApp:
                 if self.auto_clock>=.57:
                     self.auto_clock=0
                     action=self.robot.explore()
+                    self.say(self.robot.last_decision,duration=2.5,
+                             kind="alert" if "bateria" in self.robot.last_decision.lower() else "normal")
                     if self.robot.battery<1.5:
                         self.auto=False
+                        self.say("Batería baja, necesito detenerme.",duration=6.0,kind="alert")
                     if self.robot.steps%4==0:
                         self.add_log("AUTO",action,COLOR["cyan"])
             self.draw(dt)
