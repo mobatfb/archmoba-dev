@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT bebe aprende observando a 3 robots guia: caminar, agarrar, mover objetos y descansar",
-  "version": "0.4.0",
+  "description": "Robot bebe autonomo con curiosidad, preguntas, memoria persistente y puente Arduino seguro",
+  "version": "0.5.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "4300fddb6ae31088fb426fd3bd36f1016480d2a6",
+  "release_commit": "df77746b4991121c8abf30ec79f963383bfe15ed",
   "maintenance": false
 }
