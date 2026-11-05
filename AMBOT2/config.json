@@ -5,5 +5,5 @@
   "app_path": "AMBOT2/AMDEV_entry.py",
   "description": "AMBOT2: 30 articulaciones y 10 dedos por robot, menu expandible, agarre, aprendiz y movimiento tanque",
   "maintenance": false,
-  "release_commit": "8be4bcaf5a5557c961458265ff207773aa25bd12"
+  "release_commit": "d2a6ade86faab080185fbacd51cb835bd832c618"
 }
