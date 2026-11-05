@@ -7,11 +7,13 @@ retroalimentacion explicita. El movimiento es todavia cinematico.
 import json
 import math
 from pathlib import Path
+from body.robot import JOINT_NAMES, JOINT_LIMITS, clamp
 
 CHANNELS=(
     "dx","dy","forward","heading","reach","spread","altura",
     "izquierda_0","izquierda_1","izquierda_2","izquierda_3","izquierda_4",
-    "derecha_0","derecha_1","derecha_2","derecha_3","derecha_4"
+    "derecha_0","derecha_1","derecha_2","derecha_3","derecha_4",
+    *(f"joint_{name}" for name in JOINT_NAMES)
 )
 
 
@@ -26,6 +28,9 @@ def channels(p):
     for hand in ("izquierda","derecha"):
         for i,v in enumerate(p["fingers"][hand]):
             out[f"{hand}_{i}"]=float(v)
+    angles=p.get("joints",{})
+    for name in JOINT_NAMES:
+        out[f"joint_{name}"]=float(angles.get(name,0.0))
     return out
 
 
@@ -116,6 +121,12 @@ class ObservationLearner:
                 max(0,min(1,p["fingers"][hand][i]+d[f"{hand}_{i}"]*factor))
                 for i in range(5)
             ]
+        for name in JOINT_NAMES:
+            key=f"joint_{name}"
+            low,high=JOINT_LIMITS[name]
+            p.setdefault("joints",{})[name]=clamp(
+                p.get("joints",{}).get(name,0.0)+d.get(key,0.0)*factor,
+                low,high)
         p["reach"]=max(0,min(1,p["reach"]+d["reach"]*factor))
         p["spread"]=max(0,min(1,p["spread"]+d["spread"]*factor))
         p["hand_height"]=max(-1,min(1,p["hand_height"]+d["altura"]*factor))
