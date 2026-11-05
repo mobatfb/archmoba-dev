@@ -721,6 +721,44 @@ class RobotTests(unittest.TestCase):
             gui.hardware.close()
             pygame.quit()
 
+    def test_click_quitar_mesa_en_interfaz_y_deshacer(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            gui.draw(.016)
+            gui.handle_button("editor_remove")
+            gui.draw(.016)
+            px,pz=gui.scene.world(4,4)
+            p=gui.scene.project((px,1.04,pz))
+            point=(int(p[0]),int(p[1]))
+            self.assertTrue(gui.view.collidepoint(point))
+            target=gui.scene.pick_object(point,gui.robot)
+            self.assertEqual(target["key"],"mesa")
+            pygame.event.post(pygame.event.Event(
+                pygame.MOUSEBUTTONDOWN,button=1,pos=point))
+            pygame.event.post(pygame.event.Event(
+                pygame.MOUSEBUTTONUP,button=1,pos=point))
+            gui.events()
+            self.assertIn("mesa",gui.robot.furniture.removed_fixed)
+            self.assertTrue(gui.robot.free(4,4))
+            self.assertTrue(any(
+                e["source"]=="cambio_entorno"
+                for e in gui.robot.brain.episodes))
+            gui.draw(.016)
+            gui.handle_button("editor_undo")
+            self.assertNotIn("mesa",gui.robot.furniture.removed_fixed)
+            self.assertFalse(gui.robot.free(4,4))
+            gui.handle_button("editor_done")
+            self.assertFalse(gui.editor_mode)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
     def test_3d_projection(self):
         import pygame
         pygame.init()

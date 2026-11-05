@@ -2535,6 +2535,10 @@ class DesktopApp:
             else:
                 ok,message=self.robot.furniture.remove(target["kind"],target["key"])
             self.editor_hint=message
+            if ok:
+                self.robot.brain.episode("cambio_entorno",
+                                         "Objeto retirado",message)
+                self.robot.brain.save()
             self.add_log("ENTORNO",message,
                          COLOR["green"] if ok else COLOR["yellow"])
             self.say(message,4.4,"normal" if ok else "alert")
