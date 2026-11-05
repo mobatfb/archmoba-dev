@@ -12,7 +12,7 @@ import json
 import math
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import os
 import subprocess
 import sys
@@ -23,7 +23,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -516,6 +516,9 @@ class TrainingLab:
         if baby.posture=="lying":
             baby.posture="standing"
             return "Estoy volviendo a incorporarme."
+        if (hasattr(baby,"furniture") and
+                "cama" in baby.furniture.removed_fixed):
+            return "No hay cama para practicar el descanso."
         if self.distance(baby.x,baby.z,4.5,7)>2.6:
             return "No encuentro una superficie cercana donde acostarme."
         success=self.rng.random()<.16+.80*self.confidence["descansar"]
@@ -1109,13 +1112,16 @@ CHAIR_STYLES = {
 
 
 class FurnitureEditor:
-    """Sillas persistentes, con ubicaciones elegidas por el usuario."""
+    """Muebles y objetos editables, con eliminacion reversible y persistente."""
     MAX_CHAIRS = 30
 
     def __init__(self, robot, path):
         self.robot = robot
         self.path = Path(path)
         self.chairs = []
+        self.removed_fixed = set()
+        self.removed_movables = set()
+        self.history = []
         if self.path.exists():
             self._load()
         else:
@@ -1130,9 +1136,13 @@ class FurnitureEditor:
                     })
             self.save()
 
+    def fixture_blocks(self,x,z):
+        return any(name not in self.removed_fixed and (x,z) in cells
+                   for name,cells in ROOM_OBJECTS.items())
+
     def _open_floor(self,x,z,occupied):
         return (0<=z<len(WORLD) and 0<=x<len(WORLD[z])
-                and WORLD[z][x]=="." and (x,z) not in FURNITURE_CELLS
+                and WORLD[z][x]=="." and not self.fixture_blocks(x,z)
                 and (x,z) not in occupied)
 
     def _route_exists(self,occupied,origin=(6,5),target=ROOM_DOOR):
@@ -1190,24 +1200,133 @@ class FurnitureEditor:
         if not valid:return False,msg
         if type(orientation) is not int or orientation not in range(4):
             return False,"Direccion de la silla no valida."
-        self.chairs.append({
-            "style":style,"x":x,"z":z,"orientation":orientation
-        })
+        chair={"style":style,"x":x,"z":z,"orientation":orientation}
+        self.chairs.append(chair)
+        self._push_history({"kind":"place_chair","chair":dict(chair)})
         self.save()
         return True,CHAIR_STYLES[style]+" colocada en X="+str(x)+" Z="+str(z)+"."
 
+    def _push_history(self, action):
+        self.history.append(action)
+        self.history=self.history[-24:]
+
+    def remove(self, kind, key):
+        """Quitar un elemento existente, sin permitir borrar robots/estructura."""
+        if kind=="chair":
+            for index,chair in enumerate(self.chairs):
+                if (chair["x"],chair["z"])==key:
+                    gone=self.chairs.pop(index)
+                    self._push_history({
+                        "kind":"remove_chair","index":index,"chair":dict(gone)
+                    })
+                    self.save()
+                    return True,"Silla eliminada en X="+str(gone["x"])+" Z="+str(gone["z"])+"."
+            return False,"No hay una silla en ese lugar."
+        if kind=="fixture":
+            if key not in tuple(ROOM_OBJECTS)+("ventana","alfombra"):
+                return False,"Solo puedes quitar objetos del entorno."
+            if key in self.removed_fixed:
+                return False,"Ese objeto ya se quito."
+            self.removed_fixed.add(key)
+            if key=="cama" and self.robot.posture=="lying":
+                self.robot.posture="standing"
+            self._push_history({"kind":"remove_fixture","name":key})
+            self.save()
+            return True,"Objeto eliminado: "+str(key)+"."
+        if kind=="movable":
+            if key not in ("cubo","pelota","bloque"):
+                return False,"Ese objeto no se puede quitar."
+            item=self.robot.training.items.pop(key,None)
+            if item is None:
+                return False,"Ese objeto ya se quito."
+            if item.held_by=="AMBOT":
+                self.robot.holding=None
+                self.robot.reach=0.0
+            for guide in self.robot.training.guides:
+                if guide.holding==key:guide.holding=None
+            snapshot=asdict(item)
+            snapshot["held_by"]=""
+            self.removed_movables.add(key)
+            self._push_history({"kind":"remove_movable","item":snapshot})
+            self.save()
+            return True,"Objeto eliminado: "+str(key)+"."
+        return False,"Solo se pueden quitar objetos, no paredes ni robots."
+
     def undo(self):
-        if not self.chairs:
-            return False,"No hay sillas adicionales que quitar."
-        item=self.chairs.pop()
-        self.save()
-        return True,"Quite la silla X="+str(item["x"])+" Z="+str(item["z"])+"."
+        """Deshacer la ultima modificacion; sigue disponible tras reiniciar."""
+        if not self.history:
+            return False,"No hay modificaciones por deshacer."
+        action=self.history[-1]
+        kind=action.get("kind")
+        if kind=="place_chair":
+            chair=action["chair"]
+            for idx,c in enumerate(self.chairs):
+                if (c["x"],c["z"])==(chair["x"],chair["z"]):
+                    self.chairs.pop(idx)
+                    self.history.pop()
+                    self.save()
+                    return True,"Deshice la colocacion de la silla."
+            return False,"La silla ya no esta en esa posicion."
+        if kind=="remove_chair":
+            chair=action["chair"]
+            allowed,reason=self.can_place(chair["x"],chair["z"])
+            if not allowed:return False,"No puedo restaurar la silla: "+reason
+            index=max(0,min(len(self.chairs),int(action.get("index",len(self.chairs)))))
+            self.chairs.insert(index,dict(chair))
+            self.history.pop()
+            self.save()
+            return True,"Silla restaurada."
+        if kind=="remove_fixture":
+            name=action.get("name")
+            if name not in self.removed_fixed:
+                return False,"Ese mueble ya esta presente."
+            cells=ROOM_OBJECTS.get(name,())
+            if any((x,z)==(self.robot.x,self.robot.z) or (x,z) in self.occupied()
+                   for x,z in cells):
+                return False,"Libera el lugar para restaurar el mueble."
+            self.removed_fixed.discard(name)
+            self.history.pop()
+            self.save()
+            return True,"Restaure: "+str(name)+"."
+        if kind=="remove_movable":
+            snapshot=action["item"]
+            name=snapshot.get("name")
+            if name not in self.removed_movables:
+                return False,"El objeto ya esta presente."
+            x,z=float(snapshot.get("x",0)),float(snapshot.get("z",0))
+            if (not self.robot.free(round(x),round(z))
+                    or any(math.hypot(item.x-x,item.z-z)<.6
+                           for item in self.robot.training.items.values())):
+                return False,"Libera el espacio para restaurar el objeto."
+            restored=dict(snapshot)
+            restored["color"]=tuple(restored["color"])
+            restored["held_by"]=""
+            self.robot.training.items[name]=Movable(**restored)
+            self.removed_movables.discard(name)
+            self.history.pop()
+            self.save()
+            return True,"Restaure: "+str(name)+"."
+        return False,"No reconozco esa modificacion."
 
     def _load(self):
         try:
             data=json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(data,dict) or not isinstance(data.get("chairs"),list):
                 return
+            allowed=set(ROOM_OBJECTS)|{"ventana","alfombra"}
+            self.removed_fixed=set(str(n) for n in data.get("removed_fixed",[])
+                                   if str(n) in allowed)
+            self.removed_movables=set(str(n) for n in data.get("removed_movables",[])
+                                      if str(n) in ("cubo","pelota","bloque"))
+            for n in self.removed_movables:
+                self.robot.training.items.pop(n,None)
+            entries=data.get("history",[])
+            if isinstance(entries,list):
+                self.history=[record for record in entries[-24:]
+                              if isinstance(record,dict)
+                              and record.get("kind") in (
+                                  "place_chair","remove_chair","remove_fixture",
+                                  "remove_movable")]
             for item in data["chairs"][:self.MAX_CHAIRS]:
                 if not isinstance(item,dict):continue
                 style,x,z,rot=(item.get("style"),item.get("x"),item.get("z"),
@@ -1227,7 +1346,10 @@ class FurnitureEditor:
         self.path.parent.mkdir(parents=True,exist_ok=True)
         tmp=self.path.with_name(self.path.name+".tmp")
         tmp.write_text(json.dumps({
-            "version":1,"chairs":self.chairs
+            "version":2,"chairs":self.chairs,
+            "removed_fixed":sorted(self.removed_fixed),
+            "removed_movables":sorted(self.removed_movables),
+            "history":self.history[-24:]
         },ensure_ascii=False,indent=2),encoding="utf-8")
         tmp.replace(self.path)
 
@@ -1268,7 +1390,10 @@ class Robot:
             0 <= z < len(WORLD)
             and 0 <= x < len(WORLD[z])
             and WORLD[z][x] == "."
-            and (x, z) not in FURNITURE_CELLS
+            and (not hasattr(self,"furniture")
+                 and (x,z) not in FURNITURE_CELLS
+                 or hasattr(self,"furniture")
+                 and not self.furniture.fixture_blocks(x,z))
             and (not hasattr(self,"furniture") or not self.furniture.blocks(x,z))
         )
 
@@ -1475,7 +1600,7 @@ class Robot:
         if cmd in ("muebles","sillas"):
             return ("Sillas adicionales: "+str(len(self.furniture.chairs))+
                     ". Usa el boton + AÑADIR.")
-        if cmd in ("deshacer silla","quitar ultima silla"):
+        if cmd in ("deshacer silla","quitar ultima silla","deshacer objeto","deshacer cambio"):
             return self.furniture.undo()[1]
         if cmd == "memoria":
             return ", ".join(k + "=" + v for k, v in self.facts.items()) or "No tengo recuerdos guardados."
