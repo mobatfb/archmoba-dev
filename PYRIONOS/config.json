@@ -2,12 +2,12 @@
   "app": "PYRION OS",
   "name": "PYRION OS",
   "description": "Escritorio inteligente de Linux basado en Python, con almacenamiento persistente",
-  "version": "0.3.7",
+  "version": "0.4.0",
   "app_path": "PYRIONOS/app.py",
   "desktop_path": "PYRIONOS/desktop.py",
   "catalog_path": "PYRIONOS/guide.csv",
-  "desktop_sha256": "beba7e618b42221c78cd7c7fa29d7343551b9061930ececb8d38bb6ef47f5a98",
+  "desktop_sha256": "e27cb456d2002e148f02731bf490acef14280027943d1d7f3818854e88718dc0",
   "catalog_sha256": "988543921747406e50422e9ae2eab90561760978b908a7fbdc454cd3d7c7b3c4",
-  "release_commit": "72e531fd8580c15955fa50b27e6b1952713453e5",
+  "release_commit": "0abd80346193019443b34698c2e751d752e0b666",
   "maintenance": false
 }
