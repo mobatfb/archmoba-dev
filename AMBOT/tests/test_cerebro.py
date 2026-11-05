@@ -3,10 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 import time
+import math
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from app import APP_VERSION, WORLD, Robot, Scene3D, ArduinoBridge, CHAIR_STYLES, ADD_CATALOG, HUMAN_JOINTS, VALIDATED_INTENTS, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
+from app import APP_VERSION, DIRECTIONS, WORLD, Robot, Scene3D, ArduinoBridge, CHAIR_STYLES, ADD_CATALOG, HUMAN_JOINTS, VALIDATED_INTENTS, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
 
 class RobotTests(unittest.TestCase):
     def setUp(self):
@@ -15,7 +16,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.8.0")
+        self.assertEqual(APP_VERSION,"0.9.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -952,7 +953,11 @@ class RobotTests(unittest.TestCase):
         try:
             e=pygame.event.Event(pygame.KEYDOWN,key=pygame.K_LEFT,unicode="")
             gui.keydown(e)
-            self.assertEqual((self.robot.human.x,self.robot.human.z),(9,5))
+            self.assertEqual((self.robot.human.x,self.robot.human.z),(10,5))
+            self.assertEqual(self.robot.human.facing,2)
+            gui.keydown(pygame.event.Event(
+                pygame.KEYDOWN,key=pygame.K_UP,unicode=""))
+            self.assertEqual((self.robot.human.x,self.robot.human.z),(10,6))
             self.assertEqual((self.robot.x,self.robot.z),(6,5))
             gui.handle_button("avatar_sit")
             self.assertFalse(gui.robot.human.seated)
@@ -1041,6 +1046,234 @@ class RobotTests(unittest.TestCase):
         self.assertTrue(any(
             e["source"]=="observacion_humano"
             for e in Robot(self.robot.memory_path).brain.episodes))
+
+    def test_control_tanque_avatar_gira_sin_deslizar(self):
+        h=self.robot.human
+        start=(h.x,h.z)
+        self.assertEqual(h.facing,3)
+        msg=h.turn("derecha")
+        self.assertIn("Giraste",msg)
+        self.assertEqual((h.x,h.z),start)
+        self.assertEqual(h.facing,0)
+        msg=h.turn("izquierda")
+        self.assertIn("Giraste",msg)
+        self.assertEqual((h.x,h.z),start)
+        self.assertEqual(h.facing,3)
+        self.assertIn("moviste",h.advance())
+        self.assertEqual((h.x,h.z),(9,5))
+        self.assertEqual(h.facing,3)
+        self.assertIn("moviste",h.advance(reverse=True))
+        self.assertEqual((h.x,h.z),start)
+        self.assertEqual(h.facing,3)
+        self.assertEqual(Robot(self.robot.memory_path).human.facing,3)
+
+    def test_control_tanque_avatar_no_depende_de_camara(self):
+        import pygame
+        pygame.init()
+        try:
+            camera=Scene3D(pygame)
+            camera.yaw=math.pi
+            camera.pitch=.65
+            h=self.robot.human
+            facing=h.facing
+            self.assertEqual(facing,3)
+            self.assertIn("moviste",h.advance(reverse=True))
+            self.assertEqual((h.x,h.z),(11,5))
+            self.assertEqual(h.facing,facing)
+            camera.yaw=-math.pi/2
+            self.assertIn("moviste",h.advance())
+            self.assertEqual((h.x,h.z),(10,5))
+            self.assertEqual(h.facing,facing)
+        finally:
+            pygame.quit()
+
+    def test_control_tanque_avatar_sentado_bloquea_conduccion(self):
+        h=self.robot.human
+        h.x,h.z=6,3
+        self.assertIn("sentaste",h.sit())
+        old=(h.x,h.z,h.facing)
+        self.assertIn("sentado",h.turn("derecha"))
+        self.assertIn("sentado",h.advance())
+        self.assertIn("sentado",h.advance(reverse=True))
+        self.assertEqual((h.x,h.z,h.facing),old)
+        self.assertIn("levantaste",h.stand())
+
+    def test_controles_tanque_en_teclado_y_repeticion(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            human=gui.robot.human
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_LEFT,
+                                           unicode=""))
+            self.assertEqual((human.x,human.z),(10,5))
+            self.assertEqual(human.facing,2)
+            self.assertEqual(len(gui._tank_held),1)
+            gui.update_tank_controls(.37)
+            self.assertEqual(human.facing,1)
+            self.assertEqual((human.x,human.z),(10,5))
+            gui.events()
+            pygame.event.post(pygame.event.Event(pygame.KEYUP,
+                                                  key=pygame.K_LEFT))
+            gui.events()
+            self.assertNotIn(pygame.K_LEFT,gui._tank_held)
+            gui.update_tank_controls(.5)
+            self.assertEqual(human.facing,1)
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_UP,
+                                           unicode=""))
+            self.assertEqual((human.x,human.z),(11,5))
+            gui.update_tank_controls(.38)
+            self.assertEqual((human.x,human.z),(12,5))
+            pygame.event.post(pygame.event.Event(pygame.KEYUP,
+                                                  key=pygame.K_UP))
+            gui.events()
+            gui.update_tank_controls(1)
+            self.assertEqual((human.x,human.z),(12,5))
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_controles_tanque_wasd_ambot_sin_strafe(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        gui.robot.training.confidence["caminar"]=1.0
+        try:
+            robot=gui.robot
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_a,
+                                           unicode=""))
+            self.assertEqual((robot.x,robot.z),(6,5))
+            self.assertEqual(robot.facing,0)
+            pygame.event.post(pygame.event.Event(pygame.KEYUP,key=pygame.K_a))
+            gui.events()
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_d,
+                                           unicode=""))
+            self.assertEqual((robot.x,robot.z),(6,5))
+            self.assertEqual(robot.facing,1)
+            pygame.event.post(pygame.event.Event(pygame.KEYUP,key=pygame.K_d))
+            gui.events()
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_w,
+                                           unicode=""))
+            self.assertEqual((robot.x,robot.z),(7,5))
+            self.assertEqual(robot.facing,1)
+            pygame.event.post(pygame.event.Event(pygame.KEYUP,key=pygame.K_w))
+            gui.events()
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_s,
+                                           unicode=""))
+            self.assertEqual((robot.x,robot.z),(6,5))
+            self.assertEqual(robot.facing,1)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_teachers_tank_giran_antes_de_moverse_sin_diagonal(self):
+        from app import facing_radians, TANK_ROTATION_RATE
+        tr=self.robot.training
+        guide=tr.guides[0]
+        guide.x,guide.z=5.0,5.0
+        guide.facing=0
+        guide.heading=facing_radians(0)
+        self.assertFalse(tr._tank_guide_step(guide,(7.0,6.0),.05))
+        self.assertAlmostEqual(guide.x,5.0)
+        self.assertAlmostEqual(guide.z,5.0)
+        self.assertTrue(guide.turning)
+        self.assertAlmostEqual(guide.heading,TANK_ROTATION_RATE*.05)
+        history=[]
+        for _ in range(240):
+            prior=(guide.x,guide.z)
+            done=tr._tank_guide_step(guide,(7.0,6.0),.05)
+            moved_x=abs(guide.x-prior[0])>1e-8
+            moved_z=abs(guide.z-prior[1])>1e-8
+            self.assertFalse(moved_x and moved_z)
+            if moved_x or moved_z:
+                self.assertFalse(guide.turning)
+                vector=(guide.x-prior[0],guide.z-prior[1])
+                facing=DIRECTIONS[guide.facing]
+                self.assertGreater(vector[0]*facing[0]+vector[1]*facing[1],0)
+            history.append((guide.x,guide.z))
+            if done:break
+        self.assertTrue(done)
+        self.assertAlmostEqual(guide.x,7.0)
+        self.assertAlmostEqual(guide.z,6.0)
+        self.assertEqual(guide.facing,2)
+
+    def test_tres_maestros_marchan_sin_movimientos_laterales(self):
+        training=self.robot.training
+        previous={g.name:(g.x,g.z) for g in training.guides}
+        for _ in range(750):
+            training.update(.05)
+            for guide in training.guides:
+                x,z=previous[guide.name]
+                dx,dz=guide.x-x,guide.z-z
+                self.assertFalse(abs(dx)>.001 and abs(dz)>.001,
+                                 (guide.name,dx,dz))
+                if abs(dx)+abs(dz)>.00001:
+                    orient=DIRECTIONS[guide.facing]
+                    self.assertGreaterEqual(dx*orient[0]+dz*orient[1],-1e-6)
+                previous[guide.name]=(guide.x,guide.z)
+        self.assertGreater(training.observations,8)
+
+    def test_teclas_de_tanque_se_detienen_al_abrir_chat_o_editor(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_UP,
+                                           unicode=""))
+            self.assertEqual(len(gui._tank_held),1)
+            gui.input_focus=True
+            gui.update_tank_controls(.5)
+            self.assertEqual(gui._tank_held,{})
+            gui.input_focus=False
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_RIGHT,
+                                           unicode=""))
+            self.assertEqual(len(gui._tank_held),1)
+            gui.toggle_editor()
+            self.assertEqual(gui._tank_held,{})
+            before=self.robot.human.facing
+            gui.keydown(pygame.event.Event(pygame.KEYDOWN,key=pygame.K_RIGHT,
+                                           unicode=""))
+            self.assertEqual(self.robot.human.facing,before)
+            self.assertEqual(gui._tank_held,{})
+            gui.toggle_editor()
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_render_tank_orientacion_del_avatar_y_maestro(self):
+        import pygame
+        pygame.init()
+        try:
+            camera=Scene3D(pygame)
+            camera.camera_update(pygame.Rect(0,0,900,550))
+            human=self.robot.human
+            camera.build_human(human)
+            angle=camera.human_angle
+            human.turn("derecha")
+            camera.frame_dt=.05
+            camera.build_human(human)
+            self.assertNotEqual(camera.human_angle,angle)
+            self.assertNotEqual(camera.human_angle,
+                                camera.orient(human.facing))
+            guide=self.robot.training.guides[0]
+            guide.heading=.45
+            camera.rx,camera.rz=guide.x,guide.z
+            camera.build_robot(guide,0,0,tint=guide.color)
+            self.assertAlmostEqual(camera.angle,guide.heading)
+        finally:
+            pygame.quit()
 
     def test_3d_projection(self):
         import pygame

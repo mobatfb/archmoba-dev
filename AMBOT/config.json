@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT autonómo: avatar humano articulado, eliminar maestros, añadir muebles y objetos y aprender frases con validación",
-  "version": "0.8.0",
+  "description": "AMBOT: controles de tanque estilo Resident Evil 1 para avatar, bebe y maestros; autonomia y editor 3D",
+  "version": "0.9.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "2d805cdf65ee1c8d58be8d62b0940157e190ac17",
+  "release_commit": "c599ee3bd17b4ec0393ffdda57784892098b3350",
   "maintenance": false
 }

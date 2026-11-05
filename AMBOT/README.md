@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.8.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.9.0** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -343,3 +343,36 @@ corporales en \`cerebro.json\`. Al verte caminar recibe una señal
 basica para practicar; si te ve sentarte puede formularte una
 pregunta. Este mecanismo es una primera simulacion de observacion,
 **no significa que sepa copiar cualquier movimiento articulado**.
+
+
+## v0.9.0 - Movimiento tipo tanque al estilo Resident Evil 1 (PC)
+
+Los controles son **relativos a la direccion que mira cada personaje**,
+y no a la camara. Se puede mantener pulsada la tecla para repetir el
+movimiento con una cadencia controlada. **No existe movimiento lateral
+(strafe)**: a izquierda y derecha se gira sobre el propio eje.
+
+| Accion | Tu avatar | AMBOT bebe |
+|---|---|---|
+| Avanzar hacia donde mira | Flecha **ARRIBA** | **W** |
+| Retroceder sin cambiar su mirada | Flecha **ABAJO** | **S** |
+| Girar en su sitio a la izquierda | Flecha **IZQUIERDA** | **A** |
+| Girar en su sitio a la derecha | Flecha **DERECHA** | **D** |
+
+El giro es de 90 grados por pulsacion, con **interpolacion visual** de
+la orientacion al estilo tanque. Mientras la tecla se mantenga presionada,
+los giros y pasos se repiten automaticamente. El desplazamiento sigue
+empleando las casillas y colisiones del simulador (en lugar de una fisica
+de animacion libre o de motor de juego AAA). La camara gira con el raton
+independientemente del cuerpo. El modo de editor y la caja de chat
+desactivan los controles sostenidos para evitar movimientos accidentales.
+
+**ANDA, DEX y SOMA** tambien han cambiado su mecanica de locomocion:
+antes de ir a cada destino, giran sin avanzar hasta orientarse; despues
+caminan de frente por tramos en los ejes X/Z. No se deslizan lateralmente
+ni interpolan en diagonal. Sus demostraciones siguen siendo automaticas
+y se pueden eliminar/restaurar desde el editor.
+
+Sigue funcionando la autonomia del bebe, su memoria y el puente Arduino
+con bloqueo fisico por defecto. Los controles de tanque en esta version
+son una simulacion en el PC; no habilitan los motores reales.
