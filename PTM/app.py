@@ -29,9 +29,9 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_TITLE = "PTM - Buscador y lanzador de herramientas"
-APP_VERSION = "1.0.79"
-APP_UPDATE_DATE = "30/10/2026"
-APP_UPDATE_TIME = "15:27"
+APP_VERSION = "1.0.80"
+APP_UPDATE_DATE = "04/11/2026"
+APP_UPDATE_TIME = "18:53"
 SEARCH_MAX_LENGTH = 40
 
 REPO_OWNER = "mobatfb"
@@ -1449,7 +1449,11 @@ class PTMApp(tk.Tk):
         by_key = self._tool_by_state_key()
         usage = self.user_state.get("usage", {})
 
+        all_tools = sorted(self.tools, key=lambda tool: tool["name"].lower())
         self._command_cache = {
+            "%todos%": all_tools,
+            "%all%": all_tools,
+            "%catalogo%": all_tools,
             "%recents%": [
                 by_key[key]
                 for key in self.user_state.get("recents", [])
@@ -1971,6 +1975,8 @@ class PTMApp(tk.Tk):
         if self.guide_path.is_file() and self._local_guide_git_sha() == remote_sha:
             return False
         text = self._download_guide_text()
+        # No reemplazar un catalogo valido por uno con columnas desplazadas.
+        self._parse_guide_text(text)
         data = text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
         calculated = hashlib.sha1(f"blob {len(data)}\0".encode("ascii") + data).hexdigest()
         if calculated != remote_sha:
@@ -2075,13 +2081,20 @@ class PTMApp(tk.Tk):
                         continue
 
                     if error is not None:
-                        self._show_catalog_refreshing_state()
-                        self.hint.configure(
-                            text=(
-                                "No se pudo verificar el catálogo remoto. "
-                                "Vuelve a pulsar Enter."
+                        # Fallos de red no deben ocultar herramientas del cache.
+                        self.reload_tools(local_only=True, refresh=False)
+                        if self.tools:
+                            self.show_all_results = True
+                            self._apply_search_layout(expanded=True)
+                            self.refresh_results()
+                            self.hint.configure(
+                                text="Sin conexion a GitHub; mostrando catalogo local."
                             )
-                        )
+                        else:
+                            self._show_catalog_refreshing_state()
+                            self.hint.configure(
+                                text="Sin acceso remoto ni catalogo local valido."
+                            )
                         continue
 
                     # Siempre reconstruir self.tools desde el guide verificado,
@@ -2102,8 +2115,79 @@ class PTMApp(tk.Tk):
         except tk.TclError:
             pass
 
+    @staticmethod
+    def _parse_guide_text(text):
+        """Valida el catalogo antes de aceptarlo; nunca omite tools en silencio."""
+        required = (
+            "id", "slug", "titulo", "descripcion", "keywords", "categoria",
+            "version", "modo", "tipo_archivo", "ruta", "archivo_principal",
+            "dependencias", "activo", "fecha_registro", "visitas", "autor",
+        )
+        reader = csv.DictReader(io.StringIO(text), delimiter=";")
+        if tuple(reader.fieldnames or ()) != required:
+            raise ValueError(
+                "guide.csv tiene encabezados distintos de los 16 campos esperados."
+            )
+
+        entries = []
+        seen_ids, seen_paths, seen_slugs = set(), set(), set()
+        for line_number, raw in enumerate(reader, start=2):
+            if not raw or all(
+                not (str(value).strip() if isinstance(value, str) else value)
+                for value in raw.values()
+            ):
+                continue
+            if None in raw:
+                raise ValueError(
+                    f"guide.csv, fila {line_number}: columnas extra; "
+                    "usa comillas CSV para el punto y coma de una descripcion."
+                )
+            if any(value is None for value in raw.values()):
+                raise ValueError(
+                    f"guide.csv, fila {line_number}: faltan campos."
+                )
+            row = {key: value.strip() for key, value in raw.items()}
+            path = row["ruta"].replace("\\", "/")
+            components = path.split("/")
+            file_type = row["tipo_archivo"].lower()
+            if (
+                len(components) < 2 or components[0] != "tools"
+                or any(part in ("", ".", "..") for part in components)
+                or file_type not in ("py", "zip")
+                or not path.lower().endswith("." + file_type)
+            ):
+                raise ValueError(
+                    f"guide.csv, fila {line_number}: ruta o tipo invalido: {path!r}"
+                )
+            if (
+                not row["id"] or not row["slug"] or not row["titulo"]
+                or not row["archivo_principal"]
+                or row["modo"].lower() not in ("integrado", "externo")
+                or row["activo"].lower()
+                not in ("0", "1", "true", "false", "si", "sí", "no", "yes", "activo", "inactivo")
+                or not re.fullmatch(r"\d+(?:\.\d+){1,3}", row["version"])
+                or re.fullmatch(r"\d+(?:\.\d+)+", row["categoria"])
+            ):
+                raise ValueError(
+                    f"guide.csv, fila {line_number}: metadatos mal ubicados "
+                    "(revisa version, categoria, modo y activo)."
+                )
+            if (
+                row["id"] in seen_ids
+                or row["slug"].lower() in seen_slugs
+                or path.lower() in seen_paths
+            ):
+                raise ValueError(
+                    f"guide.csv, fila {line_number}: id, slug o ruta duplicados."
+                )
+            seen_ids.add(row["id"])
+            seen_slugs.add(row["slug"].lower())
+            seen_paths.add(path.lower())
+            entries.append(row)
+        return entries
+
     def _load_guide_rows(self, local_only=False):
-        """Usa caché local y comprueba SHA remoto si procede."""
+        """Usa la copia validada; sincroniza cambios sin perder el cache."""
         if not local_only:
             try:
                 self._sync_guide_if_needed()
@@ -2112,10 +2196,7 @@ class PTMApp(tk.Tk):
         if not self.guide_path.is_file():
             self._sync_guide_if_needed()
         text = self.guide_path.read_text(encoding="utf-8-sig")
-        reader = csv.DictReader(io.StringIO(text), delimiter=";")
-        if not reader.fieldnames or "ruta" not in reader.fieldnames:
-            raise ValueError("guide.csv no contiene la columna 'ruta'.")
-        return list(reader)
+        return self._parse_guide_text(text)
 
     def _ensure_tool_local(
         self, tool, force_remote=False, is_current=None, stage_only=False,
@@ -2350,7 +2431,21 @@ class PTMApp(tk.Tk):
         if not normalized_query:
             return []
 
-        tokens = normalized_query.split()
+        if normalized_query in ("todos", "todas", "catalogo", "herramientas", "listar herramientas"):
+            return list(self._command_cache.get("%todos%", []))
+
+        # Las palabras auxiliares no deben ocultar resultados en frases libres:
+        # "quiero abrir visor iso linux" debe funcionar igual que "visor iso".
+        filler = {
+            "quiero", "necesito", "podrias", "puedes", "por", "favor",
+            "abrir", "abre", "ejecuta", "ejecutar", "usar", "buscame",
+            "un", "una", "el", "la", "los", "las", "de", "del",
+            "para", "con", "en", "mi", "mis", "me", "al", "a", "que",
+        }
+        tokens = [word for word in normalized_query.split() if word not in filler]
+        if not tokens:
+            tokens = normalized_query.split()
+        normalized_query = " ".join(tokens)
         ranked = []
 
         for tool in self.tools:
@@ -2437,7 +2532,7 @@ class PTMApp(tk.Tk):
             self.results_scroll.pack_forget()
             self.results_container.configure(height=1)
             self.results_canvas.configure(height=1)
-            self.hint.configure(text=f"{len(self.tools)} herramienta(s) disponibles")
+            self.hint.configure(text=f"{len(self.tools)} herramienta(s) disponibles · escribe %todos% para ver todas")
             return
 
         if not matches:
