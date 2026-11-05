@@ -3148,8 +3148,8 @@ class DesktopApp:
         if cell is None:
             self.editor_hint="Haz clic en una casilla visible del suelo."
             return False
-        ok,message=self.robot.furniture.place(
-            self.editor_style,*cell,self.editor_orientation)
+        ok,message=self.robot.furniture.place_object(
+            self.editor_choice,*cell,self.editor_orientation)
         self.editor_hint=message
         self.add_log("ENTORNO",message,COLOR["green"] if ok else COLOR["yellow"])
         self.say(message,4.4,"normal" if ok else "alert")
@@ -3200,7 +3200,8 @@ class DesktopApp:
              for dx,dz in ((-span,-span),(-span,span),
                            (span,span),(span,-span))]
         if any(pt is None for pt in pts):return
-        ok,reason=self.robot.furniture.can_place(x,z)
+        ok,reason=self.robot.furniture.can_place_object(
+            self.editor_choice,x,z,self.editor_orientation)
         color=COLOR["green"] if ok else COLOR["pink"]
         pg.draw.polygon(self.screen,color,
                         [(int(p[0]),int(p[1])) for p in pts],3)
@@ -3216,53 +3217,73 @@ class DesktopApp:
 
     def draw_editor_palette(self):
         pg=self.pg
-        self.button("editor_toggle",
-                    "✕ CERRAR" if self.editor_mode else "＋ AÑADIR",
+        self.button("editor_toggle","✕ CERRAR" if self.editor_mode else "＋ AÑADIR",
                     self.view.right-302,self.view.y+12,142,29,
                     self.editor_mode and self.editor_action=="add")
-        self.button("editor_remove","− QUITAR",
-                    self.view.right-152,self.view.y+12,139,29,
+        self.button("editor_remove","− QUITAR",self.view.right-152,
+                    self.view.y+12,139,29,
                     self.editor_mode and self.editor_action=="remove")
         if not self.editor_mode:
             self.editor_rect=pg.Rect(0,0,1,1)
             return
         w=self.portrait_view.width-20
-        r=pg.Rect(self.portrait_view.x+10,self.portrait_view.y+140,w,267)
+        r=pg.Rect(self.portrait_view.x+10,self.portrait_view.y+140,w,311)
         self.editor_rect=r
         self.panel(r,fill=(6,26,43),border=COLOR["cyan"],radius=11)
-        self.text((r.x+12,r.y+8),"EDITOR DE OBJETOS",16,COLOR["cyan"])
-        self.button("editor_mode_add","+ AÑADIR",r.x+10,r.y+34,(r.width-26)//2,29,
+        self.text((r.x+12,r.y+8),"EDITOR DEL ENTORNO",16,COLOR["cyan"])
+        half=(r.width-29)//2
+        self.button("editor_mode_add","+ AÑADIR",r.x+10,r.y+34,half,29,
                     self.editor_action=="add")
         self.button("editor_mode_remove","− QUITAR",
-                    r.x+16+(r.width-26)//2,r.y+34,(r.width-26)//2,29,
+                    r.x+19+half,r.y+34,half,29,
                     self.editor_action=="remove")
         if self.editor_action=="add":
-            self.text((r.x+12,r.y+70),"Selecciona la silla:",13,COLOR["muted"])
-            options=(("clasica","SILLA CLASICA"),
-                     ("oficina","SILLA DE OFICINA"),
-                     ("alta","SILLA ALTA"))
-            for i,(key,label) in enumerate(options):
-                self.button("editor_style_"+key,
-                            ("✓ " if self.editor_style==key else "  ")+label,
-                            r.x+10,r.y+89+i*29,r.width-20,26,
-                            self.editor_style==key)
+            tabs=(("sillas","SILLAS"),("muebles","MUEBLES"),("objetos","OBJETOS"))
+            tab_w=(r.width-26)//3
+            for i,(name,label) in enumerate(tabs):
+                self.button("editor_category_"+name,label,
+                            r.x+10+i*(tab_w+3),r.y+72,tab_w,27,
+                            self.editor_category==name)
+            self.text((r.x+12,r.y+106),"Elige modelo y lugar en el suelo",13,
+                      COLOR["muted"],r.width-20)
+            if self.editor_category=="sillas":
+                opts=(("silla_clasica","SILLA CLASICA","editor_style_clasica"),
+                      ("silla_oficina","SILLA DE OFICINA","editor_style_oficina"),
+                      ("silla_alta","SILLA ALTA","editor_style_alta"))
+            elif self.editor_category=="muebles":
+                opts=(("cama","CAMA","editor_kind_cama"),
+                      ("mesa","MESA","editor_kind_mesa"),
+                      ("armario","ARMARIO","editor_kind_armario"))
+            else:
+                opts=(("cubo","CUBO","editor_kind_cubo"),
+                      ("pelota","PELOTA","editor_kind_pelota"),
+                      ("bloque","BLOQUE","editor_kind_bloque"))
+            for i,(kind,label,key) in enumerate(opts):
+                self.button(key,
+                            ("✓ " if self.editor_choice==kind else "  ")+label,
+                            r.x+10,r.y+125+i*29,r.width-20,26,
+                            self.editor_choice==kind)
             self.button("editor_rotate",
                         "↻ GIRAR 90° · "+ORIENTATIONS[self.editor_orientation],
-                        r.x+10,r.y+181,r.width-20,28)
+                        r.x+10,r.y+219,r.width-20,28)
         else:
-            self.text((r.x+12,r.y+80),"Clic en el objeto 3D",14,COLOR["pink"])
-            self.text((r.x+12,r.y+106),"Sillas, cama, mesa, armario",13,
+            self.text((r.x+12,r.y+80),"Clic en objeto 3D para quitarlo",13,
+                      COLOR["pink"],r.width-24)
+            self.text((r.x+12,r.y+111),"Sillas, camas, mesas, armarios",13,
                       COLOR["muted"],r.width-24)
-            self.text((r.x+12,r.y+128),"Cubo, pelota, bloque",13,
+            self.text((r.x+12,r.y+139),"Cubos, pelotas y bloques",13,
                       COLOR["muted"],r.width-24)
-            self.text((r.x+12,r.y+159),"Maestros: ANDA DEX SOMA",13,
+            self.text((r.x+12,r.y+165),"Maestros ANDA · DEX · SOMA",13,
                       COLOR["yellow"],r.width-24)
-            self.text((r.x+12,r.y+184),"AMBOT / paredes protegidos",13,
+            self.text((r.x+12,r.y+193),"AMBOT y tu avatar protegidos",13,
+                      COLOR["green"],r.width-24)
+            self.text((r.x+12,r.y+223),"DESHACER recupera cambios",13,
                       COLOR["muted"],r.width-24)
+        half=(r.width-30)//2
         self.button("editor_undo","↶ DESHACER",
-                    r.x+10,r.y+222,(r.width-30)//2,32)
+                    r.x+10,r.y+269,half,32)
         self.button("editor_done","✓ LISTO",
-                    r.x+20+(r.width-30)//2,r.y+222,(r.width-30)//2,32,True)
+                    r.x+20+half,r.y+269,half,32,True)
         self.text((self.view.x+15,self.view.bottom-160),
                   self.editor_hint or "Selecciona un objeto.",13,
                   COLOR["yellow"],self.view.width-30)
@@ -3312,12 +3333,27 @@ class DesktopApp:
                 self.editor_hint="Haz clic directamente sobre el objeto para quitarlo."
         elif key in ("editor_mode_add","editor_mode_remove"):
             self.editor_action="add" if key.endswith("add") else "remove"
-            self.editor_hint=("Elige una silla y haz clic en el suelo."
+            self.editor_hint=("Elige un objeto y haz clic en el suelo."
                               if self.editor_action=="add"
                               else "Haz clic directamente sobre el objeto que quieras quitar.")
+        elif key.startswith("editor_category_"):
+            self.editor_action="add"
+            self.editor_category=key[len("editor_category_"):]
+            self.editor_choice={"sillas":"silla_clasica","muebles":"cama",
+                                "objetos":"pelota"}.get(
+                                    self.editor_category,"silla_clasica")
+            self.editor_hint="Selecciona modelo y haz clic en el suelo."
+        elif key.startswith("editor_kind_"):
+            choice=key[len("editor_kind_"):]
+            if choice in ADD_CATALOG:
+                self.editor_action="add"
+                self.editor_choice=choice
+                self.editor_hint="Haz clic en el suelo para anadir "+ADD_CATALOG[choice]+"."
         elif key.startswith("editor_style_"):
             self.editor_action="add"
+            self.editor_category="sillas"
             self.editor_style=key[len("editor_style_"):]
+            self.editor_choice="silla_"+self.editor_style
             self.editor_hint="Haz clic en el suelo para colocar "+CHAIR_STYLES[self.editor_style]+"."
         elif key=="editor_rotate":
             self.editor_action="add"
@@ -3582,6 +3618,8 @@ class DesktopApp:
             if frames and count>=frames:
                 running=False
         self.robot.brain.save()
+        self.robot.human.save()
+        self.robot.furniture.save()
         self.hardware.close()
         self.pg.quit()
 
