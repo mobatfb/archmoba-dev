@@ -1595,6 +1595,171 @@ class FurnitureEditor:
         tmp.replace(self.path)
 
 
+VALIDATED_INTENTS={
+    "sentarme":"Sentar a mi personaje",
+    "levantarme":"Levantar a mi personaje",
+    "saludar":"Hacer que mi personaje salude",
+    "agacharme":"Agachar a mi personaje",
+    "observar":"Pedir a AMBOT que observe",
+    "contar":"Pedir a AMBOT comparar cantidades",
+    "explorar":"Pedir a AMBOT que explore",
+    "preguntas":"Ver las preguntas de AMBOT",
+    "progreso":"Ver que ha aprendido AMBOT",
+    "dato":"Guardar como dato aportado por ti",
+    "pregunta":"Guardar una pregunta para investigar",
+}
+
+
+class ValidatedLanguage:
+    """Interpretacion inicial con aprendizaje supervisado por el usuario.
+
+    Solo aprende frases confirmadas/corregidas; nunca ejecuta codigo arbitrario
+    ni convierte una conjetura sobre un texto en conocimiento validado.
+    """
+    def __init__(self,robot,path):
+        self.robot=robot
+        self.path=Path(path)
+        self.confirmed={}
+        self.pending=None
+        self.wait_correction=False
+        self._load()
+
+    def _load(self):
+        try:
+            data=json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data,dict):return
+            examples=data.get("confirmed",{})
+            if not isinstance(examples,dict):return
+            for phrase,item in list(examples.items())[:800]:
+                if (isinstance(phrase,str) and isinstance(item,dict)
+                        and item.get("intent") in VALIDATED_INTENTS):
+                    self.confirmed[phrase]={"intent":item["intent"],
+                                            "text":str(item.get("text",phrase))[:300]}
+        except (OSError,ValueError,TypeError,AttributeError):
+            pass
+
+    def save(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        tmp=self.path.with_name(self.path.name+".tmp")
+        tmp.write_text(json.dumps({
+            "version":1,"confirmed":self.confirmed
+        },ensure_ascii=False,indent=2),encoding="utf-8")
+        tmp.replace(self.path)
+
+    def guess(self,phrase):
+        words=set(re.findall(r"[a-z]+",normalize(phrase)))
+        text=normalize(phrase)
+        if any(token in text for token in ("sient","sentar","sentarme","sentado")):
+            return "sentarme"
+        if any(token in text for token in ("levant","ponme de pie","pararme")):
+            return "levantarme"
+        if "saluda" in text or "hola" in words:
+            return "saludar"
+        if any(token in text for token in ("agacha","inclina mi cuerpo")):
+            return "agacharme"
+        if any(token in text for token in ("cuanto","cuantos","cuenta","sumar")):
+            return "contar"
+        if "observa" in text or "mira" in words:
+            return "observar"
+        if any(token in text for token in ("explora","investiga","camina")):
+            return "explorar"
+        if "pregunta" in text:
+            return "preguntas"
+        if any(token in text for token in ("aprendiste","sabes","progreso")):
+            return "progreso"
+        if "?" in phrase or "¿" in phrase:
+            return "pregunta"
+        return "dato"
+
+    def propose(self,phrase):
+        phrase=str(phrase).strip()[:300]
+        key=normalize(phrase)
+        if not key:return "Escribe lo que quieres comunicarme."
+        if key in self.confirmed:
+            entry=self.confirmed[key]
+            return self.perform(entry["intent"],phrase,already=True)
+        intent=self.guess(phrase)
+        self.pending={"text":phrase,"key":key,"intent":intent}
+        self.wait_correction=False
+        return ("Creo que quieres: "+VALIDATED_INTENTS[intent]+
+                ". ¿ENTENDI BIEN? Pulsa SI, NO o CORREGIR.")
+
+    def perform(self,intent,phrase,already=False):
+        if intent=="sentarme":
+            return self.robot.human.sit()
+        if intent=="levantarme":
+            return self.robot.human.stand()
+        if intent=="saludar":
+            return self.robot.human.pose("saludar")
+        if intent=="agacharme":
+            return self.robot.human.pose("agacharse")
+        if intent=="observar":
+            return self.robot.command("observar")
+        if intent=="contar":
+            return self.robot.command("contar")
+        if intent=="explorar":
+            return self.robot.command("explora")
+        if intent=="preguntas":
+            return self.robot.command("pregunta")
+        if intent=="progreso":
+            return self.robot.command("cerebro")
+        if intent=="pregunta":
+            key="respuesta:usuario:"+normalize(phrase)[:68]
+            stored=self.robot.brain.relations.get(key)
+            if stored:
+                return "Me explicaste: "+stored
+            self.robot.brain.ask("usuario:"+normalize(phrase)[:60],phrase)
+            return ("No conozco una respuesta comprobada todavia. "
+                    "Puedes enseñarme escribiendo RESPONDE seguido de tu explicacion.")
+        if intent=="dato":
+            learned=self.robot.brain.learn_text(phrase,"texto_validado")
+            self.robot.brain.relations["dato_validado:"+normalize(phrase)[:80]]=phrase
+            self.robot.brain.save()
+            return ("Lo he guardado como informacion VALIDADA POR TI, "
+                    "no como un hecho verificado externamente. "+learned)
+        return "No encontre una accion permitida."
+
+    def confirm(self):
+        if not self.pending:return "No tengo ninguna interpretacion pendiente."
+        if self.wait_correction:
+            return "Indica CORRIGE seguido de la accion correcta."
+        record=self.pending
+        self.pending=None
+        if len(self.confirmed)>=800 and record["key"] not in self.confirmed:
+            first=next(iter(self.confirmed))
+            self.confirmed.pop(first,None)
+        self.confirmed[record["key"]]={
+            "intent":record["intent"],"text":record["text"]
+        }
+        self.save()
+        self.robot.brain.episode("validacion_usuario",record["text"],
+                                 record["intent"])
+        self.robot.brain.save()
+        return "Confirmado. Aprendi la frase. "+self.perform(
+            record["intent"],record["text"])
+
+    def reject(self):
+        if not self.pending:return "No tengo ninguna interpretacion pendiente."
+        self.wait_correction=True
+        return ("No memorizare esa interpretacion. Escribe CORRIGE seguido de: "+
+                ", ".join(VALIDATED_INTENTS)+".")
+
+    def correct(self,meaning):
+        if not self.pending:return "No hay una frase pendiente para corregir."
+        intent=normalize(meaning).strip()
+        aliases={"sentar":"sentarme","sentarse":"sentarme",
+                 "levantar":"levantarme","levantarme":"levantarme",
+                 "saludo":"saludar","dato nuevo":"dato",
+                 "ensenar":"dato","enseñar":"dato","explicacion":"dato",
+                 "preguntar":"pregunta","consultar":"pregunta",
+                 "observar":"observar","cuenta":"contar"}
+        intent=aliases.get(intent,intent)
+        if intent not in VALIDATED_INTENTS:
+            return "No reconozco esa accion. Opciones: "+", ".join(VALIDATED_INTENTS)+"."
+        self.pending["intent"]=intent
+        self.wait_correction=False
+        return self.confirm()
+
 # Tu personaje tiene control manual y es independiente del cerebro de AMBOT.
 HUMAN_JOINTS={
     "cabeza":"CABEZA", "torso":"TORSO",
@@ -1761,6 +1926,8 @@ class Robot:
         self.brain = LearningBrain(self,self.memory_path.with_name("cerebro.json"))
         self.furniture = FurnitureEditor(self,self.memory_path.with_name("muebles.json"))
         self.human = HumanAvatar(self,self.memory_path.with_name("avatar.json"))
+        self.language = ValidatedLanguage(
+            self,self.memory_path.with_name("validaciones.json"))
 
     def reset(self):
         if hasattr(self,"training"):
@@ -3097,7 +3264,21 @@ class DesktopApp:
             self.auto=False
             self.hardware.stop()
         if not quiet:self.add_log("TU",command,COLOR["ink"])
-        answer=self.robot.command(command)
+        language=self.robot.language
+        if clean in ("si","sí","correcto","confirmar","validar"):
+            answer=language.confirm()
+        elif clean in ("no","incorrecto","rechazar"):
+            answer=language.reject()
+        elif clean.startswith("corrige "):
+            answer=language.correct(command[len("corrige "):])
+        elif clean=="corrige":
+            answer=language.reject()
+        elif clean.startswith("hablar "):
+            answer=language.propose(command[len("hablar "):])
+        else:
+            answer=self.robot.command(command)
+            if answer.startswith("No entiendo ese comando"):
+                answer=language.propose(command)
         if answer:
             mood="alert" if "SEGURIDAD" in answer.upper() else "normal"
             self.say(answer,5.5 if not quiet else 3.4,mood)
