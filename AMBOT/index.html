@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#06111f">
+  <title>AMBOT | Laboratorio robótico 3D</title>
+  <style>
+    :root{--base:#060e1a;--panel:#0b1928;--panel2:#0f2336;--edge:#244057;--cyan:#5ad9f5;--muted:#8ba5b9;--white:#effaff;--pink:#ff73a9;--green:#71edca;--yellow:#ffcf7d}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Segoe UI,system-ui,-apple-system,sans-serif;color:var(--white);background:#040b15}
+    body{background:radial-gradient(ellipse at 22% -5%,#102f4c 0%,transparent 47%),linear-gradient(135deg,#06111f,#050b14 65%)}
+    button,input{font:inherit}button{cursor:pointer;transition:background .15s,border-color .15s,transform .15s}button:active{transform:scale(.975)}
+    .shell{max-width:1600px;margin:0 auto;padding:19px 22px 24px;min-height:100vh;display:flex;flex-direction:column;gap:16px}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 2px 6px;border-bottom:1px solid #1d3448}
+    .brand{display:flex;align-items:center;gap:13px}.emblem{width:44px;height:44px;display:grid;place-items:center;border:1px solid #4fc6e5;border-radius:13px;background:linear-gradient(145deg,#164964,#0a1929);box-shadow:0 0 30px #05bce91a;color:#80f4ff;font-size:22px}
+    .brandtext strong{font-size:23px;letter-spacing:3.6px;font-weight:850;line-height:1.15;display:block}.brandtext small{font-size:10px;letter-spacing:2px;color:#77a8c5;font-weight:700}
+    .topright{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pill{display:flex;align-items:center;gap:8px;border:1px solid #28445c;border-radius:99px;padding:8px 12px;font-size:10px;letter-spacing:1px;color:#aac6d9;font-weight:750;background:#0b2032aa}.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 12px #41e9c4}.dot.off{background:#ff8080;box-shadow:0 0 12px #f44}
+    .layout{display:grid;grid-template-columns:minmax(0,1fr) 328px;gap:15px;min-height:620px;flex:1}
+    .scene{position:relative;min-width:0;min-height:620px;border:1px solid #2d5065;border-radius:18px;overflow:hidden;background:#071422;box-shadow:0 22px 65px #0006,inset 0 0 70px #053a6920}
+    .scene:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#0615266b 0%,transparent 35%,transparent 73%,#06152645),linear-gradient(180deg,#020a1875,transparent 21%,transparent 84%,#020815bf);pointer-events:none}
+    #ambotCanvas{display:block;width:100%;height:100%;min-height:620px;outline:none;touch-action:none;cursor:grab;background:#061322}#ambotCanvas:active{cursor:grabbing}
+    .sceneHead,.sceneFoot,.sceneTag,.compass{position:absolute;z-index:2;pointer-events:none}
+    .sceneHead{left:26px;top:24px}.eyebrow{font-size:10px;color:var(--cyan);font-weight:800;letter-spacing:2.4px}.sceneHead h1{margin:6px 0 4px;font-size:22px;letter-spacing:.45px;font-weight:750}.sceneHead p{margin:0;color:#91b8cb;font-size:12px;line-height:1.5}
+    .sceneTag{right:21px;top:20px;padding:9px 11px;border:1px solid #2e5873;background:#0b2033a8;border-radius:7px;color:#8ee6f2;font-size:10px;font-weight:800;letter-spacing:1.15px}
+    .compass{right:24px;bottom:84px;width:72px;height:72px;display:grid;place-items:center;border:1px solid #284c61;border-radius:100%;background:#08192acd}
+    .compass .directions{font-size:10px;color:#65cfe1;position:absolute;top:5px;font-weight:800}.compass .needle{font-size:29px;line-height:1;display:block;color:#82f1ff;transition:transform .2s}
+    .sceneFoot{left:0;right:0;bottom:0;display:flex;gap:17px;justify-content:space-between;align-items:center;padding:19px 25px;background:linear-gradient(transparent,#091829ec)}
+    .footL{display:flex;flex-wrap:wrap;gap:10px 20px;font-size:10px;color:#a2bfd2;letter-spacing:.4px}.key{display:inline-flex;border:1px solid #547086;border-radius:4px;padding:2px 5px;color:#e4f7ff;margin-right:4px;background:#22384b91;font-weight:700}
+    .hud{position:absolute;z-index:2;top:120px;left:26px;pointer-events:none;display:flex;flex-direction:column;gap:9px}.hud .small{padding:7px 9px;max-width:230px;background:#071c2baf;border-left:2px solid #1ca9c8;font-size:10px;color:#acd4e7;letter-spacing:.5px}
+    .hud b{color:white}
+    .side{display:flex;flex-direction:column;gap:12px;min-width:0}
+    .panel{border:1px solid #263e50;background:linear-gradient(145deg,#10243a,#0b1828 75%);border-radius:15px;padding:18px 17px;box-shadow:0 16px 40px #0003}
+    .paneltop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:19px}.paneltitle{font-size:12px;letter-spacing:1.45px;font-weight:850}.tiny{font-size:9px;color:#6997b2;letter-spacing:1.4px;font-weight:800}
+    .statusrow{display:flex;align-items:baseline;justify-content:space-between;margin-top:12px}.statuslabel{color:#9cb7cc;font-size:11px}.statusvalue{font-size:17px;font-weight:800;letter-spacing:.3px}.units{font-size:10px;color:#7ca8be;margin-left:3px}
+    .track{height:7px;background:#17354a;border:1px solid #264c62;border-radius:50px;overflow:hidden;margin:8px 0 15px}.track>div{height:100%;width:100%;background:linear-gradient(90deg,#1597d9,#53ebdc);border-radius:50px;transition:width .3s}
+    .detailgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:16px}.detail{border:1px solid #284357;background:#081828b7;border-radius:9px;padding:10px}.detail span{display:block;color:#7d9fb6;font-size:9px;letter-spacing:.6px;margin-bottom:6px}.detail b{font-size:14px}
+    .thinking{border-left:2px solid var(--pink);background:#1a20349c;border-radius:0 8px 8px 0;padding:10px 12px;font-size:11px;color:#abc7d9;line-height:1.55;margin-top:17px;min-height:60px}.thinking b{font-size:9px;letter-spacing:1.3px;color:var(--pink);display:block;margin-bottom:4px}
+    .drive{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,41px);justify-content:center;gap:7px;margin-top:-4px}
+    .drive button{display:grid;place-items:center;border-radius:8px;border:1px solid #335e78;background:#142d42;color:#acecf4;font-size:17px;font-weight:800}.drive button:hover{background:#20506c;border-color:#70ccf0}.drive button.center{background:#092c3b;color:#5bdadf;font-size:12px;border-color:#0f5968;letter-spacing:.4px}
+    .controlactions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}.action{min-height:37px;display:flex;gap:6px;align-items:center;justify-content:center;border-radius:8px;border:1px solid #38566c;background:#112b40;color:#c8eafa;font-size:11px;font-weight:750}.action:hover{background:#174665}.action.primary{background:#0d7da2;border-color:#15b4d3;color:#f6ffff}.action.active{background:#087b73;border-color:#60f5d7}.action.danger{border-color:#754154;color:#ffc7d6}.action:disabled{cursor:default;opacity:.45}
+    .console{display:flex;flex-direction:column;gap:8px;min-height:185px;flex:1}.logs{overflow:auto;max-height:145px;min-height:83px;flex:1;background:#071726;border:1px solid #263b50;border-radius:8px;padding:10px 9px;color:#86b9d0;font:10px/1.6 Consolas,ui-monospace,monospace;scrollbar-color:#2b5c72 transparent}.logs .line{margin-bottom:6px;white-space:pre-wrap;overflow-wrap:anywhere}.logs .line b{color:#74ddf1}.logs .warn{color:#ffbbbc}.logs .success{color:#8ee7c3}
+    .consoleentry{display:flex;gap:6px}.consoleentry input{background:#071929;border:1px solid #2d5067;min-width:0;width:100%;border-radius:8px;padding:10px;color:#d4f5ff;outline:none;font:11px Consolas,ui-monospace,monospace}.consoleentry input:focus{border-color:#49b7d6}.consoleentry button{min-width:38px;border:1px solid #15aaca;border-radius:8px;background:#0b7f9e;color:#fff;font-size:17px}
+    .footer{display:flex;justify-content:space-between;align-items:center;gap:14px;color:#5e849e;font-size:10px;letter-spacing:1.25px;padding:1px 2px}
+    .offline{display:none;position:absolute;z-index:4;left:50%;top:48%;transform:translate(-50%,-50%);width:min(90%,430px);background:#0b1b2fed;border:1px solid #f298a7;border-radius:12px;padding:24px;color:#ffd2d9;box-shadow:0 14px 55px #0008;text-align:center}.offline strong{display:block;font-size:16px;margin-bottom:10px}.offline p{font-size:12px;line-height:1.65;margin:0}
+    @media(max-width:1020px){.layout{grid-template-columns:minmax(0,1fr) 302px}.shell{padding:13px}}
+    @media(max-width:800px){.layout{grid-template-columns:1fr}.scene,#ambotCanvas{min-height:460px}.side{display:grid;grid-template-columns:1fr 1fr}.console{grid-column:1/-1}.sceneHead{left:16px;top:19px}.sceneHead h1{font-size:18px}.hud{left:16px;top:110px}.sceneFoot{padding:16px}.compass{bottom:100px}.topright .pill:last-child{display:none}}
+    @media(max-width:540px){.shell{padding:10px;gap:11px}.topright .pill{font-size:9px;padding:6px 8px}.topright .pill:nth-child(2){display:none}.brandtext strong{font-size:19px}.side{grid-template-columns:1fr}.scene,#ambotCanvas{min-height:420px}.sceneTag{right:9px;top:11px;font-size:9px}.sceneHead{left:13px;top:14px}.sceneHead h1{font-size:15px}.sceneHead p{font-size:10px}.eyebrow{font-size:8px}.hud{top:92px;left:13px}.hud .small{font-size:9px}.compass{bottom:92px;right:11px;width:54px;height:54px}.footL{font-size:9px;gap:7px}.sceneFoot{padding:13px}.footer{font-size:8px}}
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header class="top">
+    <div class="brand"><div class="emblem" aria-hidden="true">⬡</div><div class="brandtext"><strong>AMBOT</strong><small>ARCHMOBA ROBOTICS LAB</small></div></div>
+    <div class="topright"><span class="pill"><i class="dot" id="serverDot"></i><span id="serverText">INICIALIZANDO...</span></span><span class="pill">SIMULACIÓN 3D</span><span class="pill">v0.1 · MOTOR 3D</span></div>
+  </header>
+  <section class="layout">
+    <section class="scene" aria-label="Escenario 3D de AMBOT">
+      <canvas id="ambotCanvas" aria-label="Visor 3D; arrastra el ratón para rotar la cámara"></canvas>
+      <div class="sceneHead"><div class="eyebrow">ÁREA DE EXPERIMENTACIÓN / 001</div><h1>Entorno de simulación</h1><p>Unidad AMBOT-01 &nbsp;·&nbsp; Stickman con cerebro simulado</p></div>
+      <div class="sceneTag">● &nbsp; RENDER EN TIEMPO REAL</div>
+      <div class="hud"><div class="small">POSICIÓN &nbsp; <b id="posHud">X: 01 / Z: 01</b></div><div class="small">DIRECCIÓN &nbsp; <b id="dirHud">ESTE</b></div></div>
+      <div class="compass"><span class="directions">N</span><span id="needle" class="needle">↑</span></div>
+      <div class="sceneFoot"><div class="footL"><span><span class="key">WASD</span> MOVER</span><span><span class="key">E</span> EXPLORAR</span><span><span class="key">ESPACIO</span> AUTO</span><span>↻ ARRASTRAR PARA ORBITAR</span></div></div>
+      <div class="offline" id="offline"><strong>Conexión local no disponible</strong><p>Abre <b>INICIAR_AMBOT.bat</b> en la carpeta del proyecto y entra a <b>http://127.0.0.1:8765</b>. El cerebro necesita el servidor Python en funcionamiento.</p></div>
+    </section>
+    <aside class="side">
+      <section class="panel">
+        <div class="paneltop"><span class="paneltitle">TELEMETRÍA</span><span class="tiny">UNIDAD 01</span></div>
+        <div class="statusrow"><span class="statuslabel">Energía del robot</span><span class="statusvalue"><span id="battery">100</span><span class="units">%</span></span></div>
+        <div class="track"><div id="batteryBar"></div></div>
+        <div class="statusrow"><span class="statuslabel">Sensor frontal</span><span class="statusvalue"><span id="distance">—</span><span class="units">cm</span></span></div>
+        <div class="detailgrid"><div class="detail"><span>ORIENTACIÓN</span><b id="dir">ESTE</b></div><div class="detail"><span>PASOS TOTALES</span><b id="steps">0</b></div></div>
+        <div class="thinking"><b>✦ CEREBRO / PRÓXIMA DECISIÓN</b><span id="thought">Procesando entorno...</span></div>
+      </section>
+      <section class="panel">
+        <div class="paneltop"><span class="paneltitle">CONTROL DE MOVIMIENTO</span><span class="tiny">MANUAL / AUTO</span></div>
+        <div class="drive">
+          <span></span><button type="button" id="forward" aria-label="Avanzar">↑</button><span></span>
+          <button type="button" id="left" aria-label="Girar a la izquierda">↶</button><button type="button" id="think" class="center" title="Percibir, pensar y actuar">IA</button><button type="button" id="right" aria-label="Girar a la derecha">↷</button>
+          <span></span><button type="button" id="back" aria-label="Retroceder">↓</button><span></span>
+        </div>
+        <div class="controlactions"><button class="action primary" id="explore">✦ EXPLORAR</button><button class="action" id="auto">▶ AUTO</button><button class="action danger" id="stop">■ DETENER</button><button class="action" id="reset">↺ REINICIAR</button></div>
+      </section>
+      <section class="panel console">
+        <div class="paneltop" style="margin-bottom:5px"><span class="paneltitle">CONSOLA DEL CEREBRO</span><span class="tiny">PYTHON</span></div>
+        <div class="logs" id="logs" role="log" aria-live="polite"><div class="line"><b>SISTEMA</b> · Iniciando AMBOT...</div></div>
+        <form class="consoleentry" id="commandForm"><input id="command" aria-label="Comando de texto" placeholder="Escribe: ayuda, memoria, plan..." autocomplete="off"><button type="submit" aria-label="Enviar comando">↵</button></form>
+      </section>
+    </aside>
+  </section>
+  <footer class="footer"><span>ARCHMOBA · AMBOT SIMULATION ENGINE</span><span>ENTORNO LOCAL · SENSORES Y MOVIMIENTOS SIMULADOS</span></footer>
+</main>
+<script src="js/motor3d.js"></script>
+<script src="js/control.js"></script>
+</body>
+</html>
