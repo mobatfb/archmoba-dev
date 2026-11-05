@@ -34,3 +34,5 @@ jobs:
           PANDA_DISABLE_PYTHON_SIGINT_HANDLER: "1"
       - name: Iniciar sin monitor
         run: python AMBOT2/app.py --smoke-test
+      - name: Comprobar inicio local desde AMDEV
+        run: python AMBOT2/AMDEV_entry.py --smoke-test
