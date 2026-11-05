@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.5.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.6.0** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -194,3 +194,38 @@ de exploracion y asociacion, no una inteligencia artificial general
 ni un modelo multimodal entrenado desde cero. Para aprender lenguaje,
 matematica avanzada, imagenes de camara, voz o manipulacion fisica
 real se necesitaran mecanismos y entrenamientos adicionales.
+
+
+## v0.6.0 - Boton AÑADIR sillas y elegir su ubicacion en 3D
+
+El entorno inicia con **tres sillas adicionales** (clasica, de oficina
+y alta), ademas de la silla existente junto a la mesa.
+
+Para agregar otras, abrir AMBOT y:
+
+1. Pulsar **+ AÑADIR** en la esquina superior derecha del escenario 3D.
+2. Seleccionar **SILLA CLASICA**, **SILLA DE OFICINA** o **SILLA ALTA**.
+3. Si se desea, usar **GIRAR 90°** para orientar el respaldo.
+4. Mover el raton sobre el suelo: **verde** significa ubicacion libre y
+   **rosa** significa ubicacion prohibida.
+5. Hacer **clic en el suelo 3D** para colocar tantas sillas como se desee
+   (hasta 30 adicionales), o usar **DESHACER** para quitar la ultima.
+6. Pulsar **LISTO** o **ESC** para salir del editor y reanudar el
+   aprendizaje autonomo si estaba activo antes.
+
+**Solo se pueden agregar sillas** en esta version. La ubicacion se elige
+visual y directamente sobre el escenario: no hace falta editar codigo.
+
+El robot no podra cruzar las sillas nuevas, y el editor evita colocar
+sillas en paredes, objetos, robots, muebles fijos, junto al punto de
+inicio, en la puerta o cuando corten la salida del cuarto.
+El modo de colocacion **pausa la autonomia y bloquea Arduino** para
+no mover el cuerpo fisico mientras se modifica el escenario.
+
+Las sillas se guardan automaticamente en
+\`%LOCALAPPDATA%\ARCHMOBA\AMBOT\muebles.json\`. Se recuperan al reiniciar
+la aplicacion, incluso al presionar **REINICIAR** (no borra el mobiliario).
+La memoria y el cerebro continuan en sus archivos independientes.
+
+Comandos opcionales: \`sillas\` consulta cuantas sillas se han anadido y
+\`deshacer silla\` quita la ultima colocada.

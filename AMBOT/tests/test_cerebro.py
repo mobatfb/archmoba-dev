@@ -6,7 +6,7 @@ import time
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from app import APP_VERSION, WORLD, Robot, Scene3D, ArduinoBridge, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
+from app import APP_VERSION, WORLD, Robot, Scene3D, ArduinoBridge, CHAIR_STYLES, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
 
 class RobotTests(unittest.TestCase):
     def setUp(self):
@@ -15,7 +15,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.5.0")
+        self.assertEqual(APP_VERSION,"0.6.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -394,6 +394,144 @@ class RobotTests(unittest.TestCase):
             gui.draw(.017)
             self.assertIsNotNone(gui.last_portrait_state)
             self.assertGreater(len(gui.robot.brain.action_models),0)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_sillas_nuevas_iniciales_y_persistencia(self):
+        furniture=self.robot.furniture
+        self.assertEqual(len(furniture.chairs),3)
+        self.assertEqual(set(CHAIR_STYLES),{"clasica","oficina","alta"})
+        for item in furniture.chairs:
+            self.assertFalse(self.robot.free(item["x"],item["z"]))
+            self.assertEqual(self.robot.map_text().splitlines()[item["z"]][item["x"]],"S")
+        loaded=Robot(self.robot.memory_path)
+        self.assertEqual(loaded.furniture.chairs,furniture.chairs)
+        self.robot.reset()
+        self.assertEqual(self.robot.furniture.chairs,furniture.chairs)
+        self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
+
+    def test_colocar_sillas_solo_en_suelo_disponible(self):
+        editor=self.robot.furniture
+        self.assertEqual(len(editor.chairs),3)
+        for x,z in ((4,4),(4,5),(4,7),(7,3),(8,5),(6,5),
+                    (5,3),(7,7),(3,3),(6,4),(-1,2),(6,2)):
+            valid,_=editor.can_place(x,z)
+            self.assertFalse(valid,(x,z))
+        self.assertFalse(editor.can_place(True,3)[0])
+        self.assertFalse(editor.place("mesa",5,4)[0])
+        self.assertFalse(editor.place("clasica",5,4,7)[0])
+        ok,message=editor.place("oficina",5,4,1)
+        self.assertTrue(ok,message)
+        self.assertFalse(self.robot.free(5,4))
+        self.assertFalse(editor.place("clasica",5,4)[0])
+        self.assertEqual(Robot(self.robot.memory_path).furniture.chairs[-1],
+                         {"style":"oficina","x":5,"z":4,"orientation":1})
+        result,message=editor.undo()
+        self.assertTrue(result)
+        self.assertIn("Quite",message)
+        self.assertTrue(self.robot.free(5,4))
+        self.assertEqual(len(Robot(self.robot.memory_path).furniture.chairs),3)
+
+    def test_silla_no_bloquea_unica_puerta(self):
+        valid,reason=self.robot.furniture.can_place(7,5)
+        self.assertFalse(valid)
+        self.assertIn("salida",reason)
+        self.assertTrue(self.robot.free(*ROOM_DOOR))
+        self.assertTrue(self.robot.furniture._route_exists(
+            self.robot.furniture.occupied()))
+
+    def test_click_3d_recupera_celda_del_suelo(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            rect=pygame.Rect(260,83,625,530)
+            scene.camera_update(rect)
+            for cell in ((5,4),(6,5),(7,7),(8,5),(9,4)):
+                x,z=scene.world(*cell)
+                projected=scene.project((x,.02,z))
+                self.assertIsNotNone(projected)
+                screen=(round(projected[0]),round(projected[1]))
+                self.assertTrue(rect.collidepoint(screen))
+                self.assertEqual(scene.pick_floor(screen),cell)
+            self.assertIsNone(scene.pick_floor((-100,-100)))
+        finally:
+            pygame.quit()
+
+    def test_sillas_de_tres_modelos_en_entorno_3d(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(0,0,900,580))
+            before=len(scene.faces)
+            scene.build_user_chairs(self.robot.furniture)
+            self.assertGreater(len(scene.faces),before+45)
+        finally:
+            pygame.quit()
+
+    def test_interfaz_boton_anadir_elige_tipo_y_clic_pone_silla(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            gui.draw(.016)
+            self.assertIn("editor_toggle",gui.buttons)
+            gui.handle_button("editor_toggle")
+            self.assertTrue(gui.editor_mode)
+            self.assertFalse(gui.auto)
+            gui.draw(.017)
+            for name in ("editor_style_clasica","editor_style_oficina",
+                         "editor_style_alta","editor_rotate",
+                         "editor_undo","editor_done"):
+                self.assertIn(name,gui.buttons)
+            gui.handle_button("editor_style_oficina")
+            gui.handle_button("editor_rotate")
+            x,z=gui.scene.world(5,4)
+            p=gui.scene.project((x,.02,z))
+            click=(round(p[0]),round(p[1]))
+            self.assertTrue(gui.view.collidepoint(click))
+            self.assertFalse(gui.editor_rect.collidepoint(click))
+            self.assertFalse(gui.training_rect.collidepoint(click))
+            pygame.event.post(pygame.event.Event(
+                pygame.MOUSEBUTTONDOWN,button=1,pos=click))
+            pygame.event.post(pygame.event.Event(
+                pygame.MOUSEBUTTONUP,button=1,pos=click))
+            self.assertTrue(gui.events())
+            self.assertFalse(gui.dragging)
+            self.assertTrue(gui.robot.furniture.blocks(5,4))
+            self.assertEqual(gui.robot.furniture.chairs[-1]["style"],"oficina")
+            gui.handle_button("editor_done")
+            self.assertFalse(gui.editor_mode)
+            gui.draw(.017)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_editor_suspende_y_reanuda_autonomia(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        try:
+            gui.auto=True
+            gui.handle_button("editor_toggle")
+            self.assertTrue(gui.editor_mode)
+            self.assertFalse(gui.auto)
+            gui.handle_button("editor_done")
+            self.assertFalse(gui.editor_mode)
+            self.assertTrue(gui.auto)
+            gui.handle_button("editor_toggle")
+            gui.handle_button("stop")
+            gui.handle_button("editor_done")
+            self.assertFalse(gui.auto)
         finally:
             gui.hardware.close()
             pygame.quit()
