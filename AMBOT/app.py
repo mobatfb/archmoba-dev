@@ -11,6 +11,7 @@ import argparse
 import json
 import math
 import random
+import re
 from dataclasses import dataclass
 import os
 import subprocess
@@ -22,7 +23,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -609,6 +610,330 @@ class TrainingLab:
         return [(g.name,g.task,g.action,g.message) for g in self.guides]
 
 
+
+class LearningBrain:
+    """Cerebro experimental autonomo: memoria de episodios y preguntas propias.
+
+    Nace sin vocabulario, relaciones, preguntas ni ejemplos numericos.
+    La programacion implementa mecanismos de aprendizaje y sensores basicos;
+    no implementa inteligencia general ni comprension irrestricta del lenguaje.
+    """
+    def __init__(self, robot, path):
+        self.robot = robot
+        self.path = Path(path)
+        self.concepts = {}
+        self.relations = {}
+        self.episodes = deque(maxlen=180)
+        self.questions = []
+        self.number_patterns = {}
+        self.action_models = {}
+        self.tick_count = 0
+        self.current_goal = "Explorar lo desconocido"
+        self.last_thought = "Todavia no tengo experiencias."
+        self.last_question = ""
+        self.last_action = ""
+        self.object_shapes = set()
+        self.text_samples = 0
+        self._rng = random.Random(707)
+        self._load()
+
+    def _load(self):
+        try:
+            data=json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data,dict): return
+            self.concepts={str(k):v for k,v in data.get("concepts",{}).items()
+                           if isinstance(v,dict)}
+            self.relations={str(k):str(v) for k,v in data.get("relations",{}).items()}
+            self.episodes=deque((e for e in data.get("episodes",[])
+                                if isinstance(e,dict)),maxlen=180)
+            self.questions=[q for q in data.get("questions",[])
+                            if isinstance(q,dict) and "text" in q][-45:]
+            self.number_patterns={str(k):int(v) for k,v in
+                                  data.get("number_patterns",{}).items()}
+            self.action_models={str(k):v for k,v in data.get("action_models",{}).items()
+                                if isinstance(v,dict)}
+            self.tick_count=max(0,int(data.get("ticks",0)))
+            self.object_shapes=set(str(x) for x in data.get("object_shapes",[]))
+            self.text_samples=max(0,int(data.get("text_samples",0)))
+        except (OSError,ValueError,TypeError,AttributeError,OverflowError):
+            pass
+
+    def save(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        tmp=self.path.with_name(self.path.name+".tmp")
+        tmp.write_text(json.dumps({
+            "version":1, "concepts":self.concepts,
+            "relations":self.relations,
+            "episodes":list(self.episodes),
+            "questions":self.questions[-45:],
+            "number_patterns":self.number_patterns,
+            "action_models":self.action_models,
+            "ticks":self.tick_count,
+            "object_shapes":sorted(self.object_shapes),
+            "text_samples":self.text_samples
+        },ensure_ascii=False,indent=2),encoding="utf-8")
+        tmp.replace(self.path)
+
+    def episode(self, source, observation, outcome=""):
+        self.episodes.append({
+            "n":self.tick_count,
+            "source":str(source)[:35],
+            "observation":str(observation)[:200],
+            "outcome":str(outcome)[:160],
+        })
+
+    def ask(self,topic,text):
+        topic=normalize(topic)[:68]
+        text=str(text).strip()[:175]
+        if not topic or not text:
+            return ""
+        for q in self.questions:
+            if q.get("topic")==topic and q.get("text")==text:
+                return q["text"]
+        self.questions.append({"topic":topic,"text":text,"answer":""})
+        self.questions=self.questions[-45:]
+        self.last_question=text
+        self.episode("pregunta",text)
+        self.save()
+        return text
+
+    def pending_question(self):
+        for q in reversed(self.questions):
+            if not q.get("answer"):
+                return q["text"]
+        return ""
+
+    def answer(self, response):
+        response=str(response).strip()
+        if not response or len(response)>400:
+            return "Necesito una respuesta de 1 a 400 caracteres."
+        for q in reversed(self.questions):
+            if not q.get("answer"):
+                q["answer"]=response
+                self.relations["respuesta:"+q["topic"]]=response
+                self.learn_text(response,"explicacion",persist=False)
+                self.episode("respuesta",q["text"],response)
+                self.save()
+                return "Guarde tu explicacion y la relacionare con mis experiencias."
+        return "No tengo preguntas pendientes por ahora."
+
+    def learn_text(self, message, source="texto", persist=True):
+        """Aprender frecuencias y asociaciones a partir de texto arbitrario.
+
+        No se asume que leer caracteres sea comprender sus significados.
+        """
+        message=str(message).strip()[:600]
+        if not message: return "No observe texto."
+        words=re.findall(r"[a-z0-9ñ]+",normalize(message))
+        if not words: return "No encuentro simbolos legibles."
+        self.text_samples+=1
+        unique=set(words)
+        for word in words:
+            if len(word)>54: continue
+            if word not in self.concepts and len(self.concepts)>=300:
+                continue
+            datum=self.concepts.setdefault(word,{"n":0,"neighbors":{}})
+            datum["n"]=min(100000,int(datum.get("n",0))+1)
+            neighbors=datum.setdefault("neighbors",{})
+            for other in unique:
+                if other!=word and len(other)>1 and len(other)<55:
+                    if other not in neighbors and len(neighbors)>=10:continue
+                    neighbors[other]=min(10000,int(neighbors.get(other,0))+1)
+        self.episode(source,message)
+        if persist:self.save()
+        return "Observe "+str(len(words))+" palabras y "+str(len(unique))+" formas diferentes."
+
+    def observe_guide(self, event, training):
+        """Solo escucha lo pronunciado y registra eventos observables.
+
+        El programa interno del guia no se traspasa al cerebro del bebe.
+        """
+        utterance=str(event.get("message",""))[:300]
+        signal=str(event.get("action",""))[:40]
+        self.learn_text(utterance,"voz:"+str(event.get("teacher","")),persist=False)
+        sensed=self.sense(training)
+        self.episode("observacion",signal,
+                     "formas:"+str(sensed["shapes"])+" / sonido:"+utterance)
+        if signal in ("grasp","release","carry","lie","walk"):
+            self.ask("causa:"+signal,
+                     "¿Por que cambio el movimiento al ver "+signal+"?")
+        # Las etiquetas solo se enlazan cuando la exposicion repetida
+        # produjo una asociacion en la percepcion del bebe.
+        for known in training.known_names:
+            if known in normalize(utterance):
+                item=training.items.get(known)
+                if item is not None:
+                    self.relations["palabra:"+known]="forma:"+item.shape
+        self.save()
+
+    def sense(self, training):
+        """Observacion perceptual sin entregar nombre/identidad secreta."""
+        shapes={}
+        close=[]
+        for obj in training.items.values():
+            if training.distance(self.robot.x,self.robot.z,obj.x,obj.z)>6.4:
+                continue
+            shapes[obj.shape]=shapes.get(obj.shape,0)+1
+            if training.distance(self.robot.x,self.robot.z,obj.x,obj.z)<1.75:
+                close.append(obj.shape)
+        return {
+            "shapes":shapes,
+            "nearby":close,
+            "front_cm":self.robot.front_distance(),
+            "touch":bool(self.robot.holding),
+            "posture":self.robot.posture,
+        }
+
+    def compare_quantities(self, training):
+        """Registrar evidencia de cardinalidad al observar dos grupos."""
+        perception=self.sense(training)
+        shapes=perception["shapes"]
+        total=sum(shapes.values())
+        if not total:
+            return "Aun no veo objetos para comparar."
+        counts=sorted(shapes.values(),reverse=True)
+        if len(counts)>=2:
+            a,b=counts[0],sum(counts[1:])
+            relation=str(a)+"+"+str(b)+"="+str(total)
+            self.number_patterns[relation]=min(10000,self.number_patterns.get(relation,0)+1)
+            self.episode("cantidades","grupos "+str(counts),"total "+str(total))
+            self.save()
+            return ("Comparo "+str(a)+" y "+str(b)+" objetos. Juntos cuento "
+                    +str(total)+".")
+        self.episode("cantidades","grupo "+str(counts[0]))
+        self.save()
+        return "Detecto un grupo con "+str(total)+" objetos."
+
+    def study_new_shapes(self,training):
+        perception=self.sense(training)
+        shapes=perception["shapes"]
+        unfamiliar=[shape for shape in shapes if shape not in self.object_shapes]
+        for shape in unfamiliar:
+            self.object_shapes.add(shape)
+            self.ask("forma:"+shape,
+                     "¿Que propiedades tiene esta forma "+shape+"?")
+        return bool(unfamiliar)
+
+    def record_trial(self,action,before,after,experience):
+        datum=self.action_models.setdefault(action,{"n":0,"changes":0,"effects":{}})
+        datum["n"]=min(100000,int(datum.get("n",0))+1)
+        changed=bool(before!=after)
+        if changed:datum["changes"]=min(100000,int(datum.get("changes",0))+1)
+        effect=("cambio" if changed else "sin_cambio")
+        effects=datum.setdefault("effects",{})
+        effects[effect]=min(100000,int(effects.get(effect,0))+1)
+        self.episode("ensayo:"+action,experience,effect)
+        if datum["n"]==2 and not changed:
+            self.ask("error:"+action,
+                     "¿Por que la accion "+action+" no produjo el cambio esperado?")
+        self.save()
+
+    def _candidate_scores(self, training, sensed):
+        """Curiosidad: explorar acciones nuevas, variedad y posibilidad de probar."""
+        robot=self.robot
+        options=["observar","caminar","contar"]
+        if sensed["nearby"]:
+            options.extend(["agarrar","reconocer"])
+        if robot.holding:
+            options=["transportar","soltar","observar"]
+        if training.distance(robot.x,robot.z,4.5,7)<2.6:
+            options.append("acostarse")
+        if robot.stumble>0:
+            return ["observar"]
+        if robot.posture=="lying":
+            return ["incorporarse"]
+        scored=[]
+        for name in options:
+            n=self.action_models.get(name,{}).get("n",0)
+            surprise=1.2/(1.0+n*.23)
+            if name=="observar":
+                surprise+= .4 if sum(training.confidence.values())<.6 else .1
+            if name=="agarrar" and training.confidence["agarrar"]<.4:
+                surprise+=.42
+            if name=="caminar" and training.confidence["caminar"]<.3:
+                surprise+=.25
+            if name=="contar" and not self.number_patterns:
+                surprise+=.3
+            scored.append((surprise+self._rng.random()*.16,name))
+        scored.sort(reverse=True)
+        return [name for _,name in scored]
+
+    def autonomous_step(self):
+        """Ciclo espontaneo de curiosidad; no depende del usuario ni de Arduino."""
+        training=self.robot.training
+        self.tick_count+=1
+        sensed=self.sense(training)
+        new=self.study_new_shapes(training)
+        if new:
+            self.current_goal="Investigar formas desconocidas"
+        if self.tick_count%6==0:
+            unknown=self.pending_question()
+            if unknown:
+                self.last_thought="Me pregunto: "+unknown
+                self.last_action="preguntar"
+                self.episode("curiosidad",self.last_thought)
+                self.save()
+                return self.last_thought
+        if self.robot.battery<12.0:
+            # La recarga es una convencion del simulador, NO un acto fisico.
+            self.robot.battery=min(100.0,self.robot.battery+14.0)
+            self.last_thought="Necesito energia. Recargo la bateria VIRTUAL."
+            self.last_action="descansar"
+            self.save()
+            return self.last_thought
+        choice=self._candidate_scores(training,sensed)[0]
+        before=(self.robot.x,self.robot.z,self.robot.holding,self.robot.posture,
+                tuple((shape,n) for shape,n in sorted(sensed["shapes"].items())))
+        self.current_goal={
+            "observar":"Comprender a los robots guia",
+            "caminar":"Experimentar con mi cuerpo",
+            "agarrar":"Investigar el contacto",
+            "transportar":"Investigar objetos sujetos",
+            "soltar":"Probar la gravedad",
+            "contar":"Comparar cantidades",
+            "reconocer":"Relacionar palabras y formas",
+            "acostarse":"Probar nuevas posturas",
+            "incorporarse":"Recuperar la postura",
+        }.get(choice,"Explorar")
+        if choice=="observar":
+            result=training.focus_guide()
+            training.focus=(training.focus+1)%len(training.guides)
+        elif choice=="caminar":
+            result=self.robot.explore()
+        elif choice=="agarrar":
+            result=training.try_grab()
+        elif choice=="transportar":
+            result=self.robot.explore()
+        elif choice=="soltar":
+            result=training.try_release()
+        elif choice=="contar":
+            result=self.compare_quantities(training)
+        elif choice=="reconocer":
+            result=training.identify()
+        elif choice=="acostarse":
+            result=training.try_rest()
+        elif choice=="incorporarse":
+            result=self.robot.command("levantarse")
+        else:
+            result=training.focus_guide()
+        after_sensed=self.sense(training)
+        after=(self.robot.x,self.robot.z,self.robot.holding,self.robot.posture,
+               tuple((shape,n) for shape,n in sorted(after_sensed["shapes"].items())))
+        self.record_trial(choice,before,after,result)
+        self.last_action=choice
+        self.last_thought=result
+        self.robot.last_decision=("META: "+self.current_goal)[:100]
+        return result
+
+    def summary(self):
+        learned=len(self.concepts)
+        answered=sum(bool(q.get("answer")) for q in self.questions)
+        return (f"Cerebro: {learned} simbolos observados, "
+                f"{len(self.episodes)} experiencias recientes, "
+                f"{len(self.number_patterns)} patrones numericos, "
+                f"{len(self.questions)} preguntas propias ({answered} respondidas). "
+                f"Meta: {self.current_goal}.")
+
 class Robot:
     """Cerebro con mapa, percepcion, navegacion, decisiones y memoria."""
     def __init__(self, memory_path=MEMORY_PATH):
@@ -623,6 +948,7 @@ class Robot:
             self.facts = {}
         self.reset()
         self.training = TrainingLab(self, self.memory_path.with_name("aprendizaje.json"))
+        self.brain = LearningBrain(self,self.memory_path.with_name("cerebro.json"))
 
     def reset(self):
         if hasattr(self,"training"):
@@ -814,6 +1140,24 @@ class Robot:
             return self.training.identify()
         if cmd in ("aprender","progreso","habilidades"):
             return self.training.report()
+        if cmd in ("cerebro","mente","conciencia","conocimientos"):
+            return self.brain.summary()
+        if cmd in ("pregunta","preguntas","que te preguntas"):
+            return self.brain.pending_question() or "Aun no se me ocurrio una pregunta."
+        if cmd.startswith("responde "):
+            return self.brain.answer(raw[len("responde "):])
+        if cmd.startswith("respuesta "):
+            return self.brain.answer(raw[len("respuesta "):])
+        if cmd.startswith("leer ") or cmd.startswith("lee "):
+            start=5 if cmd.startswith("leer ") else 4
+            return self.brain.learn_text(raw[start:],"lectura")
+        if cmd.startswith("ensename ") or cmd.startswith("aprende "):
+            start=9 if cmd.startswith("ensename ") else 8
+            return self.brain.learn_text(raw[start:],"ensenanza")
+        if cmd in ("contar","cuantos","matematicas"):
+            return self.brain.compare_quantities(self.training)
+        if cmd in ("curiosidad","investiga","que descubres"):
+            return self.brain.autonomous_step()
         if cmd in ("detener", "detente", "stop", "alto"):
             return "Movimiento autonomo detenido."
         if cmd in ("reiniciar", "reset"):
@@ -845,7 +1189,7 @@ class Robot:
             self._save()
             return "Dato olvidado."
         if cmd in ("ayuda", "help", "?"):
-            return "W/A/S/D mover, E explorar, Q observar, 1/2/3 guias, F agarrar, V soltar, L acostarse, I identificar, P progreso, ESPACIO auto, R reiniciar."
+            return "AUTO inicia solo. W/A/S/D mover, F agarrar, L cama, 1/2/3 guias, P progreso; CEREBRO, PREGUNTA, RESPONDE texto, LEER texto, ENSENAME texto, CONTAR."
         return "No entiendo ese comando aun. Escribe AYUDA."
 
 
@@ -1268,7 +1612,7 @@ class DesktopApp:
         self.robot=Robot()
         self.scene=Scene3D(pg)
         self.portrait_scene=Scene3D(pg)
-        self.auto=False
+        self.auto=not smoke
         self.auto_clock=0.0
         self.elapsed=0.0
         self.bubble_text="¿Qué son esos movimientos? Quiero aprender."
@@ -1277,7 +1621,8 @@ class DesktopApp:
         self.input_focus=False
         self.input_value=""
         self.messages=deque(maxlen=24)
-        self.messages.append(("SISTEMA","Tres robots guia inician demostraciones.",COLOR["green"]))
+        self.messages.append(("SISTEMA","AMBOT aprende solo; ESPACIO pausa/reanuda.",COLOR["green"]))
+        self.messages.append(("SISTEMA","Tres robots guia inician demostraciones.",COLOR["cyan"]))
         self.messages.append(("AYUDA","W/A/S/D mover · E explorar · ESPACIO auto",COLOR["muted"]))
         self.dragging=False
         self.mouse=(0,0)
@@ -1474,6 +1819,7 @@ class DesktopApp:
             if event["serial"]<=self.last_guide_event:
                 continue
             self.last_guide_event=event["serial"]
+            self.robot.brain.observe_guide(event,self.robot.training)
             self.add_log(event["teacher"],event["message"],COLOR["cyan"])
             guide=self.robot.training.guides[self.robot.training.focus]
             if event["teacher"]==guide.name:
@@ -1634,6 +1980,14 @@ class DesktopApp:
                  else "●  PASILLO | ENTORNO 3D")
         self.text((stamp.x+10,stamp.y+6),label,14,COLOR["cyan"])
         self.text((self.view.x+15,self.view.y+46),"RATÓN: GIRAR CÁMARA · RUEDA: ZOOM",13,COLOR["muted"])
+        self.text((self.view.x+15,self.view.y+67),
+                  "CURIOSIDAD: "+self.robot.brain.current_goal,13,COLOR["cyan"],
+                  self.view.width-30)
+        question=self.robot.brain.pending_question()
+        if question:
+            self.text((self.view.x+15,self.view.y+86),
+                      "PREGUNTA: "+question,13,COLOR["yellow"],
+                      self.view.width-30)
         self.panel(side)
         x=side.x+17
         inner=side.width-34
@@ -1655,8 +2009,8 @@ class DesktopApp:
         self.text((x,stat_y+58),"ORIENTACIÓN",13,COLOR["muted"])
         self.text((side.right-98,stat_y+58),s["orientacion"],16,COLOR["cyan"])
         pg.draw.line(surf,COLOR["line"],(x,stat_y+89),(side.right-17,stat_y+89),1)
-        self.text((x,stat_y+101),"ÚLTIMA DECISIÓN",13,COLOR["muted"])
-        thought=self.robot.last_decision
+        self.text((x,stat_y+101),"META / PENSAMIENTO",13,COLOR["muted"])
+        thought=self.robot.brain.current_goal+" | "+self.robot.last_decision
         if len(thought)>75:thought=thought[:74]+"…"
         self.text((x,stat_y+122),thought[:45],14,COLOR["ink"],inner)
         self.text((x,stat_y+141),thought[45:90],14,COLOR["ink"],inner)
@@ -1689,7 +2043,7 @@ class DesktopApp:
         if not value:value="Escribe un comando y pulsa ENTER"
         self.text((x+9,inputy+12),value,13,COLOR["ink"] if self.input_value else COLOR["muted"],inner-20)
         self.draw_guides_and_skills(self.view)
-        self.text((23,h-45),"WASD MOVER · Q MIRAR · F TOMAR · V SOLTAR · L CAMA · 1/2/3 GUIAS · TAB CHAT",
+        self.text((23,h-45),"AUTO POR DEFECTO · ESPACIO PAUSA · P PREGUNTAS · F TOMAR · TAB CONVERSAR",
                   14,COLOR["muted"])
         self.text((w-220,h-45),"ARCHMOBA / AMBOT "+APP_VERSION,14,COLOR["cyan"])
         pg.display.flip()
@@ -1707,8 +2061,8 @@ class DesktopApp:
                 self.auto_clock+=dt
                 if self.auto_clock>=.57:
                     self.auto_clock=0
-                    action=self.robot.training.autonomous_trial()
-                    self.say(self.robot.last_decision,duration=2.5,
+                    action=self.robot.brain.autonomous_step()
+                    self.say(self.robot.brain.last_thought,duration=2.5,
                              kind="alert" if "bateria" in self.robot.last_decision.lower() else "normal")
                     if self.robot.battery<1.5:
                         self.auto=False
@@ -1719,6 +2073,7 @@ class DesktopApp:
             count+=1
             if frames and count>=frames:
                 running=False
+        self.robot.brain.save()
         self.pg.quit()
 
 
