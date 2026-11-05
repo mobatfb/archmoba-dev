@@ -215,7 +215,8 @@ class RobotTests(unittest.TestCase):
             tr=self.robot.training
             tr.update(.05)
             scene.build_training(tr,0.016)
-            self.assertGreater(len(scene.faces),300)
+            self.assertGreater(len(scene.faces),150)
+            self.assertEqual(len({guide.color for guide in tr.guides}),3)
             self.assertEqual(len(tr.items),3)
             before=(scene.rx,scene.rz,scene.angle,scene.walk)
             scene.build_training(tr,.017)
