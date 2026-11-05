@@ -1580,10 +1580,16 @@ class FurnitureEditor:
             pass
 
     def save(self):
+        for key in list(self.extra_objects):
+            item=self.robot.training.items.get(key)
+            if item:
+                snapshot=asdict(item)
+                snapshot["held_by"]=""
+                self.extra_objects[key]=snapshot
         self.path.parent.mkdir(parents=True,exist_ok=True)
         tmp=self.path.with_name(self.path.name+".tmp")
         tmp.write_text(json.dumps({
-            "version":2,"chairs":self.chairs,
+            "version":3,"chairs":self.chairs,
             "removed_fixed":sorted(self.removed_fixed),
             "removed_movables":sorted(self.removed_movables),
             "removed_guides":sorted(self.removed_guides),
@@ -1775,11 +1781,11 @@ class HumanAvatar:
     def __init__(self, robot, path):
         self.robot=robot
         self.path=Path(path)
-        self.x,self.z=9,5
+        self.x,self.z=10,5
         self.facing=3
         self.seated=False
         self.seat=None
-        self.previous=(9,5)
+        self.previous=(10,5)
         self.steps=0
         self.joints={name:0 for name in HUMAN_JOINTS}
         self._load()
@@ -1877,12 +1883,12 @@ class HumanAvatar:
                 for name in self.joints:
                     if type(joints.get(name)) in (int,float):
                         self.joints[name]=max(-85,min(85,int(joints[name])))
-            x,z=data.get("x",9),data.get("z",5)
+            x,z=data.get("x",10),data.get("z",5)
             face=data.get("facing",3)
             self.facing=face if type(face) is int and face in range(4) else 3
             seated=data.get("seated") is True
             seat=data.get("seat")
-            old=data.get("previous",[9,5])
+            old=data.get("previous",[10,5])
             if seated and isinstance(seat,list) and len(seat)==2:
                 cell=(int(seat[0]),int(seat[1]))
                 if cell in self._seats():
@@ -2078,12 +2084,20 @@ class Robot:
         for z, row in enumerate(WORLD):
             chars = list(row)
             for name, cells in ROOM_OBJECTS.items():
+                if hasattr(self,"furniture") and name in self.furniture.removed_fixed:
+                    continue
                 for x, object_z in cells:
                     if object_z == z:
                         chars[x] = marks[name]
             if z == ROOM_DOOR[1]:
                 chars[ROOM_DOOR[0]] = "P"
             if hasattr(self,"furniture"):
+                for item in self.furniture.extra_fixtures:
+                    for xx,zz in self.furniture.occupied_cells(
+                        item["kind"],item["x"],item["z"],item["orientation"]):
+                        if zz==z:
+                            chars[xx]={"cama":"C","mesa":"M","armario":"A"}[
+                                item["kind"]]
                 for chair in self.furniture.chairs:
                     if chair["z"] == z:
                         chars[chair["x"]] = "S"
