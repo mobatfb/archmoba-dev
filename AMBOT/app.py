@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
+from dataclasses import dataclass
 import os
 import subprocess
 import sys
@@ -20,7 +22,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -135,6 +137,382 @@ def ensure_pygame(no_install=False):
     return import_pygame()
 
 
+
+# ---- Entorno de aprendizaje basado en observacion y consecuencia fisica ----
+# Estas etiquetas describen la simulacion para los robots guia. AMBOT bebe
+# NO recibe los nombres ni las acciones correctas como conocimiento inicial.
+SKILL_NAMES = ("caminar", "agarrar", "transportar", "descansar", "reconocer")
+
+
+@dataclass
+class Movable:
+    name: str
+    x: float
+    z: float
+    shape: str
+    color: tuple
+    radius: float = .22
+    y: float = .22
+    vy: float = 0.0
+    held_by: str = ""
+    moved: float = 0.0
+
+
+class Guide:
+    """Actor demostrador: sabe la tarea, a diferencia del bebe."""
+    def __init__(self, name, task, x, z, facing, color, program):
+        self.name, self.task = name, task
+        self.x, self.z, self.facing = float(x), float(z), facing
+        self.color = color
+        self.program = program
+        self.index = -1
+        self.elapsed = 0.0
+        self.walk = 0.0
+        self.moving = False
+        self.posture = "standing"
+        self.reach = 0.0
+        self.holding = None
+        self.message = ""
+        self.target = (self.x, self.z)
+        self.start = (self.x, self.z)
+        self.action = "esperar"
+
+    def current(self):
+        return self.program[self.index % len(self.program)]
+
+
+class TrainingLab:
+    """Aprendizaje de habilidades por observaciones parciales y ensayos.
+
+    Las tres demostraciones estan preprogramadas SOLO para los guias.
+    AMBOT acumula asociaciones entre observaciones y consecuencias, aprende
+    tasas de exito y practica con fallos, sin recibir el mapa secreto de guias.
+    Se simulan gravedad, rebote, colision y agarre; no es fisica de rigid bodies.
+    """
+    GUIDE_PROGRAMS = (
+        (
+            ("walk", (3, 4), 1.3, "Paso lento: primero apoyo un pie."),
+            ("walk", (3, 5), 1.3, "Un paso mas: ajusto mi equilibrio."),
+            ("walk", (3, 6), 1.3, "Ahora cambio el peso de mi cuerpo."),
+            ("walk", (3, 5), 1.3, "Puedo caminar hacia atras."),
+            ("walk", (3, 4), 1.3, "Practico para mantener el equilibrio."),
+            ("pause", None, 1.0, "Repite despacio lo que acabas de ver."),
+        ),
+        (
+            ("identify", "cubo", 1.6, "Esto se llama cubo. Mira sus caras."),
+            ("grasp", "cubo", 1.6, "Cierro mis manos y sujeto el cubo."),
+            ("carry", (7, 5), 1.8, "Llevo el cubo conmigo."),
+            ("release", "cubo", 1.5, "Ahora suelto el cubo: cae al suelo."),
+            ("identify", "pelota", 1.6, "Esto se llama pelota. Su forma es redonda."),
+            ("pause", None, 1.0, "Tambien puedes experimentar con objetos."),
+        ),
+        (
+            ("approach", (5.5, 6.1), 1.6, "Me acerco a la cama."),
+            ("lie", (4.5, 7.0), 2.5, "Me recuesto sobre la cama."),
+            ("rest", None, 1.8, "Mi cuerpo descansa apoyado en ella."),
+            ("rise", (5.5, 6.1), 1.4, "Me incorporo y vuelvo a estar de pie."),
+            ("pause", None, 1.1, "Acostarse requiere controlar el cuerpo."),
+        ),
+    )
+
+    def __init__(self, baby, path):
+        self.baby = baby
+        self.path = Path(path)
+        self.rng = random.Random(2091)
+        self.confidence = {name: 0.0 for name in SKILL_NAMES}
+        self.observations = 0
+        self.attempts = 0
+        self.falls = 0
+        self.drops = 0
+        self.name_heard = {}
+        self.known_names = set()
+        self.last_seen = {}
+        self.demo_sequence = 0
+        self.messages = deque(maxlen=30)
+        self.focus = 0
+        self.focus_boost = False
+        self.items = {
+            "cubo": Movable("cubo", 6.0, 4.0, "box", (252, 119, 143)),
+            "pelota": Movable("pelota", 6.0, 6.0, "ball", (89, 176, 254)),
+            "bloque": Movable("bloque", 7.0, 6.0, "box", (244, 198, 117)),
+        }
+        self.guides = [
+            Guide("ANDA", "CAMINAR", 3, 3, 2, (106, 230, 190),
+                  self.GUIDE_PROGRAMS[0]),
+            Guide("DEX", "OBJETOS", 7, 4, 2, (255, 175, 90),
+                  self.GUIDE_PROGRAMS[1]),
+            Guide("SOMA", "DESCANSAR", 5.5, 6.1, 0, (184, 155, 251),
+                  self.GUIDE_PROGRAMS[2]),
+        ]
+        self._load()
+
+    def _load(self):
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            rates = data.get("confidence", {})
+            for name in SKILL_NAMES:
+                self.confidence[name] = max(0.0, min(1.0, float(rates.get(name, 0.0))))
+            self.observations = max(0, int(data.get("observations", 0)))
+            self.attempts = max(0, int(data.get("attempts", 0)))
+            self.falls = max(0, int(data.get("falls", 0)))
+            self.drops = max(0, int(data.get("drops", 0)))
+            self.name_heard = {str(k): int(v) for k,v in data.get("name_heard", {}).items()}
+            self.known_names = set(map(str, data.get("known_names", [])))
+        except (OSError, TypeError, ValueError, AttributeError):
+            pass
+
+    def save(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        path = self.path.with_name(self.path.name + ".tmp")
+        path.write_text(json.dumps({
+            "version": 1, "confidence": self.confidence,
+            "observations": self.observations, "attempts": self.attempts,
+            "falls": self.falls, "drops": self.drops,
+            "name_heard": self.name_heard,
+            "known_names": sorted(self.known_names)
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        path.replace(self.path)
+
+    def lesson(self, skill, amount, source="observar"):
+        if skill not in self.confidence:
+            return
+        old = self.confidence[skill]
+        self.confidence[skill] = round(min(1.0, old + amount*(1.0-old*.32)), 4)
+        self.save()
+
+    def practice(self, skill, success):
+        self.attempts += 1
+        self.lesson(skill, .095 if success else .043, "practicar")
+
+    def distance(self, x1, z1, x2, z2):
+        return math.hypot(x1-x2,z1-z2)
+
+    def within_sight(self, guide):
+        # Campo de observacion simulado; la habitacion no suministra etiquetas
+        # de objetos ni las decisiones privadas de los guias al bebe.
+        return self.distance(self.baby.x,self.baby.z,guide.x,guide.z) < 6.4
+
+    def witness(self, guide, kind, label=None):
+        self.demo_sequence += 1
+        if not self.within_sight(guide):
+            return
+        skill = {
+            "walk": "caminar", "identify": "reconocer", "grasp": "agarrar",
+            "carry": "transportar", "release": "agarrar",
+            "lie": "descansar", "rest": "descansar", "rise": "descansar",
+        }.get(kind)
+        if skill:
+            self.observations += 1
+            self.lesson(skill, .075 if kind!="rest" else .045)
+        if kind=="identify" and label in self.items:
+            # La palabra pronunciada es un indicio sensorial; varias
+            # apariciones son necesarias para formar la asociacion.
+            self.name_heard[label] = self.name_heard.get(label,0)+1
+            if self.name_heard[label] >= 3:
+                self.known_names.add(label)
+            self.save()
+        self.last_seen[guide.name] = (kind,self.demo_sequence)
+        baby_text = {
+            "walk": "Vi cambiar de lugar sus piernas...",
+            "identify": "Escuche un sonido mientras senalaba un objeto.",
+            "grasp": "Las manos se cerraron y el objeto se movio.",
+            "carry": "El objeto siguio a las manos.",
+            "release": "El objeto dejo de seguirlas y cayo.",
+            "lie": "Su cuerpo cambio de vertical a horizontal.",
+            "rest": "Sigue apoyado, sin desplazarse.",
+            "rise": "Se levanto otra vez.",
+        }.get(kind)
+        if baby_text:
+            self.baby.last_decision = baby_text
+        self.messages.append({
+            "teacher": guide.name, "action": kind,
+            "message": guide.message,
+            "baby": baby_text or "...",
+            "serial": self.demo_sequence,
+        })
+
+    def _new_step(self, guide):
+        guide.index=(guide.index+1)%len(guide.program)
+        guide.elapsed=0.0
+        action,target,seconds,message=guide.current()
+        guide.start=(guide.x,guide.z)
+        guide.target=target if isinstance(target, tuple) else guide.start
+        guide.action=action
+        guide.message=message
+        guide.moving=action in ("walk","approach","carry","rise")
+        guide.reach=1.0 if action in ("identify","grasp","carry","release") else 0.0
+        if action in ("lie","rest"):
+            guide.posture="lying"
+        elif action in ("rise","walk","approach","pause","identify"):
+            guide.posture="standing"
+        if action=="grasp":
+            item=self.items.get(str(target))
+            if item and not item.held_by:
+                item.held_by=guide.name
+                guide.holding=item.name
+                item.y=1.12
+                item.vy=0
+        if action=="release":
+            self.release_owner(guide.name)
+        if action in ("walk","identify","grasp","carry","release","lie","rest","rise"):
+            self.witness(guide,action,target if isinstance(target,str) else None)
+
+    def release_owner(self, owner):
+        for item in self.items.values():
+            if item.held_by==owner:
+                item.held_by=""
+                item.vy=-.65
+                item.y=max(item.radius+.6,item.y)
+                if owner=="AMBOT":
+                    self.baby.holding=None
+                else:
+                    for guide in self.guides:
+                        if guide.name==owner: guide.holding=None
+                return item
+        return None
+
+    def _guide_update(self, guide, dt):
+        if guide.index<0:
+            self._new_step(guide)
+        guide.elapsed+=dt
+        action,target,duration,_=guide.current()
+        if action in ("walk","approach","carry","rise") and isinstance(target,tuple):
+            progress=min(1.0,guide.elapsed/max(.15,duration))
+            gentle=progress*progress*(3.0-2.0*progress)
+            sx,sz=guide.start
+            guide.x=sx+(target[0]-sx)*gentle
+            guide.z=sz+(target[1]-sz)*gentle
+            dx,dz=target[0]-sx,target[1]-sz
+            if abs(dx)>abs(dz):
+                guide.facing=1 if dx>0 else 3
+            elif abs(dz)>.04:
+                guide.facing=2 if dz>0 else 0
+        if action=="lie" and isinstance(target,tuple):
+            progress=min(1.0,guide.elapsed/max(.15,duration*.55))
+            guide.x=guide.start[0]+(target[0]-guide.start[0])*progress
+            guide.z=guide.start[1]+(target[1]-guide.start[1])*progress
+        guide.walk+=dt*(8.0 if guide.moving else 2.0)
+        if guide.elapsed>=duration:
+            self._new_step(guide)
+
+    def update(self,dt):
+        dt=max(0.0,min(.07,float(dt)))
+        for guide in self.guides:
+            self._guide_update(guide,dt)
+        for item in self.items.values():
+            if item.held_by:
+                holder=self.baby if item.held_by=="AMBOT" else next(
+                    (g for g in self.guides if g.name==item.held_by),None)
+                if holder:
+                    facing=DIRECTIONS[holder.facing]
+                    item.x=holder.x+facing[0]*.48
+                    item.z=holder.z+facing[1]*.48
+                    item.y=1.10
+                    item.vy=0
+                    continue
+                item.held_by=""
+            # Fisica vertical sencilla: gravedad, suelo y pequeno rebote.
+            if item.y>item.radius or item.vy!=0:
+                item.vy-=9.81*dt
+                item.y+=item.vy*dt
+                if item.y<=item.radius:
+                    item.y=item.radius
+                    item.vy=-item.vy*.18 if item.vy<-.7 else 0.0
+        if self.baby.stumble>0:
+            self.baby.stumble=max(0.0,self.baby.stumble-dt)
+            if self.baby.stumble<=0 and self.baby.posture=="stumble":
+                self.baby.posture="standing"
+
+    def motor_feedback(self,success):
+        self.practice("caminar",success)
+        if not success:
+            self.falls+=1
+            self.baby.stumble=.7
+            self.baby.posture="stumble"
+            self.baby.last_decision="Perdi el equilibrio. Debo ajustar el movimiento."
+            self.save()
+
+    def try_grab(self):
+        baby=self.baby
+        if baby.holding:
+            return "Siento algo sujeto en mis manos. Puedo moverlo o soltarlo."
+        nearby=[o for o in self.items.values()
+                if not o.held_by and self.distance(baby.x,baby.z,o.x,o.z)<1.75]
+        if not nearby:
+            return "Extiendo la mano, pero no alcanzo ningun objeto."
+        item=min(nearby,key=lambda o:self.distance(baby.x,baby.z,o.x,o.z))
+        baby.reach=1.0
+        success=self.rng.random()<.22+.73*self.confidence["agarrar"]
+        self.practice("agarrar",success)
+        if not success:
+            self.drops+=1
+            item.y=max(item.radius,item.y+.30)
+            item.vy=.5
+            baby.last_decision="El objeto se escapo. Intentare cerrar mejor las manos."
+            self.save()
+            return "Mis dedos resbalaron y el objeto cayo. Voy a intentarlo otra vez."
+        item.held_by="AMBOT"
+        baby.holding=item.name
+        baby.last_decision="El objeto acompana ahora el movimiento de mi mano."
+        return "Siento contacto y puedo sostener algo. Ahora puedo transportarlo."
+
+    def try_release(self):
+        item=self.release_owner("AMBOT")
+        if not item:
+            return "Mis manos estan vacias."
+        self.practice("agarrar",True)
+        self.baby.reach=0.0
+        return "Abro las manos. El objeto cae por la gravedad."
+
+    def try_rest(self):
+        baby=self.baby
+        if baby.posture=="lying":
+            baby.posture="standing"
+            return "Estoy volviendo a incorporarme."
+        if self.distance(baby.x,baby.z,4.5,7)>2.4:
+            return "No encuentro una superficie cercana donde acostarme."
+        success=self.rng.random()<.16+.80*self.confidence["descansar"]
+        self.practice("descansar",success)
+        if not success:
+            baby.posture="stumble"
+            baby.stumble=.9
+            self.falls+=1
+            baby.last_decision="Mi cuerpo se desestabilizo al intentar acostarme."
+            self.save()
+            return "Intente recostarme, pero perdi el equilibrio."
+        baby.posture="lying"
+        baby.last_decision="Mi cuerpo puede permanecer horizontal sobre la cama."
+        return "Descubro una postura horizontal. Estoy apoyado sobre la cama."
+
+    def identify(self):
+        baby=self.baby
+        nearby=[o for o in self.items.values()
+                if self.distance(baby.x,baby.z,o.x,o.z)<2.3]
+        if not nearby:
+            return "Veo formas lejanas, aun sin nombre."
+        item=min(nearby,key=lambda o:self.distance(baby.x,baby.z,o.x,o.z))
+        if item.name in self.known_names:
+            return "Creo reconocer la palabra " + item.name + " asociada a esta forma."
+        return "Percibo un objeto con forma "+("redonda" if item.shape=="ball" else "angular")+". Aun no se como llamarlo."
+
+    def focus_guide(self,index=None):
+        if index is not None:
+            self.focus=int(index)%len(self.guides)
+        guide=self.guides[self.focus]
+        return ("Observo a "+guide.name+" ("+guide.task+"). "+guide.message+
+                " Espero descubrir las consecuencias de sus movimientos.")
+
+    def report(self):
+        parts=["%s %d%%"%(k.upper(),round(v*100))
+               for k,v in self.confidence.items()]
+        return ("Observo "+str(self.observations)+" acciones. "+", ".join(parts)+
+                ". Ensayos "+str(self.attempts)+", caidas "+str(self.falls)+
+                ", objetos caidos "+str(self.drops)+".")
+
+    def all_guide_status(self):
+        return [(g.name,g.task,g.action,g.message) for g in self.guides]
+
+
 class Robot:
     """Cerebro con mapa, percepcion, navegacion, decisiones y memoria."""
     def __init__(self, memory_path=MEMORY_PATH):
@@ -148,6 +526,7 @@ class Robot:
         except (OSError, ValueError, TypeError):
             self.facts = {}
         self.reset()
+        self.training = TrainingLab(self, self.memory_path.with_name("aprendizaje.json"))
 
     def reset(self):
         self.x, self.z = 6, 5
@@ -155,7 +534,11 @@ class Robot:
         self.battery = 100.0
         self.steps = 0
         self.visits = {(self.x, self.z): 1}
-        self.last_decision = "Estoy en una habitacion nueva. Puedo explorarla sin chocar."
+        self.last_decision = "Tengo sensaciones nuevas. Aun no entiendo mi cuerpo."
+        self.posture = "standing"
+        self.stumble = 0.0
+        self.reach = 0.0
+        self.holding = None
 
     def free(self, x, z):
         return (
@@ -187,6 +570,9 @@ class Robot:
             "sensor_cm": self.front_distance(),
             "memoria": len(self.facts),
             "lugar": self.location(),
+            "postura": self.posture,
+            "sujetando": self.holding,
+            "aprendizaje": dict(self.training.confidence) if hasattr(self,"training") else {},
         }
 
     def _save(self):
@@ -203,6 +589,10 @@ class Robot:
         return "Gire a la " + direction + ". Direccion: " + ORIENTATIONS[self.facing] + "."
 
     def move(self, reverse=False):
+        if self.posture=="lying":
+            return "Primero debo incorporarme antes de caminar."
+        if self.stumble>0:
+            return "Estoy recuperando el equilibrio."
         if self.battery < 1.5:
             return "SEGURIDAD: bateria baja. Movimiento bloqueado."
         dx, dz = DIRECTIONS[self.facing]
@@ -210,11 +600,20 @@ class Robot:
             dx, dz = -dx, -dz
         if not self.free(self.x + dx, self.z + dz):
             return "SEGURIDAD: hay un obstaculo. No avanzo."
+        if hasattr(self,"training"):
+            stability=self.training.confidence["caminar"]
+            if self.training.rng.random()<.28*(1-stability):
+                self.training.motor_feedback(False)
+                return "Me tambalee y cai. Estoy aprendiendo a caminar."
         self.x += dx
         self.z += dz
         self.steps += 1
         self.battery = max(0.0, round(self.battery - 1.5, 2))
         self.visits[(self.x, self.z)] = self.visits.get((self.x, self.z), 0) + 1
+        if hasattr(self, "training"):
+            self.training.motor_feedback(True)
+            if self.holding:
+                self.training.practice("transportar",True)
         return "Movimiento seguro. Posicion: X=" + str(self.x) + " Z=" + str(self.z) + "."
 
     def decide(self):
@@ -287,6 +686,24 @@ class Robot:
             return self.think()
         if cmd in ("explorar", "explora", "decide", "e"):
             return self.explore()
+        if cmd in ("observar","mirar","q","guia","guias"):
+            return self.training.focus_guide()
+        if cmd in ("guia 1","guia 2","guia 3"):
+            return self.training.focus_guide(int(cmd[-1])-1)
+        if cmd in ("agarrar","sujetar","tomar","interactuar","f"):
+            return self.training.try_grab()
+        if cmd in ("soltar","dejar","liberar","v"):
+            return self.training.try_release()
+        if cmd in ("acostarse","acostar","recostarse","l"):
+            return self.training.try_rest()
+        if cmd in ("levantarse","incorporarse"):
+            self.posture="standing"
+            self.stumble=0
+            return "Estoy de pie de nuevo."
+        if cmd in ("identificar","reconocer","que es esto","i"):
+            return self.training.identify()
+        if cmd in ("aprender","progreso","habilidades"):
+            return self.training.report()
         if cmd in ("detener", "detente", "stop", "alto"):
             return "Movimiento autonomo detenido."
         if cmd in ("reiniciar", "reset"):
@@ -318,7 +735,7 @@ class Robot:
             self._save()
             return "Dato olvidado."
         if cmd in ("ayuda", "help", "?"):
-            return "W avanzar, S retroceder, A/D girar, E explorar, ESPACIO auto, R reiniciar; recuerda clave = valor."
+            return "W/A/S/D mover, E explorar, Q observar, 1/2/3 guias, F agarrar, V soltar, L acostarse, I identificar, P progreso, ESPACIO auto, R reiniciar."
         return "No entiendo ese comando aun. Escribe AYUDA."
 
 
