@@ -23,7 +23,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -248,7 +248,20 @@ class TrainingLab:
             Guide("SOMA", "DESCANSAR", 5.5, 6.1, 0, (184, 155, 251),
                   self.GUIDE_PROGRAMS[2]),
         ]
+        self.all_guide_specs={
+            g.name:(g.task,g.x,g.z,g.facing,g.color,g.program)
+            for g in self.guides
+        }
         self._load()
+
+    def restore_guide(self,name):
+        spec=self.all_guide_specs.get(name)
+        if not spec or any(g.name==name for g in self.guides):
+            return False
+        self.guides.append(Guide(name,*spec))
+        self.guides.sort(key=lambda g:list(self.all_guide_specs).index(g.name))
+        self.focus=min(self.focus,len(self.guides)-1)
+        return True
 
     def _load(self):
         try:
@@ -546,6 +559,8 @@ class TrainingLab:
         return "Percibo un objeto con forma "+("redonda" if item.shape=="ball" else "angular")+". Aun no se como llamarlo."
 
     def focus_guide(self,index=None):
+        if not self.guides:
+            return "No hay robots maestros presentes. Continuo aprendiendo por exploracion."
         if index is not None:
             self.focus=int(index)%len(self.guides)
         guide=self.guides[self.focus]
@@ -1121,6 +1136,7 @@ class FurnitureEditor:
         self.chairs = []
         self.removed_fixed = set()
         self.removed_movables = set()
+        self.removed_guides = set()
         self.history = []
         if self.path.exists():
             self._load()
@@ -1233,8 +1249,23 @@ class FurnitureEditor:
             self._push_history({"kind":"remove_fixture","name":key})
             self.save()
             return True,"Objeto eliminado: "+str(key)+"."
+        if kind=="guide":
+            if key not in self.robot.training.all_guide_specs:
+                return False,"Ese robot maestro no existe."
+            guide=next((g for g in self.robot.training.guides
+                        if g.name==key),None)
+            if guide is None:
+                return False,"Ese robot maestro ya no esta."
+            self.robot.training.release_owner(key)
+            self.robot.training.guides.remove(guide)
+            self.robot.training.focus=(self.robot.training.focus %
+                                       max(1,len(self.robot.training.guides)))
+            self.removed_guides.add(key)
+            self._push_history({"kind":"remove_guide","name":key})
+            self.save()
+            return True,"Maestro retirado: "+key+". AMBOT conserva lo aprendido."
         if kind=="movable":
-            if key not in ("cubo","pelota","bloque"):
+            if key not in self.robot.training.items:
                 return False,"Ese objeto no se puede quitar."
             item=self.robot.training.items.pop(key,None)
             if item is None:
@@ -1288,6 +1319,16 @@ class FurnitureEditor:
             self.history.pop()
             self.save()
             return True,"Restaure: "+str(name)+"."
+        if kind=="remove_guide":
+            name=action.get("name")
+            if name not in self.removed_guides:
+                return False,"El maestro ya esta presente."
+            if not self.robot.training.restore_guide(name):
+                return False,"No pude restaurar al maestro."
+            self.removed_guides.discard(name)
+            self.history.pop()
+            self.save()
+            return True,"Maestro restaurado: "+name+"."
         if kind=="remove_movable":
             snapshot=action["item"]
             name=snapshot.get("name")
@@ -1320,13 +1361,20 @@ class FurnitureEditor:
                                       if str(n) in ("cubo","pelota","bloque"))
             for n in self.removed_movables:
                 self.robot.training.items.pop(n,None)
+            self.removed_guides=set(str(n) for n in data.get("removed_guides",[])
+                                    if str(n) in self.robot.training.all_guide_specs)
+            self.robot.training.guides=[
+                g for g in self.robot.training.guides
+                if g.name not in self.removed_guides]
+            self.robot.training.focus=(self.robot.training.focus %
+                                       max(1,len(self.robot.training.guides)))
             entries=data.get("history",[])
             if isinstance(entries,list):
                 self.history=[record for record in entries[-24:]
                               if isinstance(record,dict)
                               and record.get("kind") in (
                                   "place_chair","remove_chair","remove_fixture",
-                                  "remove_movable")]
+                                  "remove_movable","remove_guide")]
             for item in data["chairs"][:self.MAX_CHAIRS]:
                 if not isinstance(item,dict):continue
                 style,x,z,rot=(item.get("style"),item.get("x"),item.get("z"),
@@ -1349,6 +1397,7 @@ class FurnitureEditor:
             "version":2,"chairs":self.chairs,
             "removed_fixed":sorted(self.removed_fixed),
             "removed_movables":sorted(self.removed_movables),
+            "removed_guides":sorted(self.removed_guides),
             "history":self.history[-24:]
         },ensure_ascii=False,indent=2),encoding="utf-8")
         tmp.replace(self.path)
@@ -1773,7 +1822,7 @@ class Scene3D:
             for guide in robot.training.guides:
                 wx,wz=self.world(guide.x,guide.z)
                 result.append({
-                    "kind":"protected","key":guide.name,
+                    "kind":"guide","key":guide.name,
                     "label":"ROBOT "+guide.name,
                     "bounds":(wx-.30,wx+.30,.05,3.0,wz-.30,wz+.30),
                 })
@@ -2397,8 +2446,10 @@ class DesktopApp:
         pg.draw.rect(self.screen,(9,28,43),outer,border_radius=10)
         pg.draw.rect(self.screen,COLOR["line"],outer,1,border_radius=10)
         self.text((x+10,y+6),"GUIAS  1 ANDA · 2 DEX · 3 SOMA",13,COLOR["cyan"])
-        focus=tr.guides[tr.focus]
-        self.text((x+10,y+26),f"OBSERVANDO: {focus.name} / {focus.task}",13,COLOR["muted"],w-16)
+        focus=tr.guides[tr.focus] if tr.guides else None
+        focus_status=(f"OBSERVANDO: {focus.name} / {focus.task}" if focus
+                      else "SIN MAESTROS / EXPLORACION LIBRE")
+        self.text((x+10,y+26),focus_status,13,COLOR["muted"],w-16)
         # Barras de aprendizaje: la memoria se actualiza por observacion
         # y practica, no por copiar el codigo de los profesores.
         keys=["caminar","agarrar","transportar","descansar","reconocer"]
@@ -2453,8 +2504,8 @@ class DesktopApp:
             self.last_guide_event=event["serial"]
             self.robot.brain.observe_guide(event,self.robot.training)
             self.add_log(event["teacher"],event["message"],COLOR["cyan"])
-            guide=self.robot.training.guides[self.robot.training.focus]
-            if event["teacher"]==guide.name:
+            guides=self.robot.training.guides
+            if guides and event["teacher"]==guides[self.robot.training.focus].name:
                 # La burbuja representa la interpretacion embrionaria del
                 # bebe. El mensaje del profesor permanece en el registro.
                 self.say("VI: "+event["baby"],duration=3.3)
@@ -2531,7 +2582,7 @@ class DesktopApp:
             if target is None:
                 ok,message=False,"Haz clic directamente sobre un objeto."
             elif target["kind"]=="protected":
-                ok,message=False,"No puedes quitar robots del entorno."
+                ok,message=False,"No puedes quitar a AMBOT ni su estructura."
             else:
                 ok,message=self.robot.furniture.remove(target["kind"],target["key"])
             self.editor_hint=message
@@ -2654,9 +2705,9 @@ class DesktopApp:
                       COLOR["muted"],r.width-24)
             self.text((r.x+12,r.y+128),"Cubo, pelota, bloque",13,
                       COLOR["muted"],r.width-24)
-            self.text((r.x+12,r.y+159),"Robots y paredes protegidos",13,
+            self.text((r.x+12,r.y+159),"Maestros: ANDA DEX SOMA",13,
                       COLOR["yellow"],r.width-24)
-            self.text((r.x+12,r.y+184),"Puedes deshacer el ultimo cambio",13,
+            self.text((r.x+12,r.y+184),"AMBOT / paredes protegidos",13,
                       COLOR["muted"],r.width-24)
         self.button("editor_undo","↶ DESHACER",
                     r.x+10,r.y+222,(r.width-30)//2,32)
