@@ -1,0 +1,8 @@
+{
+  "app": "AMBOT2",
+  "name": "AMBOT 2.0",
+  "version": "0.1.0",
+  "app_path": "AMBOT2/app.py",
+  "description": "Laboratorio 3D nativo con maestro humano, aprendiz, 5 dedos por mano, Bullet y lenguaje contextual",
+  "maintenance": false
+}
