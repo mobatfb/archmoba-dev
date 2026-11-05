@@ -967,7 +967,13 @@ class Scene3D:
         self.line((bx,.08,bz),(bx+dx*d,.08,bz+dz*d),COLOR["cyan"],.04)
         self.ball((bx+dx*d,.08,bz+dz*d),.09,COLOR["pink"])
 
-    def build_robot(self, robot, dt, elapsed, force_moving=None):
+    def build_robot(self, robot, dt, elapsed, force_moving=None, tint=None):
+        ink=COLOR["ink"] if tint is None else tone(tint,1.15)
+        cyan=COLOR["cyan"] if tint is None else tint
+        blue=COLOR["blue"] if tint is None else tone(tint,.78)
+        pink=COLOR["pink"] if tint is None else tone(tint,1.08)
+        posture=getattr(robot,"posture","standing")
+        reach=max(0.0,min(1.0,float(getattr(robot,"reach",0))))
         speed=min(1,dt*9)
         oldx,oldz=self.rx,self.rz
         self.rx+=(robot.x-self.rx)*speed
@@ -986,6 +992,21 @@ class Scene3D:
         side=(-fwd[1],fwd[0])
         bob=abs(math.sin(self.walk))*.04 if moved else math.sin(elapsed*1.6)*.012
         def p(sideways,height,forward=0):
+            if posture=="lying":
+                # La longitud vertical se convierte en eje horizontal.
+                axis=(height-1.4)*.78
+                return (
+                    bx+side[0]*sideways+fwd[0]*axis,
+                    .74+forward*.18,
+                    bz+side[1]*sideways+fwd[1]*axis,
+                )
+            if posture=="stumble":
+                lean=max(.0,(height-.42))*.42
+                return (
+                    bx+side[0]*sideways+fwd[0]*(forward+lean),
+                    height*.70+bob,
+                    bz+side[1]*sideways+fwd[1]*(forward+lean),
+                )
             return (bx+side[0]*sideways+fwd[0]*forward, height+bob,
                     bz+side[1]*sideways+fwd[1]*forward)
         def bone(a,b,color,width=.085):
@@ -997,33 +1018,65 @@ class Scene3D:
             a,b=j*math.tau/28,(j+1)*math.tau/28
             self.line((bx+math.cos(a)*.55,.025,bz+math.sin(a)*.55),
                       (bx+math.cos(b)*.55,.025,bz+math.sin(b)*.55),
-                      COLOR["blue"],.029)
+                      blue,.029)
         swing=math.sin(self.walk)*(.29 if moved else .025)
         for sign in (-1,1):
             hip=(sign*.15,1.0,0)
             knee=(sign*.20,.55,-swing*sign*.45)
             foot=(sign*.22,.11,-swing*sign*.70)
-            bone(hip,knee,COLOR["ink"],.11)
-            bone(knee,foot,COLOR["cyan"],.095)
-            node(knee,.1,COLOR["blue"])
-            node(foot,.12,COLOR["ink"])
-        bone((0,1.0,0),(0,1.78,0),COLOR["ink"],.19)
-        bone((-.29,1.77,0),(.29,1.77,0),COLOR["cyan"],.105)
+            bone(hip,knee,ink,.11)
+            bone(knee,foot,cyan,.095)
+            node(knee,.1,blue)
+            node(foot,.12,ink)
+        bone((0,1.0,0),(0,1.78,0),ink,.19)
+        bone((-.29,1.77,0),(.29,1.77,0),cyan,.105)
         for sign in (-1,1):
             shoulder=(sign*.29,1.77,0)
-            elbow=(sign*.47,1.36,swing*sign*.5)
-            hand=(sign*.52,1.02,swing*sign*.7)
-            bone(shoulder,elbow,COLOR["cyan"],.095)
-            bone(elbow,hand,COLOR["ink"],.09)
-            node(elbow,.1,COLOR["blue"])
-            node(hand,.1,COLOR["ink"])
-        node((0,1.48,-.13),.13,COLOR["pink"])
-        bone((0,1.78,0),(0,2.02,0),COLOR["cyan"],.075)
-        node((0,2.31,0),.28,COLOR["ink"])
-        node((-.105,2.33,.23),.053,COLOR["blue"])
-        node((.105,2.33,.23),.053,COLOR["blue"])
-        bone((0,2.58,0),(0,2.78,0),COLOR["cyan"],.035)
-        node((0,2.81,0),.066,COLOR["pink"])
+            elbow=(sign*(.47-.10*reach),1.36,swing*sign*.5+reach*.24)
+            hand=(sign*(.52-.24*reach),1.02+.16*reach,
+                  swing*sign*.7+reach*.48)
+            bone(shoulder,elbow,cyan,.095)
+            bone(elbow,hand,ink,.09)
+            node(elbow,.1,blue)
+            node(hand,.1,ink)
+        node((0,1.48,-.13),.13,pink)
+        bone((0,1.78,0),(0,2.02,0),cyan,.075)
+        node((0,2.31,0),.28,ink)
+        node((-.105,2.33,.23),.053,blue)
+        node((.105,2.33,.23),.053,blue)
+        bone((0,2.58,0),(0,2.78,0),cyan,.035)
+        node((0,2.81,0),.066,pink)
+        if getattr(robot,"holding",None):
+            node((0,1.13,.56),.08,pink)
+
+    def build_training(self, training, elapsed):
+        """Geometria de los tres robots guia y objetos con estado fisico."""
+        for item in training.items.values():
+            ix,iz=self.world(item.x,item.z)
+            if item.shape=="ball":
+                self.ball((ix,item.y,iz),item.radius*TILE,item.color)
+                self.ball((ix-.055,item.y+.08,iz+.10),.055,COLOR["ink"])
+            else:
+                self.box(ix,item.y-item.radius*TILE,iz,
+                         item.radius*2.1*TILE,item.radius*2.1*TILE,
+                         item.radius*2.1*TILE,item.color,neon=True)
+            if item.held_by:
+                self.line((ix,.03,iz),(ix,item.y-.2,iz),COLOR["blue"],.026)
+
+        # Las animaciones de los guias no deben modificar el estado de la
+        # camara o la animacion del bebe que se usara en el visor izquierdo.
+        old=(self.rx,self.rz,self.angle,self.walk,self.is_moving)
+        for guide in training.guides:
+            self.rx,self.rz=guide.x,guide.z
+            self.angle=self.orient(guide.facing)
+            self.walk=guide.walk
+            self.is_moving=guide.moving
+            self.build_robot(guide,0,elapsed,force_moving=guide.moving,tint=guide.color)
+            gx,gz=self.world(guide.x,guide.z)
+            # Indicador luminoso de tutor, distinto del brillo del bebe.
+            self.line((gx,3.02,gz),(gx,3.30,gz),guide.color,.045)
+            self.ball((gx,3.36,gz),.09,guide.color)
+        self.rx,self.rz,self.angle,self.walk,self.is_moving=old
 
     def paint_faces(self, surface, rect):
         """Compartir el pintor de poligonos entre las dos camaras 3D."""
@@ -1047,6 +1100,8 @@ class Scene3D:
         self.faces=[]
         self.build_world(robot)
         self.build_robot(robot,dt,elapsed)
+        if hasattr(robot,"training"):
+            self.build_training(robot.training,elapsed)
         self.paint_faces(surface,rect)
         pg.draw.rect(surface,COLOR["line"],rect,2,border_radius=12)
 
@@ -1102,13 +1157,13 @@ class DesktopApp:
         self.auto=False
         self.auto_clock=0.0
         self.elapsed=0.0
-        self.bubble_text="Hola, estoy listo para conocer este mundo."
+        self.bubble_text="¿Qué son esos movimientos? Quiero aprender."
         self.bubble_until=float("inf")
         self.bubble_kind="hello"
         self.input_focus=False
         self.input_value=""
         self.messages=deque(maxlen=24)
-        self.messages.append(("SISTEMA","AMBOT listo. Cerebro local y cuerpo 3D.",COLOR["green"]))
+        self.messages.append(("SISTEMA","Tres robots guia inician demostraciones.",COLOR["green"]))
         self.messages.append(("AYUDA","W/A/S/D mover · E explorar · ESPACIO auto",COLOR["muted"]))
         self.dragging=False
         self.mouse=(0,0)
@@ -1117,6 +1172,8 @@ class DesktopApp:
         self.view=pg.Rect(290,83,650,565)
         self.portrait_view=pg.Rect(20,83,250,565)
         self.last_portrait_state=None
+        self.last_guide_event=0
+        self.selected_guide=0
 
     def text(self,pos,value,size=16,color=None,max_width=None):
         font=self.fonts.get(size,self.fonts[16])
@@ -1190,7 +1247,9 @@ class DesktopApp:
         pg=self.pg
         self.panel(rect)
         self.text((rect.x+14,rect.y+12),"PERSONAJE / EN VIVO",16,COLOR["cyan"])
-        status="AUTO" if self.auto else ("EN MOVIMIENTO" if self.scene.is_moving else "EN ESPERA")
+        status=("IMITANDO" if self.auto else
+                ("ACOSTADO" if self.robot.posture=="lying" else
+                 ("APRENDIENDO" if self.scene.is_moving else "OBSERVANDO")))
         self.text((rect.x+14,rect.y+36),"● "+status,13,COLOR["green"] if self.auto else COLOR["muted"])
 
         # Reservar franja superior para la burbuja sin tapar al stickman.
@@ -1236,6 +1295,78 @@ class DesktopApp:
                 font.render(line,True,(25,46,63)),
                 (rect.x+padding,rect.y+9+i*line_height))
 
+    def draw_guides_and_skills(self, rect):
+        """HUD de entrenamiento superpuesto sin ocultar el mundo completo."""
+        pg=self.pg
+        tr=self.robot.training
+        x,y=rect.x+10,rect.bottom-137
+        w=max(230,rect.width-20)
+        h=125
+        outer=pg.Rect(x,y,w,h)
+        pg.draw.rect(self.screen,(9,28,43),outer,border_radius=10)
+        pg.draw.rect(self.screen,COLOR["line"],outer,1,border_radius=10)
+        self.text((x+10,y+6),"GUIAS  1 ANDA · 2 DEX · 3 SOMA",13,COLOR["cyan"])
+        focus=tr.guides[tr.focus]
+        self.text((x+10,y+26),f"OBSERVANDO: {focus.name} / {focus.task}",13,COLOR["muted"],w-16)
+        # Barras de aprendizaje: la memoria se actualiza por observacion
+        # y practica, no por copiar el codigo de los profesores.
+        keys=["caminar","agarrar","transportar","descansar","reconocer"]
+        col_width=(w-20)/len(keys)
+        for i,key in enumerate(keys):
+            xx=int(x+10+i*col_width)
+            label={"caminar":"MOVER","agarrar":"TOMAR","transportar":"LLEVAR",
+                   "descansar":"REPOSAR","reconocer":"NOMBRES"}[key]
+            value=tr.confidence[key]
+            self.text((xx,y+47),label,13,COLOR["muted"],int(col_width-3))
+            bg=pg.Rect(xx,y+67,max(12,int(col_width-8)),6)
+            pg.draw.rect(self.screen,(29,58,77),bg,border_radius=3)
+            fg=bg.copy()
+            fg.width=int(bg.width*value)
+            if fg.width>0:
+                pg.draw.rect(self.screen,COLOR["cyan"] if value<.70 else COLOR["green"],
+                             fg,border_radius=3)
+            self.text((xx,y+76),str(int(value*100))+"%",13,COLOR["ink"])
+        buttons=[("observe","Q MIRAR"),("grasp","F TOMAR"),
+                 ("release","V SOLTAR"),("lie","L CAMA")]
+        bh=24; by=y+96; gap=5
+        bw=int((w-20-gap*3)/4)
+        for i,(key,title) in enumerate(buttons):
+            bx=x+10+i*(bw+gap)
+            self.button(key,title,bx,by,bw,bh,key=="observe")
+
+    def draw_guide_labels(self, rect):
+        """Etiquetas ancladas a la posicion 3D de cada instructor."""
+        pg=self.pg
+        training=self.robot.training
+        for idx,guide in enumerate(training.guides):
+            wx,wz=self.scene.world(guide.x,guide.z)
+            at=self.scene.project((wx,3.46,wz))
+            if not at:
+                continue
+            px,py=int(at[0]),int(at[1])
+            if not rect.collidepoint(px,py):
+                continue
+            name=f"{idx+1} {guide.name}"
+            font=self.fonts[13]
+            ww=font.size(name)[0]+12
+            bubble=pg.Rect(px-ww//2,py-14,ww,21)
+            pg.draw.rect(self.screen,(10,32,45),bubble,border_radius=6)
+            pg.draw.rect(self.screen,guide.color,bubble,1,border_radius=6)
+            self.text((bubble.x+6,bubble.y+3),name,13,guide.color)
+
+    def poll_guides(self):
+        """Reflejar demostraciones en las burbujas y el registro."""
+        for event in list(self.robot.training.messages):
+            if event["serial"]<=self.last_guide_event:
+                continue
+            self.last_guide_event=event["serial"]
+            self.add_log(event["teacher"],event["message"],COLOR["cyan"])
+            guide=self.robot.training.guides[self.robot.training.focus]
+            if event["teacher"]==guide.name:
+                # La burbuja representa la interpretacion embrionaria del
+                # bebe. El mensaje del profesor permanece en el registro.
+                self.say("VI: "+event["baby"],duration=3.3)
+
     def add_log(self,who,text,color=None):
         for part in str(text).splitlines():
             if not part:
@@ -1269,6 +1400,14 @@ class DesktopApp:
     def handle_button(self,key):
         if key=="auto":
             self.toggle_auto()
+        elif key=="observe":
+            self.execute("observar",False)
+        elif key=="grasp":
+            self.execute("agarrar",False)
+        elif key=="release":
+            self.execute("soltar",False)
+        elif key=="lie":
+            self.execute("acostarse",False)
         elif key=="stop":
             self.auto=False
             self.add_log("SISTEMA","Robot en pausa.",COLOR["yellow"])
@@ -1307,6 +1446,15 @@ class DesktopApp:
         }
         if e.key in actions:
             self.execute(actions[e.key],True)
+        elif e.key in (pg.K_q,pg.K_f,pg.K_v,pg.K_l,pg.K_i,pg.K_p):
+            self.execute({
+                pg.K_q:"observar",pg.K_f:"agarrar",pg.K_v:"soltar",
+                pg.K_l:"acostarse",pg.K_i:"identificar",pg.K_p:"progreso",
+            }[e.key],quiet=False)
+        elif e.key in (pg.K_1,pg.K_2,pg.K_3):
+            index=e.key-pg.K_1
+            self.robot.training.focus=index
+            self.execute("guia "+str(index+1),quiet=False)
         elif e.key==pg.K_SPACE:
             self.toggle_auto()
         elif e.key==pg.K_r:
@@ -1361,6 +1509,7 @@ class DesktopApp:
         self.view=pg.Rect(center_x,83,center_w,h-146)
         side=pg.Rect(self.view.right+gap,83,right_w,h-146)
         self.scene.render(surf,self.view,self.robot,dt,self.elapsed)
+        self.draw_guide_labels(self.view)
         self.portrait_view=left
         self.draw_character_viewer(left)
         self.draw_speech_bubble(left)
@@ -1370,11 +1519,11 @@ class DesktopApp:
         label = ("●  HABITACION INICIAL | 3D" if self.robot.location() == ROOM_NAME
                  else "●  PASILLO | ENTORNO 3D")
         self.text((stamp.x+10,stamp.y+6),label,14,COLOR["cyan"])
-        self.text((self.view.x+15,self.view.bottom-30),"ARRASTRA: GIRAR CÁMARA    ·    RUEDA: ZOOM",13,COLOR["muted"])
+        self.text((self.view.x+15,self.view.y+46),"RATÓN: GIRAR CÁMARA · RUEDA: ZOOM",13,COLOR["muted"])
         self.panel(side)
         x=side.x+17
         inner=side.width-34
-        self.text((x,side.y+14),"CEREBRO / AMBOT",20,COLOR["ink"])
+        self.text((x,side.y+14),"CEREBRO / AMBOT BEBÉ",20,COLOR["ink"])
         self.text((x,side.y+44),"●  "+self.robot.location()+"  •  SENSOR ACTIVO",13,COLOR["green"])
         s=self.robot.state()
         self.text((x,side.y+72),"BATERÍA",14,COLOR["muted"])
@@ -1425,9 +1574,10 @@ class DesktopApp:
         if len(value)>38:value="…"+value[-37:]
         if not value:value="Escribe un comando y pulsa ENTER"
         self.text((x+9,inputy+12),value,13,COLOR["ink"] if self.input_value else COLOR["muted"],inner-20)
-        self.text((23,h-45),"W/A/S/D · E EXPLORAR · ESPACIO AUTO · R REINICIAR · TAB ESCRIBIR",
+        self.draw_guides_and_skills(self.view)
+        self.text((23,h-45),"WASD MOVER · Q MIRAR · F TOMAR · V SOLTAR · L CAMA · 1/2/3 GUIAS · TAB CHAT",
                   14,COLOR["muted"])
-        self.text((w-222,h-45),"ARCHMOBA  /  AMBOT "+APP_VERSION,14,COLOR["cyan"])
+        self.text((w-220,h-45),"ARCHMOBA / AMBOT "+APP_VERSION,14,COLOR["cyan"])
         pg.display.flip()
 
     def run(self,frames=0):
@@ -1437,6 +1587,8 @@ class DesktopApp:
             dt=min(.05,self.clock.tick(60)/1000.0)
             self.elapsed+=dt
             running=self.events()
+            self.robot.training.update(dt)
+            self.poll_guides()
             if self.auto:
                 self.auto_clock+=dt
                 if self.auto_clock>=.57:
