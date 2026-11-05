@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT: controles de tanque estilo Resident Evil 1 para avatar, bebe y maestros; autonomia y editor 3D",
+  "description": "Movimiento tipo tanque Resident Evil 1 PC en AMBOT, tu avatar y tres maestros; controles W/A/S/D y flechas",
   "version": "0.9.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "c599ee3bd17b4ec0393ffdda57784892098b3350",
+  "release_commit": "d44f5403c0e503069c2e7cd0f28f792d21525f1b",
   "maintenance": false
 }
