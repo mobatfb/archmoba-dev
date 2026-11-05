@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 APP_DIR=Path(__file__).resolve().parent
 DATA_DIR=Path(os.environ.get("LOCALAPPDATA",str(Path.home()/".local"/"share")))/"ARCHMOBA"/"AMBOT2"
 SCENE=DATA_DIR/"escena.json"
@@ -53,6 +53,7 @@ from engine.world import LabWorld
 from body.robot import Humanoid, HAND_NAMES, FINGER_NAMES, JOINT_GROUPS, JOINT_LIMITS, JOINT_LABELS, clamp, tank_inputs
 from body.grasp import GraspSystem
 from brain.learning import ObservationLearner
+from brain.auto_observer import AutoObserver
 from teacher.recorder import DemonstrationRecorder
 from editor.objects import ObjectEditor
 from language.understanding import LanguageMind
@@ -98,8 +99,12 @@ class AMBOT2App(ShowBase):
         self.learner=ObservationLearner(self.data_dir/"motor.json")
         self.language=LanguageMind(self.data_dir/"lenguaje.json")
         self.demo_recorder=DemonstrationRecorder()
+        self.auto_observer=AutoObserver(quiet_seconds=1.15)
+        self.auto_observer.reset(self.teacher.pose())
+        self.auto_watch=True
+        self._grasp_log_cursor=len(self.grasp.log)
         self.last_skill=""
-        self.last_message="Soy AMBOT. ¿Que vas a ensenarme?"
+        self.last_message="Estoy observando tus acciones. ¡Muestrame algo!"
         self.last_teacher_action="Laboratorio iniciado."
         self.keys=set()
         self.cam_yaw=8
@@ -305,6 +310,8 @@ class AMBOT2App(ShowBase):
         self.say("Escena guardada correctamente.")
 
     def begin_demonstration(self,label=None):
+        # El modo de demostracion manual no debe duplicar episodios.
+        self.auto_observer.reset(self.teacher.pose())
         skill=label or "movimiento"
         try:
             self.demo_recorder.begin(skill,self.teacher.pose())
@@ -317,9 +324,130 @@ class AMBOT2App(ShowBase):
             label,frames=self.demo_recorder.stop(self.teacher.pose())
             answer=self.learner.observe(label,frames)
             self.last_skill=label
+            self.auto_observer.reset(self.teacher.pose())
             self.say(answer)
         except ValueError as exc:
             self.say(str(exc))
+
+    def set_auto_watch(self,enabled):
+        """Observacion activada por defecto; se puede pausar manualmente."""
+        self.auto_watch=bool(enabled)
+        self.auto_observer.reset(self.teacher.pose())
+        self._grasp_log_cursor=len(self.grasp.log)
+        if hasattr(self,"menu_state"):
+            self._rebuild_menu()
+        if self.auto_watch:
+            return self.say("AMBOT: Te observo automaticamente. No necesitas grabar.")
+        return self.say("AMBOT: He pausado la observacion automatica.")
+
+    def _question_text(self):
+        item=self.learner.next_unlabeled()
+        if not item:
+            return ""
+        extra=len(self.learner.unlabeled)-1
+        count=f" ({extra} mas)" if extra else ""
+        return "AMBOT: ¿Como se llama lo que acabas de hacer?"+count
+
+    def _show_pending_question(self):
+        """Mantener visible la pregunta aunque haya mensajes de botones."""
+        question=self._question_text()
+        if hasattr(self,"question_label"):
+            self.question_label.setText(question or "AMBOT: Estoy observando.")
+        return question
+
+    def _observe_teacher(self,dt):
+        """Observar posturas y contactos sin que el MAESTRO pulse Grabar."""
+        current=self.teacher.pose()
+        if not self.auto_watch or self.demo_recorder.active:
+            self.auto_observer.reset(current)
+            self._grasp_log_cursor=len(self.grasp.log)
+            return None
+        recent=self.grasp.log[self._grasp_log_cursor:]
+        self._grasp_log_cursor=len(self.grasp.log)
+        events=[]
+        for operation,hand,oid in recent:
+            target=self.lab.objects.get(oid)
+            events.append({
+                "type":operation,"hand":hand,"object_id":oid,
+                "object_name":target.name if target else oid
+            })
+        selected=self.editor.object()
+        context={
+            "selected_object":{"id":selected.oid,"name":selected.name}
+                               if selected else None,
+            "held":self.grasp.held()
+        }
+        episode=self.auto_observer.update(current,dt,events,context)
+        if episode is None:
+            return None
+        stored=self.learner.add_unlabeled(episode)
+        if stored is None:
+            # Se preservan las 12 preguntas previas y se espera a que
+            # el maestro responda antes de registrar nuevas acciones.
+            self._show_pending_question()
+            return None
+        if self.learner.next_unlabeled()["id"]==stored["id"]:
+            self.say(self._question_text())
+        self._show_pending_question()
+        return stored
+
+    @staticmethod
+    def _clean_action_name(raw):
+        """Admitir respuestas naturales en lugar de una orden especial."""
+        import re
+        text=str(raw).strip()
+        # El maestro puede decir: "Estoy levantando el cuadro", "se llama
+        # agarrar" o solo "levantar el cuadro".
+        for pattern in (
+            r"^(?:eso|esto)\s+se\s+llama\s+",
+            r"^se\s+llama\s+",
+            r"^lo\s+que\s+(?:hice|estaba haciendo)\s+(?:fue|es)\s+",
+            r"^yo\s+(?:estoy|estaba)\s+",
+            r"^estoy\s+",
+            r"^estaba\s+",
+            r"^fue\s+",
+        ):
+            text=re.sub(pattern,"",text,flags=re.IGNORECASE)
+        return text.strip(" .,!?:;¿¡")
+
+    def name_auto_action(self,raw):
+        """Vincular la palabra del maestro con la demostracion ya observada."""
+        name=self._clean_action_name(raw)
+        if not name:
+            raise ValueError("Escribe el nombre de la accion observada.")
+        answer=self.learner.label_next(name)
+        self.last_skill=name.strip().lower()
+        self._show_pending_question()
+        self.say("AMBOT: "+answer)
+        return answer
+
+    def skip_auto_action(self):
+        if not self.learner.skip_next():
+            return self.say("No tengo ninguna accion pendiente.")
+        question=self._show_pending_question()
+        if question:
+            return self.say("AMBOT: Guardare esa accion sin nombre. "+question)
+        return self.say("AMBOT: Guarde la experiencia sin nombre. Seguire observando.")
+
+    def repeat_auto_question(self):
+        question=self._show_pending_question()
+        if question:
+            return self.say(question)
+        return self.say("AMBOT: No hay preguntas. Haz un movimiento y te observare.")
+
+    def list_learned_actions(self):
+        actions=self.learner.available()
+        return self.say("AMBOT: "+(
+            "Aprendi nombres: "+", ".join(actions[-8:])
+            if actions else "Todavia no he asociado nombres a tus acciones."))
+
+    @staticmethod
+    def _is_question(raw):
+        from language.understanding import normalize
+        simple=normalize(raw.strip(" ¿?¡!.,:;"))
+        return (raw.lstrip().startswith("¿") or
+                simple.startswith(("que ","como ","quien ","donde ",
+                                   "por que ","puedes ","cual ")))
 
     def try_imitation(self,label=None):
         skill=label or self.last_skill
@@ -347,6 +475,20 @@ class AMBOT2App(ShowBase):
         command=raw.lower()
         parts=raw.split()
         try:
+            if command in ("omitir accion","no se","no sé","saltar pregunta",
+                            "siguiente accion","sin nombre"):
+                return self.skip_auto_action()
+            if command in ("repetir pregunta","como se llama la accion",
+                           "¿como se llama la accion?"):
+                return self.repeat_auto_question()
+            if command in ("observar si","activar observacion",
+                           "activar observación"):
+                return self.set_auto_watch(True)
+            if command in ("observar no","pausar observacion",
+                           "pausar observación"):
+                return self.set_auto_watch(False)
+            if command in ("habilidades","que aprendiste","qué aprendiste"):
+                return self.list_learned_actions()
             if command.startswith(("crear ","agregar ","anadir ")):
                 kind=parts[-1].lower()
                 return self.create_object(kind)
@@ -408,12 +550,23 @@ class AMBOT2App(ShowBase):
                 return self.close_both(1)
             if command in ("soltar ambos","soltar las dos"):
                 return self.release_both()
+            if self.learner.next_unlabeled() and command in (
+                    "tomar","agarrar","soltar","liberar"):
+                # Si AMBOT acaba de preguntar y el maestro responde
+                # "agarrar", es un nombre, no una orden de control.
+                return self.name_auto_action(raw)
             if command in ("tomar","agarrar"):
                 return self.try_grasp()
             if command in ("soltar","liberar"):
                 return self.release()
             if command=="ayuda":
                 return self.say("TANQUE: W/S avance-retroceso, A/D giro sobre eje; flechas equivalentes | 1/2 mano | [ ] dedo | Q/E flexionar | 3/4 ambas manos | B agarrar ambas | N soltar ambas | O/P grabar | H practicar | 5-8 objetos | lenguaje en el campo de texto.")
+            if self.learner.next_unlabeled() and not self._is_question(raw):
+                # El usuario nombra la accion despues de la pregunta.
+                # Mantener libres las ordenes y las preguntas de lenguaje.
+                if not command.startswith((
+                    "esto es ","este objeto es ","señala ","senala ")):
+                    return self.name_auto_action(raw)
             answer=self.language.hear(raw,self.editor.selected)
             return self.say("AMBOT: "+answer)
         except (ValueError,KeyError,TypeError,OSError) as exc:
@@ -438,10 +591,11 @@ class AMBOT2App(ShowBase):
             parent=self.panel,text="",pos=(0,.675),scale=.026,
             align=TextNode.ALeft,fg=(.70,.83,.89,1),mayChange=True)
 
-        self.menu_order=list(JOINT_GROUPS)+[
+        self.menu_order=["OBSERVACION AUTOMATICA"]+list(JOINT_GROUPS)+[
             "MANOS Y DEDOS","AGARRE","OBJETOS","APRENDIZAJE","AYUDA"]
         self.menu_state={
-            section:section=="CABEZA Y TRONCO" for section in self.menu_order
+            section in ("OBSERVACION AUTOMATICA","CABEZA Y TRONCO")
+            for section in self.menu_order
         }
         self.joint_sliders={}
         self.joint_values={}
@@ -468,13 +622,18 @@ class AMBOT2App(ShowBase):
             frameColor=(.075,.17,.23,1),
             frameSize=(-.07,.66,-.085,.08),
             pos=(.293,0,-.624))
+        self.question_label=OnscreenText(
+            parent=self.panel,text="",
+            pos=(-.04,-.728),scale=.028,
+            align=TextNode.ALeft,fg=(1,.84,.56,1),mayChange=True)
+        self._show_pending_question()
         self.entry=DirectEntry(
             parent=self.panel,width=19,scale=.035,
             pos=(-.04,0,-.792),
             frameColor=(.87,.94,1,1),text_fg=(.05,.10,.16,1),
             initialText="",numLines=1,focus=0,command=self.command_enter)
         self.hint=OnscreenText(
-            parent=self.panel,text="Habla con AMBOT o escribe: articulacion codo_izq 45",
+            parent=self.panel,text="Responde la pregunta con el nombre de la accion.",
             pos=(-.04,-.86),scale=.026,align=TextNode.ALeft,
             fg=(.67,.80,.87,1))
         self.legend=OnscreenText(
@@ -593,7 +752,26 @@ class AMBOT2App(ShowBase):
             y-=.112
             if not opened:
                 continue
-            if title in JOINT_GROUPS:
+            if title=="OBSERVACION AUTOMATICA":
+                self._menu_label(
+                    "AMBOT aprende de tus demostraciones sin grabar.",y)
+                y-=.078
+                self._menu_label(
+                    "Detecta acciones al terminar una secuencia.",y)
+                y-=.078
+                self._menu_label(
+                    f"Estado: {'OBSERVANDO' if self.auto_watch else 'PAUSADO'}"
+                    f"  |  Sin nombre: {len(self.learner.unlabeled)}",y)
+                y-=.105
+                self._menu_button(
+                    "PAUSAR" if self.auto_watch else "ACTIVAR",
+                    .13,y,lambda:self.set_auto_watch(not self.auto_watch))
+                self._menu_button("PREGUNTA",.45,y,self.repeat_auto_question)
+                y-=.105
+                self._menu_button("OMITIR",.13,y,self.skip_auto_action)
+                self._menu_button("APRENDIDO",.45,y,self.list_learned_actions)
+                y-=.12
+            elif title in JOINT_GROUPS:
                 for name,label,minimum,maximum in JOINT_GROUPS[title]:
                     self._menu_label(label,y+.006,size=.026)
                     bar=DirectSlider(
@@ -675,7 +853,7 @@ class AMBOT2App(ShowBase):
                 self._menu_button("CARGAR",.45,y,self.load_scene)
                 y-=.11
             elif title=="APRENDIZAJE":
-                self._menu_label("Enseñar nombre: enseñar flexionar codo",y)
+                self._menu_label("AUTO: mueve el maestro y luego responde.",y)
                 y-=.082
                 self._menu_button("GRABAR",.13,y,self.begin_demonstration)
                 self._menu_button("FINALIZAR",.45,y,self.end_demonstration)
@@ -729,7 +907,8 @@ class AMBOT2App(ShowBase):
         self.substatus.setText(
             f"AGARRE: {holding}\n"+
             f"CONTACTOS I/D: {touched['izquierda']} / {touched['derecha']}\n"+
-            f"DEMOS: {self.learner.episodes} | ENSAYOS: {self.learner.attempts}")
+            f"APRENDIDAS: {self.learner.episodes} | SIN NOMBRE: "
+            f"{len(self.learner.unlabeled)}")
 
     def _update(self,task):
         dt=max(0,min(.05,self.taskMgr.globalClock.getDt()))
@@ -752,6 +931,7 @@ class AMBOT2App(ShowBase):
         self.lab.step(dt)
         self.grasp.auto_check()
         self.demo_recorder.record(self.teacher.pose(),dt)
+        self._observe_teacher(dt)
         self._gui_clock+=dt
         if self._gui_clock>.16:
             self._gui_clock=0
