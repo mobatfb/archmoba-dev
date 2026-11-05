@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT autonomo con editor 3D para añadir sillas por tipo y posicion; memoria y Arduino",
-  "version": "0.6.0",
+  "description": "AMBOT con editor 3D para agregar o quitar cualquier objeto, deshacer persistente, aprendizaje autonomo y Arduino seguro",
+  "version": "0.7.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "5cf880d56702132fb15c913d915626266a0b20e1",
+  "release_commit": "5534c041df76aece6d893468906877ef259e3a4f",
   "maintenance": false
 }
