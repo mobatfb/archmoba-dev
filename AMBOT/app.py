@@ -934,6 +934,171 @@ class LearningBrain:
                 f"{len(self.questions)} preguntas propias ({answered} respondidas). "
                 f"Meta: {self.current_goal}.")
 
+
+class ArduinoBridge:
+    """Puente USB optativo con bloqueo fisico y telemetria comprobable.
+
+    Nunca enciende motores al iniciar AMBOT. Exige conexion, telemetria
+    reciente de sensores reales y orden EXPLICITA de habilitacion fisica.
+    """
+    def __init__(self):
+        self.serial = None
+        self.port = ""
+        self.armed = False
+        self.ready = False
+        self.last_rx = 0.0
+        self.telemetry = {}
+        self.last_error = ""
+        self.sent_commands = 0
+
+    @property
+    def connected(self):
+        return self.serial is not None and bool(getattr(self.serial,"is_open",True))
+
+    def available_ports(self):
+        try:
+            from serial.tools import list_ports
+        except ImportError:
+            return "pyserial no instalado. Conecta Arduino cuando lo tengas."
+        return ", ".join(p.device for p in list_ports.comports()) or "No se detectaron puertos serie."
+
+    def _ensure_driver(self):
+        try:
+            import serial
+            return serial
+        except ImportError:
+            if str(DEPENDENCIES) not in sys.path:
+                sys.path.insert(0,str(DEPENDENCIES))
+            try:
+                import serial
+                return serial
+            except ImportError:
+                pass
+        DEPENDENCIES.mkdir(parents=True,exist_ok=True)
+        flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
+        result=subprocess.run([
+            sys.executable,"-m","pip","install","--disable-pip-version-check",
+            "--no-input","--only-binary=:all:","--target",str(DEPENDENCIES),
+            "pyserial>=3.5,<4",
+        ],capture_output=True,text=True,timeout=90,creationflags=flags)
+        if result.returncode:
+            raise RuntimeError("No pude instalar pyserial: "+result.stdout[-400:])
+        import importlib
+        importlib.invalidate_caches()
+        return importlib.import_module("serial")
+
+    def connect(self, port):
+        port=str(port).strip()
+        if not port or len(port)>90 or any(x in port for x in ("\n","\r","\0")):
+            return "Indica un puerto serie valido, por ejemplo COM4."
+        if self.connected:self.close()
+        self.armed=False
+        self.ready=False
+        self.telemetry={}
+        try:
+            serial=self._ensure_driver()
+            self.serial=serial.Serial(port,baudrate=115200,
+                                      timeout=0,write_timeout=.2)
+            self.port=port
+            self.last_rx=0.0
+            self._write("STOP\n")
+            self._write("PING\n")
+            return "Arduino conectado en "+port+". Motores BLOQUEADOS."
+        except (Exception,) as exc:
+            self.serial=None
+            self.port=""
+            self.last_error=str(exc)[:160]
+            return "No pude conectar Arduino: "+self.last_error
+
+    def _write(self, line):
+        if not self.connected:
+            return False
+        try:
+            self.serial.write(line.encode("ascii"))
+            return True
+        except (OSError,ValueError,Exception) as exc:
+            self.last_error=str(exc)[:160]
+            self.armed=False
+            return False
+
+    def stop(self):
+        self.armed=False
+        self._write("STOP\n")
+        return "PARADA DE SEGURIDAD: motores fisicos bloqueados."
+
+    def close(self):
+        self.stop()
+        if self.serial:
+            try:self.serial.close()
+            except Exception:pass
+        self.serial=None
+        self.ready=False
+        self.telemetry={}
+        self.port=""
+
+    def poll(self):
+        if not self.connected: return
+        try:
+            for _ in range(4):
+                if getattr(self.serial,"in_waiting",0)<=0:break
+                line=self.serial.readline()[:350].decode("utf-8","replace").strip()
+                if not line or len(line)>300:continue
+                try:payload=json.loads(line)
+                except (ValueError,TypeError):continue
+                if not isinstance(payload,dict):continue
+                self.ready=payload.get("ready") is True
+                clean={}
+                for name in ("distance_cm","battery_pct","touch"):
+                    value=payload.get(name)
+                    if type(value) in (int,float,bool) and math.isfinite(float(value)):
+                        clean[name]=value
+                self.telemetry=clean
+                self.last_rx=time.monotonic()
+            if self.armed and not self.sensors_safe():
+                self.stop()
+        except (Exception,) as exc:
+            self.last_error=str(exc)[:160]
+            self.stop()
+            self.close()
+
+    def sensors_safe(self):
+        if not self.connected or not self.ready:
+            return False
+        if time.monotonic()-self.last_rx>.8:
+            return False
+        distance=self.telemetry.get("distance_cm",-1)
+        battery=self.telemetry.get("battery_pct",-1)
+        return (type(distance) in (int,float) and 25<=distance<=1000 and
+                type(battery) in (int,float) and 20<=battery<=100)
+
+    def arm(self):
+        self.poll()
+        if not self.sensors_safe():
+            self.armed=False
+            return ("Motor fisico NO habilitado: necesito telemetria REAL "
+                    "de distancia y bateria y conexion reciente.")
+        self.armed=True
+        return "Control fisico habilitado temporalmente, con limite de velocidad y parada."
+
+    def send_motion(self, direction, power=25, duration_ms=100):
+        if not self.armed or not self.sensors_safe():
+            self.stop()
+            return False
+        if direction not in ("FORWARD","BACK","LEFT","RIGHT"):
+            return False
+        power=max(0,min(35,int(power)))
+        duration_ms=max(20,min(120,int(duration_ms)))
+        if self._write("MOVE "+direction+" "+str(power)+" "+str(duration_ms)+"\n"):
+            self.sent_commands+=1
+            return True
+        return False
+
+    def status(self):
+        if not self.connected:return "Arduino: desconectado; simulacion autonoma activa."
+        state="HABILITADO" if self.armed else "BLOQUEADO"
+        return ("Arduino "+self.port+" / motores "+state+
+                " / sensores "+str(self.telemetry))
+
 class Robot:
     """Cerebro con mapa, percepcion, navegacion, decisiones y memoria."""
     def __init__(self, memory_path=MEMORY_PATH):
@@ -1610,6 +1775,7 @@ class DesktopApp:
         self.clock=pg.time.Clock()
         self.fonts={i:pg.font.SysFont("Segoe UI",i) for i in (13,14,16,17,18,20,23,27)}
         self.robot=Robot()
+        self.hardware=ArduinoBridge()
         self.scene=Scene3D(pg)
         self.portrait_scene=Scene3D(pg)
         self.auto=not smoke
@@ -1837,11 +2003,32 @@ class DesktopApp:
         command=command.strip()
         if not command:return
         clean=normalize(command)
+        if clean.startswith("arduino"):
+            if clean in ("arduino","arduino estado"):
+                answer=self.hardware.status()
+            elif clean in ("arduino puertos","arduino buscar"):
+                answer=self.hardware.available_ports()
+            elif clean.startswith("arduino conectar "):
+                answer=self.hardware.connect(command[len("arduino conectar "):])
+            elif clean=="arduino desconectar":
+                self.hardware.close()
+                answer="Arduino desconectado. El cerebro continua simulando."
+            elif clean in ("arduino bloquear","arduino stop","arduino emergencia"):
+                answer=self.hardware.stop()
+            elif clean=="arduino habilitar":
+                answer=self.hardware.arm()
+            else:
+                answer=("Arduino: ESTADO, PUERTOS, CONECTAR COM4, "
+                        "HABILITAR, BLOQUEAR, DESCONECTAR.")
+            self.add_log("ARDUINO",answer,COLOR["yellow"])
+            self.say(answer,5.0)
+            return
         if clean in ("auto","automatico","modo automatico"):
             self.toggle_auto()
             return
         if clean in ("detener","alto","detente","stop"):
             self.auto=False
+            self.hardware.stop()
         if not quiet:self.add_log("TU",command,COLOR["ink"])
         answer=self.robot.command(command)
         if answer:
@@ -1852,6 +2039,7 @@ class DesktopApp:
     def toggle_auto(self):
         self.auto=not self.auto
         self.auto_clock=.45
+        if not self.auto:self.hardware.stop()
         message="Estoy explorando por mi cuenta." if self.auto else "He detenido mi exploración."
         self.add_log("SISTEMA","Autonomo " + ("activado" if self.auto else "detenido") + ".",
                      COLOR["green"] if self.auto else COLOR["yellow"])
@@ -1870,10 +2058,12 @@ class DesktopApp:
             self.execute("acostarse",False)
         elif key=="stop":
             self.auto=False
+            self.hardware.stop()
             self.add_log("SISTEMA","Robot en pausa.",COLOR["yellow"])
             self.say("Me detengo. Espero nuevas instrucciones.",4.0)
         elif key=="reset":
             self.auto=False
+            self.hardware.stop()
             self.robot.reset()
             self.add_log("SISTEMA","Robot reiniciado. Memoria conservada.",COLOR["green"])
             self.say("He vuelto al inicio. ¡Vamos a descubrir!",5.0)
@@ -1993,6 +2183,10 @@ class DesktopApp:
         inner=side.width-34
         self.text((x,side.y+14),"CEREBRO / AMBOT BEBÉ",20,COLOR["ink"])
         self.text((x,side.y+44),"●  "+self.robot.location()+"  •  SENSOR ACTIVO",13,COLOR["green"])
+        hw="ARDUINO: CONECTADO" if self.hardware.connected else "ARDUINO: SIN CONEXION"
+        self.text((self.view.x+15,self.view.y+105),hw,13,
+                  COLOR["yellow"] if self.hardware.connected else COLOR["muted"],
+                  self.view.width-30)
         s=self.robot.state()
         self.text((x,side.y+72),"BATERÍA",14,COLOR["muted"])
         self.text((side.right-69,side.y+72),str(s["bateria"])+"%",14,COLOR["ink"])
@@ -2055,6 +2249,7 @@ class DesktopApp:
             dt=min(.05,self.clock.tick(60)/1000.0)
             self.elapsed+=dt
             running=self.events()
+            self.hardware.poll()
             self.robot.training.update(dt)
             self.poll_guides()
             if self.auto:
@@ -2062,6 +2257,11 @@ class DesktopApp:
                 if self.auto_clock>=.57:
                     self.auto_clock=0
                     action=self.robot.brain.autonomous_step()
+                    if self.hardware.armed:
+                        motor={"caminar":"FORWARD","transportar":"FORWARD"}.get(
+                            self.robot.brain.last_action)
+                        if motor:
+                            self.hardware.send_motion(motor)
                     self.say(self.robot.brain.last_thought,duration=2.5,
                              kind="alert" if "bateria" in self.robot.last_decision.lower() else "normal")
                     if self.robot.battery<1.5:
@@ -2074,6 +2274,7 @@ class DesktopApp:
             if frames and count>=frames:
                 running=False
         self.robot.brain.save()
+        self.hardware.close()
         self.pg.quit()
 
 
