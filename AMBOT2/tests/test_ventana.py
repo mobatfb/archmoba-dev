@@ -70,7 +70,9 @@ class NativeAppTests(unittest.TestCase):
                 app.handle_command("enseñar agarrar")
                 app.teacher.hand_close("izquierda",1)
                 app.handle_command("fin")
-                self.assertEqual(app.learner.episodes,1)
+                # Una accion ya fue aprendida AUTOMATICAMENTE antes;
+                # ahora debe sumarse la demostracion manual, sin duplicar.
+                self.assertEqual(app.learner.episodes,2)
                 app.handle_command("practicar agarrar")
                 self.assertEqual(app.learner.attempts,1)
                 app.create_object("cubo")
