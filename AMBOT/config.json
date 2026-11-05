@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT autonómo con avatar articulado, maestros editables, objetos nuevos y conversación con validación",
+  "description": "AMBOT autonómo: avatar humano articulado, eliminar maestros, añadir muebles y objetos y aprender frases con validación",
   "version": "0.8.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "62dd6a7c5d65f3c30826778790cbc24e0db6dca8",
+  "release_commit": "2d805cdf65ee1c8d58be8d62b0940157e190ac17",
   "maintenance": false
 }
