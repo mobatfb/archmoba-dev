@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.3.4
+"""PYRION OS Desktop v0.3.5
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -417,7 +417,7 @@ class DependencyManager:
 
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.4"
+APP_VERSION = "0.3.5"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -1916,6 +1916,20 @@ def main() -> int:
             return 1
     window = PyrionDesktop(storage)
     window.show()
+    app.processEvents()
+    # Confirm to the loader that Qt has created the desktop window.
+    # A fresh unique marker is supplied per launch; stale markers cannot match.
+    ready_file = os.environ.get("PYRIONOS_READY_FILE", "").strip()
+    if ready_file:
+        try:
+            marker = Path(ready_file)
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(json.dumps({
+                "pid": os.getpid(), "version": APP_VERSION,
+                "ready": True, "created": datetime.now().isoformat(),
+            }, ensure_ascii=False), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            _qt_setup_notify(storage.root, f"No se pudo notificar el inicio del escritorio: {exc}")
     return app.exec()
 
 

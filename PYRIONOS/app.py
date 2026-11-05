@@ -12,6 +12,9 @@ No instala paquetes ni modifica el Python global.
 from __future__ import annotations
 
 import base64
+import queue
+import threading
+import traceback
 import ctypes
 from datetime import datetime, timezone
 import hashlib
@@ -31,7 +34,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.4"
+APP_VERSION = "0.3.5"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -326,6 +329,54 @@ def _safe_console_write(message: str, *, error: bool = False) -> None:
         pass
 
 
+BOOT_OBSERVER = None
+
+
+class BootObserver:
+    """Thread-safe stream of boot events, also usable without a GUI."""
+
+    def __init__(self):
+        self.events = queue.Queue()
+        self.store = None
+        self.output = Path.home() / ".cache" / "pyrionos" / "bootstrap-start.log"
+        self._lock = threading.Lock()
+        self._write_to_file("Inicio de PYRION OS " + APP_VERSION)
+        details = (
+            "session: DISPLAY=" + repr(os.environ.get("DISPLAY", ""))
+            + "; WAYLAND_DISPLAY=" + repr(os.environ.get("WAYLAND_DISPLAY", ""))
+            + "; XDG_SESSION_TYPE=" + repr(os.environ.get("XDG_SESSION_TYPE", ""))
+            + "; XDG_RUNTIME_DIR=" + repr(os.environ.get("XDG_RUNTIME_DIR", ""))
+            + "; python=" + sys.executable
+        )
+        self._write_to_file(details)
+
+    def _write_to_file(self, message):
+        try:
+            with self._lock:
+                self.output.parent.mkdir(parents=True, exist_ok=True)
+                with self.output.open("a", encoding="utf-8") as fp:
+                    fp.write("[" + datetime.now().astimezone().isoformat(timespec="seconds") + "] " + message + "\n")
+        except (OSError, ValueError):
+            pass
+
+    def log(self, message):
+        message = str(message)
+        self._write_to_file(message)
+        self.events.put(("log", message))
+
+    def stage(self, key, message):
+        self._write_to_file(message)
+        self.events.put(("stage", key, message))
+
+    def data_folder(self, store):
+        self.store = store
+        self.events.put(("storage", str(store.root / "logs" / "autoupdate.log")))
+
+    def done(self, success, message):
+        self._write_to_file(("OK: " if success else "ERROR: ") + str(message))
+        self.events.put(("done", bool(success), str(message)))
+
+
 def announce(store: PersistentStore | None, message: str) -> None:
     line = f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] PYRION: {message}"
     if store is not None:
@@ -337,6 +388,8 @@ def announce(store: PersistentStore | None, message: str) -> None:
         except (OSError, ValueError):
             pass
     _safe_console_write(line)
+    if BOOT_OBSERVER is not None:
+        BOOT_OBSERVER.log(message)
 
 
 def fail_dialog(message: str) -> None:
@@ -687,56 +740,492 @@ def select_release(store: PersistentStore, offline: bool = False) -> tuple[str, 
     )
 
 
-def start_desktop(store: PersistentStore, name: str, desktop: Path, state: dict) -> int:
+def _desktop_log_tail(path: Path, lines: int = 12) -> str:
+    try:
+        data = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return "\n".join(data.splitlines()[-lines:])[-2600:]
+
+
+def _run_desktop_process(store: PersistentStore, desktop: Path, observer=None,
+                         requires_ready: bool = True) -> int:
+    """Observe startup, redirect stdout/stderr and wait for the Qt ready marker.
+
+    The updater returns only after Qt reports that its window was shown.
+    It does not wait for the desktop window to be closed by the user.
+    """
     env = os.environ.copy()
     env["PYRIONOS_DATA_DIR"] = str(store.root)
-    announce(store, f"Iniciando escritorio desde {desktop}")
+    marker = store.root / "system" / ("boot-ready-" + uuid.uuid4().hex + ".json")
+    env["PYRIONOS_READY_FILE"] = str(marker)
+    setup_log = store.root / "logs" / "desktop_setup.log"
+    launch_log = store.root / "logs" / "desktop_launch.log"
+    launch_log.parent.mkdir(parents=True, exist_ok=True)
+    start_size = setup_log.stat().st_size if setup_log.exists() else 0
+    announce(store, "Abriendo desktop.py: " + str(desktop))
+    if observer is not None:
+        observer.stage("qt", "Comprobando librerias Qt y dependencias...")
     try:
-        result = subprocess.run([sys.executable, str(desktop)], cwd=str(desktop.parent), env=env, check=False)
-        code = result.returncode
+        with launch_log.open("a", encoding="utf-8") as output:
+            output.write("\n-- Inicio " + datetime.now().isoformat() + " --\n")
+            output.flush()
+            proc = subprocess.Popen(
+                [sys.executable, str(desktop)], cwd=str(desktop.parent),
+                env=env, stdout=output, stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+            )
     except OSError as exc:
-        announce(store, f"No se pudo iniciar escritorio: {exc}")
-        code = 1
+        announce(store, "No se pudo crear proceso de escritorio: " + str(exc))
+        return 1
+
+    start = time.monotonic()
+    setup_offset = start_size
+    last_status = ""
+    last_heartbeat = 0
+    try:
+        while time.monotonic() - start < 1080:
+            elapsed = time.monotonic() - start
+            if observer is not None and elapsed >= last_heartbeat + 15:
+                last_heartbeat = int(elapsed)
+                observer.stage("qt", "Esperando la preparacion de Qt: " + str(int(elapsed)) + " s transcurridos")
+            # Follow new setup messages while packages install in a subprocess.
+            try:
+                if setup_log.exists():
+                    with setup_log.open("rb") as fp:
+                        size = fp.seek(0, os.SEEK_END)
+                        if size < setup_offset:
+                            setup_offset = 0
+                        if size > setup_offset:
+                            fp.seek(setup_offset)
+                            chunk = fp.read(min(size - setup_offset, 32768))
+                            setup_offset = fp.tell()
+                            for line in chunk.decode("utf-8", errors="replace").splitlines()[-10:]:
+                                if line and line != last_status:
+                                    last_status = line
+                                    if observer is not None:
+                                        observer.stage("qt", line[-210:])
+            except OSError:
+                pass
+
+            if marker.is_file():
+                try:
+                    info = json.loads(marker.read_text(encoding="utf-8"))
+                    if info.get("ready") is True and info.get("pid") == proc.pid:
+                        # Ensure the window survives the initial event loop startup.
+                        time.sleep(0.65)
+                        if proc.poll() is not None:
+                            announce(store, "El escritorio se cerro justo despues de crear la ventana.")
+                            return proc.returncode or 1
+                        announce(store, "Ventana del escritorio confirmada (pid=" + str(proc.pid) + ")")
+                        if observer is not None:
+                            observer.stage("desktop", "Escritorio abierto correctamente")
+                        return 0
+                except (OSError, ValueError, json.JSONDecodeError):
+                    pass
+            exit_code = proc.poll()
+            if exit_code is not None:
+                detail = _desktop_log_tail(launch_log)
+                announce(store, "El escritorio termino antes de abrir la ventana: codigo " + str(exit_code))
+                if detail:
+                    announce(store, "Ultimas lineas del proceso:\n" + detail)
+                if exit_code == 0:
+                    return 1
+                return exit_code
+            # Compatibility with an older persistent desktop without ready markers.
+            if not requires_ready and time.monotonic() - start >= 12:
+                announce(store, "Version anterior en ejecucion (no tiene senal de ventana).")
+                return 0
+            time.sleep(0.20)
+        announce(store, "Tiempo de arranque agotado; revisa los registros de Qt.")
+        return 21
+    finally:
+        try:
+            marker.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def start_desktop(store: PersistentStore, name: str, desktop: Path, state: dict,
+                  observer=None) -> int:
+    if observer is not None:
+        observer.stage("qt", "Preparando el entorno grafico del escritorio...")
+    code = _run_desktop_process(store, desktop, observer=observer, requires_ready=True)
     if code == 0:
         return 0
     if code == 20:
-        announce(store, "Fallo de instalacion de PySide6; la version persistente sigue siendo valida.")
-        announce(store, "Revisa " + str(store.root / "logs" / "desktop_setup.log"))
+        announce(store, "Fallo instalando PySide6; la version persistente sigue siendo valida.")
+        announce(store, "Registro: " + str(store.root / "logs" / "desktop_setup.log"))
         return code
 
     system_dir = store.root / "system"
-    announce(store, f"Escritorio termino con error ({code}); buscando recuperacion")
+    announce(store, "Error en el arranque (codigo " + str(code) + "); buscando recuperacion")
     previous = cached_release(system_dir, state, "previous")
     if previous and previous[0] != name:
         save_state(system_dir, {
-            **state, "current": previous[0], "previous": name, "failed_release": name
+            **state, "current": previous[0], "previous": name, "failed_release": name,
         })
-        announce(store, f"Restaurada version previa: {previous[0]}")
-        try:
-            return subprocess.run([sys.executable, str(previous[1])], cwd=str(previous[1].parent), env=env, check=False).returncode
-        except OSError as exc:
-            announce(store, f"No fue posible abrir la version previa: {exc}")
+        announce(store, "Restaurando escritorio previo: " + previous[0])
+        if observer is not None:
+            observer.stage("desktop", "Probando la version anterior del escritorio...")
+        return _run_desktop_process(store, previous[1], observer=observer,
+                                    requires_ready=False)
     return code or 1
+
+
+def _run_boot_sequence(args: list[str], observer: BootObserver) -> int:
+    global BOOT_OBSERVER
+    BOOT_OBSERVER = observer
+    offline = "--offline" in args or os.environ.get("PYRIONOS_OFFLINE") == "1"
+    try:
+        observer.stage("storage", "Buscando el disco y la carpeta persistente...")
+        store = PersistentStore()
+        observer.data_folder(store)
+        announce(store, "Carpeta persistente: " + str(store.root))
+        observer.stage("storage", "Almacenamiento verificado: " + str(store.root))
+        observer.stage("network", "Modo sin conexion; comprobando copia local..." if offline else "Consultando actualizaciones en GitHub...")
+        name, path, state = select_release(store, offline=offline)
+        observer.stage("download", "Version verificada: " + name)
+        if "--check-only" in args:
+            observer.stage("desktop", "Verificacion terminada (sin iniciar escritorio)")
+            observer.done(True, "Version lista: " + name)
+            return 0
+        code = start_desktop(store, name, path, state, observer=observer)
+        if code == 0:
+            observer.done(True, "Escritorio PYRION abierto")
+        else:
+            summary = _desktop_log_tail(store.root / "logs" / "desktop_launch.log", 8)
+            setup = _desktop_log_tail(store.root / "logs" / "desktop_setup.log", 8)
+            msg = (
+                "El escritorio no pudo abrirse (codigo " + str(code) + ").\n"
+                + ("Proceso:\n" + summary + "\n" if summary else "")
+                + ("Dependencias:\n" + setup + "\n" if setup else "")
+                + "Registros: " + str(store.root / "logs")
+            )
+            observer.done(False, msg)
+        return code
+    except Exception as exc:
+        details = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        observer.log("Error inesperado:\n" + details[-3500:])
+        observer.done(False, type(exc).__name__ + ": " + str(exc))
+        return 1
+    finally:
+        BOOT_OBSERVER = None
+
+
+def _run_tk_boot(observer: BootObserver, args: list[str]) -> int | None:
+    """Create a verification window with tkinter, before any network or pip.
+
+    None means Tk could not create a window, so another frontend may be used.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import ttk
+        root = tk.Tk()
+    except Exception as exc:
+        observer.log("Interfaz Tk no disponible: " + type(exc).__name__ + ": " + str(exc))
+        return None
+
+    root.title("PYRION OS | Verificacion de inicio")
+    root.geometry("760x585")
+    root.minsize(680, 525)
+    root.configure(bg="#0B1424")
+    try:
+        root.attributes("-topmost", True)
+        root.after(2000, lambda: root.attributes("-topmost", False))
+    except tk.TclError:
+        pass
+    try:
+        w, h = 760, 585
+        x = max(0, (root.winfo_screenwidth() - w) // 2)
+        y = max(0, (root.winfo_screenheight() - h) // 2)
+        root.geometry(f"{w}x{h}+{x}+{y}")
+    except tk.TclError:
+        pass
+
+    def ui_label(parent, text, font=("DejaVu Sans", 10), fg="#D8E6F5", **kw):
+        return tk.Label(parent, text=text, font=font, fg=fg, bg="#0B1424", **kw)
+
+    bar = tk.Frame(root, bg="#102238", height=68)
+    bar.pack(fill="x")
+    tk.Label(bar, text="◈  PYRION  OS", font=("DejaVu Sans", 18, "bold"),
+             bg="#102238", fg="#67D8FF").pack(side="left", padx=21, pady=17)
+    tk.Label(bar, text="INICIO INTELIGENTE  |  v" + APP_VERSION,
+             font=("DejaVu Sans", 9), bg="#102238", fg="#A0B7CC").pack(side="right", padx=18)
+    ui_label(root, "Verificando el entorno de PYRION", ("DejaVu Sans", 16, "bold"),
+             fg="#F5FBFF", anchor="w").pack(fill="x", padx=22, pady=(19, 3))
+    status = tk.StringVar(value="Preparando comprobaciones...")
+    ui_label(root, "", ("DejaVu Sans", 10), fg="#ACBED5", anchor="w", textvariable=status,
+             wraplength=700, justify="left").pack(fill="x", padx=23, pady=(0, 10))
+
+    steps = [
+        ("session", "Sesion grafica"),
+        ("storage", "Datos persistentes"),
+        ("network", "Repositorio y actualizaciones"),
+        ("download", "Version descargada y verificada"),
+        ("qt", "Dependencias Python / PySide6"),
+        ("desktop", "Apertura del escritorio"),
+    ]
+    step_frame = tk.Frame(root, bg="#13253B", highlightbackground="#294966", highlightthickness=1)
+    step_frame.pack(fill="x", padx=22, pady=(0, 12))
+    step_labels = {}
+    for i, (key, caption) in enumerate(steps):
+        inner = tk.Frame(step_frame, bg="#13253B")
+        inner.pack(fill="x", padx=15, pady=(8 if i == 0 else 3, 8 if i == len(steps)-1 else 3))
+        badge = tk.Label(inner, text="○", width=3, anchor="w", font=("DejaVu Sans", 11, "bold"),
+                         bg="#13253B", fg="#6685A3")
+        badge.pack(side="left")
+        caption_lbl = tk.Label(inner, text=caption, anchor="w", font=("DejaVu Sans", 10),
+                               bg="#13253B", fg="#B6CEE2")
+        caption_lbl.pack(side="left", fill="x")
+        step_labels[key] = (badge, caption_lbl)
+
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+        style.configure("PYRION.Horizontal.TProgressbar", troughcolor="#14273B", background="#42B8EE", thickness=8)
+    except tk.TclError:
+        pass
+    progress = ttk.Progressbar(root, orient="horizontal", mode="indeterminate", style="PYRION.Horizontal.TProgressbar")
+    progress.pack(fill="x", padx=23, pady=(0, 12))
+    progress.start(16)
+
+    log_frame = tk.Frame(root, bg="#0E1A2B")
+    log_frame.pack(fill="both", expand=True, padx=22, pady=(0, 10))
+    tk.Label(log_frame, text="DIAGNOSTICO EN TIEMPO REAL", font=("DejaVu Sans", 9, "bold"),
+             bg="#0E1A2B", fg="#79B9E2", anchor="w").pack(fill="x", padx=12, pady=(9, 3))
+    output = tk.Text(log_frame, height=7, bg="#0E1A2B", fg="#D1E3F3", insertbackground="white",
+                     selectbackground="#1F6189", font=("DejaVu Sans Mono", 9),
+                     relief="flat", borderwidth=0, wrap="word")
+    output.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+    output.configure(state="disabled")
+
+    bottom = tk.Frame(root, bg="#0B1424")
+    bottom.pack(fill="x", padx=22, pady=(0, 14))
+    log_path = tk.StringVar(value="Registro inicial: " + str(observer.output))
+    tk.Label(bottom, textvariable=log_path, bg="#0B1424", fg="#819BB8",
+             anchor="w", font=("DejaVu Sans", 8), wraplength=520, justify="left").pack(side="left", fill="x", expand=True)
+    close_btn = tk.Button(bottom, text="Cerrar", bg="#203C58", fg="#F2FAFF",
+                          activebackground="#31577B", relief="flat", padx=15, pady=7, command=root.destroy)
+    close_btn.pack(side="right")
+    close_btn.configure(state="disabled")
+
+    def copy_report():
+        try:
+            root.clipboard_clear()
+            root.clipboard_append(output.get("1.0", "end-1c") + "\n" + log_path.get())
+            root.update_idletasks()
+            status.set("Diagnostico copiado al portapapeles.")
+        except tk.TclError:
+            pass
+
+    copy_btn = tk.Button(bottom, text="Copiar diagnostico", bg="#183754",
+                         fg="#BFEAFF", activebackground="#2B5473",
+                         relief="flat", padx=12, pady=7, command=copy_report)
+    copy_btn.pack(side="right", padx=(0, 9))
+
+    state = {"active": None, "finished": False, "result": 1}
+
+    def append_log(message):
+        output.configure(state="normal")
+        output.insert("end", str(message) + "\n")
+        if int(output.index("end-1c").split(".")[0]) > 250:
+            output.delete("1.0", "45.0")
+        output.see("end")
+        output.configure(state="disabled")
+
+    def mark(key):
+        ordered = [x[0] for x in steps]
+        if key not in ordered:
+            return
+        i = ordered.index(key)
+        state["active"] = key
+        for pos, (k, _) in enumerate(steps):
+            badge, caption = step_labels[k]
+            if pos < i:
+                badge.configure(text="✓", fg="#61CDA6")
+                caption.configure(fg="#D6EAF5")
+            elif pos == i:
+                badge.configure(text="●", fg="#63D1FF")
+                caption.configure(fg="#F3FAFF")
+            else:
+                badge.configure(text="○", fg="#6685A3")
+                caption.configure(fg="#9AB2CB")
+
+    def poll_events():
+        try:
+            while True:
+                event = observer.events.get_nowait()
+                kind = event[0]
+                if kind == "log":
+                    append_log(event[1])
+                elif kind == "stage":
+                    mark(event[1])
+                    status.set(str(event[2])[-340:])
+                    append_log(event[2])
+                elif kind == "storage":
+                    log_path.set("Registro persistente: " + event[1])
+                elif kind == "done":
+                    state["finished"] = True
+                    state["result"] = 0 if event[1] else 1
+                    progress.stop()
+                    close_btn.configure(state="normal")
+                    if event[1]:
+                        status.set("Verificacion completada. Abriendo escritorio...")
+                        for badge, caption in step_labels.values():
+                            badge.configure(text="✓", fg="#61CDA6")
+                            caption.configure(fg="#D6EAF5")
+                        root.after(900, root.destroy)
+                    else:
+                        status.set("No se pudo iniciar PYRION. Revisa el diagnostico y el registro.")
+                        append_log(event[2])
+                        if state["active"]:
+                            step_labels[state["active"]][0].configure(text="!", fg="#F18F75")
+        except queue.Empty:
+            pass
+        if root.winfo_exists():
+            root.after(90, poll_events)
+
+    def start_worker():
+        def job():
+            _run_boot_sequence(args, observer)
+        threading.Thread(target=job, daemon=True, name="PYRION-startup").start()
+
+    observer.stage("session", "Sesion grafica disponible; mostrando verificacion...")
+    root.after(100, poll_events)
+    root.after(120, start_worker)
+    root.mainloop()
+    return state["result"]
+
+
+def _run_zenity_boot(observer: BootObserver, args: list[str]) -> int | None:
+    """Fallback for lightweight Linux desktops without python3-tk."""
+    if os.name == "nt":
+        return None
+    command = next((shutil.which(name) for name in ("zenity", "yad") if shutil.which(name)), None)
+    if not command:
+        return None
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return None
+    try:
+        progress = subprocess.Popen(
+            [command, "--progress", "--pulsate", "--auto-close", "--no-cancel",
+             "--title=PYRION OS - Verificacion de inicio", "--text=Preparando PYRION OS...",
+             "--width=600"], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, text=True,
+        )
+    except OSError:
+        return None
+    if progress.poll() is not None:
+        return None
+
+    def send(message):
+        try:
+            if progress.stdin and progress.poll() is None:
+                progress.stdin.write("#" + str(message).replace("\n", " ")[-180:] + "\n")
+                progress.stdin.flush()
+        except (OSError, ValueError, BrokenPipeError):
+            pass
+
+    worker = threading.Thread(target=lambda: _run_boot_sequence(args, observer), daemon=True)
+    worker.start()
+    result = 1
+    while True:
+        event = observer.events.get()
+        if event[0] in ("log", "stage"):
+            send(event[-1])
+        elif event[0] == "done":
+            result = 0 if event[1] else 1
+            send(event[2])
+            try:
+                if progress.stdin:
+                    if event[1]:
+                        progress.stdin.write("100\n")
+                    progress.stdin.close()
+            except (OSError, ValueError):
+                pass
+            if not event[1]:
+                # Without this termination the progress window remains stuck.
+                try:
+                    progress.terminate()
+                    progress.wait(timeout=2)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+                try:
+                    subprocess.run([command, "--error", "--title=PYRION OS",
+                                    "--text=" + str(event[2])[-1300:]],
+                                   timeout=120, check=False)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            break
+    return result
+
+
+def install_user_autostart(script_path: Path) -> Path:
+    """Install a user-session autostart entry, never a boot-time root service."""
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("El autoinicio de usuario solo esta disponible en Linux")
+    home = Path.home()
+    autostart = home / ".config" / "autostart"
+    autostart.mkdir(parents=True, exist_ok=True)
+    def quote(path):
+        return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    desktop_file = autostart / "pyrion-os.desktop"
+    contents = (
+        "[Desktop Entry]\nType=Application\nName=PYRION OS\n"
+        "Comment=Comprobacion y actualizacion del escritorio PYRION\n"
+        "Exec=" + quote(sys.executable) + " " + quote(script_path.resolve()) + "\n"
+        "Terminal=false\nX-GNOME-Autostart-enabled=true\n"
+    )
+    desktop_file.write_text(contents, encoding="utf-8")
+    return desktop_file
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    offline = "--offline" in args or os.environ.get("PYRIONOS_OFFLINE") == "1"
-    try:
-        store = PersistentStore()
-    except StorageError as exc:
-        fail_dialog(f"PYRION OS: no se pudo acceder al almacenamiento persistente.\n\n{exc}")
-        return 1
-    try:
-        name, path, state = select_release(store, offline=offline)
-        if "--check-only" in args:
-            announce(store, f"Version preparada: {name}, ruta: {path}")
+    if "--install-autostart" in args:
+        try:
+            path = install_user_autostart(Path(__file__))
+            _safe_console_write("Autoarranque de sesion configurado: " + str(path))
             return 0
-        return start_desktop(store, name, path, state)
-    except Exception as exc:
-        announce(store, f"No se pudo iniciar PYRION: {type(exc).__name__}: {exc}")
-        fail_dialog(str(exc))
-        return 1
+        except (OSError, RuntimeError) as exc:
+            fail_dialog("No se pudo configurar el autoinicio: " + str(exc))
+            return 1
+
+    observer = BootObserver()
+    if "--no-ui" in args:
+        return _run_boot_sequence(args, observer)
+    rendered = _run_tk_boot(observer, args)
+    if rendered is not None:
+        return rendered
+    rendered = _run_zenity_boot(observer, args)
+    if rendered is not None:
+        return rendered
+
+    # A root boot service/rc.local runs before the user's X11/Wayland session.
+    # Do not hide the cause: save it to a predictable, writable log file.
+    hint = (
+        "No se pudo abrir una pantalla de verificacion. "
+        "Comprueba si X11/Wayland esta iniciado y si existe Tk o Zenity. "
+        "Si ejecutas PYRION antes del login grafico, configurarlo en la sesion "
+        "de usuario: python3 app.py --install-autostart. "
+        "Registro: " + str(observer.output)
+    )
+    observer.log(hint)
+    _safe_console_write(hint, error=True)
+    # Last-resort graphical notice when only xmessage is installed.
+    if os.name != "nt" and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        xmessage = shutil.which("xmessage")
+        if xmessage:
+            try:
+                subprocess.Popen(
+                    [xmessage, "-center", "-title", "PYRION OS - diagnostico",
+                     "-buttons", "Aceptar:0", hint],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            except OSError:
+                pass
+    return 22
 
 
 if __name__ == "__main__":
