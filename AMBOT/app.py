@@ -1585,6 +1585,155 @@ class FurnitureEditor:
         tmp.replace(self.path)
 
 
+# Tu personaje tiene control manual y es independiente del cerebro de AMBOT.
+HUMAN_JOINTS={
+    "cabeza":"CABEZA", "torso":"TORSO",
+    "brazo_izq":"BRAZO IZQ.", "brazo_der":"BRAZO DER.",
+    "codo_izq":"CODO IZQ.", "codo_der":"CODO DER.",
+    "pierna_izq":"PIERNA IZQ.", "pierna_der":"PIERNA DER.",
+    "rodilla_izq":"RODILLA IZQ.", "rodilla_der":"RODILLA DER.",
+}
+
+
+class HumanAvatar:
+    """Avatar humanoide manual con articulaciones, locomocion y silla real."""
+    def __init__(self, robot, path):
+        self.robot=robot
+        self.path=Path(path)
+        self.x,self.z=9,5
+        self.facing=3
+        self.seated=False
+        self.seat=None
+        self.previous=(9,5)
+        self.steps=0
+        self.joints={name:0 for name in HUMAN_JOINTS}
+        self._load()
+
+    def _valid_floor(self,x,z):
+        return (type(x) is int and type(z) is int and
+                self.robot.free(x,z) and (x,z)!=(self.robot.x,self.robot.z)
+                and all(math.hypot(g.x-x,g.z-z)>.75
+                        for g in self.robot.training.guides)
+                and all(math.hypot(o.x-x,o.z-z)>.55
+                        for o in self.robot.training.items.values()))
+
+    def _seats(self):
+        f=self.robot.furniture
+        chairs=[(c["x"],c["z"]) for c in f.chairs]
+        if "silla" not in f.removed_fixed:
+            chairs.append((4,5))
+        return chairs
+
+    def move(self,direction):
+        if type(direction) is not int or direction not in range(4):
+            return "Direccion no valida."
+        if self.seated:
+            return "Estas sentado. Primero pulsa LEVANTARSE."
+        self.facing=direction
+        dx,dz=DIRECTIONS[direction]
+        if not self._valid_floor(self.x+dx,self.z+dz):
+            return "No puedes atravesar muebles, paredes, objetos ni robots."
+        self.x+=dx
+        self.z+=dz
+        self.steps+=1
+        self.save()
+        return "Te moviste a X="+str(self.x)+" Z="+str(self.z)+"."
+
+    def sit(self):
+        if self.seated:
+            return "Ya estas sentado."
+        nearby=[pos for pos in self._seats()
+                if math.hypot(pos[0]-self.x,pos[1]-self.z)<=1.55]
+        if not nearby:
+            return "Acercate a una silla antes de sentarte."
+        self.seat=min(nearby,
+                      key=lambda pos:math.hypot(pos[0]-self.x,pos[1]-self.z))
+        self.previous=(self.x,self.z)
+        self.x,self.z=self.seat
+        self.seated=True
+        self.save()
+        return "Te sentaste en la silla. Usa LEVANTARSE para salir."
+
+    def stand(self):
+        if not self.seated:
+            return "Ya estas de pie."
+        candidates=[self.previous]+[
+            (self.x+dx,self.z+dz) for dx,dz in DIRECTIONS]
+        valid=next((p for p in candidates if self._valid_floor(*p)),None)
+        if valid is None:
+            return "No hay espacio libre para levantarte."
+        self.x,self.z=valid
+        self.seat=None
+        self.seated=False
+        self.save()
+        return "Te levantaste de la silla."
+
+    def change_joint(self,name,delta):
+        if name not in self.joints:
+            return "Esa articulacion no existe."
+        self.joints[name]=max(-85,min(85,self.joints[name]+int(delta)))
+        self.save()
+        return HUMAN_JOINTS[name]+": "+str(self.joints[name])+" grados."
+
+    def pose(self,name):
+        if name=="reposo":
+            self.joints={name:0 for name in HUMAN_JOINTS}
+        elif name=="saludar":
+            self.joints["brazo_der"]=75
+            self.joints["codo_der"]=35
+            self.joints["cabeza"]=15
+        elif name=="agacharse":
+            if self.seated:
+                return "Levantate antes de agacharte."
+            self.joints["torso"]=35
+            self.joints["rodilla_izq"]=40
+            self.joints["rodilla_der"]=40
+        else:
+            return "Postura no reconocida."
+        self.save()
+        return "Postura aplicada: "+name+"."
+
+    def _load(self):
+        try:
+            data=json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data,dict):return
+            joints=data.get("joints",{})
+            if isinstance(joints,dict):
+                for name in self.joints:
+                    if type(joints.get(name)) in (int,float):
+                        self.joints[name]=max(-85,min(85,int(joints[name])))
+            x,z=data.get("x",9),data.get("z",5)
+            face=data.get("facing",3)
+            self.facing=face if type(face) is int and face in range(4) else 3
+            seated=data.get("seated") is True
+            seat=data.get("seat")
+            old=data.get("previous",[9,5])
+            if seated and isinstance(seat,list) and len(seat)==2:
+                cell=(int(seat[0]),int(seat[1]))
+                if cell in self._seats():
+                    self.x,self.z=cell
+                    self.seat=cell
+                    self.seated=True
+                    if (isinstance(old,list) and len(old)==2 and
+                            self._valid_floor(int(old[0]),int(old[1]))):
+                        self.previous=(int(old[0]),int(old[1]))
+                    return
+            if self._valid_floor(x,z):
+                self.x,self.z=x,z
+        except (OSError,ValueError,TypeError,OverflowError,AttributeError):
+            pass
+
+    def save(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        tmp=self.path.with_name(self.path.name+".tmp")
+        tmp.write_text(json.dumps({
+            "version":1,"x":self.x,"z":self.z,"facing":self.facing,
+            "seated":self.seated,"seat":list(self.seat) if self.seat else None,
+            "previous":list(self.previous),"joints":self.joints,
+        },ensure_ascii=False,indent=2),encoding="utf-8")
+        tmp.replace(self.path)
+
+
 class Robot:
     """Cerebro con mapa, percepcion, navegacion, decisiones y memoria."""
     def __init__(self, memory_path=MEMORY_PATH):
@@ -1601,6 +1750,7 @@ class Robot:
         self.training = TrainingLab(self, self.memory_path.with_name("aprendizaje.json"))
         self.brain = LearningBrain(self,self.memory_path.with_name("cerebro.json"))
         self.furniture = FurnitureEditor(self,self.memory_path.with_name("muebles.json"))
+        self.human = HumanAvatar(self,self.memory_path.with_name("avatar.json"))
 
     def reset(self):
         if hasattr(self,"training"):
@@ -1626,6 +1776,8 @@ class Robot:
                  or hasattr(self,"furniture")
                  and not self.furniture.fixture_blocks(x,z))
             and (not hasattr(self,"furniture") or not self.furniture.blocks(x,z))
+            and (not hasattr(self,"human") or self.human.seated
+                 or (x,z)!=(self.human.x,self.human.z))
         )
 
     def location(self):
@@ -1758,10 +1910,12 @@ class Robot:
                 for chair in self.furniture.chairs:
                     if chair["z"] == z:
                         chars[chair["x"]] = "S"
+            if hasattr(self,"human") and z==self.human.z:
+                chars[self.human.x]="H"
             if z == self.z:
                 chars[self.x] = symbols[self.facing]
             rows.append("".join(chars))
-        return "\n".join(rows) + "\nC=cama M=mesa S=silla A=armario P=puerta"
+        return "\n".join(rows) + "\nC=cama M=mesa S=silla A=armario H=humano P=puerta"
     def command(self, raw):
         raw = str(raw).strip()
         cmd = normalize(raw)
