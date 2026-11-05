@@ -164,6 +164,10 @@ class AMBOT2App(ShowBase):
         self.accept("6",self.create_object,["pelota"])
         self.accept("7",self.create_object,["cuadro"])
         self.accept("8",self.create_object,["caja"])
+        self.accept("3",self.close_both,[1])
+        self.accept("4",self.close_both,[0])
+        self.accept("b",self.grab_both)
+        self.accept("n",self.release_both)
         self.accept("wheel_up",self._zoom,[-.8])
         self.accept("wheel_down",self._zoom,[.8])
         self.accept("mouse3",self._start_orbit)
@@ -244,6 +248,26 @@ class AMBOT2App(ShowBase):
     def adjust_height(self,delta):
         self.teacher.hand_height=clamp(self.teacher.hand_height+delta,-1,1)
         self.teacher.update_visual()
+
+    def close_both(self,value):
+        for hand in HAND_NAMES:
+            self.teacher.hand_close(hand,value)
+        if hasattr(self,"slider"):
+            self.slider["value"]=value
+        self.say("Ambas manos "+("cerradas" if value else "abiertas")+".")
+        self.grasp.auto_check()
+
+    def grab_both(self):
+        self.grasp.sync()
+        answers=[]
+        for hand in HAND_NAMES:
+            answers.append(self.grasp.try_nearest(hand))
+        self.say(" | ".join(answers))
+        return answers
+
+    def release_both(self):
+        self.grasp.release_all()
+        self.say("He soltado los apoyos de ambas manos.")
 
     def try_grasp(self):
         self.grasp.sync()
@@ -364,12 +388,20 @@ class AMBOT2App(ShowBase):
                     raise ValueError("Dedo desconocido")
                 self.teacher.finger(hand,FINGER_NAMES.index(name),float(parts[3]))
                 return self.say("Articulacion actualizada.")
+            if command in ("agarrar ambos","tomar ambos","agarrar dos manos"):
+                return self.grab_both()
+            if command in ("abrir ambas","abrir ambas manos"):
+                return self.close_both(0)
+            if command in ("cerrar ambas","cerrar ambas manos"):
+                return self.close_both(1)
+            if command in ("soltar ambos","soltar las dos"):
+                return self.release_both()
             if command in ("tomar","agarrar"):
                 return self.try_grasp()
             if command in ("soltar","liberar"):
                 return self.release()
             if command=="ayuda":
-                return self.say("WASD mover | 1/2 mano | [ ] dedo | Q/E flexionar | R/F cerrar/abrir | T agarrar | G soltar | O/P grabar | H practicar | 5-8 objetos | lenguaje en el campo de texto.")
+                return self.say("WASD mover | 1/2 mano | [ ] dedo | Q/E flexionar | 3/4 ambas manos | B agarrar ambas | N soltar ambas | O/P grabar | H practicar | 5-8 objetos | lenguaje en el campo de texto.")
             answer=self.language.hear(raw,self.editor.selected)
             return self.say("AMBOT: "+answer)
         except (ValueError,KeyError,TypeError,OSError) as exc:
@@ -447,10 +479,15 @@ class AMBOT2App(ShowBase):
             "MANO: "+hand+" / "+digit)
         held=self.grasp.held()
         holding=", ".join(f"{k}:{v}" for k,v in held.items()) or "libres"
+        touched={"izquierda":0,"derecha":0}
+        if selected:
+            for which in HAND_NAMES:
+                touched[which]=sum(self.grasp._contacts(which,selected).values())
         self.substatus.setText(
             f"DEDO {self.teacher.curls[hand][self.teacher.selected_digit]:.2f}\n"+
-            f"CONTACTOS: {holding}\n"+
-            f"DEMOS: {self.learner.episodes} | PRUEBAS: {self.learner.attempts}")
+            f"AGARRE: {holding}\n"+
+            f"CONTACTOS I/D: {touched['izquierda']} / {touched['derecha']}\n"+
+            f"DEMOS: {self.learner.episodes} | ENSAYOS: {self.learner.attempts}")
 
     def _update(self,task):
         dt=max(0,min(.05,self.taskMgr.globalClock.getDt()))

@@ -78,6 +78,35 @@ class BasisTests(unittest.TestCase):
         self.assertEqual(grasp.held(),{})
         self.assertEqual(len(lab.physics.constraints),0)
 
+    def test_cuadro_sostenido_con_dos_manos(self):
+        root=NodePath("mundo")
+        lab=LabWorld(root)
+        teacher=Humanoid(root,"MAESTRO",(.3,.8,.9,1),teacher=True)
+        grasp=GraspSystem(lab,teacher)
+        teacher.hand_close("izquierda",1)
+        teacher.hand_close("derecha",1)
+        grasp.sync()
+        tips=teacher.all_fingertips()
+        left=tips[("izquierda",1)]
+        right=tips[("derecha",1)]
+        center=(left+right)*.5
+        board=lab.spawn("cuadro",name="Cuadro a dos manos",
+                        pos=tuple(center),size=(2.0,.19,1.0),mass=1.8)
+        contact_left,detail_left=grasp.inspect("izquierda",board)
+        contact_right,detail_right=grasp.inspect("derecha",board)
+        self.assertTrue(contact_left,detail_left)
+        self.assertTrue(contact_right,detail_right)
+        self.assertTrue(grasp.try_grasp("izquierda",board)[0])
+        self.assertTrue(grasp.try_grasp("derecha",board)[0])
+        self.assertEqual(len(lab.physics.constraints),2)
+        self.assertEqual(set(grasp.held()),{"izquierda","derecha"})
+        teacher.hand_close("izquierda",0)
+        grasp.auto_check()
+        self.assertEqual(set(grasp.held()),{"derecha"})
+        self.assertEqual(len(lab.physics.constraints),1)
+        grasp.release_all()
+        self.assertEqual(len(lab.physics.constraints),0)
+
     def test_pronombres_contextuales(self):
         roles=Pronouns()
         self.assertEqual(roles.resolve("yo","maestro","ambot"),["maestro"])
