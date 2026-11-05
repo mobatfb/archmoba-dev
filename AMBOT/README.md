@@ -94,3 +94,15 @@ no aprendizaje neuronal por imagen ni una inteligencia general. Los guias
 estan programados y la fisica es simplificada; el bebe aprende valores de
 confianza y asociaciones, no destrezas roboticas transferibles a hardware.
 No requiere navegador ni servicio HTTP.
+
+
+### Modo automatico: observar y practicar
+
+Al activar **ESPACIO / AUTO**, AMBOT comienza observando los pasos del
+instructor ANDA. Cuando su confianza supera un umbral inicial, ensaya
+movimientos. Tras observar agarres de DEX, intenta manipular y transportar
+objetos cercanos de forma autonoma y luego soltarlos. Tambien puede probar
+a recostarse cuando esta junto a la cama y ya ha visto demostraciones
+suficientes. Cada ensayo puede fallar; las consecuencias y el progreso
+quedan guardados. Las rutinas de los guias permanecen independientes del
+cerebro del bebe.

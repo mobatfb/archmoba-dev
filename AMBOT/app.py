@@ -548,6 +548,56 @@ class TrainingLab:
         return ("Observo a "+guide.name+" ("+guide.task+"). "+guide.message+
                 " Espero descubrir las consecuencias de sus movimientos.")
 
+    def autonomous_trial(self):
+        """Explorar, observar e intentar imitar habilidades con experiencia.
+
+        El bebe no recibe el programa de los guias. Usa el progreso aprendido
+        de observaciones y ensayos para decidir qué tipo de accion probar.
+        """
+        baby=self.baby
+        self.auto_ticks=getattr(self,"auto_ticks",0)+1
+        if baby.stumble>0:
+            baby.last_decision="Debo recuperar el equilibrio antes de repetir."
+            return "Me estabilizo antes de volver a intentarlo."
+        if baby.posture=="lying":
+            self.auto_rest_ticks=getattr(self,"auto_rest_ticks",0)+1
+            if self.auto_rest_ticks>=3:
+                self.auto_rest_ticks=0
+                baby.posture="standing"
+                return "He observado cómo incorporarme. Vuelvo a estar de pie."
+            return "Pruebo a mantener mi cuerpo apoyado."
+        self.auto_rest_ticks=0
+
+        if self.confidence["caminar"]<.20:
+            baby.last_decision="Observo pasos antes de intentar desplazamientos."
+            return "Primero observo a ANDA para explorar mis movimientos."
+
+        # Una vez que sostuvo algo, prueba a moverlo y luego soltarlo.
+        if baby.holding:
+            self.auto_hold_ticks=getattr(self,"auto_hold_ticks",0)+1
+            if self.auto_hold_ticks>=3:
+                self.auto_hold_ticks=0
+                return self.try_release()
+            return baby.explore()
+        self.auto_hold_ticks=0
+
+        nearby=any(
+            not obj.held_by and self.distance(baby.x,baby.z,obj.x,obj.z)<1.75
+            for obj in self.items.values()
+        )
+        if self.confidence["agarrar"]>=.22 and nearby and self.auto_ticks%3==0:
+            return self.try_grab()
+
+        if (self.confidence["descansar"]>=.35
+                and self.distance(baby.x,baby.z,4.5,7)<2.6
+                and self.auto_ticks%9==0):
+            return self.try_rest()
+
+        if self.confidence["reconocer"]>=.26 and nearby and self.auto_ticks%11==0:
+            return self.identify()
+
+        return baby.explore()
+
     def report(self):
         parts=["%s %d%%"%(k.upper(),round(v*100))
                for k,v in self.confidence.items()]
@@ -1657,7 +1707,7 @@ class DesktopApp:
                 self.auto_clock+=dt
                 if self.auto_clock>=.57:
                     self.auto_clock=0
-                    action=self.robot.explore()
+                    action=self.robot.training.autonomous_trial()
                     self.say(self.robot.last_decision,duration=2.5,
                              kind="alert" if "bateria" in self.robot.last_decision.lower() else "normal")
                     if self.robot.battery<1.5:

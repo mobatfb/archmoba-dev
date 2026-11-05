@@ -224,6 +224,25 @@ class RobotTests(unittest.TestCase):
         finally:
             pygame.quit()
 
+    def test_modo_auto_imita_acciones_aprendidas(self):
+        tr=self.robot.training
+        msg=tr.autonomous_trial()
+        self.assertIn("observo",msg.lower())
+        self.assertEqual(self.robot.steps,0)
+        tr.confidence["caminar"]=1.0
+        tr.confidence["agarrar"]=1.0
+        for _ in range(9):
+            tr.auto_ticks=2
+            msg=tr.autonomous_trial()
+            if self.robot.holding:
+                break
+        self.assertTrue(self.robot.holding,msg)
+        tr.autonomous_trial()
+        tr.autonomous_trial()
+        tr.autonomous_trial()
+        self.assertIsNone(self.robot.holding)
+        self.assertGreater(tr.attempts,0)
+
     def test_vista_y_botones_entrenamiento(self):
         import os
         os.environ.setdefault("SDL_VIDEODRIVER","dummy")
