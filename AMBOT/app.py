@@ -23,7 +23,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -1099,6 +1099,139 @@ class ArduinoBridge:
         return ("Arduino "+self.port+" / motores "+state+
                 " / sensores "+str(self.telemetry))
 
+
+# Catalogo editable: por ahora SOLO sillas, sin otros tipos de muebles.
+CHAIR_STYLES = {
+    "clasica": "SILLA CLASICA",
+    "oficina": "SILLA DE OFICINA",
+    "alta": "SILLA ALTA",
+}
+
+
+class FurnitureEditor:
+    """Sillas persistentes, con ubicaciones elegidas por el usuario."""
+    MAX_CHAIRS = 30
+
+    def __init__(self, robot, path):
+        self.robot = robot
+        self.path = Path(path)
+        self.chairs = []
+        if self.path.exists():
+            self._load()
+        else:
+            # Tres sillas nuevas, ademas de la silla fija de la mesa.
+            for style,x,z,orientation in (
+                ("clasica",5,3,2),("oficina",7,7,0),("alta",5,5,1)
+            ):
+                valid,_=self.can_place(x,z)
+                if valid:
+                    self.chairs.append({
+                        "style":style,"x":x,"z":z,"orientation":orientation
+                    })
+            self.save()
+
+    def _open_floor(self,x,z,occupied):
+        return (0<=z<len(WORLD) and 0<=x<len(WORLD[z])
+                and WORLD[z][x]=="." and (x,z) not in FURNITURE_CELLS
+                and (x,z) not in occupied)
+
+    def _route_exists(self,occupied,origin=(6,5),target=ROOM_DOOR):
+        if not self._open_floor(*origin,occupied):
+            return False
+        if not self._open_floor(*target,occupied):
+            return False
+        seen={origin}
+        pending=deque([origin])
+        while pending:
+            x,z=pending.popleft()
+            if (x,z)==target:return True
+            for dx,dz in DIRECTIONS:
+                cell=x+dx,z+dz
+                if cell not in seen and self._open_floor(*cell,occupied):
+                    seen.add(cell)
+                    pending.append(cell)
+        return False
+
+    def occupied(self):
+        return {(chair["x"],chair["z"]) for chair in self.chairs}
+
+    def blocks(self,x,z):
+        return (x,z) in self.occupied()
+
+    def can_place(self,x,z):
+        if type(x) is not int or type(z) is not int:
+            return False,"Selecciona una casilla del suelo."
+        if len(self.chairs)>=self.MAX_CHAIRS:
+            return False,"Maximo de 30 sillas adicionales."
+        used=self.occupied()
+        if not self._open_floor(x,z,used):
+            return False,"No se puede colocar en una pared, mueble u otra silla."
+        if (x,z) in ((6,5),ROOM_DOOR,(self.robot.x,self.robot.z)):
+            return False,"Reserva la entrada y el espacio de AMBOT."
+        if hasattr(self.robot,"training"):
+            tr=self.robot.training
+            if any(tr.distance(x,z,item.x,item.z)<.69
+                   for item in tr.items.values() if not item.held_by):
+                return False,"Hay un objeto movil en esa casilla."
+            if any(tr.distance(x,z,guide.x,guide.z)<.75
+                   for guide in tr.guides):
+                return False,"Un robot guia ocupa ese lugar."
+        blocked=used|{(x,z)}
+        if not self._route_exists(blocked):
+            return False,"Esta silla bloquearia la salida de la habitacion."
+        if not self._route_exists(blocked,(self.robot.x,self.robot.z)):
+            return False,"AMBOT quedaria encerrado."
+        return True,"Lugar disponible."
+
+    def place(self,style,x,z,orientation=2):
+        if style not in CHAIR_STYLES:
+            return False,"Tipo no disponible: por ahora solo hay sillas."
+        valid,msg=self.can_place(x,z)
+        if not valid:return False,msg
+        if type(orientation) is not int or orientation not in range(4):
+            return False,"Direccion de la silla no valida."
+        self.chairs.append({
+            "style":style,"x":x,"z":z,"orientation":orientation
+        })
+        self.save()
+        return True,CHAIR_STYLES[style]+" colocada en X="+str(x)+" Z="+str(z)+"."
+
+    def undo(self):
+        if not self.chairs:
+            return False,"No hay sillas adicionales que quitar."
+        item=self.chairs.pop()
+        self.save()
+        return True,"Quite la silla X="+str(item["x"])+" Z="+str(item["z"])+"."
+
+    def _load(self):
+        try:
+            data=json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data,dict) or not isinstance(data.get("chairs"),list):
+                return
+            for item in data["chairs"][:self.MAX_CHAIRS]:
+                if not isinstance(item,dict):continue
+                style,x,z,rot=(item.get("style"),item.get("x"),item.get("z"),
+                               item.get("orientation",2))
+                if style not in CHAIR_STYLES:continue
+                if type(x) is not int or type(z) is not int:continue
+                if type(rot) is not int or rot not in range(4):continue
+                valid,_=self.can_place(x,z)
+                if valid:
+                    self.chairs.append({
+                        "style":style,"x":x,"z":z,"orientation":rot
+                    })
+        except (OSError,ValueError,TypeError,AttributeError):
+            pass
+
+    def save(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        tmp=self.path.with_name(self.path.name+".tmp")
+        tmp.write_text(json.dumps({
+            "version":1,"chairs":self.chairs
+        },ensure_ascii=False,indent=2),encoding="utf-8")
+        tmp.replace(self.path)
+
+
 class Robot:
     """Cerebro con mapa, percepcion, navegacion, decisiones y memoria."""
     def __init__(self, memory_path=MEMORY_PATH):
@@ -1114,6 +1247,7 @@ class Robot:
         self.reset()
         self.training = TrainingLab(self, self.memory_path.with_name("aprendizaje.json"))
         self.brain = LearningBrain(self,self.memory_path.with_name("cerebro.json"))
+        self.furniture = FurnitureEditor(self,self.memory_path.with_name("muebles.json"))
 
     def reset(self):
         if hasattr(self,"training"):
@@ -1135,6 +1269,7 @@ class Robot:
             and 0 <= x < len(WORLD[z])
             and WORLD[z][x] == "."
             and (x, z) not in FURNITURE_CELLS
+            and (not hasattr(self,"furniture") or not self.furniture.blocks(x,z))
         )
 
     def location(self):
@@ -1263,6 +1398,10 @@ class Robot:
                         chars[x] = marks[name]
             if z == ROOM_DOOR[1]:
                 chars[ROOM_DOOR[0]] = "P"
+            if hasattr(self,"furniture"):
+                for chair in self.furniture.chairs:
+                    if chair["z"] == z:
+                        chars[chair["x"]] = "S"
             if z == self.z:
                 chars[self.x] = symbols[self.facing]
             rows.append("".join(chars))
@@ -1333,6 +1472,11 @@ class Robot:
             return "Bateria simulada recargada al 100%."
         if cmd in ("mapa", "ver mapa"):
             return self.map_text()
+        if cmd in ("muebles","sillas"):
+            return ("Sillas adicionales: "+str(len(self.furniture.chairs))+
+                    ". Usa el boton + AÑADIR.")
+        if cmd in ("deshacer silla","quitar ultima silla"):
+            return self.furniture.undo()[1]
         if cmd == "memoria":
             return ", ".join(k + "=" + v for k, v in self.facts.items()) or "No tengo recuerdos guardados."
         if cmd.startswith("recuerda ") and "=" in raw:
