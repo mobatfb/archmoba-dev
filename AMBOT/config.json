@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "Robot stickman 3D nativo en Python, sin servidor HTTP ni navegador",
-  "version": "0.2.0",
+  "description": "Robot 3D nativo de Python: habitacion interactiva, memoria y exploracion simulada",
+  "version": "0.2.1",
   "app_path": "AMBOT/app.py",
-  "release_commit": "0fb93e0f65dacc5db4cb5aef7542c973dd0e3ecc",
+  "release_commit": "b0acf132c590b66b38ead1b5c91403d7c4b97abb",
   "maintenance": false
 }
