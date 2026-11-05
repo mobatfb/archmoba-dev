@@ -1786,6 +1786,7 @@ class Scene3D:
 
     def pick_object(self, screen_pos, robot):
         """Rayo 3D exacto contra cajas de seleccion, ordenado por profundidad."""
+        furniture=getattr(robot,"furniture",None)
         if not self.rect.collidepoint(screen_pos):
             return None
         nx=(screen_pos[0]-self.rect.centerx)/self.focal
@@ -2258,6 +2259,7 @@ class DesktopApp:
         self.editor_mode=False
         self.editor_resume_auto=False
         self.editor_style="clasica"
+        self.editor_action="add"
         self.editor_orientation=2
         self.editor_rect=pg.Rect(0,0,1,1)
         self.training_rect=pg.Rect(0,0,1,1)
@@ -2500,12 +2502,11 @@ class DesktopApp:
             self.say(answer,5.5 if not quiet else 3.4,mood)
         if not quiet:self.add_log("AMBOT",answer,COLOR["green"])
 
-    def toggle_editor(self):
+    def toggle_editor(self, action="add"):
         if self.editor_mode:
             self.editor_mode=False
             self.auto=self.editor_resume_auto
-            self.add_log("ENTORNO","Editor cerrado. "+str(
-                len(self.robot.furniture.chairs))+" sillas adicionales.",
+            self.add_log("ENTORNO","Editor cerrado. Cambios guardados.",
                 COLOR["green"])
             self.say("Distribucion guardada. "+(
                 "Continuo aprendiendo." if self.auto else "Modo pausado."),4.2)
@@ -2514,15 +2515,30 @@ class DesktopApp:
         self.auto=False
         self.hardware.stop()
         self.editor_mode=True
+        self.editor_action=action if action in ("add","remove") else "add"
         self.dragging=False
-        self.editor_hint="Elige modelo y haz clic en una casilla libre."
-        self.add_log("ENTORNO","Elige una silla y haz clic en el suelo 3D.",
-                     COLOR["cyan"])
-        self.say("¿Donde quieres colocar la silla? Elige el modelo y haz clic.",5.8)
+        self.editor_hint=("Haz clic sobre el objeto que quieras quitar."
+                          if self.editor_action=="remove"
+                          else "Elige silla y haz clic en una casilla libre.")
+        self.add_log("ENTORNO",self.editor_hint,COLOR["cyan"])
+        self.say(self.editor_hint,5.8)
 
     def place_chair_at(self, screen_pos):
         if not self.editor_mode:
             return False
+        if self.editor_action=="remove":
+            target=self.scene.pick_object(screen_pos,self.robot)
+            if target is None:
+                ok,message=False,"Haz clic directamente sobre un objeto."
+            elif target["kind"]=="protected":
+                ok,message=False,"No puedes quitar robots del entorno."
+            else:
+                ok,message=self.robot.furniture.remove(target["kind"],target["key"])
+            self.editor_hint=message
+            self.add_log("ENTORNO",message,
+                         COLOR["green"] if ok else COLOR["yellow"])
+            self.say(message,4.4,"normal" if ok else "alert")
+            return ok
         cell=self.scene.pick_floor(screen_pos)
         if cell is None:
             self.editor_hint="Haz clic en una casilla visible del suelo."
@@ -2544,6 +2560,31 @@ class DesktopApp:
                 or self.training_rect.collidepoint(mouse)
                 or ("editor_toggle" in self.buttons
                     and self.buttons["editor_toggle"].collidepoint(mouse))):
+            return
+        if self.editor_action=="remove":
+            target=self.scene.pick_object(mouse,self.robot)
+            if target is None:return
+            l,r,b,t,z0,z1=target["bounds"]
+            coords=[self.scene.project((x,y,z))
+                    for x in (l,r) for y in (b,t) for z in (z0,z1)]
+            coords=[p for p in coords if p is not None]
+            if coords:
+                xs=[p[0] for p in coords]
+                ys=[p[1] for p in coords]
+                left=max(self.view.x+2,int(min(xs))-5)
+                right=min(self.view.right-2,int(max(xs))+5)
+                top=max(self.view.y+2,int(min(ys))-5)
+                bottom=min(self.view.bottom-2,int(max(ys))+5)
+                color=(COLOR["muted"] if target["kind"]=="protected"
+                       else COLOR["pink"])
+                if right>left+4 and bottom>top+4:
+                    pg.draw.rect(self.screen,color,
+                                 pg.Rect(left,top,right-left,bottom-top),
+                                 2,border_radius=5)
+                self.text((max(self.view.x+10,left),max(self.view.y+115,top-21)),
+                          ("PROTEGIDO: " if target["kind"]=="protected"
+                           else "QUITAR: ")+target["label"],13,color,
+                          max(60,self.view.right-left-10))
             return
         cell=self.scene.pick_floor(mouse)
         if cell is None:return
@@ -2572,34 +2613,53 @@ class DesktopApp:
         pg=self.pg
         self.button("editor_toggle",
                     "✕ CERRAR" if self.editor_mode else "＋ AÑADIR",
+                    self.view.right-302,self.view.y+12,142,29,
+                    self.editor_mode and self.editor_action=="add")
+        self.button("editor_remove","− QUITAR",
                     self.view.right-152,self.view.y+12,139,29,
-                    self.editor_mode)
+                    self.editor_mode and self.editor_action=="remove")
         if not self.editor_mode:
             self.editor_rect=pg.Rect(0,0,1,1)
             return
         w=self.portrait_view.width-20
-        r=pg.Rect(self.portrait_view.x+10,self.portrait_view.y+140,w,225)
+        r=pg.Rect(self.portrait_view.x+10,self.portrait_view.y+140,w,267)
         self.editor_rect=r
         self.panel(r,fill=(6,26,43),border=COLOR["cyan"],radius=11)
-        self.text((r.x+12,r.y+8),"AÑADIR · SILLA",16,COLOR["cyan"])
-        self.text((r.x+12,r.y+30),"Selecciona modelo y lugar",13,COLOR["muted"])
-        options=(
-            ("clasica","SILLA CLASICA"),
-            ("oficina","SILLA DE OFICINA"),
-            ("alta","SILLA ALTA")
-        )
-        for i,(key,label) in enumerate(options):
-            self.button("editor_style_"+key,
-                        ("✓ " if self.editor_style==key else "  ")+label,
-                        r.x+10,r.y+53+i*31,r.width-20,27,
-                        self.editor_style==key)
-        orient=ORIENTATIONS[self.editor_orientation]
-        self.button("editor_rotate","↻ GIRAR 90° · "+orient,
-                    r.x+10,r.y+151,r.width-20,27)
-        self.button("editor_undo","DESHACER",r.x+10,r.y+187,93,28)
-        self.button("editor_done","✓ LISTO",r.x+111,r.y+187,95,28,True)
-        msg=self.editor_hint or "Clic para colocar."
-        self.text((self.view.x+15,self.view.bottom-160),msg,13,
+        self.text((r.x+12,r.y+8),"EDITOR DE OBJETOS",16,COLOR["cyan"])
+        self.button("editor_mode_add","+ AÑADIR",r.x+10,r.y+34,(r.width-26)//2,29,
+                    self.editor_action=="add")
+        self.button("editor_mode_remove","− QUITAR",
+                    r.x+16+(r.width-26)//2,r.y+34,(r.width-26)//2,29,
+                    self.editor_action=="remove")
+        if self.editor_action=="add":
+            self.text((r.x+12,r.y+70),"Selecciona la silla:",13,COLOR["muted"])
+            options=(("clasica","SILLA CLASICA"),
+                     ("oficina","SILLA DE OFICINA"),
+                     ("alta","SILLA ALTA"))
+            for i,(key,label) in enumerate(options):
+                self.button("editor_style_"+key,
+                            ("✓ " if self.editor_style==key else "  ")+label,
+                            r.x+10,r.y+89+i*29,r.width-20,26,
+                            self.editor_style==key)
+            self.button("editor_rotate",
+                        "↻ GIRAR 90° · "+ORIENTATIONS[self.editor_orientation],
+                        r.x+10,r.y+181,r.width-20,28)
+        else:
+            self.text((r.x+12,r.y+80),"Clic en el objeto 3D",14,COLOR["pink"])
+            self.text((r.x+12,r.y+106),"Sillas, cama, mesa, armario",13,
+                      COLOR["muted"],r.width-24)
+            self.text((r.x+12,r.y+128),"Cubo, pelota, bloque",13,
+                      COLOR["muted"],r.width-24)
+            self.text((r.x+12,r.y+159),"Robots y paredes protegidos",13,
+                      COLOR["yellow"],r.width-24)
+            self.text((r.x+12,r.y+184),"Puedes deshacer el ultimo cambio",13,
+                      COLOR["muted"],r.width-24)
+        self.button("editor_undo","↶ DESHACER",
+                    r.x+10,r.y+222,(r.width-30)//2,32)
+        self.button("editor_done","✓ LISTO",
+                    r.x+20+(r.width-30)//2,r.y+222,(r.width-30)//2,32,True)
+        self.text((self.view.x+15,self.view.bottom-160),
+                  self.editor_hint or "Selecciona un objeto.",13,
                   COLOR["yellow"],self.view.width-30)
 
     def toggle_auto(self):
@@ -2615,12 +2675,27 @@ class DesktopApp:
         self.say(message,duration=4.0)
 
     def handle_button(self,key):
-        if key=="editor_toggle" or key=="editor_done":
+        if key=="editor_toggle":
+            self.toggle_editor() if self.editor_mode else self.toggle_editor("add")
+        elif key=="editor_done":
             self.toggle_editor()
+        elif key=="editor_remove":
+            if not self.editor_mode:
+                self.toggle_editor("remove")
+            else:
+                self.editor_action="remove"
+                self.editor_hint="Haz clic directamente sobre el objeto para quitarlo."
+        elif key in ("editor_mode_add","editor_mode_remove"):
+            self.editor_action="add" if key.endswith("add") else "remove"
+            self.editor_hint=("Elige una silla y haz clic en el suelo."
+                              if self.editor_action=="add"
+                              else "Haz clic directamente sobre el objeto que quieras quitar.")
         elif key.startswith("editor_style_"):
+            self.editor_action="add"
             self.editor_style=key[len("editor_style_"):]
             self.editor_hint="Haz clic en el suelo para colocar "+CHAIR_STYLES[self.editor_style]+"."
         elif key=="editor_rotate":
+            self.editor_action="add"
             self.editor_orientation=(self.editor_orientation+1)%4
             self.editor_hint="Orientacion: "+ORIENTATIONS[self.editor_orientation]+"."
         elif key=="editor_undo":
@@ -2831,7 +2906,7 @@ class DesktopApp:
         self.text((x+9,inputy+12),value,13,COLOR["ink"] if self.input_value else COLOR["muted"],inner-20)
         self.draw_guides_and_skills(self.view)
         self.draw_editor_palette()
-        self.text((23,h-45),"＋ AÑADIR SILLAS · CLIC EN SUELO · ESPACIO AUTO · TAB CONVERSAR",
+        self.text((23,h-45),"＋ AÑADIR / − QUITAR OBJETOS · CLIC EN 3D · DESHACER · TAB CHAT",
                   14,COLOR["muted"])
         self.text((w-220,h-45),"ARCHMOBA / AMBOT "+APP_VERSION,14,COLOR["cyan"])
         pg.display.flip()
