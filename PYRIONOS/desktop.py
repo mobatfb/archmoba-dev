@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.3.7
+"""PYRION OS Desktop v0.4.0
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -595,7 +595,7 @@ class DependencyManager:
 
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.7"
+APP_VERSION = "0.4.0"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -689,6 +689,497 @@ def mounted_volumes() -> list[Path]:
     return unique
 
 
+# PYRION OS - discovery and safe provisioning of Linux persistent disks.
+# This block is embedded in app.py and desktop.py so the first boot works
+# even before extra modules have been downloaded from GitHub.
+STORAGE_MIN_FREE = 700 * 1024 * 1024
+STORAGE_MOUNT_BASE = Path('/mnt/pyrion-volumes')
+STORAGE_LINUX_FS = {'ext4', 'ext3', 'ext2', 'vfat', 'fat', 'exfat', 'ntfs', 'ntfs3', 'xfs', 'btrfs'}
+
+
+def _storage_note(message: str) -> None:
+    try:
+        logpath = Path.home() / '.cache' / 'pyrionos' / 'storage_scan.log'
+        logpath.parent.mkdir(parents=True, exist_ok=True)
+        with logpath.open('a', encoding='utf-8') as fp:
+            fp.write(f'[{datetime.now(timezone.utc).isoformat()}] {message}\n')
+    except OSError:
+        pass
+    out = getattr(sys, 'stderr', None)
+    if out:
+        try:
+            out.write('PYRION STORAGE: ' + message + '\n')
+            out.flush()
+        except (OSError, ValueError):
+            pass
+    observer = globals().get('BOOT_OBSERVER')
+    if observer is not None:
+        try:
+            observer.log('Almacenamiento: ' + message)
+        except Exception:
+            pass
+
+
+def _linux_mounts() -> list[dict]:
+    result = []
+    try:
+        with open('/proc/mounts', encoding='utf-8', errors='replace') as fp:
+            for line in fp:
+                fields = line.strip().split()
+                if len(fields) >= 4:
+                    def decode(part: str) -> str:
+                        return (part.replace('\\040', ' ').replace('\\011', '\t')
+                                    .replace('\\012', '\n').replace('\\134', '\\'))
+                    result.append({'device': decode(fields[0]), 'path': Path(decode(fields[1])),
+                                   'fs': fields[2], 'options': fields[3].split(',')})
+    except OSError as exc:
+        _storage_note('No se pudo leer /proc/mounts: ' + str(exc))
+    return result
+
+
+def _linux_disks() -> list[dict]:
+    """Consult /sys instead of relying on lsblk, blkid or udev."""
+    result = []
+    base = Path('/sys/block')
+    if not base.is_dir():
+        return result
+    try:
+        disk_dirs = list(base.iterdir())
+    except OSError:
+        return result
+    for disk in disk_dirs:
+        name = disk.name
+        if not re.fullmatch(r'(?:sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)', name):
+            continue
+        def number(path: Path, default: int = 0) -> int:
+            try:
+                return int(path.read_text().strip())
+            except (OSError, ValueError):
+                return default
+        disk_bytes = number(disk / 'size') * 512
+        if disk_bytes < 512 * 1024 * 1024:
+            continue
+        rotational = number(disk / 'queue' / 'rotational', 1)
+        removable = number(disk / 'removable', 0)
+        partitions = []
+        try:
+            parts = list(disk.iterdir())
+        except OSError:
+            parts = []
+        for entry in parts:
+            if (entry / 'partition').is_file():
+                partitions.append(entry.name)
+        result.append({'name': name, 'device': Path('/dev') / name, 'bytes': disk_bytes,
+                       'ssd': rotational == 0, 'removable': removable != 0,
+                       'partitions': sorted(partitions)})
+    return result
+
+
+def _linux_filesystem_type(device: Path) -> str:
+    """Read-only checks; blkid is optional in small live Linux systems."""
+    blkid = shutil.which('blkid')
+    if blkid:
+        try:
+            result = subprocess.run([blkid, '-p', '-o', 'value', '-s', 'TYPE', str(device)],
+                                    capture_output=True, text=True, timeout=5, check=False)
+            if result.returncode == 0 and result.stdout.strip().lower() in STORAGE_LINUX_FS:
+                return result.stdout.strip().lower()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        with device.open('rb', buffering=0) as fp:
+            head = fp.read(131072)
+        if len(head) >= 1082 and head[1080:1082] == b'\x53\xef':
+            return 'ext4'
+        if head[:4] == b'XFSB':
+            return 'xfs'
+        if head[65536 + 64:65536 + 72] == b'_BHRfS_M':
+            return 'btrfs'
+        if head[3:11] == b'NTFS    ':
+            return 'ntfs'
+        if head[3:11] == b'EXFAT   ':
+            return 'exfat'
+        if head[54:62] in (b'FAT12   ', b'FAT16   ') or head[82:90] == b'FAT32   ':
+            return 'vfat'
+    except OSError as exc:
+        _storage_note('No se puede inspeccionar ' + str(device) + ': ' + str(exc))
+    return ''
+
+
+def _linux_disk_blank(device: Path, size: int) -> bool:
+    """Strict safety check: no partitions and all-zero sampled ends."""
+    if size < 512 * 1024 * 1024 or size > 64 * 1024 ** 4:
+        return False
+    try:
+        import stat
+        if not stat.S_ISBLK(device.stat().st_mode):
+            return False
+        with device.open('rb', buffering=0) as fp:
+            first = fp.read(min(2 * 1024 * 1024, size))
+            fp.seek(max(0, size - 2 * 1024 * 1024))
+            last = fp.read(min(2 * 1024 * 1024, size))
+        return (len(first) >= 512 and len(last) >= 512
+                and not any(first) and not any(last))
+    except (OSError, ValueError):
+        return False
+
+
+def _linux_confirm_format(device: Path, size: int) -> bool:
+    """Require a typed confirmation; no destructive action during unattended boot."""
+    mib = size // (1024 * 1024)
+    expected = 'FORMATEAR ' + str(device)
+    _storage_note(f'Disco sin formato detectado: {device}, {mib} MiB; esperando confirmacion')
+    if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'):
+        script = '''import sys
+try:
+ import tkinter as tk
+ from tkinter import simpledialog, messagebox
+ root=tk.Tk(); root.withdraw(); root.attributes('-topmost', True)
+ device,size,expected=sys.argv[1:]
+ ok=messagebox.askyesno('PYRION OS - DISCO SIN FORMATO',
+     'Se detecto un unico disco sin particiones: '+device+' ('+size+' MiB).\\n'
+     'Inicializarlo con ext4 BORRARA TODO SU CONTENIDO.\\n'
+     'No se modificara si cancelas.\\n\\nDeseas continuar?', parent=root)
+ if not ok: sys.exit(1)
+ answer=simpledialog.askstring('Confirmacion irreversible',
+     'Escribe exactamente: '+expected, parent=root)
+ sys.exit(0 if answer==expected else 1)
+except Exception:
+ sys.exit(2)
+'''
+        try:
+            result = subprocess.run([sys.executable, '-c', script, str(device), str(mib), expected],
+                                    timeout=180, check=False,
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            if result.returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if getattr(sys.stdin, 'isatty', lambda: False)():
+        try:
+            print(f'ADVERTENCIA: BORRADO IRREVERSIBLE del disco {device} ({mib} MiB)')
+            return input('Escribe exactamente ' + expected + ': ').strip() == expected
+        except (OSError, EOFError, KeyboardInterrupt):
+            return False
+    return False
+
+
+class _LinuxStorageFinder:
+    """Find installed PYRION first, then the best actual writable disk."""
+
+    def __init__(self, is_installation, recorded: dict):
+        self.is_installation = is_installation
+        self.recorded = recorded if isinstance(recorded, dict) else {}
+        self.probe_mounts: list[Path] = []
+        self.mount_tool = shutil.which('mount')
+        self.umount_tool = shutil.which('umount')
+
+    def _existing_mount(self, device: Path) -> tuple[Path, bool] | None:
+        for item in _linux_mounts():
+            raw = item['device']
+            if raw == str(device):
+                return item['path'], 'rw' in item['options']
+            if raw.startswith('/dev/'):
+                try:
+                    if Path(raw).resolve() == device.resolve():
+                        return item['path'], 'rw' in item['options']
+                except OSError:
+                    pass
+        return None
+
+    def _run_mount(self, device: Path, directory: Path, fstype: str, rw: bool) -> bool:
+        if not self.mount_tool:
+            return False
+        kinds = [fstype]
+        if fstype == 'ntfs':
+            kinds = ['ntfs3', 'ntfs', 'ntfs-3g']
+        if fstype == 'fat':
+            kinds = ['vfat']
+        for kind in kinds:
+            if kind == 'ntfs-3g' and not shutil.which('mount.ntfs-3g'):
+                continue
+            flags = 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'
+            try:
+                run = subprocess.run([self.mount_tool, '-t', kind, '-o', flags,
+                                      str(device), str(directory)],
+                                     capture_output=True, text=True, timeout=12, check=False)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if run.returncode == 0 and directory.is_mount():
+                _storage_note(f'{device} montado en {directory} ({kind}, {"rw" if rw else "ro"})')
+                return True
+        return False
+
+    def _unmount_probe(self, mountpoint: Path) -> None:
+        if mountpoint not in self.probe_mounts:
+            return
+        if self.umount_tool:
+            try:
+                result = subprocess.run([self.umount_tool, str(mountpoint)], timeout=12,
+                                        capture_output=True, check=False)
+                if result.returncode == 0:
+                    self.probe_mounts.remove(mountpoint)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+    def _candidate_location(self, device: Path, filesystem: str) -> dict | None:
+        mounted = self._existing_mount(device)
+        if mounted:
+            path, rw = mounted
+            if not path.is_dir():
+                return None
+            return {'device': device, 'path': path, 'rw': rw, 'temporary': False, 'fs': filesystem}
+        if not self.mount_tool or not self.umount_tool or os.geteuid() != 0:
+            _storage_note(f'{device} no esta montado; se necesitan permisos y mount/umount')
+            return None
+        STORAGE_MOUNT_BASE.mkdir(parents=True, exist_ok=True)
+        path = STORAGE_MOUNT_BASE / device.name
+        path.mkdir(parents=True, exist_ok=True)
+        if not self._run_mount(device, path, filesystem, rw=False):
+            _storage_note(f'No se pudo montar {device} ({filesystem}). Falta controlador o utilidad de montaje.')
+            return None
+        self.probe_mounts.append(path)
+        return {'device': device, 'path': path, 'rw': False, 'temporary': True, 'fs': filesystem}
+
+    @staticmethod
+    def _installation_at(directory: Path, checker) -> Path | None:
+        for candidate in (directory / 'pyrionos', directory / 'PYRIONOS',
+                          directory / 'data' / 'pyrionos', directory / 'home' / 'pyrionos'):
+            try:
+                if checker(candidate):
+                    return candidate
+            except OSError:
+                pass
+        return None
+
+    def _make_writable(self, candidate: dict) -> Path:
+        mountpoint = candidate['path']
+        if candidate['rw']:
+            return mountpoint
+        if not candidate['temporary']:
+            raise StorageError(f'El disco {candidate["device"]} ya esta montado en solo lectura: {mountpoint}')
+        self._unmount_probe(mountpoint)
+        if mountpoint in self.probe_mounts:
+            raise StorageError(f'No se pudo desmontar temporalmente {mountpoint} para escribir')
+        if not self._run_mount(candidate['device'], mountpoint, candidate['fs'], rw=True):
+            raise StorageError(f'No se pudo montar {candidate["device"]} en lectura/escritura')
+        return mountpoint
+
+    def _select_installation(self, installed: list[dict]) -> dict:
+        saved = str(self.recorded.get('id') or '')
+        if saved:
+            matches = []
+            for entry in installed:
+                try:
+                    meta = read_json_strict(entry['folder'] / 'config' / 'instalacion.json', {})
+                    if meta.get('id') == saved:
+                        matches.append(entry)
+                except StorageError:
+                    pass
+            if matches:
+                return matches[0]
+            raise StorageError(
+                'La instalacion encontrada en el disco tiene un ID diferente al '
+                'registrado previamente. No se cambiara a otro usuario o disco '
+                'sin seleccionar explicitamente su ubicacion.'
+            )
+        if len(installed) == 1:
+            return installed[0]
+        raise StorageError('Hay varias instalaciones PYRION en discos diferentes; selecciona una ubicacion manualmente.')
+
+    def _format_unique_blank(self, item: dict) -> dict:
+        device = item['device']
+        if not self.mount_tool or not self.umount_tool or os.geteuid() != 0:
+            raise StorageError(f'El disco {device} no tiene formato, pero mount o permisos de root faltan.')
+        mkfs = shutil.which('mkfs.ext4') or shutil.which('mke2fs')
+        if not mkfs:
+            raise StorageError(f'{device} esta vacio, pero falta mkfs.ext4/mke2fs en la ISO. '
+                               'Incorpora e2fsprogs al Mini Linux antes de preparar el disco.')
+        if not _linux_disk_blank(device, item['bytes']) or item['partitions'] or self._existing_mount(device):
+            raise StorageError(f'No se puede certificar que {device} este vacio. No se formateo.')
+        if not _linux_confirm_format(device, item['bytes']):
+            raise StorageError(f'Inicializacion cancelada de {device}. No se modifico el disco.')
+        # Re-check after the user confirms to avoid accidental target reuse.
+        fresh = {d['name']: d for d in _linux_disks()}.get(item['name'])
+        if not fresh or fresh['partitions'] or fresh['bytes'] != item['bytes'] or not _linux_disk_blank(device, item['bytes']):
+            raise StorageError('El disco cambio durante la confirmacion. Se aborto el formateo.')
+        _storage_note('Preparando EXT4 en el unico dispositivo vacio autorizado: ' + str(device))
+        command = [mkfs, '-F', '-L', 'PYRIONDATA', str(device)]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=240, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise StorageError(f'No se pudo crear ext4 en {device}: {exc}') from exc
+        if result.returncode != 0:
+            raise StorageError(f'Falló mkfs.ext4 en {device}: {(result.stderr or result.stdout)[-650:]}')
+        if _linux_filesystem_type(device) not in ('ext4', 'ext3', 'ext2'):
+            raise StorageError('El formateo no produjo un ext4 reconocible; no se monta automaticamente.')
+        directory = STORAGE_MOUNT_BASE / device.name
+        directory.mkdir(parents=True, exist_ok=True)
+        if not self._run_mount(device, directory, 'ext4', rw=True):
+            raise StorageError(f'EXT4 creado pero no se pudo montar {device}. Revisa el controlador ext4 del kernel.')
+        return {'device': device, 'path': directory, 'rw': True, 'temporary': False, 'fs': 'ext4'}
+
+    def _copy_ram_installation(self, target: Path) -> None:
+        """Move an ephemeral live-session installation without deleting the original."""
+        sources = []
+        raw = self.recorded.get('ruta')
+        if isinstance(raw, str) and raw.strip():
+            sources.append(Path(raw).expanduser())
+        sources.append(Path.home() / 'pyrionos')
+        for src in dict.fromkeys(sources):
+            if not self.is_installation(src) or src == target:
+                continue
+            if target.exists() and any(target.iterdir()):
+                return
+            # No migration from a real existing disk that might not be the
+            # user's selected installation. Only migrate the rootfs/tmpfs copy.
+            try:
+                root_dev = os.stat('/').st_dev
+                if os.stat(src).st_dev != root_dev:
+                    continue
+                bytes_required = sum(p.stat().st_size for p in src.rglob('*') if p.is_file() and not p.is_symlink())
+                if shutil.disk_usage(target.parent).free < bytes_required + 40 * 1024 * 1024:
+                    raise StorageError('No hay espacio para trasladar la copia anterior de PYRION.')
+                _storage_note(f'Copiando instalacion temporal {src} a disco persistente {target}')
+                shutil.copytree(src, target, dirs_exist_ok=True, symlinks=True)
+                if not self.is_installation(target):
+                    raise StorageError('La copia no fue validada; se conserva la original sin cambios.')
+                _storage_note('Instalacion anterior copiada correctamente; original preservado.')
+                return
+            except StorageError:
+                raise
+            except OSError as exc:
+                raise StorageError(f'No se pudo migrar {src} al disco persistente: {exc}') from exc
+
+    def discover(self) -> Path | None:
+        disks = _linux_disks()
+        if not disks:
+            _storage_note('El kernel no detecta ningun disco fisico con capacidad suficiente.')
+            return None
+        _storage_note('Discos encontrados: ' + ', '.join(
+            f"{d['device']} ({d['bytes'] // (1024 * 1024)} MiB, "
+            f"{'SSD' if d['ssd'] else 'HDD'}, {len(d['partitions'])} particiones)" for d in disks
+        ))
+        installed, available, blank = [], [], []
+        try:
+            for disk in disks:
+                if not disk['partitions'] and _linux_disk_blank(disk['device'], disk['bytes']):
+                    blank.append(disk)
+                for partition in disk['partitions'] or [disk['name']]:
+                    device = Path('/dev') / partition
+                    filesystem = _linux_filesystem_type(device)
+                    if not filesystem:
+                        continue
+                    volume = self._candidate_location(device, filesystem)
+                    if volume is None:
+                        continue
+                    volume['disk'] = disk
+                    folder = self._installation_at(volume['path'], self.is_installation)
+                    if folder:
+                        volume['folder'] = folder
+                        installed.append(volume)
+                        continue
+                    if filesystem not in STORAGE_LINUX_FS:
+                        continue
+                    dest = volume['path'] / DIR_NAME
+                    if dest.exists() and (not dest.is_dir() or any(dest.iterdir())):
+                        continue
+                    free = shutil.disk_usage(volume['path']).free
+                    if free < STORAGE_MIN_FREE:
+                        _storage_note(f'{device} tiene {free // (1024 * 1024)} MiB; se requieren 700 MiB libres.')
+                        continue
+                    score = (100 if disk['ssd'] else 0) + (50 if filesystem in ('ext4', 'ext3', 'ext2') else 20 if filesystem == 'exfat' else 10) + min(free // (1024**3), 25)
+                    if disk['removable']:
+                        score -= 40
+                    volume['score'] = score
+                    available.append(volume)
+            if installed:
+                chosen = self._select_installation(installed)
+                folder = chosen['folder']
+                self._make_writable(chosen)
+                _storage_note('Instalacion existente reutilizada: ' + str(folder))
+                return folder
+            # An offline/stale pointer to a missing durable installation must
+            # not be silently replaced by a brand-new empty installation.
+            saved = str(self.recorded.get('id') or '')
+            prior = self.recorded.get('ruta')
+            if saved and isinstance(prior, str) and not self.is_installation(Path(prior)):
+                raise StorageError(
+                    'Se recordaba una instalacion PYRION anterior que no se encontro '
+                    'en ningun disco. Conecta el disco original. No se creara '
+                    'una instalacion paralela con datos vacios.'
+                )
+            if available:
+                errors = []
+                for chosen in sorted(available, key=lambda v: (v['score'], v['path'].as_posix()), reverse=True):
+                    try:
+                        self._make_writable(chosen)
+                    except StorageError as exc:
+                        errors.append(str(exc))
+                        _storage_note('Candidato descartado: ' + str(exc))
+                        continue
+                    folder = chosen['path'] / DIR_NAME
+                    if chosen['fs'] in ('vfat', 'fat', 'exfat', 'ntfs', 'ntfs3'):
+                        _storage_note('Usando ' + chosen['fs'] + '. Para librerias Qt con '
+                                      'enlaces simbolicos y permisos Unix se recomienda ext4.')
+                    self._copy_ram_installation(folder)
+                    _storage_note('Almacenamiento persistente seleccionado: ' + str(folder))
+                    return folder
+                raise StorageError('Ningun disco pudo montarse en lectura/escritura: ' + '; '.join(errors[-3:]))
+            if len(blank) == 1 and len(disks) == 1:
+                item = self._format_unique_blank(blank[0])
+                folder = item['path'] / DIR_NAME
+                self._copy_ram_installation(folder)
+                _storage_note('Disco inicializado para PYRION: ' + str(folder))
+                return folder
+            if blank:
+                raise StorageError('Existen varios dispositivos o candidatos dudosos. Discos vacios: ' + ', '.join(str(d['device']) for d in blank)
+                                   + '. No se formateara ninguno automaticamente.')
+            raise StorageError('Se detectaron discos pero ninguno admite almacenamiento PYRION. '
+                               'Comprueba permisos, sistemas de archivos y herramientas mount.')
+        finally:
+            for mountpoint in list(self.probe_mounts):
+                self._unmount_probe(mountpoint)
+
+
+def _linux_find_storage(checker, pointer: Path) -> Path | None:
+    """Search real disks before any rootfs or /root RAM fallback."""
+    recorded = read_json_strict(pointer, {})
+    if isinstance(recorded, dict) and recorded.get('ruta'):
+        try:
+            known = Path(recorded['ruta'])
+            if checker(known) and os.stat(known).st_dev != os.stat('/').st_dev:
+                # Still scan real disks: known device may be a stale mount.
+                pass
+        except OSError:
+            pass
+    return _LinuxStorageFinder(checker, recorded).discover()
+
+
+def _linux_ram_root() -> bool:
+    root_mount = next((m for m in _linux_mounts() if m['path'] == Path('/')), None)
+    if root_mount is None:
+        return True
+    return root_mount['fs'].lower() in ('rootfs', 'tmpfs', 'ramfs', 'overlay', 'squashfs')
+
+
+
+def _linux_ram_root() -> bool:
+    root_mount = next((m for m in _linux_mounts() if m['path'] == Path('/')), None)
+    if root_mount is None:
+        return True
+    return root_mount['fs'].lower() in ('rootfs', 'tmpfs', 'ramfs', 'overlay', 'squashfs')
+
+
+
+def _linux_ram_root() -> bool:
+    root_mount = next((m for m in _linux_mounts() if m['path'] == Path('/')), None)
+    if root_mount is None:
+        return True
+    return root_mount['fs'].lower() in ('rootfs', 'tmpfs', 'ramfs', 'overlay', 'squashfs')
+
+
 class PersistentStore:
     """Descubre o crea UN almacenamiento estable y recuerda su ubicacion."""
 
@@ -741,6 +1232,19 @@ class PersistentStore:
             if target.exists() and not (self._is_installation(target) or self._is_empty(target)):
                 raise StorageError(f"La carpeta ya contiene datos ajenos a PYRION: {target}")
             return target
+
+        # Real volumes are discovered before the legacy /root fallback.
+        # Essential: the live ISO rootfs is RAM and cannot store PySide6.
+        if sys.platform.startswith('linux'):
+            chosen = _linux_find_storage(self._is_installation, self.pointer)
+            if chosen is not None:
+                return chosen
+            if _linux_ram_root():
+                raise StorageError(
+                    'PYRION esta ejecutandose desde rootfs/overlay temporal y no '
+                    'ha encontrado un disco persistente. No se instalaran paquetes '
+                    'en RAM. Diagnostico: ~/.cache/pyrionos/storage_scan.log'
+                )
 
         recorded = read_json_strict(self.pointer, {})
         recorded_path = recorded.get("ruta") if isinstance(recorded, dict) else None
