@@ -15,7 +15,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.6.0")
+        self.assertEqual(APP_VERSION,"0.7.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -533,6 +533,190 @@ class RobotTests(unittest.TestCase):
             gui.handle_button("stop")
             gui.handle_button("editor_done")
             self.assertFalse(gui.auto)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_quitar_silla_por_clic_logico_y_deshacer(self):
+        furniture=self.robot.furniture
+        at=(5,3)
+        self.assertTrue(furniture.blocks(*at))
+        ok,message=furniture.remove("chair",at)
+        self.assertTrue(ok,message)
+        self.assertFalse(furniture.blocks(*at))
+        self.assertTrue(self.robot.free(*at))
+        self.assertEqual(len(furniture.chairs),2)
+        self.assertFalse(furniture.remove("chair",at)[0])
+        ok,message=furniture.undo()
+        self.assertTrue(ok,message)
+        self.assertTrue(furniture.blocks(*at))
+        self.assertEqual(len(furniture.chairs),3)
+
+    def test_quitar_muebles_originales_libera_colisiones(self):
+        f=self.robot.furniture
+        self.assertFalse(self.robot.free(4,4))
+        self.assertFalse(self.robot.free(4,7))
+        self.assertTrue(f.remove("fixture","mesa")[0])
+        self.assertTrue(f.remove("fixture","cama")[0])
+        self.assertTrue(self.robot.free(4,4))
+        self.assertTrue(self.robot.free(4,7))
+        self.assertIn("No hay cama",self.robot.training.try_rest())
+        self.assertTrue(f.undo()[0])
+        self.assertFalse(self.robot.free(4,7))
+        self.assertTrue(f.undo()[0])
+        self.assertFalse(self.robot.free(4,4))
+        self.assertFalse(f.remove("fixture","pared")[0])
+        self.assertFalse(f.remove("protected","AMBOT")[0])
+
+    def test_quitar_cubo_que_robot_sujeta_y_restaurar(self):
+        training=self.robot.training
+        box=training.items["cubo"]
+        box.held_by="AMBOT"
+        self.robot.holding="cubo"
+        ok,msg=self.robot.furniture.remove("movable","cubo")
+        self.assertTrue(ok,msg)
+        self.assertIsNone(self.robot.holding)
+        self.assertNotIn("cubo",training.items)
+        self.assertTrue(self.robot.furniture.undo()[0])
+        self.assertIn("cubo",training.items)
+        self.assertEqual(training.items["cubo"].held_by,"")
+        self.assertFalse(self.robot.furniture.remove("movable","robot")[0])
+
+    def test_quitar_objetos_moviles_no_deja_referencias_invalidas(self):
+        f=self.robot.furniture
+        for name in ("cubo","pelota","bloque"):
+            self.assertTrue(f.remove("movable",name)[0])
+        self.assertEqual(self.robot.training.items,{})
+        self.assertEqual(self.robot.brain.sense(self.robot.training)["shapes"],{})
+        self.assertIn("Aun no veo",self.robot.brain.compare_quantities(
+            self.robot.training))
+        for _ in range(25):
+            self.robot.training.update(.05)
+            self.robot.brain.autonomous_step()
+        self.assertEqual(self.robot.training.items,{})
+        self.assertTrue(f.undo()[0])
+        self.assertIn("bloque",self.robot.training.items)
+
+    def test_remocion_persistente_de_objetos_y_deshacer_despues_de_reabrir(self):
+        f=self.robot.furniture
+        self.assertTrue(f.remove("fixture","armario")[0])
+        self.assertTrue(f.remove("fixture","ventana")[0])
+        self.assertTrue(f.remove("fixture","alfombra")[0])
+        self.assertTrue(f.remove("chair",(7,7))[0])
+        self.assertTrue(f.remove("movable","pelota")[0])
+        loaded=Robot(self.robot.memory_path)
+        self.assertEqual(loaded.furniture.removed_fixed,
+                         {"armario","ventana","alfombra"})
+        self.assertEqual(loaded.furniture.removed_movables,{"pelota"})
+        self.assertNotIn("pelota",loaded.training.items)
+        self.assertTrue(loaded.free(7,3))
+        self.assertTrue(loaded.free(7,7))
+        self.assertTrue(loaded.furniture.undo()[0])
+        self.assertIn("pelota",loaded.training.items)
+        loaded2=Robot(self.robot.memory_path)
+        self.assertIn("pelota",loaded2.training.items)
+        self.assertEqual(loaded2.furniture.removed_movables,set())
+        self.assertTrue(loaded2.furniture.undo()[0])
+        self.assertTrue(loaded2.furniture.blocks(7,7))
+
+    def test_no_restaurar_mueble_encima_de_robot(self):
+        self.assertTrue(self.robot.furniture.remove("fixture","mesa")[0])
+        self.robot.x,self.robot.z=4,4
+        result,info=self.robot.furniture.undo()
+        self.assertFalse(result)
+        self.assertIn("Libera",info)
+        self.robot.x,self.robot.z=6,5
+        self.assertTrue(self.robot.furniture.undo()[0])
+        self.assertFalse(self.robot.free(4,4))
+
+    def test_quitar_silla_recien_agregada_no_afecta_contenido_anterior(self):
+        f=self.robot.furniture
+        self.assertTrue(f.place("alta",5,4,1)[0])
+        self.assertTrue(f.remove("chair",(5,4))[0])
+        self.assertTrue(f.undo()[0])
+        self.assertEqual(f.chairs[-1]["style"],"alta")
+        self.assertTrue(f.undo()[0])
+        self.assertFalse(f.blocks(5,4))
+        self.assertEqual(len(f.chairs),3)
+
+    def test_deteccion_3d_no_permite_borrar_robot(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(260,83,625,530))
+            wx,wz=scene.world(self.robot.x,self.robot.z)
+            center=scene.project((wx,1.65,wz))
+            pick=scene.pick_object((int(center[0]),int(center[1])),self.robot)
+            self.assertIsNotNone(pick)
+            self.assertEqual(pick["kind"],"protected")
+            self.assertIsNone(scene.pick_object((-500,-500),self.robot))
+        finally:
+            pygame.quit()
+
+    def test_deteccion_directa_de_mueble_en_3d(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(260,83,625,530))
+            wx,wz=scene.world(4,4)
+            target=scene.project((wx,1.04,wz))
+            self.assertIsNotNone(target)
+            pick=scene.pick_object((int(target[0]),int(target[1])),self.robot)
+            self.assertIsNotNone(pick)
+            self.assertEqual((pick["kind"],pick["key"]),("fixture","mesa"))
+            self.assertTrue(self.robot.furniture.remove("fixture","mesa")[0])
+            after=scene.pick_object((int(target[0]),int(target[1])),self.robot)
+            self.assertNotEqual(after and after["key"],"mesa")
+        finally:
+            pygame.quit()
+
+    def test_render_muebles_eliminados_desaparecen(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(0,0,900,600))
+            f=self.robot.furniture
+            scene.build_room_details(f)
+            before=len(scene.faces)
+            self.assertTrue(f.remove("fixture","cama")[0])
+            self.assertTrue(f.remove("fixture","mesa")[0])
+            self.assertTrue(f.remove("fixture","armario")[0])
+            scene.faces=[]
+            scene.build_room_details(f)
+            self.assertLess(len(scene.faces),before-15)
+        finally:
+            pygame.quit()
+
+    def test_boton_quitar_conserva_autonomia_y_deshacer(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            gui.auto=True
+            gui.draw(.016)
+            self.assertIn("editor_remove",gui.buttons)
+            gui.handle_button("editor_remove")
+            self.assertTrue(gui.editor_mode)
+            self.assertEqual(gui.editor_action,"remove")
+            self.assertFalse(gui.auto)
+            gui.draw(.016)
+            for key in ("editor_mode_add","editor_mode_remove",
+                        "editor_undo","editor_done"):
+                self.assertIn(key,gui.buttons)
+            gui.handle_button("editor_mode_add")
+            self.assertEqual(gui.editor_action,"add")
+            gui.handle_button("editor_mode_remove")
+            self.assertEqual(gui.editor_action,"remove")
+            self.assertFalse(gui.robot.furniture.remove("protected","ANDA")[0])
+            gui.handle_button("editor_done")
+            self.assertTrue(gui.auto)
         finally:
             gui.hardware.close()
             pygame.quit()

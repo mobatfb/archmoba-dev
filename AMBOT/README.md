@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.6.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.7.0** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -229,3 +229,35 @@ La memoria y el cerebro continuan en sus archivos independientes.
 
 Comandos opcionales: \`sillas\` consulta cuantas sillas se han anadido y
 \`deshacer silla\` quita la ultima colocada.
+
+
+## v0.7.0 - QUITAR cualquier objeto del entorno
+
+El editor de AMBOT ahora tiene botones **+ AÑADIR** y **− QUITAR**.
+Pulsar **− QUITAR** pausa temporalmente el aprendizaje y abre el
+selector de objetos. **Haz clic directamente en el objeto 3D** para
+eliminarlo; el contorno rosa muestra el objetivo. Tambien se puede
+alternar entre **AÑADIR** y **QUITAR** dentro del panel izquierdo.
+
+Se pueden quitar y restaurar:
+
+- **Sillas adicionales** (clasica, de oficina o alta).
+- **Muebles originales:** cama, mesa, silla inicial y armario.
+- **Objetos de practica:** cubo, pelota y bloque.
+- **Decoraciones:** ventana y alfombra.
+
+El **suelo, las paredes, la puerta y los cuatro robots** no se pueden
+eliminar. Para impedir errores, el programa ignora pulsaciones fuera
+de un objeto seleccionable e indica los robots protegidos.
+
+**DESHACER** revierte la ultima accion realizada (anadir o quitar).
+Las modificaciones y las ultimas 24 acciones deshacibles se guardan
+en \`%LOCALAPPDATA%\ARCHMOBA\AMBOT\muebles.json\`, junto con las sillas.
+El formato anterior de ese archivo sigue siendo compatible.
+
+**LISTO** cierra el editor y reanuda el aprendizaje autonomo si estaba
+activo. Mientras se edita, Arduino permanece bloqueado. El cerebro
+sigue conservando sus experiencias en archivos separados.
+
+Nota: eliminar la cama deshabilita los intentos de AMBOT de
+recostarse sobre ella; se puede recuperar con **DESHACER**.
