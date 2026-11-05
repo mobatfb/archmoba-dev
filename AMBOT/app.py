@@ -20,7 +20,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:40"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -31,19 +31,38 @@ MEMORY_PATH = USER_ROOT / "memoria.json"
 LOG_PATH = USER_ROOT / "launch.log"
 DEPENDENCIES = USER_ROOT / "dependencies"
 
+# La primera habitacion tiene cuatro paredes y una salida hacia el pasillo.
+# El robot comienza dentro. El espacio se ve sin techo para mover la camara.
 WORLD = (
     "##############",
     "#............#",
-    "#..##........#",
-    "#............#",
-    "#......#.....#",
-    "#............#",
-    "#..#.........#",
-    "#........##..#",
-    "#............#",
+    "#.#######....#",
+    "#.#.....#....#",
+    "#.#.....#....#",
+    "#.#..........#",
+    "#.#.....#....#",
+    "#.#.....#....#",
+    "#.#######....#",
     "#............#",
     "##############",
 )
+ROOM_NAME = "HABITACION INICIAL"
+ROOM_CELLS = frozenset((x, z) for z in range(3, 8) for x in range(3, 8))
+ROOM_DOOR = (8, 5)
+ROOM_WALL_CELLS = frozenset(
+    {(x, 2) for x in range(2, 9)}
+    | {(x, 8) for x in range(2, 9)}
+    | {(2, z) for z in range(3, 8)}
+    | {(8, z) for z in range(3, 8) if z != 5}
+)
+# La geometria es descriptiva, no un conocimiento aprendido por AMBOT.
+ROOM_OBJECTS = {
+    "cama": ((4, 7), (5, 7)),
+    "mesa": ((4, 4),),
+    "silla": ((4, 5),),
+    "armario": ((7, 3),),
+}
+FURNITURE_CELLS = frozenset(cell for cells in ROOM_OBJECTS.values() for cell in cells)
 TILE = 1.35
 DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 ORIENTATIONS = ("NORTE", "ESTE", "SUR", "OESTE")
@@ -64,6 +83,13 @@ COLOR = {
     "floor2": (12, 34, 53),
     "wall": (30, 68, 95),
     "inner": (42, 86, 121),
+    "room_floor": (30, 66, 83),
+    "room_floor2": (26, 56, 75),
+    "room_wall": (45, 91, 120),
+    "rug": (18, 91, 119),
+    "wood": (70, 118, 146),
+    "bed": (80, 164, 197),
+    "window": (81, 205, 245),
 }
 
 
@@ -129,11 +155,20 @@ class Robot:
         self.battery = 100.0
         self.steps = 0
         self.visits = {(self.x, self.z): 1}
-        self.last_decision = "Estoy observando el entorno. Mis movimientos son simulados."
+        self.last_decision = "Estoy en una habitacion nueva. Puedo explorarla sin chocar."
 
     def free(self, x, z):
-        return 0 <= z < len(WORLD) and 0 <= x < len(WORLD[z]) and WORLD[z][x] == "."
+        return (
+            0 <= z < len(WORLD)
+            and 0 <= x < len(WORLD[z])
+            and WORLD[z][x] == "."
+            and (x, z) not in FURNITURE_CELLS
+        )
 
+    def location(self):
+        if (self.x, self.z) in ROOM_CELLS:
+            return ROOM_NAME
+        return "PUERTA" if (self.x, self.z) == ROOM_DOOR else "PASILLO"
     def front_distance(self):
         dx, dz = DIRECTIONS[self.facing]
         x, z = self.x + dx, self.z + dz
@@ -151,6 +186,7 @@ class Robot:
             "pasos": self.steps,
             "sensor_cm": self.front_distance(),
             "memoria": len(self.facts),
+            "lugar": self.location(),
         }
 
     def _save(self):
@@ -218,12 +254,19 @@ class Robot:
     def map_text(self):
         rows = []
         symbols = "^>v<"
+        marks = {"cama": "C", "mesa": "M", "silla": "S", "armario": "A"}
         for z, row in enumerate(WORLD):
+            chars = list(row)
+            for name, cells in ROOM_OBJECTS.items():
+                for x, object_z in cells:
+                    if object_z == z:
+                        chars[x] = marks[name]
+            if z == ROOM_DOOR[1]:
+                chars[ROOM_DOOR[0]] = "P"
             if z == self.z:
-                row = row[:self.x] + symbols[self.facing] + row[self.x + 1:]
-            rows.append(row)
-        return "\n".join(rows)
-
+                chars[self.x] = symbols[self.facing]
+            rows.append("".join(chars))
+        return "\n".join(rows) + "\nC=cama M=mesa S=silla A=armario P=puerta"
     def command(self, raw):
         raw = str(raw).strip()
         cmd = normalize(raw)
@@ -317,12 +360,13 @@ class Scene3D:
     def __init__(self, pg):
         self.pg = pg
         self.yaw = 0.72
-        self.pitch = 0.79
-        self.distance = 21.0
+        self.pitch = 0.88
+        self.distance = 18.2
         self.rx, self.rz = 6.0, 5.0
         self.angle = math.pi/2
         self.walk = 0.0
-        self.target = (0, .5, 0)
+        center_x, center_z = self.world(5, 5)
+        self.target = (center_x, .75, center_z)
         self.camera = (0, 0, 0)
         self.forward = (0, 0, 0)
         self.right = (0, 0, 0)
@@ -402,6 +446,70 @@ class Scene3D:
             self.line((xl,h,zb),(xr,h,zb),COLOR["blue"],.035)
             self.line((xr,h,zb),(xr,h,zf),COLOR["cyan"],.035)
 
+    def build_room_details(self):
+        """Muebles de dormitorio y marco de puerta para la nueva habitacion."""
+        # Alfombra central y costuras neon.
+        x, z = self.world(5.8, 5.5)
+        rx, rz = TILE*1.20, TILE*.82
+        self.quad(((x-rx,.020,z-rz),(x-rx,.020,z+rz),
+                   (x+rx,.020,z+rz),(x+rx,.020,z-rz)), COLOR["rug"])
+        for q in range(4):
+            sx=x-rx+(2*rx)*q/3
+            self.line((sx,.027,z-rz),(sx,.027,z+rz),COLOR["blue"],.024)
+
+        # Cama y almohadas en la esquina inferior izquierda.
+        bx,bz=self.world(4.5,7)
+        self.box(bx,.10,bz,TILE*1.95,.21,TILE*.86,COLOR["wood"],neon=True)
+        self.box(bx,.33,bz,TILE*1.83,.26,TILE*.77,COLOR["bed"])
+        self.box(bx-TILE*.64,.60,bz,TILE*.35,.11,TILE*.49,COLOR["ink"])
+        self.box(bx+TILE*.58,.58,bz,TILE*.38,.08,TILE*.49,COLOR["cyan"])
+        self.box(bx-TILE*.96,.08,bz,.09,.83,TILE*.87,COLOR["wood"])
+
+        # Mesa con libro, lampara y cuatro patas.
+        tx,tz=self.world(4,4)
+        for dx in (-.49,.49):
+            for dz in (-.31,.31):
+                self.box(tx+dx,0,tz+dz,.07,.74,.07,COLOR["wood"])
+        self.box(tx,.74,tz,1.18,.12,.82,COLOR["wood"],neon=True)
+        self.box(tx+.11,.89,tz-.10,.34,.04,.23,COLOR["cyan"])
+        self.line((tx-.36,.89,tz+.11),(tx-.36,1.20,tz+.11),COLOR["ink"],.065)
+        self.box(tx-.36,1.18,tz+.11,.26,.09,.25,COLOR["window"])
+
+        # Silla delante de la mesa.
+        cx,cz=self.world(4,5)
+        self.box(cx,.43,cz,.74,.11,.68,COLOR["wood"],neon=True)
+        self.box(cx,.54,cz+.29,.74,.72,.11,COLOR["room_wall"])
+        for dx in (-.27,.27):
+            for dz in (-.23,.23):
+                self.box(cx+dx,0,cz+dz,.07,.42,.07,COLOR["blue"])
+
+        # Armario con dos puertas y tiradores.
+        ax,az=self.world(7,3)
+        self.box(ax,0,az,TILE*.83,2.12,TILE*.66,COLOR["room_wall"])
+        self.box(ax-.27,.15,az+.46,.45,1.77,.045,COLOR["wood"])
+        self.box(ax+.27,.15,az+.46,.45,1.77,.045,COLOR["wood"])
+        self.line((ax,.19,az+.49),(ax,1.93,az+.49),COLOR["cyan"],.035)
+        self.ball((ax-.06,1.09,az+.52),.050,COLOR["pink"])
+        self.ball((ax+.06,1.09,az+.52),.050,COLOR["pink"])
+
+        # Ventana luminosa: marco en la pared norte de la habitacion.
+        wx,wz=self.world(5.5,2)
+        front=wz+TILE*.49
+        self.box(wx,1.46,front,1.58,.70,.045,COLOR["window"])
+        for yy in (1.43,2.18):
+            self.line((wx-.84,yy,front+.04),(wx+.84,yy,front+.04),
+                      COLOR["ink"],.05)
+        for xx in (-.84,0,.84):
+            self.line((wx+xx,1.43,front+.04),(wx+xx,2.18,front+.04),
+                      COLOR["ink"],.05)
+
+        # Entrada abierta: dos postes y dintel sin bloquear el paso.
+        dx,dz=self.world(*ROOM_DOOR)
+        for offset in (-TILE*.52,TILE*.52):
+            self.box(dx,0,dz+offset,.11,2.24,.12,COLOR["blue"])
+        self.box(dx,2.18,dz,.14,.14,TILE*1.08,COLOR["cyan"])
+        self.box(dx,.012,dz,TILE*.94,.035,TILE*.86,COLOR["rug"])
+
     def build_world(self, robot):
         for z,row in enumerate(WORLD):
             for x,c in enumerate(row):
@@ -412,17 +520,28 @@ class Scene3D:
                 back=pz-TILE/2+gap
                 front=pz+TILE/2-gap
                 if c == ".":
-                    self.quad(((l,0,back),(l,0,front),(r,0,front),(r,0,back)),
-                              COLOR["floor1"] if (x+z)%2 else COLOR["floor2"])
-                    if (x+3*z)%13==0:
+                    if (x,z) in ROOM_CELLS:
+                        floor=COLOR["room_floor"] if (x+z)%2 else COLOR["room_floor2"]
+                    elif (x,z) == ROOM_DOOR:
+                        floor=COLOR["rug"]
+                    else:
+                        floor=COLOR["floor1"] if (x+z)%2 else COLOR["floor2"]
+                    self.quad(((l,0,back),(l,0,front),(r,0,front),(r,0,back)),floor)
+                    if (x,z) not in ROOM_CELLS and (x+3*z)%13==0:
                         self.line((px-.12,.013,pz),(px+.12,.013,pz),COLOR["blue"],.025)
                 else:
                     edge = x in (0,len(row)-1) or z in (0,len(WORLD)-1)
-                    height = .66 if edge else 1.35
-                    self.box(px,0,pz,TILE-.04,height,TILE-.04,
-                             COLOR["wall"] if edge else COLOR["inner"],neon=True)
-                    if not edge:
+                    is_room_wall = (x,z) in ROOM_WALL_CELLS
+                    if is_room_wall:
+                        # La habitacion queda abierta a la vista en su cara frontal.
+                        height = 2.53 if z==2 or x==2 else (.70 if z==8 else .93)
+                    else:
+                        height=.66 if edge else 1.35
+                    cwall=COLOR["room_wall"] if is_room_wall else (COLOR["wall"] if edge else COLOR["inner"])
+                    self.box(px,0,pz,TILE-.04,height,TILE-.04,cwall,neon=True)
+                    if not edge and not is_room_wall:
                         self.box(px,height,pz,.13,.05,.13,COLOR["pink"])
+        self.build_room_details()
         # Sensor virtual orientado: detecta la siguiente pared.
         dx,dz=DIRECTIONS[robot.facing]
         bx,bz=self.world(self.rx,self.rz)
@@ -675,15 +794,17 @@ class DesktopApp:
         side=pg.Rect(self.view.right+15,83,w-self.view.right-35,h-146)
         self.scene.render(surf,self.view,self.robot,dt,self.elapsed)
         # Vista e indicadores superpuestos.
-        stamp=pg.Rect(self.view.x+13,self.view.y+12,206,29)
+        stamp=pg.Rect(self.view.x+13,self.view.y+12,262,29)
         pg.draw.rect(surf,COLOR["panel"],stamp,border_radius=7)
-        self.text((stamp.x+10,stamp.y+6),"●  ENTORNO SIMULADO 3D",14,COLOR["cyan"])
+        label = ("●  HABITACION INICIAL | 3D" if self.robot.location() == ROOM_NAME
+                 else "●  PASILLO | ENTORNO 3D")
+        self.text((stamp.x+10,stamp.y+6),label,14,COLOR["cyan"])
         self.text((self.view.x+15,self.view.bottom-30),"ARRASTRA: GIRAR CÁMARA    ·    RUEDA: ZOOM",13,COLOR["muted"])
         self.panel(side)
         x=side.x+17
         inner=side.width-34
         self.text((x,side.y+14),"CEREBRO / AMBOT",20,COLOR["ink"])
-        self.text((x,side.y+44),"●  ACTIVO     •     SENSOR VIRTUAL",13,COLOR["green"])
+        self.text((x,side.y+44),"●  "+self.robot.location()+"  •  SENSOR ACTIVO",13,COLOR["green"])
         s=self.robot.state()
         self.text((x,side.y+72),"BATERÍA",14,COLOR["muted"])
         self.text((side.right-69,side.y+72),str(s["bateria"])+"%",14,COLOR["ink"])

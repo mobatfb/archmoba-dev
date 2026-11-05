@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.2.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.2.1** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -35,3 +35,9 @@ Puedes escribir \`estado\`, \`sensores\`, \`pensar\`, \`explora\`, \`recuerda no
 - Dependencia: \`pygame-ce>=2.5.7\`. Compatible con Python 3.14 en Windows.
 
 Los sensores y movimientos son **simulados**; no controla hardware real.
+
+## Habitación inicial
+
+AMBOT comienza dentro de una **habitación 3D**, sin techo para que la cámara orbital permita verla. Tiene paredes, **puerta abierta** conectada al pasillo, cama, mesa con lámpara, silla, armario, alfombra y ventana. Los muebles ocupan espacio y bloquean el desplazamiento; la puerta se puede atravesar. Los muros cercanos a la cámara son bajos para mostrar el interior.
+
+En el mapa de texto: `C` cama, `M` mesa, `S` silla, `A` armario, `P` puerta. Esto prepara el entorno físico para enseñar a AMBOT. **El reconocimiento y aprendizaje autónomo de los objetos aún no están implementados.**

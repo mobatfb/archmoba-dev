@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from app import APP_VERSION, WORLD, Robot, Scene3D
+from app import APP_VERSION, WORLD, Robot, Scene3D, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
 
 class RobotTests(unittest.TestCase):
     def setUp(self):
@@ -14,7 +14,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.2.0")
+        self.assertEqual(APP_VERSION,"0.2.1")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -36,6 +36,37 @@ class RobotTests(unittest.TestCase):
         self.assertEqual(Robot(self.robot.memory_path).facts["nombre"],"AMBOT")
         self.assertEqual(self.robot.command("que sabes de nombre"),"AMBOT")
         self.assertEqual(self.robot.command("olvida nombre"),"Dato olvidado.")
+
+    def test_habitacion_puerta_y_muebles(self):
+        self.assertEqual(self.robot.state()["lugar"], ROOM_NAME)
+        self.assertEqual(len(ROOM_CELLS), 25)
+        self.assertEqual(WORLD[ROOM_DOOR[1]][ROOM_DOOR[0]], ".")
+        self.assertTrue(self.robot.free(*ROOM_DOOR))
+        self.assertEqual(len(FURNITURE_CELLS), 5)
+        for xy in FURNITURE_CELLS:
+            self.assertFalse(self.robot.free(*xy))
+        for label in ("cama", "mesa", "silla", "armario"):
+            self.assertIn(label, ROOM_OBJECTS)
+        txt = self.robot.command("mapa")
+        for symbol in ("C", "M", "S", "A", "P"):
+            self.assertIn(symbol, txt)
+
+    def test_robot_sale_al_pasillo_por_la_puerta(self):
+        for _ in range(3):
+            self.assertIn("Movimiento seguro", self.robot.move())
+        self.assertEqual((self.robot.x,self.robot.z),(9,5))
+        self.assertEqual(self.robot.location(),"PASILLO")
+
+    def test_muebles_3d(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(0,0,900,550))
+            scene.build_room_details()
+            self.assertGreater(len(scene.faces), 60)
+        finally:
+            pygame.quit()
 
     def test_3d_projection(self):
         import pygame
