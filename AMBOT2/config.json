@@ -1,9 +1,9 @@
 {
   "app": "AMBOT2",
   "name": "AMBOT 2.0",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "app_path": "AMBOT2/AMDEV_entry.py",
-  "description": "AMBOT2 tanque: W/S avanzar y retroceder, A/D giro sobre eje, dos robots con dedos, fisica Bullet",
+  "description": "AMBOT2: 30 articulaciones y 10 dedos por robot, menu expandible, agarre, aprendiz y movimiento tanque",
   "maintenance": false,
-  "release_commit": "a6657129c273e9dd4c6f55b291a4b268aab2814e"
+  "release_commit": "8be4bcaf5a5557c961458265ff207773aa25bd12"
 }
