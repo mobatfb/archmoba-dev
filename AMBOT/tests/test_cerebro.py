@@ -6,7 +6,7 @@ import time
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from app import APP_VERSION, WORLD, Robot, Scene3D, ArduinoBridge, CHAIR_STYLES, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
+from app import APP_VERSION, WORLD, Robot, Scene3D, ArduinoBridge, CHAIR_STYLES, ADD_CATALOG, HUMAN_JOINTS, VALIDATED_INTENTS, ROOM_NAME, ROOM_CELLS, ROOM_DOOR, ROOM_OBJECTS, FURNITURE_CELLS
 
 class RobotTests(unittest.TestCase):
     def setUp(self):
@@ -15,7 +15,7 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.7.0")
+        self.assertEqual(APP_VERSION,"0.8.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
@@ -755,6 +755,271 @@ class RobotTests(unittest.TestCase):
             self.assertFalse(gui.robot.free(4,4))
             gui.handle_button("editor_done")
             self.assertFalse(gui.editor_mode)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_avatar_manual_con_flechas_y_colisiones(self):
+        human=self.robot.human
+        self.assertEqual((human.x,human.z),(10,5))
+        self.assertEqual((self.robot.x,self.robot.z),(6,5))
+        self.assertIn("moviste",human.move(3))
+        self.assertEqual((human.x,human.z),(9,5))
+        self.assertIn("moviste",human.move(3))
+        self.assertEqual((human.x,human.z),ROOM_DOOR)
+        self.assertIn("moviste",human.move(3))
+        self.assertEqual((human.x,human.z),(7,5))
+        self.assertIn("No puedes",human.move(3))
+        self.assertEqual((human.x,human.z),(7,5))
+        self.assertEqual((self.robot.x,self.robot.z),(6,5))
+        self.assertEqual((Robot(self.robot.memory_path).human.x,
+                          Robot(self.robot.memory_path).human.z),(7,5))
+
+    def test_avatar_se_sienta_en_silla_y_se_levanta(self):
+        human=self.robot.human
+        self.assertIn("Acercate",human.sit())
+        human.x,human.z=6,3
+        self.assertIn("sentaste",human.sit())
+        self.assertTrue(human.seated)
+        self.assertEqual(human.seat,(5,3))
+        self.assertIn("Primero",human.move(1))
+        self.assertFalse(self.robot.furniture.remove("chair",(5,3))[0])
+        self.assertTrue(Robot(self.robot.memory_path).human.seated)
+        self.assertIn("levantaste",human.stand())
+        self.assertEqual((human.x,human.z),(6,3))
+        self.assertFalse(human.seated)
+        self.assertTrue(self.robot.furniture.remove("chair",(5,3))[0])
+
+    def test_articulaciones_libres_y_posturas_del_avatar(self):
+        human=self.robot.human
+        self.assertEqual(set(human.joints),set(HUMAN_JOINTS))
+        self.assertIn("85",human.change_joint("brazo_der",150))
+        self.assertIn("75",human.change_joint("brazo_der",-10))
+        self.assertIn("saludar",human.pose("saludar"))
+        self.assertEqual(human.joints["codo_der"],35)
+        self.assertIn("agacharse",human.pose("agacharse"))
+        self.assertEqual(human.joints["torso"],35)
+        self.assertIn("reposo",human.pose("reposo"))
+        self.assertTrue(all(v==0 for v in human.joints.values()))
+        self.assertEqual(Robot(self.robot.memory_path).human.joints,human.joints)
+
+    def test_avatar_dibujado_es_independiente_de_ambot(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(0,0,900,550))
+            old=(scene.rx,scene.rz,scene.angle,scene.walk)
+            scene.build_human(self.robot.human)
+            self.assertGreater(len(scene.faces),40)
+            self.assertEqual((scene.rx,scene.rz,scene.angle,scene.walk),old)
+            targets=scene.object_bounds(self.robot)
+            self.assertTrue(any(o["key"]=="TU PERSONAJE" and
+                                o["kind"]=="protected" for o in targets))
+        finally:
+            pygame.quit()
+
+    def test_maestros_pueden_quitarse_y_reponerse(self):
+        f=self.robot.furniture
+        self.assertTrue(f.remove("guide","DEX")[0])
+        self.assertEqual([g.name for g in self.robot.training.guides],
+                         ["ANDA","SOMA"])
+        self.assertIn("DEX",f.removed_guides)
+        self.assertTrue(f.undo()[0])
+        self.assertEqual([g.name for g in self.robot.training.guides],
+                         ["ANDA","DEX","SOMA"])
+        self.assertFalse(f.remove("guide","AMBOT")[0])
+
+    def test_sin_maestros_ambot_explora_y_no_se_cae(self):
+        f=self.robot.furniture
+        for name in ("ANDA","DEX","SOMA"):
+            self.assertTrue(f.remove("guide",name)[0])
+        self.assertEqual(len(self.robot.training.guides),0)
+        self.assertIn("No hay",self.robot.training.focus_guide())
+        self.assertIn("No hay",self.robot.command("guia 1"))
+        for _ in range(32):
+            self.robot.training.update(.05)
+            result=self.robot.brain.autonomous_step()
+            self.assertTrue(result)
+        restored=Robot(self.robot.memory_path)
+        self.assertEqual(restored.training.guides,[])
+        self.assertTrue(restored.furniture.undo()[0])
+        self.assertEqual([g.name for g in restored.training.guides],["SOMA"])
+        self.assertIn("ANDA",restored.furniture.removed_guides)
+
+    def test_agregar_camas_mesas_armarios_persistentes(self):
+        f=self.robot.furniture
+        self.assertEqual(len(ADD_CATALOG),9)
+        self.assertTrue(f.place_object("cama",10,3,2)[0])
+        self.assertFalse(self.robot.free(10,3))
+        self.assertFalse(self.robot.free(11,3))
+        self.assertFalse(f.place_object("mesa",10,3)[0])
+        self.assertTrue(f.place_object("mesa",10,4)[0])
+        self.assertTrue(f.place_object("armario",12,5)[0])
+        self.assertEqual(len(f.extra_fixtures),3)
+        loaded=Robot(self.robot.memory_path)
+        self.assertEqual(len(loaded.furniture.extra_fixtures),3)
+        self.assertFalse(loaded.free(10,3))
+        self.assertFalse(loaded.free(11,3))
+        self.assertFalse(loaded.free(10,4))
+        self.assertFalse(loaded.free(12,5))
+        self.assertTrue(f.undo()[0])
+        self.assertTrue(self.robot.free(12,5))
+
+    def test_pelotas_cubos_y_bloques_adicionales(self):
+        f=self.robot.furniture
+        self.assertTrue(f.place_object("pelota",9,3)[0])
+        self.assertTrue(f.place_object("cubo",10,4)[0])
+        self.assertTrue(f.place_object("bloque",12,5)[0])
+        names=[key for key in self.robot.training.items
+               if "_" in key]
+        self.assertEqual(len(names),3)
+        self.assertEqual(self.robot.training.items[names[0]].shape,"ball")
+        self.assertIn(names[0],Robot(self.robot.memory_path).training.items)
+        self.assertTrue(f.remove("movable",names[0])[0])
+        self.assertNotIn(names[0],self.robot.training.items)
+        self.assertNotIn(names[0],f.extra_objects)
+        self.assertTrue(f.undo()[0])
+        self.assertIn(names[0],self.robot.training.items)
+
+    def test_muebles_anadidos_se_dibujan_y_se_quitan(self):
+        import pygame
+        pygame.init()
+        try:
+            f=self.robot.furniture
+            self.assertTrue(f.place_object("cama",10,3)[0])
+            self.assertTrue(f.place_object("mesa",10,4)[0])
+            self.assertTrue(f.place_object("armario",12,5)[0])
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(0,0,900,550))
+            scene.build_custom_fixtures(f)
+            self.assertGreater(len(scene.faces),50)
+            choices=scene.object_bounds(self.robot)
+            added=[o for o in choices if o["kind"]=="fixture_added"]
+            self.assertEqual(len(added),3)
+            self.assertTrue(f.remove("fixture_added",added[0]["key"])[0])
+            self.assertEqual(len(f.extra_fixtures),2)
+            self.assertTrue(f.undo()[0])
+            self.assertEqual(len(f.extra_fixtures),3)
+        finally:
+            pygame.quit()
+
+    def test_editor_catalogo_y_boton_de_avatar(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            gui.draw(.016)
+            self.assertIn("avatar_toggle",gui.buttons)
+            self.assertIn("avatar_sit",gui.buttons)
+            self.assertIn("avatar_plus",gui.buttons)
+            before=gui.robot.human.joints["brazo_der"]
+            gui.handle_button("avatar_plus")
+            self.assertEqual(gui.robot.human.joints["brazo_der"],before+10)
+            gui.handle_button("editor_toggle")
+            gui.draw(.016)
+            for name in ("editor_category_sillas","editor_category_muebles",
+                         "editor_category_objetos"):
+                self.assertIn(name,gui.buttons)
+            gui.handle_button("editor_category_muebles")
+            gui.draw(.016)
+            self.assertIn("editor_kind_cama",gui.buttons)
+            gui.handle_button("editor_kind_armario")
+            self.assertEqual(gui.editor_choice,"armario")
+            gui.handle_button("editor_category_objetos")
+            gui.draw(.016)
+            self.assertIn("editor_kind_pelota",gui.buttons)
+            gui.handle_button("editor_kind_pelota")
+            self.assertEqual(gui.editor_choice,"pelota")
+            gui.handle_button("editor_done")
+            self.assertFalse(gui.editor_mode)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_flechas_controlan_usuario_y_wasd_ambot(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            e=pygame.event.Event(pygame.KEYDOWN,key=pygame.K_LEFT,unicode="")
+            gui.keydown(e)
+            self.assertEqual((self.robot.human.x,self.robot.human.z),(9,5))
+            self.assertEqual((self.robot.x,self.robot.z),(6,5))
+            gui.handle_button("avatar_sit")
+            self.assertFalse(gui.robot.human.seated)
+            gui.draw(.016)
+            self.assertIn("avatar_stand",gui.buttons)
+        finally:
+            gui.hardware.close()
+            pygame.quit()
+
+    def test_validacion_solo_aprende_si_usuario_confirma(self):
+        lang=self.robot.language
+        question=lang.propose("La luna gira alrededor de la Tierra")
+        self.assertIn("ENTENDI BIEN",question)
+        self.assertNotIn("luna",self.robot.brain.concepts)
+        self.assertNotIn("la luna gira alrededor de la tierra",lang.confirmed)
+        answer=lang.confirm()
+        self.assertIn("VALIDADA POR TI",answer)
+        self.assertIn("luna",self.robot.brain.concepts)
+        self.assertIn("la luna gira alrededor de la tierra",lang.confirmed)
+        next_lang=Robot(self.robot.memory_path).language
+        self.assertIn("la luna gira alrededor de la tierra",next_lang.confirmed)
+        self.assertIsNone(next_lang.pending)
+
+    def test_correcion_ensenar_frase_previamente_incorrecta(self):
+        lang=self.robot.language
+        self.assertIn("ENTENDI BIEN",lang.propose("Haz una cosa distinta"))
+        self.assertIn("No memorizare",lang.reject())
+        self.assertEqual(lang.confirmed,{})
+        self.assertIn("Postura",lang.correct("saludar"))
+        self.assertEqual(lang.confirmed["haz una cosa distinta"]["intent"],
+                         "saludar")
+        self.assertIn("Postura",lang.propose("Haz una cosa distinta"))
+
+    def test_pregunta_validada_respuesta_y_reutilizacion(self):
+        lang=self.robot.language
+        text="¿Por qué existe la gravedad?"
+        self.assertIn("ENTENDI BIEN",lang.propose(text))
+        answer=lang.confirm()
+        self.assertIn("No conozco",answer)
+        self.assertIn("Guarde",self.robot.command(
+            "responde La gravedad curva el espacio-tiempo."))
+        self.assertIn("Me explicaste:",lang.propose(text))
+        next_lang=Robot(self.robot.memory_path).language
+        self.assertIn("Me explicaste:",next_lang.propose(text))
+
+    def test_validacion_interfaz_si_no_corregir(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        gui.robot=self.robot
+        try:
+            gui.execute("hablar la astronomia estudia estrellas",quiet=False)
+            self.assertIsNotNone(gui.robot.language.pending)
+            gui.draw(.016)
+            for key in ("validation_yes","validation_no","validation_correct"):
+                self.assertIn(key,gui.buttons)
+            gui.handle_button("validation_no")
+            self.assertTrue(gui.robot.language.wait_correction)
+            gui.handle_button("validation_correct")
+            self.assertTrue(gui.input_focus)
+            self.assertEqual(gui.input_value,"corrige ")
+            gui.execute("corrige dato")
+            self.assertIsNone(gui.robot.language.pending)
+            self.assertIn("astronomia",gui.robot.brain.concepts)
         finally:
             gui.hardware.close()
             pygame.quit()

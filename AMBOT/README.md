@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.7.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.8.0** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -261,3 +261,77 @@ sigue conservando sus experiencias en archivos separados.
 
 Nota: eliminar la cama deshabilita los intentos de AMBOT de
 recostarse sobre ella; se puede recuperar con **DESHACER**.
+
+
+## v0.8.0 - Mi personaje, maestros editables, mas objetos y chat validado
+
+### Mi personaje y articulaciones
+
+AMBOT muestra un **avatar humanoide adicional** identificado como **TÚ**,
+separado de AMBOT bebe. Las **flechas del teclado** mueven al usuario
+(Arriba/Norte, Abajo/Sur, Izquierda/Oeste, Derecha/Este). **WASD**
+continua controlando a AMBOT manualmente y no cancela su autonomia.
+
+Abrir el boton **MI CUERPO / PANEL** para ver las articulaciones de
+**cabeza, torso, dos brazos, dos codos, dos piernas y dos rodillas**.
+Selecciona la articulacion y usa **+10°** o **-10°**. Incluye posturas
+**SENTARSE**, **LEVANTARSE**, **SALUDAR**, **AGACHARSE** y
+**RESTAURAR POSTURA**. Para sentarte, acercate primero a una silla
+existente. No puedes caminar sentado ni atravesar muebles/robots.
+Tu posicion y posturas se guardan en
+\`%LOCALAPPDATA%\ARCHMOBA\AMBOT\avatar.json\`.
+
+### Añadir mas objetos al escenario
+
+El boton **+ AÑADIR** incluye ahora tres pestañas:
+
+- **SILLAS:** clasica, de oficina o alta.
+- **MUEBLES:** cama, mesa y armario.
+- **OBJETOS:** cubo, pelota y bloque.
+
+Selecciona el modelo y haz clic en una casilla libre del suelo 3D.
+Las camas ocupan dos casillas en la orientacion elegida. Puedes
+añadir multiples objetos del mismo tipo; los nuevos cubos, pelotas
+y bloques participan en la fisica y observacion de AMBOT.
+Las ubicaciones se guardan en \`muebles.json\` y admiten
+**QUITAR** y **DESHACER**.
+
+### Quitar a los robots maestros
+
+Con **− QUITAR**, puedes retirar individualmente a
+**ANDA, DEX y SOMA**, y recuperarlos con **DESHACER**.
+AMBOT sigue investigando cuando no queda ninguno.
+Los maestros desaparecidos siguen ausentes al reiniciar, pero
+no borran ni alteran las experiencias que AMBOT ha guardado.
+Ni AMBOT ni el avatar humano pueden eliminarse.
+
+### Escribir frases, validar y corregir
+
+La caja de chat permite enviar una frase nueva. AMBOT intentara
+interpretarla y pedira **¿ENTENDI BIEN?**. El usuario puede:
+
+- **SI** para confirmar y aprender el significado.
+- **NO** para rechazar sin guardar la interpretacion.
+- **CORREGIR** y escribir \`corrige sentarme\`, \`corrige dato\`,
+  \`corrige observar\`, \`corrige contar\`, etc., para indicar
+  que quiso decir realmente.
+
+Las frases confirmadas se recuerdan y al repetirse utilizan
+la interpretacion validada sin tener que enseñarla de nuevo.
+Tambien se pueden guardar declaraciones y preguntas; las
+explicaciones se pueden facilitar mediante \`responde ...\`.
+La memoria de asociaciones validadas esta en
+\`%LOCALAPPDATA%\ARCHMOBA\AMBOT\validaciones.json\` y los conceptos
+aprendidos permanecen en \`cerebro.json\`.
+
+**Alcance:** es aprendizaje supervisado de frases e intenciones
+admitidas, con memoria y correcciones del usuario. No es
+comprension universal del lenguaje natural, ni valida la veracidad
+externa de lo enseñado.
+
+### Seguridad y compatibilidad
+
+El editor pausa el movimiento autonomo y bloquea Arduino hasta
+cerrarlo. Conservar los archivos JSON de versiones anteriores.
+La ventana y el cerebro se ejecutan enteramente en el mismo
+programa Python de PC; Arduino sigue siendo opcional.

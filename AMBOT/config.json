@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT con editor 3D para agregar o quitar cualquier objeto, deshacer persistente, aprendizaje autonomo y Arduino seguro",
-  "version": "0.7.0",
+  "description": "AMBOT autonómo con avatar articulado, maestros editables, objetos nuevos y conversación con validación",
+  "version": "0.8.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "4053acfd7ae0b8f99523049ac5b1e59395f7eaca",
+  "release_commit": "62dd6a7c5d65f3c30826778790cbc24e0db6dca8",
   "maintenance": false
 }
