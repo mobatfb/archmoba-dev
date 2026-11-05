@@ -915,7 +915,8 @@ class LearningBrain:
         }.get(choice,"Explorar")
         if choice=="observar":
             result=training.focus_guide()
-            training.focus=(training.focus+1)%len(training.guides)
+            if training.guides:
+                training.focus=(training.focus+1)%len(training.guides)
         elif choice=="caminar":
             result=self.robot.explore()
         elif choice=="agarrar":
@@ -1982,6 +1983,26 @@ class Scene3D:
                     "kind":"fixture","key":name,"label":name.upper(),
                     "bounds":(wx-hx,wx+hx,ylo,yhi,wz-hz,wz+hz),
                 })
+            for added in furniture.extra_fixtures:
+                x,z=added["x"],added["z"]
+                if added["kind"]=="cama":
+                    if added["orientation"]%2==0:
+                        x+=.5
+                        hx,hz=1.34,.69
+                    else:
+                        z+=.5
+                        hx,hz=.69,1.34
+                    height=.95
+                elif added["kind"]=="mesa":
+                    hx,hz,height=.67,.55,1.0
+                else:
+                    hx,hz,height=.62,.58,2.25
+                wx,wz=self.world(x,z)
+                result.append({
+                    "kind":"fixture_added","key":added["id"],
+                    "label":ADD_CATALOG[added["kind"]],
+                    "bounds":(wx-hx,wx+hx,0,height,wz-hz,wz+hz),
+                })
             for chair in furniture.chairs:
                 wx,wz=self.world(chair["x"],chair["z"])
                 height=1.72 if chair["style"]=="alta" else 1.46
@@ -2232,6 +2253,40 @@ class Scene3D:
                     part(dx,.67,-.02,.055,.09,.44,COLOR["cyan"])
                 part(0,seat_y+.23,.35,.52,.21,.10,COLOR["blue"])
 
+    def build_custom_fixtures(self,furniture):
+        """Muebles adicionales del editor, con la misma geometria que los base."""
+        for item in furniture.extra_fixtures:
+            kind=item["kind"]
+            x,z=item["x"],item["z"]
+            orientation=item["orientation"]
+            px,pz=self.world(x,z)
+            if kind=="cama":
+                if orientation%2==0: px+=TILE*.5
+                else: pz+=TILE*.5
+                sx,sz=(TILE*1.90,TILE*.86) if orientation%2==0 else (
+                    TILE*.86,TILE*1.90)
+                self.box(px,.10,pz,sx,.20,sz,COLOR["wood"],neon=True)
+                self.box(px,.33,pz,sx*.94,.26,sz*.89,COLOR["bed"])
+                head_x=px-sx*.36 if orientation%2==0 else px
+                head_z=pz if orientation%2==0 else pz-sz*.36
+                pillow_sx=.35 if orientation%2==0 else .49
+                pillow_sz=.49 if orientation%2==0 else .35
+                self.box(head_x,.62,head_z,pillow_sx,.10,pillow_sz,
+                         COLOR["ink"])
+            elif kind=="mesa":
+                for dx in (-.45,.45):
+                    for dz in (-.30,.30):
+                        self.box(px+dx,0,pz+dz,.08,.75,.08,COLOR["wood"])
+                self.box(px,.75,pz,1.15,.13,.84,COLOR["wood"],neon=True)
+                self.box(px+.16,.90,pz-.12,.27,.04,.27,COLOR["cyan"])
+            elif kind=="armario":
+                self.box(px,0,pz,TILE*.78,2.08,TILE*.69,
+                         COLOR["room_wall"],neon=True)
+                self.box(px-.23,.14,pz+.47,.41,1.74,.04,COLOR["wood"])
+                self.box(px+.23,.14,pz+.47,.41,1.74,.04,COLOR["wood"])
+                self.ball((px-.08,1.12,pz+.50),.045,COLOR["pink"])
+                self.ball((px+.08,1.12,pz+.50),.045,COLOR["pink"])
+
     def build_world(self, robot):
         for z,row in enumerate(WORLD):
             for x,c in enumerate(row):
@@ -2266,6 +2321,7 @@ class Scene3D:
         self.build_room_details(getattr(robot,"furniture",None))
         if hasattr(robot,"furniture"):
             self.build_user_chairs(robot.furniture)
+            self.build_custom_fixtures(robot.furniture)
         # Sensor virtual orientado: detecta la siguiente pared.
         dx,dz=DIRECTIONS[robot.facing]
         bx,bz=self.world(self.rx,self.rz)
