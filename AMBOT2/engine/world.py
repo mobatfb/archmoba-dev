@@ -127,12 +127,11 @@ class LabWorld:
 
     def nearest(self,position,max_distance=2.5):
         position=Point3(*position)
-        options=[(obj.np.getPos(self.root)-position).length(),obj]
         candidates=sorted(
-            ((obj.np.getPos(self.root)-position).length(),obj)
-            for obj in self.objects.values()
+            (((obj.np.getPos(self.root)-position).length(),obj.oid,obj)
+             for obj in self.objects.values()), key=lambda item:item[0]
         )
-        return candidates[0][1] if candidates and candidates[0][0]<=max_distance else None
+        return candidates[0][2] if candidates and candidates[0][0]<=max_distance else None
 
     def serialize(self):
         return [{

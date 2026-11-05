@@ -1,0 +1,36 @@
+name: AMBOT2 Laboratorio 3D Python
+
+on:
+  push:
+    paths:
+      - 'AMBOT2/**'
+      - '.github/workflows/ambot2-validate.yml'
+  pull_request:
+    paths:
+      - 'AMBOT2/**'
+      - '.github/workflows/ambot2-validate.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Instalar Panda3D
+        run: python -m pip install -r AMBOT2/requirements.txt
+      - name: Compilar modulos
+        run: python -m compileall -q AMBOT2
+      - name: Pruebas de fisica, dedos, lenguaje y GUI
+        run: python -m unittest discover -s AMBOT2/tests -p "test_*.py" -v
+        env:
+          PANDA_DISABLE_PYTHON_SIGINT_HANDLER: "1"
+      - name: Iniciar sin monitor
+        run: python AMBOT2/app.py --smoke-test
