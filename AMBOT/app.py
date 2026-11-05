@@ -1704,7 +1704,7 @@ class ValidatedLanguage:
         if intent=="progreso":
             return self.robot.command("cerebro")
         if intent=="pregunta":
-            key="respuesta:usuario:"+normalize(phrase)[:68]
+            key="respuesta:usuario:"+normalize(phrase)[:60]
             stored=self.robot.brain.relations.get(key)
             if stored:
                 return "Me explicaste: "+stored
@@ -3482,7 +3482,15 @@ class DesktopApp:
         self.say(message,duration=4.0)
 
     def handle_button(self,key):
-        if key in ("avatar_toggle","avatar_close"):
+        if key=="validation_yes":
+            self.execute("si")
+        elif key=="validation_no":
+            self.execute("no")
+        elif key=="validation_correct":
+            self.input_focus=True
+            self.input_value="corrige "
+            self.say("Escribe CORRIGE y una de las acciones del mensaje.",5.0)
+        elif key in ("avatar_toggle","avatar_close"):
             self.avatar_panel=not self.avatar_panel
         elif key.startswith("avatar_joint_"):
             joint=key[len("avatar_joint_"):]
@@ -3742,9 +3750,19 @@ class DesktopApp:
         self.button("reset","↻ REINICIAR",x,button_top+168,inner,32)
         logy=button_top+209
         inputy=side.bottom-56
+        if self.robot.language.pending:
+            keys=(("validation_yes","✓ SI"),
+                  ("validation_no","✗ NO"),
+                  ("validation_correct","✎ CORREGIR"))
+            gap=5
+            segment=(inner-gap*2)//3
+            for idx,(key,label) in enumerate(keys):
+                self.button(key,label,x+idx*(segment+gap),inputy-33,
+                            segment,27,key=="validation_yes")
         if inputy>logy+24:
             self.text((x,logy),"REGISTRO DE ACTIVIDAD",13,COLOR["muted"])
-            available=max(0,(inputy-logy-18)//19)
+            log_end=inputy-38 if self.robot.language.pending else inputy
+            available=max(0,(log_end-logy-18)//19)
             for idx,(who,msg,col) in enumerate(list(self.messages)[-available:]):
                 self.text((x,logy+20+idx*19),who+": "+msg,13,col,inner)
         self.input_rect=pg.Rect(x,inputy,inner,41)
