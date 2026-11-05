@@ -2299,9 +2299,11 @@ class Robot:
             self._save()
             return "Dato olvidado."
         if cmd in ("ayuda", "help", "?"):
-            return ("AMBOT: WASD y comandos; TÚ: flechas + MI CUERPO, "
-                    "articulaciones, SENTARSE, LEVANTARSE. "
-                    "Editor: AÑADIR / QUITAR; chat: validar interpretaciones.")
+            return ("TANQUE estilo RE1: FLECHAS para ti, WASD para AMBOT; "
+                    "arriba/W avanza, abajo/S retrocede mirando al frente, "
+                    "izquierda/A y derecha/D giran en el sitio. "
+                    "Mantener pulsado repite. MI CUERPO para sentarse; "
+                    "AÑADIR/QUITAR editor; chat: SI NO CORREGIR.")
         return "No entiendo ese comando aun. Escribe AYUDA."
 
 
@@ -3084,7 +3086,7 @@ class DesktopApp:
         self.messages=deque(maxlen=24)
         self.messages.append(("SISTEMA","AMBOT aprende solo; ESPACIO pausa/reanuda.",COLOR["green"]))
         self.messages.append(("SISTEMA","Tres robots guia inician demostraciones.",COLOR["cyan"]))
-        self.messages.append(("AYUDA","W/A/S/D mover · E explorar · ESPACIO auto",COLOR["muted"]))
+        self.messages.append(("AYUDA","TANQUE: flechas TÚ / WASD AMBOT; arriba avanza, izquierda gira.",COLOR["muted"]))
         self.dragging=False
         self.mouse=(0,0)
         self.buttons={}
@@ -3106,6 +3108,8 @@ class DesktopApp:
         self.editor_rect=pg.Rect(0,0,1,1)
         self.training_rect=pg.Rect(0,0,1,1)
         self.editor_hint="Elige una silla y su posicion."
+        self._tank_held={}
+        self._tank_initial_delay=.33
 
     def text(self,pos,value,size=16,color=None,max_width=None):
         font=self.fonts.get(size,self.fonts[16])
@@ -3240,8 +3244,9 @@ class DesktopApp:
         self.text((x,rect.y+11),"TU PERSONAJE / HUMANO",16,COLOR["yellow"])
         self.button("avatar_close","✕",rect.right-38,rect.y+7,26,26)
         self.text((x,rect.y+46),
-                  "FLECHAS: mover tu avatar",13,COLOR["cyan"],width)
-        self.text((x,rect.y+64),
+                  "↑ AVANZA  ↓ RETROCEDE",13,COLOR["cyan"],width)
+        self.text((x,rect.y+64),"← GIRA IZQ.  → GIRA DER.",13,COLOR["cyan"],width)
+        self.text((x,rect.y+82),
                   "X="+str(person.x)+" Z="+str(person.z)+" · "+
                   ("SENTADO" if person.seated else "DE PIE"),
                   13,COLOR["ink"],width)
@@ -3266,7 +3271,7 @@ class DesktopApp:
         self.button("avatar_squat","AGACHARSE",x+col+gap,rect.y+408,col,32)
         self.button("avatar_reset","RESTAURAR POSTURA",
                     x,rect.y+451,width,32)
-        self.text((x,rect.bottom-52),"WASD: AMBOT · FLECHAS: TÚ",
+        self.text((x,rect.bottom-52),"TANQUE: ←/→ GIRA · ↑/↓ AVANZA",
                   13,COLOR["muted"],width)
         self.text((x,rect.bottom-34),"AMBOT aprende mientras te mueves",
                   13,COLOR["green"],width)
@@ -3431,6 +3436,7 @@ class DesktopApp:
         self.editor_resume_auto=self.auto
         self.auto=False
         self.hardware.stop()
+        self._tank_held.clear()
         self.editor_mode=True
         self.editor_action=action if action in ("add","remove") else "add"
         self.dragging=False
@@ -3699,12 +3705,14 @@ class DesktopApp:
         elif key=="lie":
             self.execute("acostarse",False)
         elif key=="stop":
+            self._tank_held.clear()
             self.auto=False
             self.editor_resume_auto=False
             self.hardware.stop()
             self.add_log("SISTEMA","Robot en pausa.",COLOR["yellow"])
             self.say("Me detengo. Espero nuevas instrucciones.",4.0)
         elif key=="reset":
+            self._tank_held.clear()
             self.editor_mode=False
             self.hardware.stop()
             self.robot.reset()
@@ -3717,6 +3725,54 @@ class DesktopApp:
                 "back":"retrocede","explore":"explora","think":"piensa",
             }
             self.execute(actions.get(key,""),True)
+
+    def drive_tank_key(self,key):
+        """Control tipo RE1: delante/detras en rumbo; lados giran sin strafe."""
+        pg=self.pg
+        if key in (pg.K_UP,pg.K_DOWN,pg.K_LEFT,pg.K_RIGHT):
+            human=self.robot.human
+            if key==pg.K_UP:
+                answer=human.advance()
+            elif key==pg.K_DOWN:
+                answer=human.advance(reverse=True)
+            elif key==pg.K_LEFT:
+                answer=human.turn("izquierda")
+            else:
+                answer=human.turn("derecha")
+            # Los movimientos sostenidos no llenan el registro.
+            if "No puedes" in answer or "sentado" in answer:
+                self.add_log("TÚ",answer,COLOR["yellow"])
+            return answer
+        commands={
+            pg.K_w:"avanza",pg.K_s:"retrocede",
+            pg.K_a:"gira izquierda",pg.K_d:"gira derecha",
+        }
+        if key in commands:
+            self.execute(commands[key],quiet=True)
+            return self.robot.last_decision
+        return ""
+
+    def update_tank_controls(self,dt):
+        """Repeticion temporal de teclas mantenidas; sin depender del SO."""
+        if self.input_focus or self.editor_mode:
+            self._tank_held.clear()
+            return
+        pg=self.pg
+        actions={
+            pg.K_UP:"forward",pg.K_DOWN:"back",
+            pg.K_LEFT:"left",pg.K_RIGHT:"right",
+            pg.K_w:"forward",pg.K_s:"back",
+            pg.K_a:"left",pg.K_d:"right",
+        }
+        for key,state in list(self._tank_held.items()):
+            if key not in actions:
+                self._tank_held.pop(key,None)
+                continue
+            state["elapsed"]+=max(0.0,min(.07,dt))
+            if state["elapsed"]>=state["delay"]:
+                self.drive_tank_key(key)
+                state["elapsed"]-=state["delay"]
+                state["delay"]=TANK_HOLD_INTERVALS[actions[key]]
 
     def keydown(self,e):
         pg=self.pg
@@ -3733,24 +3789,23 @@ class DesktopApp:
                 self.input_value+=e.unicode
             return
         if self.editor_mode and e.key==pg.K_ESCAPE:
+            self._tank_held.clear()
             self.toggle_editor()
             return
-        arrows={pg.K_UP:0,pg.K_RIGHT:1,pg.K_DOWN:2,pg.K_LEFT:3}
-        if e.key in arrows:
+        tank_keys=(pg.K_UP,pg.K_DOWN,pg.K_LEFT,pg.K_RIGHT,
+                   pg.K_w,pg.K_s,pg.K_a,pg.K_d)
+        if e.key in tank_keys:
             if self.editor_mode:
-                self.add_log("TU CUERPO","Cierra el editor para moverte.",
+                self.add_log("SISTEMA","Cierra el editor para moverte.",
                              COLOR["yellow"])
-            else:
-                msg=self.robot.human.move(arrows[e.key])
-                self.add_log("TU CUERPO",msg,COLOR["yellow"])
+            elif e.key not in self._tank_held:
+                self._tank_held[e.key]={
+                    "elapsed":0.0,"delay":self._tank_initial_delay
+                }
+                self.drive_tank_key(e.key)
             return
-        actions={
-            pg.K_w:"avanza",pg.K_s:"retrocede",
-            pg.K_a:"gira izquierda",pg.K_d:"gira derecha",
-            pg.K_e:"explora",
-        }
-        if e.key in actions:
-            self.execute(actions[e.key],True)
+        if e.key==pg.K_e:
+            self.execute("explora",True)
         elif e.key in (pg.K_q,pg.K_f,pg.K_v,pg.K_l,pg.K_i,pg.K_p):
             self.execute({
                 pg.K_q:"observar",pg.K_f:"agarrar",pg.K_v:"soltar",
@@ -3774,8 +3829,13 @@ class DesktopApp:
             if e.type==pg.VIDEORESIZE:
                 self.screen=pg.display.set_mode((max(1120,e.w),max(650,e.h)),pg.RESIZABLE)
             if e.type==pg.KEYDOWN:self.keydown(e)
+            if e.type==pg.KEYUP:
+                self._tank_held.pop(e.key,None)
+            if e.type==getattr(pg,"WINDOWFOCUSLOST",-987654):
+                self._tank_held.clear()
             if e.type==pg.MOUSEBUTTONDOWN and e.button==1:
                 if self.input_rect.collidepoint(e.pos):
+                    self._tank_held.clear()
                     self.input_focus=True
                     continue
                 self.input_focus=False
@@ -3915,7 +3975,7 @@ class DesktopApp:
                     self.avatar_panel)
         self.draw_avatar_panel(left)
         self.draw_editor_palette()
-        self.text((23,h-45),"＋ AÑADIR / − QUITAR OBJETOS · CLIC EN 3D · DESHACER · TAB CHAT",
+        self.text((23,h-45),"TANQUE: FLECHAS TÚ · WASD AMBOT · IZQ/DER GIRA · ARRIBA/ABAJO AVANZA/RETROCEDE",
                   14,COLOR["muted"])
         self.text((w-220,h-45),"ARCHMOBA / AMBOT "+APP_VERSION,14,COLOR["cyan"])
         pg.display.flip()
@@ -3927,6 +3987,7 @@ class DesktopApp:
             dt=min(.05,self.clock.tick(60)/1000.0)
             self.elapsed+=dt
             running=self.events()
+            self.update_tank_controls(dt)
             self.hardware.poll()
             self.robot.training.update(dt)
             self.poll_guides()
