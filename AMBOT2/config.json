@@ -1,9 +1,9 @@
 {
   "app": "AMBOT2",
   "name": "AMBOT 2.0",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "app_path": "AMBOT2/AMDEV_entry.py",
-  "description": "AMBOT2: 30 articulaciones y 10 dedos por robot, menu expandible, agarre, aprendiz y movimiento tanque",
+  "description": "AMBOT2: observa al maestro automaticamente, pregunta nombre despues de cada accion y memoriza aprendizaje",
   "maintenance": false,
-  "release_commit": "d2a6ade86faab080185fbacd51cb835bd832c618"
+  "release_commit": "abd7476ce6c514c7602aaaeac916eae6bcf6c83b"
 }
