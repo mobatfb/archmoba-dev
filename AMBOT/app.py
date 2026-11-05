@@ -23,7 +23,7 @@ from collections import deque
 from pathlib import Path
 
 APP_NAME = "AMBOT"
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.9.0"
 APP_UPDATE_DATE = "05/11/2026"
 APP_UPDATE_TIME = "01:55"
 TITLE = "AMBOT | ARCHMOBA ROBOTICS"
@@ -68,6 +68,27 @@ ROOM_OBJECTS = {
 FURNITURE_CELLS = frozenset(cell for cells in ROOM_OBJECTS.values() for cell in cells)
 TILE = 1.35
 DIRECTIONS = ((0, -1), (1, 0), (0, 1), (-1, 0))
+
+# Movimiento de tanque al estilo del Resident Evil clasico: no hay strafe.
+# La orientacion del personaje, NO la camara, determina el avance/retroceso.
+TANK_ROTATION_RATE=math.radians(200)
+TANK_GUIDE_SPEED=1.7  # casillas por segundo
+TANK_HOLD_INTERVALS={
+    "forward":.26, "back":.35, "left":.45, "right":.45
+}
+
+
+def facing_radians(facing):
+    return (0.0,math.pi/2,math.pi,-math.pi/2)[facing % 4]
+
+
+def rotate_towards(current,target,max_step):
+    """Giro angular menor, sin trasladar el cuerpo."""
+    difference=(target-current+math.pi) % (2*math.pi)-math.pi
+    if abs(difference)<=max_step:
+        return target
+    return current+math.copysign(max_step,difference)
+
 ORIENTATIONS = ("NORTE", "ESTE", "SUR", "OESTE")
 COLOR = {
     "bg": (5, 13, 25),
@@ -180,6 +201,9 @@ class Guide:
         self.target = (self.x, self.z)
         self.start = (self.x, self.z)
         self.action = "esperar"
+        self.heading=facing_radians(self.facing)
+        self.turning=False
+        self.motion_distance=0.0
 
     def current(self):
         return self.program[self.index % len(self.program)]
@@ -356,11 +380,12 @@ class TrainingLab:
         guide.target=target if isinstance(target, tuple) else guide.start
         guide.action=action
         guide.message=message
-        guide.moving=action in ("walk","approach","carry","rise")
+        guide.moving=False
+        guide.turning=False
         guide.reach=1.0 if action in ("identify","grasp","carry","release") else 0.0
-        if action in ("lie","rest"):
+        if action=="rest":
             guide.posture="lying"
-        elif action in ("rise","walk","approach","pause","identify"):
+        elif action in ("rise","walk","approach","lie","pause","identify"):
             guide.posture="standing"
         if action=="grasp":
             item=self.items.get(str(target))
@@ -388,28 +413,60 @@ class TrainingLab:
                 return item
         return None
 
+    def _tank_guide_step(self,guide,target,dt):
+        """Primero gira; luego camina SOLO por el eje hacia el que apunta.
+
+        Ruta ortogonal por tramos: prohibido interpolar en diagonal o deslizar.
+        """
+        dx=target[0]-guide.x
+        dz=target[1]-guide.z
+        if abs(dx)<.015 and abs(dz)<.015:
+            guide.x,guide.z=target
+            guide.moving=False
+            guide.turning=False
+            return True
+        # Tramos en X y luego Z. El giro debe terminar antes de trasladarse.
+        if abs(dx)>.015:
+            direction=1 if dx>0 else 3
+            remaining=abs(dx)
+        else:
+            direction=2 if dz>0 else 0
+            remaining=abs(dz)
+        desired=facing_radians(direction)
+        guide.heading=rotate_towards(
+            guide.heading,desired,TANK_ROTATION_RATE*dt)
+        error=abs((desired-guide.heading+math.pi)%(2*math.pi)-math.pi)
+        guide.turning=error>.015
+        if guide.turning:
+            guide.moving=False
+            return False
+        guide.facing=direction
+        travel=min(remaining,TANK_GUIDE_SPEED*dt)
+        x,z=DIRECTIONS[direction]
+        guide.x+=x*travel
+        guide.z+=z*travel
+        guide.motion_distance+=travel
+        guide.moving=travel>0
+        return False
+
     def _guide_update(self, guide, dt):
         if guide.index<0:
             self._new_step(guide)
         guide.elapsed+=dt
         action,target,duration,_=guide.current()
-        if action in ("walk","approach","carry","rise") and isinstance(target,tuple):
-            progress=min(1.0,guide.elapsed/max(.15,duration))
-            gentle=progress*progress*(3.0-2.0*progress)
-            sx,sz=guide.start
-            guide.x=sx+(target[0]-sx)*gentle
-            guide.z=sz+(target[1]-sz)*gentle
-            dx,dz=target[0]-sx,target[1]-sz
-            if abs(dx)>abs(dz):
-                guide.facing=1 if dx>0 else 3
-            elif abs(dz)>.04:
-                guide.facing=2 if dz>0 else 0
-        if action=="lie" and isinstance(target,tuple):
-            progress=min(1.0,guide.elapsed/max(.15,duration*.55))
-            guide.x=guide.start[0]+(target[0]-guide.start[0])*progress
-            guide.z=guide.start[1]+(target[1]-guide.start[1])*progress
-        guide.walk+=dt*(8.0 if guide.moving else 2.0)
-        if guide.elapsed>=duration:
+        has_destination=(action in ("walk","approach","carry","rise","lie")
+                         and isinstance(target,tuple))
+        reached=True
+        if has_destination:
+            reached=self._tank_guide_step(guide,target,dt)
+            if action=="lie":
+                guide.posture="lying" if reached else "standing"
+        else:
+            guide.turning=False
+            guide.moving=False
+        guide.walk+=dt*(8.0 if guide.moving else 1.2)
+        # Nunca saltar a la siguiente demostracion durante el giro.
+        if guide.elapsed>=duration and reached:
             self._new_step(guide)
 
     def update(self,dt):
