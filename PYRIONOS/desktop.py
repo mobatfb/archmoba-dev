@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.4.1
+"""PYRION OS Desktop v0.4.2
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -595,7 +595,7 @@ class DependencyManager:
 
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -887,6 +887,7 @@ class _LinuxStorageFinder:
         self.recorded = recorded if isinstance(recorded, dict) else {}
         self.probe_mounts: list[Path] = []
         self.mount_tool = shutil.which('mount')
+        self.mount_errors: dict[str, str] = {}
         self.umount_tool = shutil.which('umount')
 
     def _existing_mount(self, device: Path) -> tuple[Path, bool] | None:
@@ -902,29 +903,94 @@ class _LinuxStorageFinder:
                     pass
         return None
 
-    def _run_mount(self, device: Path, directory: Path, fstype: str, rw: bool) -> bool:
-        if not self.mount_tool:
+    @staticmethod
+    def _filesystem_ready(fs: str) -> bool:
+        try:
+            registered = Path('/proc/filesystems').read_text(errors='replace').splitlines()
+            return any(line.split() and line.split()[-1] == fs for line in registered)
+        except OSError:
             return False
-        kinds = ['ext4', 'ext2'] if fstype == 'ext2' else [fstype]
-        if fstype == 'ntfs':
-            kinds = ['ntfs3', 'ntfs', 'ntfs-3g']
-        if fstype in ('fat', 'vfat'):
-            kinds = ['vfat']
-        for kind in kinds:
-            if kind == 'ntfs-3g' and not shutil.which('mount.ntfs-3g'):
+
+    def _ensure_filesystem_driver(self, filesystem: str) -> None:
+        """Try kernel modules already in this ISO; never download kernel drivers."""
+        if filesystem in ('vfat', 'fat'):
+            needed, primary = ('nls_iso8859-1', 'nls_cp437', 'fat', 'vfat'), 'vfat'
+        elif filesystem in ('ext4', 'ext3', 'ext2'):
+            needed, primary = ('crc16', 'mbcache', 'jbd2', 'ext4'), 'ext4'
+        else:
+            return
+        if self._filesystem_ready(primary):
+            return
+        insmod = shutil.which('insmod')
+        base = Path('/lib/modules/pyrion_cd')
+        if not insmod or not base.is_dir() or getattr(os, 'geteuid', lambda: 1)() != 0:
+            _storage_note(f'Soporte {primary} no cargado; no hay insmod/modulos disponibles para recuperarlo.')
+            return
+        for module in needed:
+            path = base / (module + '.ko')
+            if not path.is_file():
+                _storage_note(f'Falta controlador local {path}; NO se borrara ningun disco.')
                 continue
-            flags = ('rw,nosuid,nodev,umask=022' if kind == 'vfat' else 'rw,nosuid,nodev') if rw else 'ro,nosuid,nodev'
             try:
-                run = subprocess.run([self.mount_tool, '-t', kind, '-o', flags,
-                                      str(device), str(directory)],
-                                     capture_output=True, text=True, timeout=12, check=False)
-            except (OSError, subprocess.TimeoutExpired):
-                continue
-            if run.returncode != 0:
-                _storage_note("Error mount " + kind + " " + str(device) + ": " + ((run.stderr or run.stdout or str(run.returncode)).strip())[-500:])
-            if run.returncode == 0 and directory.is_mount():
-                _storage_note(f'{device} montado en {directory} ({kind}, {"rw" if rw else "ro"})')
-                return True
+                result = subprocess.run([insmod, str(path)], capture_output=True,
+                                        text=True, errors='replace', check=False, timeout=9)
+                if result.returncode != 0:
+                    detail = (result.stderr or result.stdout or f'codigo {result.returncode}').strip()
+                    if 'file exists' not in detail.lower():
+                        _storage_note('insmod ' + module + ': ' + detail[-350:])
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                _storage_note('No se pudo activar ' + module + ': ' + str(exc)[-250:])
+        if not self._filesystem_ready(primary):
+            _storage_note(f'ATENCION: el kernel no registra el sistema de archivos {primary} en /proc/filesystems.')
+
+    def _run_mount(self, device: Path, directory: Path, fstype: str, rw: bool) -> bool:
+        """Try safe mount variants and keep the real kernel errors visible.
+
+        A failed mount NEVER implies the volume is blank or may be formatted.
+        """
+        if not self.mount_tool:
+            self.mount_errors[str(device)] = 'No existe el comando mount.'
+            return False
+        self._ensure_filesystem_driver(fstype)
+        if fstype in ('fat', 'vfat'):
+            attempts = [('vfat', 'rw,nosuid,nodev,umask=022' if rw else 'ro,nosuid,nodev'),
+                        ('vfat', 'rw' if rw else 'ro')]
+        elif fstype in ('ext2', 'ext3', 'ext4'):
+            attempts = [('ext4', 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'),
+                        ('ext4', 'rw' if rw else 'ro')]
+        elif fstype in ('ntfs', 'ntfs3'):
+            attempts = [('ntfs3', 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'),
+                        ('ntfs', 'rw' if rw else 'ro')]
+        else:
+            attempts = [(fstype, 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'),
+                        (fstype, 'rw' if rw else 'ro')]
+        messages = []
+        for kind, flags in dict.fromkeys(attempts):
+            try:
+                result = subprocess.run([self.mount_tool, '-t', kind, '-o', flags,
+                                         str(device), str(directory)], capture_output=True,
+                                        text=True, errors='replace', timeout=15, check=False)
+                if result.returncode == 0:
+                    # On very small Linux rootfs, is_mount() alone may not be
+                    # sufficient; validate against /proc/mounts too.
+                    found = directory.is_mount() or any(
+                        m['path'] == directory and
+                        (m['device'] == str(device) or m['device'] == device.name)
+                        for m in _linux_mounts()
+                    )
+                    if found:
+                        self.mount_errors.pop(str(device), None)
+                        _storage_note(f'{device} montado correctamente: {kind}, {flags}, {directory}')
+                        return True
+                    messages.append(f'{kind} {flags}: mount devolvio 0 pero el sistema no registro el montaje')
+                else:
+                    msg = (result.stderr or result.stdout or f'codigo {result.returncode}').strip()
+                    messages.append(f'{kind} {flags}: {msg[-360:]}')
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                messages.append(f'{kind} {flags}: {type(exc).__name__}: {exc}')
+        summary = ' | '.join(messages[-4:]) or 'Error de montaje desconocido'
+        self.mount_errors[str(device)] = summary
+        _storage_note(f'MONTAJE FALLIDO {device} [{fstype}] : {summary[-1300:]}')
         return False
 
     def _unmount_probe(self, mountpoint: Path) -> None:
@@ -1093,6 +1159,8 @@ class _LinuxStorageFinder:
             f"{'SSD' if d['ssd'] else 'HDD'}, {len(d['partitions'])} particiones)" for d in disks
         ))
         installed, available, blank, old_unmounted = [], [], [], []
+        failed_mounts: list[str] = []
+        unfamiliar: list[str] = []
         try:
             for disk in disks:
                 if not disk['partitions'] and _linux_disk_blank(disk['device'], disk['bytes']):
@@ -1101,9 +1169,14 @@ class _LinuxStorageFinder:
                     device = Path('/dev') / partition
                     filesystem = _linux_filesystem_type(device)
                     if not filesystem:
+                        unfamiliar.append(str(device))
+                        _storage_note('No se encontro firma FAT/ext en ' + str(device) + '. No se modificara.')
                         continue
+                    _storage_note('Sistema de archivos detectado: ' + str(device) + ' = ' + filesystem)
                     volume = self._candidate_location(device, filesystem)
                     if volume is None:
+                        failed_mounts.append(f'{device} ({filesystem}): '
+                                             + self.mount_errors.get(str(device), 'No hay acceso de montaje'))
                         if (not disk['partitions'] and device == disk['device']
                                 and _linux_existing_old_pyrion_ext2(device)):
                             old_unmounted.append(disk)
@@ -1175,8 +1248,29 @@ class _LinuxStorageFinder:
             if blank:
                 raise StorageError('Existen varios dispositivos o candidatos dudosos. Discos vacios: ' + ', '.join(str(d['device']) for d in blank)
                                    + '. No se formateara ninguno automaticamente.')
-            raise StorageError('Se detectaron discos pero ninguno admite almacenamiento PYRION. '
-                               'Comprueba permisos, sistemas de archivos y herramientas mount.')
+            filesystems = '(no disponible)'
+            try:
+                filesystems = ', '.join(line.strip().split()[-1]
+                                       for line in Path('/proc/filesystems').read_text(errors='replace').splitlines()
+                                       if line.strip())
+            except OSError:
+                pass
+            if failed_mounts:
+                raise StorageError(
+                    'Se detecto almacenamiento pero Linux NO PUDO MONTARLO. '
+                    'No se formateo ni borro ningun disco. '
+                    + 'Diagnostico: ' + ' ; '.join(failed_mounts[:3])[-1600:]
+                    + '. Sistemas del kernel: ' + filesystems[-300:]
+                    + '. Registros: /var/log/modules-cd.log, '
+                    '/var/log/pyrion-storage.log y ~/.cache/pyrionos/storage_scan.log.'
+                )
+            raise StorageError(
+                'Se reconocieron discos, pero no se encontro ningun sistema de '
+                'archivos compatible ni espacio libre suficiente. '
+                + ('Sin firma reconocible: ' + ', '.join(unfamiliar[:5]) + '. ' if unfamiliar else '')
+                + 'No se formateo ningun disco. '
+                'Registros: ~/.cache/pyrionos/storage_scan.log.'
+            )
         finally:
             for mountpoint in list(self.probe_mounts):
                 self._unmount_probe(mountpoint)
@@ -1195,20 +1289,6 @@ def _linux_find_storage(checker, pointer: Path) -> Path | None:
             pass
     return _LinuxStorageFinder(checker, recorded).discover()
 
-
-def _linux_ram_root() -> bool:
-    root_mount = next((m for m in _linux_mounts() if m['path'] == Path('/')), None)
-    if root_mount is None:
-        return True
-    return root_mount['fs'].lower() in ('rootfs', 'tmpfs', 'ramfs', 'overlay', 'squashfs')
-
-
-
-def _linux_ram_root() -> bool:
-    root_mount = next((m for m in _linux_mounts() if m['path'] == Path('/')), None)
-    if root_mount is None:
-        return True
-    return root_mount['fs'].lower() in ('rootfs', 'tmpfs', 'ramfs', 'overlay', 'squashfs')
 
 
 
