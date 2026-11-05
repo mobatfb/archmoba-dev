@@ -1223,6 +1223,9 @@ class FurnitureEditor:
             return False,"No se puede colocar en una pared, mueble u otra silla."
         if (x,z) in ((6,5),ROOM_DOOR,(self.robot.x,self.robot.z)):
             return False,"Reserva la entrada y el espacio de AMBOT."
+        if (hasattr(self.robot,"human") and not self.robot.human.seated
+                and (self.robot.human.x,self.robot.human.z)==(x,z)):
+            return False,"Tu personaje ocupa esa casilla."
         if hasattr(self.robot,"training"):
             tr=self.robot.training
             if any(tr.distance(x,z,item.x,item.z)<.69
@@ -1325,6 +1328,9 @@ class FurnitureEditor:
     def remove(self, kind, key):
         """Quitar un elemento existente, sin permitir borrar robots/estructura."""
         if kind=="chair":
+            if (hasattr(self.robot,"human") and self.robot.human.seated
+                    and self.robot.human.seat==key):
+                return False,"Levantate antes de quitar la silla ocupada."
             for index,chair in enumerate(self.chairs):
                 if (chair["x"],chair["z"])==key:
                     gone=self.chairs.pop(index)
@@ -1345,6 +1351,10 @@ class FurnitureEditor:
             self.save()
             return True,"Mueble retirado: "+item["kind"]+"."
         if kind=="fixture":
+            if (key=="silla" and hasattr(self.robot,"human")
+                    and self.robot.human.seated
+                    and self.robot.human.seat==(4,5)):
+                return False,"Levantate antes de quitar la silla ocupada."
             if key not in tuple(ROOM_OBJECTS)+("ventana","alfombra"):
                 return False,"Solo puedes quitar objetos del entorno."
             if key in self.removed_fixed:
@@ -2182,6 +2192,13 @@ class Scene3D:
                     "label":"ROBOT "+guide.name,
                     "bounds":(wx-.30,wx+.30,.05,3.0,wz-.30,wz+.30),
                 })
+        if hasattr(robot,"human"):
+            wx,wz=self.world(robot.human.x,robot.human.z)
+            result.append({
+                "kind":"protected","key":"TU PERSONAJE",
+                "label":"HUMANO CONTROLADO",
+                "bounds":(wx-.38,wx+.38,.03,2.65,wz-.38,wz+.38),
+            })
         wx,wz=self.world(robot.x,robot.z)
         result.append({
             "kind":"protected","key":"AMBOT","label":"ROBOT AMBOT",
@@ -2569,6 +2586,81 @@ class Scene3D:
         if getattr(robot,"holding",None):
             node((0,1.13,.56),.08,pink)
 
+    def build_human(self, person, elapsed=0):
+        """Esqueleto 3D articulado del USUARIO, distinto a AMBOT y a maestros."""
+        bx,bz=self.world(person.x,person.z)
+        dx,dz=DIRECTIONS[person.facing]
+        side=(-dz,dx)
+        selected=person.joints
+        def pt(s,y,front=0):
+            return (bx+side[0]*s+dx*front,y,bz+side[1]*s+dz*front)
+        def bone(start,end,color,width=.10):
+            self.line(start,end,color,width)
+        def joint(at,r=.08,color=None):
+            self.ball(at,r,color or COLOR["pink"])
+        tint=(248,186,98)
+        shade=(97,192,223)
+        white=(230,240,246)
+        seated=person.seated
+        hip_y=.90 if seated else 1.06
+        chest_y=1.64 if seated else 1.80
+        lean=math.sin(math.radians(selected["torso"]))*.42
+        neck=pt(0,chest_y+.20,lean)
+        belly=pt(0,hip_y+.25,lean*.28)
+        pelvis=pt(0,hip_y)
+        bone(pelvis,belly,tint,.20)
+        bone(belly,neck,white,.21)
+        joint(pelvis,.14,shade)
+        shoulder_points={}
+        for sign in (-1,1):
+            key="izq" if sign<0 else "der"
+            shoulder=pt(sign*.32,chest_y+.07,lean*.92)
+            shoulder_points[sign]=shoulder
+            arm=math.radians(selected["brazo_"+key])
+            elbow_angle=math.radians(selected["codo_"+key])
+            elbow=pt(sign*.49,
+                     chest_y-.43+math.sin(arm)*.45,
+                     lean+.10+math.cos(arm)*.23)
+            hand=pt(sign*.56,
+                    chest_y-.88+math.sin(arm)*.72+math.sin(elbow_angle)*.19,
+                    lean+.20+math.cos(arm)*.24+math.cos(elbow_angle)*.17)
+            bone(shoulder,elbow,tint,.115)
+            bone(elbow,hand,shade,.105)
+            joint(shoulder,.09,shade)
+            joint(elbow,.105,white)
+            joint(hand,.09,white)
+            hip=pt(sign*.19,hip_y)
+            hip_angle=math.radians(selected["pierna_"+key])
+            knee_angle=math.radians(selected["rodilla_"+key])
+            knee_front=(.51 if seated else .04)+math.sin(hip_angle)*.35
+            knee_y=(.54 if seated else .57)+math.sin(hip_angle)*.12
+            knee=pt(sign*.22,knee_y,knee_front)
+            ankle=pt(sign*.23,.12,
+                     knee_front+(.23 if seated else .03)+math.sin(knee_angle)*.27)
+            bone(hip,knee,white,.145)
+            bone(knee,ankle,tint,.12)
+            joint(knee,.105,shade)
+            bone(ankle,pt(sign*.23,.10,
+                           knee_front+(.40 if seated else .20)
+                           +math.sin(knee_angle)*.27),shade,.09)
+            joint(ankle,.10,white)
+        bone(shoulder_points[-1],shoulder_points[1],shade,.12)
+        head_shift=math.sin(math.radians(selected["cabeza"]))*.25
+        head=pt(head_shift, chest_y+.54,lean+.06)
+        bone(neck,head,white,.09)
+        self.ball(head,.29,white)
+        for offset in (-.095,.095):
+            eye=pt(head_shift+offset,chest_y+.57,lean+.31)
+            joint(eye,.045,tint)
+        self.line(pt(head_shift-.10,chest_y+.43,lean+.28),
+                  pt(head_shift+.10,chest_y+.43,lean+.28),shade,.035)
+        # Halo naranja identifica al humano controlado por el teclado.
+        for i in range(16):
+            a,b=i*math.tau/16,(i+1)*math.tau/16
+            self.line((bx+math.cos(a)*.49,.022,bz+math.sin(a)*.49),
+                      (bx+math.cos(b)*.49,.022,bz+math.sin(b)*.49),
+                      tint,.038)
+
     def build_training(self, training, elapsed):
         """Geometria de los tres robots guia y objetos con estado fisico."""
         for item in training.items.values():
@@ -2622,6 +2714,8 @@ class Scene3D:
         self.build_robot(robot,dt,elapsed)
         if hasattr(robot,"training"):
             self.build_training(robot.training,elapsed)
+        if hasattr(robot,"human"):
+            self.build_human(robot.human,elapsed)
         self.paint_faces(surface,rect)
         pg.draw.rect(surface,COLOR["line"],rect,2,border_radius=12)
 
