@@ -1,6 +1,6 @@
 # AMBOT — ARCHMOBA Robotics
 
-**AMBOT 0.3.0** es una aplicación de escritorio **Python**, no un sitio web.
+**AMBOT 0.4.0** es una aplicación de escritorio **Python**, no un sitio web.
 
 ## Cómo iniciarlo
 - Desde **AMDEV**: elegir **AMBOT**. AMDEV ejecuta \`AMBOT/app.py\` directamente.
@@ -47,3 +47,50 @@ En el mapa de texto: `C` cama, `M` mesa, `S` silla, `A` armario, `P` puerta. Est
 La ventana ahora se divide en **tres columnas**: visor del stickman a la izquierda, habitación/mundo 3D en el centro y cerebro/controles a la derecha. El visor izquierdo usa una **segunda cámara del mismo modelo 3D** (no un sprite separado): refleja exactamente el ángulo, posición interpolada, fase de marcha y giro del cuerpo principal. Permanece enfocado en el personaje aunque este cambie de habitación.
 
 Una **burbuja de conversación** sobre el visor muestra las respuestas a comandos, pensamientos y mensajes de exploración autónoma. Al moverse, girar, reiniciarse o detenerse, el avatar permanece sincronizado con el escenario central. Los sensores y el pensamiento siguen siendo simulados; no hay voz sintetizada ni un modelo de lenguaje externo en esta versión.
+
+
+## AMBOT bebe y tres robots guia (v0.4.0)
+
+AMBOT aparece como **aprendiz sin habilidades dominadas**. En la habitacion hay **tres
+robots instructores** con diferentes colores y rutinas programadas:
+
+- **ANDA** (verde): muestra pasos, marcha y equilibrio.
+- **DEX** (naranja): senala, nombra, agarra, transporta y suelta objetos.
+- **SOMA** (morado): se acerca a la cama, se acuesta, descansa y se levanta.
+
+Los instructores repiten sus demostraciones. El bebe **observa** acciones a
+distancia limitada (sensor simulado), acumula experiencias y **practica** sin
+reproducir automaticamente las rutinas de los guias. Las probabilidades de
+exito cambian con los ensayos y la experiencia observacional.
+
+### Controles de entrenamiento
+
+- **1 / 2 / 3**: atender a ANDA, DEX o SOMA.
+- **Q**: observar al instructor seleccionado.
+- **F**: intentar sujetar un objeto cercano.
+- **V**: soltar lo que lleve en las manos (cae).
+- **L**: intentar acostarse en la cama cercana.
+- **I**: intentar identificar un objeto observado.
+- **P**: consultar los progresos aprendidos.
+- **W/A/S/D**: experimentar con el desplazamiento, el equilibrio
+  y el empuje de objetos.
+
+Los 3 objetos moviles son **cubo, pelota y bloque**. Se simulan empuje,
+sujecion, gravedad, rebote y friccion, asi como caidas, agarres fallidos y
+recuperacion del equilibrio. Los guias conocen previamente las demostraciones;
+AMBOT necesita escuchar repetidas veces sus palabras para asociarlas con
+los objetos. Sus habilidades y etiquetas aprendidas se conservan en:
+
+\`%LOCALAPPDATA%\\ARCHMOBA\\AMBOT\\aprendizaje.json\`
+
+Al reiniciar el cuerpo (R), los conocimientos adquiridos **no se borran**.
+
+La escena muestra **cuatro robots**: tres instructores y el bebe. La camara
+izquierda sigue solamente a este ultimo, pero refleja sus mismas posturas
+y movimientos. El panel central muestra guias, objetos y progreso.
+
+**Alcance:** motor de aprendizaje **simulado** con refuerzo probabilistico,
+no aprendizaje neuronal por imagen ni una inteligencia general. Los guias
+estan programados y la fisica es simplificada; el bebe aprende valores de
+confianza y asociaciones, no destrezas roboticas transferibles a hardware.
+No requiere navegador ni servicio HTTP.

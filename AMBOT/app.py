@@ -515,7 +515,7 @@ class TrainingLab:
         if baby.posture=="lying":
             baby.posture="standing"
             return "Estoy volviendo a incorporarme."
-        if self.distance(baby.x,baby.z,4.5,7)>2.4:
+        if self.distance(baby.x,baby.z,4.5,7)>2.6:
             return "No encuentro una superficie cercana donde acostarme."
         success=self.rng.random()<.16+.80*self.confidence["descansar"]
         self.practice("descansar",success)
@@ -575,6 +575,8 @@ class Robot:
         self.training = TrainingLab(self, self.memory_path.with_name("aprendizaje.json"))
 
     def reset(self):
+        if hasattr(self,"training"):
+            self.training.release_owner("AMBOT")
         self.x, self.z = 6, 5
         self.facing = 1
         self.battery = 100.0
@@ -598,14 +600,18 @@ class Robot:
         if (self.x, self.z) in ROOM_CELLS:
             return ROOM_NAME
         return "PUERTA" if (self.x, self.z) == ROOM_DOOR else "PASILLO"
+    def sense_distance(self, direction):
+        """Sensor virtual: distancia, no acceso del bebe al mapa secreto."""
+        dx,dz=DIRECTIONS[direction]
+        x,z=self.x+dx,self.z+dz
+        distance=0
+        while self.free(x,z):
+            distance+=1
+            x,z=x+dx,z+dz
+        return distance*40+10
+
     def front_distance(self):
-        dx, dz = DIRECTIONS[self.facing]
-        x, z = self.x + dx, self.z + dz
-        free = 0
-        while self.free(x, z):
-            free += 1
-            x, z = x + dx, z + dz
-        return free * 40 + 10
+        return self.sense_distance(self.facing)
 
     def state(self):
         return {
@@ -667,24 +673,28 @@ class Robot:
         return "Movimiento seguro. Posicion: X=" + str(self.x) + " Z=" + str(self.z) + "."
 
     def decide(self):
+        """Elegir mediante distancias sensoriales y experiencia, sin leer WORLD."""
         if self.battery < 1.5:
             return "detener", "Bateria insuficiente: debo detenerme."
-        options = []
-        for direction, (dx, dz) in enumerate(DIRECTIONS):
-            x, z = self.x + dx, self.z + dz
-            if self.free(x, z):
-                turn = (direction - self.facing) % 4
-                turn_cost = 0 if turn == 0 else (1 if turn in (1, 3) else 2)
-                options.append((self.visits.get((x, z), 0), turn_cost, turn == 3, direction))
-        if not options:
-            return "detener", "No encuentro ninguna salida segura."
-        _, _, _, direction = min(options)
-        if direction == self.facing:
-            return "avanzar", "Hay paso libre y prefiero recorrer una celda poco visitada."
-        rotation = (direction - self.facing) % 4
-        if rotation == 3:
-            return "izquierda", "Detecto un recorrido menos visitado a la izquierda."
-        return "derecha", "Cambio de direccion para explorar sin chocar."
+        sensed=[]
+        for direction,(dx,dz) in enumerate(DIRECTIONS):
+            distancia=self.sense_distance(direction)
+            if distancia>25:
+                turn=(direction-self.facing)%4
+                turn_cost=0 if turn==0 else (1 if turn in (1,3) else 2)
+                sensed.append((
+                    self.visits.get((self.x+dx,self.z+dz),0),
+                    turn_cost,turn==3,direction
+                ))
+        if not sensed:
+            return "detener", "No encuentro una zona libre cerca."
+        _,_,_,direction=min(sensed)
+        if direction==self.facing:
+            return "avanzar","La senal de proximidad me permite ensayar un paso."
+        rotation=(direction-self.facing)%4
+        if rotation==3:
+            return "izquierda","El sensor muestra espacio a la izquierda."
+        return "derecha","El sensor muestra espacio en otra direccion."
 
     def think(self):
         _, reason = self.decide()
@@ -1037,6 +1047,10 @@ class Scene3D:
         diff=(target-self.angle+math.pi)%(2*math.pi)-math.pi
         self.angle+=diff*speed
         bx,bz=self.world(self.rx,self.rz)
+        if posture=="lying" and tint is None:
+            # Al acostarse, el bebe se apoya en la cama sin desplazar su
+            # posicion logica a una celda de mueble no transitable.
+            bx,bz=self.world(4.5,7.0)
         dx,dz=DIRECTIONS[robot.facing]
         fwd=(math.sin(self.angle),-math.cos(self.angle))
         side=(-fwd[1],fwd[0])
@@ -1310,7 +1324,7 @@ class DesktopApp:
         self.last_portrait_state=(
             self.portrait_scene.rx,self.portrait_scene.rz,
             self.portrait_scene.angle,self.portrait_scene.walk)
-        self.text((rect.x+18,rect.bottom-63),"CÁMARA / SEGUIMIENTO",13,COLOR["muted"])
+        self.text((rect.x+18,rect.bottom-63),"VISOR DEL BEBÉ / EN VIVO",13,COLOR["muted"])
         self.text((rect.x+18,rect.bottom-40),
                   "DIRECCIÓN: "+ORIENTATIONS[self.robot.facing],14,COLOR["ink"])
         self.text((rect.x+18,rect.bottom-22),

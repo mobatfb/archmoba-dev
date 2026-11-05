@@ -14,19 +14,21 @@ class RobotTests(unittest.TestCase):
         self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
     def test_version_y_mapa(self):
-        self.assertEqual(APP_VERSION,"0.3.0")
+        self.assertEqual(APP_VERSION,"0.4.0")
         self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
     def test_decision_legal(self):
         self.assertIn(self.robot.decide()[0],{"detener","avanzar","derecha","izquierda"})
         for _ in range(160):
+            self.robot.training.update(.07)
             self.robot.explore()
             self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
         self.assertGreater(self.robot.steps,0)
 
     def test_manual_y_sensores(self):
         self.assertIn("cm",self.robot.command("sensores"))
+        self.robot.training.confidence["caminar"]=1.0
         self.assertIn("Movimiento",self.robot.command("avanza"))
         self.assertIn("Gire",self.robot.command("gira derecha"))
         self.assertIn("recargada",self.robot.command("cargar"))
@@ -52,6 +54,7 @@ class RobotTests(unittest.TestCase):
             self.assertIn(symbol, txt)
 
     def test_robot_sale_al_pasillo_por_la_puerta(self):
+        self.robot.training.confidence["caminar"]=1.0
         for _ in range(3):
             self.assertIn("Movimiento seguro", self.robot.move())
         self.assertEqual((self.robot.x,self.robot.z),(9,5))
@@ -114,6 +117,132 @@ class RobotTests(unittest.TestCase):
             gui.say("¿Qué es este lugar?")
             self.assertIn("lugar", gui.bubble_text)
             gui.draw(0.016)
+        finally:
+            pygame.quit()
+
+    def test_tres_guias_y_aprendizaje_observacional(self):
+        tr=self.robot.training
+        self.assertEqual(len(tr.guides),3)
+        self.assertEqual({g.task for g in tr.guides},
+                         {"CAMINAR","OBJETOS","DESCANSAR"})
+        self.assertTrue(all(v==0 for v in tr.confidence.values()))
+        for _ in range(700):
+            tr.update(.05)
+        self.assertGreater(tr.observations,20)
+        for skill in ("caminar","agarrar","transportar","descansar","reconocer"):
+            self.assertGreater(tr.confidence[skill],0)
+        self.assertIn("cubo",tr.known_names)
+        self.assertNotEqual(tr.guides[0].x,tr.guides[1].x)
+        self.assertIn(tr.guides[2].posture,{"lying","standing"})
+
+    def test_aprendizaje_persistente_entre_sesiones(self):
+        tr=self.robot.training
+        tr.update(.05)
+        before=tr.observations
+        self.assertGreater(before,0)
+        next_baby=Robot(self.robot.memory_path)
+        self.assertEqual(next_baby.training.observations,before)
+        self.assertAlmostEqual(
+            next_baby.training.confidence["caminar"],
+            tr.confidence["caminar"])
+
+    def test_practica_caida_y_recuperacion(self):
+        tr=self.robot.training
+        tr.rng.seed(1)
+        self.assertIn("tambalee",self.robot.move())
+        self.assertEqual(self.robot.posture,"stumble")
+        self.assertGreater(tr.falls,0)
+        for _ in range(15):
+            tr.update(.07)
+        self.assertEqual(self.robot.posture,"standing")
+        self.assertGreater(tr.confidence["caminar"],0)
+
+    def test_agarre_carga_y_gravedad(self):
+        tr=self.robot.training
+        tr.confidence["agarrar"]=1.0
+        tr.confidence["caminar"]=1.0
+        outcome=""
+        for _ in range(8):
+            outcome=tr.try_grab()
+            if self.robot.holding:
+                break
+        self.assertTrue(self.robot.holding,outcome)
+        held=tr.items[self.robot.holding]
+        self.assertEqual(held.held_by,"AMBOT")
+        self.robot.move()
+        tr.update(.05)
+        self.assertAlmostEqual(held.x,self.robot.x+.48,places=2)
+        self.assertIn("gravedad",tr.try_release())
+        self.assertEqual(held.held_by,"")
+        for _ in range(140):
+            tr.update(.05)
+        self.assertAlmostEqual(held.y,held.radius,delta=.04)
+
+    def test_empujar_pelota_ubicacion_con_colisiones(self):
+        tr=self.robot.training
+        self.robot.facing=0
+        ball=tr.items["cubo"]
+        self.assertEqual((ball.x,ball.z),(6.0,4.0))
+        out=self.robot.move()
+        self.assertIn("empujar",out)
+        self.assertLess(ball.z,4.0)
+        before=ball.z
+        for _ in range(5):
+            tr.update(.05)
+        self.assertLess(ball.z,before)
+
+    def test_aprender_a_acostarse_y_levantarse(self):
+        tr=self.robot.training
+        self.robot.x,self.robot.z=5,6
+        tr.confidence["descansar"]=1.0
+        for _ in range(7):
+            answer=tr.try_rest()
+            if self.robot.posture=="lying":
+                break
+            tr.update(.07)
+        self.assertEqual(self.robot.posture,"lying",answer)
+        self.assertIn("incorporarme",self.robot.move())
+        self.assertEqual(self.robot.command("levantarse"),
+                         "Estoy de pie de nuevo.")
+        self.assertEqual(self.robot.posture,"standing")
+
+    def test_fisica_y_tres_personajes_3d(self):
+        import pygame
+        pygame.init()
+        try:
+            scene=Scene3D(pygame)
+            scene.camera_update(pygame.Rect(0,0,1000,640))
+            tr=self.robot.training
+            tr.update(.05)
+            scene.build_training(tr,0.016)
+            self.assertGreater(len(scene.faces),300)
+            self.assertEqual(len(tr.items),3)
+            before=(scene.rx,scene.rz,scene.angle,scene.walk)
+            scene.build_training(tr,.017)
+            self.assertEqual(before,(scene.rx,scene.rz,scene.angle,scene.walk))
+        finally:
+            pygame.quit()
+
+    def test_vista_y_botones_entrenamiento(self):
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER","dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER","dummy")
+        import pygame
+        from app import DesktopApp
+        gui=DesktopApp(pygame,smoke=True)
+        try:
+            gui.robot.training.update(.05)
+            gui.poll_guides()
+            gui.draw(.017)
+            for key in ("observe","grasp","release","lie"):
+                self.assertIn(key,gui.buttons)
+            self.assertEqual(len(gui.robot.training.guides),3)
+            self.assertIsNotNone(gui.last_portrait_state)
+            gui.execute("observar")
+            self.assertIn("Observo",gui.bubble_text)
+            gui.handle_button("grasp")
+            self.assertGreater(gui.robot.training.attempts,0)
+            gui.draw(.017)
         finally:
             pygame.quit()
 
