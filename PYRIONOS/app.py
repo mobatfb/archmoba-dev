@@ -34,7 +34,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.6"
+APP_VERSION = "0.3.7"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 

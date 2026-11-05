@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.3.6
+"""PYRION OS Desktop v0.3.7
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -438,7 +438,9 @@ class DependencyManager:
         notify(label + ": descarga completa (" + str(len(data) // 1024) + " KiB)")
         return bytes(data)
 
-    def _pip_cmd(self, notify: Callable[[str], None]) -> tuple[list[str], dict[str, str]]:
+    def _pip_cmd(self, notify: Callable[[str], None], *,
+                 temp_dir: Path | None = None, no_cache: bool = False
+                 ) -> tuple[list[str], dict[str, str]]:
         """Select persistent pip, bootstrap it, or use a cached standalone zip.
 
         The system interpreter is never modified and every package install
@@ -449,6 +451,13 @@ class DependencyManager:
         env["PIP_CACHE_DIR"] = str(self.cache_dir)
         env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
         env["PIP_NO_INPUT"] = "1"
+        if temp_dir is not None:
+            temp_dir = Path(temp_dir)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            for key in ("TMPDIR", "TMP", "TEMP"):
+                env[key] = str(temp_dir)
+        if no_cache:
+            env["PIP_NO_CACHE_DIR"] = "1"
         normal_cmd = [self.python, "-m", "pip"]
         env["PYTHONPATH"] = os.pathsep.join([
             str(self.pip_runtime), env.get("PYTHONPATH", "")
@@ -586,7 +595,7 @@ class DependencyManager:
 
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.6"
+APP_VERSION = "0.3.7"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -934,6 +943,85 @@ def _activate_persistent_qt(site_dir: Path) -> None:
     os.environ["PYTHONPATH"] = os.pathsep.join([directory] + parts)
 
 
+QT_PERSISTENT_MIN_MIB = 320
+QT_TEMP_MIN_MIB = 220
+QT_SHARED_MIN_MIB = 560
+
+
+def _storage_mib(number: int) -> str:
+    return f"{number / (1024 * 1024):.0f} MiB"
+
+
+def _qt_disk_preflight(root: Path, notify: Callable[[str], None]) -> Path:
+    """Preflight disk space before downloading large PySide6 wheels.
+
+    Installing Qt needs substantially more than the compressed wheel size.
+    The final packages always live in the persistent root; only the working
+    directory may use /tmp when it is a separate and sufficiently large disk.
+    Never delete applications, installed environments, or user data.
+    """
+    root = Path(root)
+    default_temp = Path(tempfile.gettempdir())
+    use_external_temp = False
+    external_free = 0
+    try:
+        use_external_temp = (root.stat().st_dev != default_temp.stat().st_dev)
+        external_free = shutil.disk_usage(default_temp).free
+        if external_free < QT_TEMP_MIN_MIB * 1024 * 1024:
+            use_external_temp = False
+    except OSError:
+        use_external_temp = False
+
+    required_mib = QT_PERSISTENT_MIN_MIB if use_external_temp else QT_SHARED_MIN_MIB
+    available = shutil.disk_usage(root).free
+    notify("Espacio disponible en " + str(root) + ": " + _storage_mib(available))
+    if use_external_temp:
+        notify("Temporales de pip en " + str(default_temp) + " (otro disco: "
+               + _storage_mib(external_free) + " libres).")
+    else:
+        notify("Temporales de pip dentro del almacenamiento persistente.")
+
+    # Only pip's disposable download cache may be removed automatically.
+    # Installed libraries, application folders and user documents are never touched.
+    cache = root / "cache" / "pip"
+    if available < required_mib * 1024 * 1024 and cache.is_dir() and not cache.is_symlink():
+        notify("Espacio insuficiente; eliminando solo descargas temporales del cache pip...")
+        try:
+            shutil.rmtree(cache)
+            cache.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            notify("No se pudo limpiar el cache pip: " + str(exc))
+        available = shutil.disk_usage(root).free
+        notify("Espacio tras limpiar cache: " + _storage_mib(available))
+
+    if sys.platform.startswith("linux"):
+        try:
+            info = os.statvfs(root)
+            if info.f_favail < 1500:
+                raise RuntimeError(
+                    "No hay inodos libres suficientes en " + str(root)
+                    + ". Comprueba df -i y libera espacio o mueve PYRION a otro disco."
+                )
+        except OSError:
+            pass
+
+    if available < required_mib * 1024 * 1024:
+        requirement = f"al menos {required_mib} MiB libres"
+        raise RuntimeError(
+            "ESPACIO INSUFICIENTE PARA PYSIDE6. En " + str(root) + " hay "
+            + _storage_mib(available) + " disponibles; se recomiendan " + requirement
+            + ". El paquete descargado no es su tamano final: requiere espacio "
+            "para extraer Qt y preparar la instalacion. Amplia el disco o mueve "
+            "la carpeta persistente a un volumen con mas espacio. "
+            "Diagnostico: df -h / /tmp " + str(root) + ". "
+            "PYRION no ha borrado tus aplicaciones ni documentos."
+        )
+
+    selected_temp = default_temp if use_external_temp else root / "runtime" / "tmp"
+    selected_temp.mkdir(parents=True, exist_ok=True)
+    return selected_temp
+
+
 def ensure_desktop_qt() -> None:
     """Instala solo los modulos Qt usados por PYRION en pyrionos/envs/desktop."""
     global DESKTOP_QT_LOG
@@ -961,19 +1049,32 @@ def ensure_desktop_qt() -> None:
     stage = target.parent / (".desktop-qt-install-" + uuid.uuid4().hex)
     backup = target.parent / (".desktop-qt-backup-" + uuid.uuid4().hex)
     try:
+        # Check both disk space and inodes before pip downloads the 84 MB wheel.
+        temp_dir = _qt_disk_preflight(root, notify)
         stage.mkdir(mode=0o700)
-        pip_cmd, pip_env = manager._pip_cmd(notify)
+        pip_cmd, pip_env = manager._pip_cmd(
+            notify, temp_dir=temp_dir, no_cache=True
+        )
         cmd = pip_cmd + [
             "--isolated", "install", "--disable-pip-version-check", "--no-input",
             "--only-binary=:all:", "--prefer-binary", "--timeout", "30",
-            "--retries", "2", "--target", str(stage), "--cache-dir",
-            str(root / "cache" / "pip"), DESKTOP_QT_PACKAGE,
+            "--retries", "2", "--no-cache-dir",
+            "--target", str(stage), DESKTOP_QT_PACKAGE,
         ]
         notify("Instalando PySide6-Essentials y shiboken6 en el disco persistente...")
         rc, details = manager._run_monitored(
             cmd, pip_env, notify, "Instalacion de PySide6", timeout=900,
         )
         if rc != 0:
+            if "No space left on device" in details or "[Errno 28]" in details:
+                free = shutil.disk_usage(root).free
+                raise RuntimeError(
+                    "El disco se quedo sin espacio durante la extraccion de PySide6. "
+                    "Libres en " + str(root) + ": " + _storage_mib(free)
+                    + ". Usa df -h / /tmp " + str(root)
+                    + " y amplia o cambia el almacenamiento persistente. "
+                    "No se han eliminado datos de usuario."
+                )
             raise RuntimeError("pip termino con codigo " + str(rc) + ": " + details[-2500:])
         passed, reason = _qt_import_probe(stage)
         if not passed:
