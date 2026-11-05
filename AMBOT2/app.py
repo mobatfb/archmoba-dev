@@ -594,7 +594,7 @@ class AMBOT2App(ShowBase):
         self.menu_order=["OBSERVACION AUTOMATICA"]+list(JOINT_GROUPS)+[
             "MANOS Y DEDOS","AGARRE","OBJETOS","APRENDIZAJE","AYUDA"]
         self.menu_state={
-            section in ("OBSERVACION AUTOMATICA","CABEZA Y TRONCO")
+            section: section in ("OBSERVACION AUTOMATICA","CABEZA Y TRONCO")
             for section in self.menu_order
         }
         self.joint_sliders={}

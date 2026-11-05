@@ -215,7 +215,7 @@ class ObservationLearner:
         if not motor_observed:
             return (f"Asocie el nombre '{label}' con lo ocurrido, pero "
                     "todavia necesito observar el movimiento para ejecutarlo.")
-        return (f"Ahora se que lo que observe se llama '{label}'. "
+        return (f"Observe tu movimiento y ahora se que se llama '{label}'. "
                 "Guarde tus movimientos para intentar aprenderlos.")
 
     def available(self):
