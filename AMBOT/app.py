@@ -2018,7 +2018,9 @@ class Robot:
             self._save()
             return "Dato olvidado."
         if cmd in ("ayuda", "help", "?"):
-            return "AUTO inicia solo. W/A/S/D mover, F agarrar, L cama, 1/2/3 guias, P progreso; CEREBRO, PREGUNTA, RESPONDE texto, LEER texto, ENSENAME texto, CONTAR."
+            return ("AMBOT: WASD y comandos; TÚ: flechas + MI CUERPO, "
+                    "articulaciones, SENTARSE, LEVANTARSE. "
+                    "Editor: AÑADIR / QUITAR; chat: validar interpretaciones.")
         return "No entiendo ese comando aun. Escribe AYUDA."
 
 
@@ -2793,6 +2795,10 @@ class DesktopApp:
         self.editor_mode=False
         self.editor_resume_auto=False
         self.editor_style="clasica"
+        self.editor_choice="silla_clasica"
+        self.editor_category="sillas"
+        self.avatar_panel=True
+        self.avatar_joint="brazo_der"
         self.editor_action="add"
         self.editor_orientation=2
         self.editor_rect=pg.Rect(0,0,1,1)
@@ -2918,6 +2924,65 @@ class DesktopApp:
             self.screen.blit(
                 font.render(line,True,(25,46,63)),
                 (rect.x+padding,rect.y+9+i*line_height))
+
+    def draw_avatar_panel(self,rect):
+        """Panel manual de articulaciones. Se dibuja sobre el visor del bebe."""
+        if not self.avatar_panel or self.editor_mode:return
+        pg=self.pg
+        self.panel(rect,fill=(9,26,44),border=COLOR["yellow"])
+        person=self.robot.human
+        x=rect.x+12
+        width=rect.width-24
+        gap=5
+        col=(width-gap)//2
+        self.text((x,rect.y+11),"TU PERSONAJE / HUMANO",16,COLOR["yellow"])
+        self.button("avatar_close","✕",rect.right-38,rect.y+7,26,26)
+        self.text((x,rect.y+46),
+                  "FLECHAS: mover tu avatar",13,COLOR["cyan"],width)
+        self.text((x,rect.y+64),
+                  "X="+str(person.x)+" Z="+str(person.z)+" · "+
+                  ("SENTADO" if person.seated else "DE PIE"),
+                  13,COLOR["ink"],width)
+        self.text((x,rect.y+94),"ARTICULACIONES",14,COLOR["muted"])
+        names=list(HUMAN_JOINTS)
+        for i,name in enumerate(names):
+            xx=x+(i%2)*(col+gap)
+            yy=rect.y+117+(i//2)*30
+            title=HUMAN_JOINTS[name]
+            self.button("avatar_joint_"+name,title,xx,yy,col,26,
+                        self.avatar_joint==name)
+        angle=person.joints[self.avatar_joint]
+        self.text((x,rect.y+273),
+                  HUMAN_JOINTS[self.avatar_joint]+" · "+str(angle)+"°",
+                  14,COLOR["yellow"],width)
+        self.button("avatar_minus","− 10°",x,rect.y+298,col,31)
+        self.button("avatar_plus","+ 10°",x+col+gap,rect.y+298,col,31)
+        self.text((x,rect.y+345),"POSTURAS",14,COLOR["muted"])
+        self.button("avatar_sit","SENTARSE",x,rect.y+370,col,32,person.seated)
+        self.button("avatar_stand","LEVANTARSE",x+col+gap,rect.y+370,col,32)
+        self.button("avatar_wave","SALUDAR",x,rect.y+408,col,32)
+        self.button("avatar_squat","AGACHARSE",x+col+gap,rect.y+408,col,32)
+        self.button("avatar_reset","RESTAURAR POSTURA",
+                    x,rect.y+451,width,32)
+        self.text((x,rect.bottom-52),"WASD: AMBOT · FLECHAS: TÚ",
+                  13,COLOR["muted"],width)
+        self.text((x,rect.bottom-34),"AMBOT aprende mientras te mueves",
+                  13,COLOR["green"],width)
+
+    def draw_avatar_label(self):
+        human=self.robot.human
+        wx,wz=self.scene.world(human.x,human.z)
+        pos=self.scene.project((wx,3.10,wz))
+        if pos is None:return
+        sx,sy=int(pos[0]),int(pos[1])
+        if not self.view.collidepoint((sx,sy)):return
+        title="TÚ · SENTADO" if human.seated else "TÚ · CONTROL"
+        font=self.fonts[13]
+        width=font.size(title)[0]+13
+        rect=self.pg.Rect(sx-width//2,sy-15,width,22)
+        self.pg.draw.rect(self.screen,(32,36,41),rect,border_radius=6)
+        self.pg.draw.rect(self.screen,COLOR["yellow"],rect,1,border_radius=6)
+        self.text((rect.x+6,rect.y+4),title,13,COLOR["yellow"])
 
     def draw_guides_and_skills(self, rect):
         """HUD de entrenamiento superpuesto sin ocultar el mundo completo."""
@@ -3215,7 +3280,27 @@ class DesktopApp:
         self.say(message,duration=4.0)
 
     def handle_button(self,key):
-        if key=="editor_toggle":
+        if key in ("avatar_toggle","avatar_close"):
+            self.avatar_panel=not self.avatar_panel
+        elif key.startswith("avatar_joint_"):
+            joint=key[len("avatar_joint_"):]
+            if joint in HUMAN_JOINTS:
+                self.avatar_joint=joint
+        elif key in ("avatar_plus","avatar_minus"):
+            amount=10 if key=="avatar_plus" else -10
+            message=self.robot.human.change_joint(self.avatar_joint,amount)
+            self.add_log("TU CUERPO",message,COLOR["yellow"])
+        elif key in ("avatar_sit","avatar_stand"):
+            message=(self.robot.human.sit() if key=="avatar_sit"
+                     else self.robot.human.stand())
+            self.add_log("TU CUERPO",message,COLOR["yellow"])
+            self.say(message,4.2)
+        elif key in ("avatar_wave","avatar_squat","avatar_reset"):
+            pose={"avatar_wave":"saludar","avatar_squat":"agacharse",
+                  "avatar_reset":"reposo"}[key]
+            message=self.robot.human.pose(pose)
+            self.add_log("TU CUERPO",message,COLOR["yellow"])
+        elif key=="editor_toggle":
             self.toggle_editor() if self.editor_mode else self.toggle_editor("add")
         elif key=="editor_done":
             self.toggle_editor()
@@ -3290,10 +3375,18 @@ class DesktopApp:
         if self.editor_mode and e.key==pg.K_ESCAPE:
             self.toggle_editor()
             return
+        arrows={pg.K_UP:0,pg.K_RIGHT:1,pg.K_DOWN:2,pg.K_LEFT:3}
+        if e.key in arrows:
+            if self.editor_mode:
+                self.add_log("TU CUERPO","Cierra el editor para moverte.",
+                             COLOR["yellow"])
+            else:
+                msg=self.robot.human.move(arrows[e.key])
+                self.add_log("TU CUERPO",msg,COLOR["yellow"])
+            return
         actions={
-            pg.K_w:"avanza", pg.K_UP:"avanza", pg.K_s:"retrocede", pg.K_DOWN:"retrocede",
-            pg.K_a:"gira izquierda", pg.K_LEFT:"gira izquierda",
-            pg.K_d:"gira derecha", pg.K_RIGHT:"gira derecha",
+            pg.K_w:"avanza",pg.K_s:"retrocede",
+            pg.K_a:"gira izquierda",pg.K_d:"gira derecha",
             pg.K_e:"explora",
         }
         if e.key in actions:
@@ -3368,6 +3461,7 @@ class DesktopApp:
         self.scene.render(surf,self.view,self.robot,dt,self.elapsed)
         self.draw_editor_preview()
         self.draw_guide_labels(self.view)
+        self.draw_avatar_label()
         self.portrait_view=left
         self.draw_character_viewer(left)
         self.draw_speech_bubble(left)
@@ -3445,6 +3539,11 @@ class DesktopApp:
         if not value:value="Escribe un comando y pulsa ENTER"
         self.text((x+9,inputy+12),value,13,COLOR["ink"] if self.input_value else COLOR["muted"],inner-20)
         self.draw_guides_and_skills(self.view)
+        self.button("avatar_toggle",
+                    "VISOR AMBOT" if self.avatar_panel else "MI CUERPO · PANEL",
+                    self.view.x+15,self.view.y+130,176,30,
+                    self.avatar_panel)
+        self.draw_avatar_panel(left)
         self.draw_editor_palette()
         self.text((23,h-45),"＋ AÑADIR / − QUITAR OBJETOS · CLIC EN 3D · DESHACER · TAB CHAT",
                   14,COLOR["muted"])
