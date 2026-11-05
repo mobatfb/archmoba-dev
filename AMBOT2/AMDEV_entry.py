@@ -4,7 +4,7 @@ AMDEV puede descargar un solo app.py. Este archivo trae los modulos
 oficiales de AMBOT2 desde un commit inmutable antes de arrancar
 la aplicacion nativa. En modo local usa los archivos del repositorio.
 """
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 import json
 import re
@@ -23,6 +23,7 @@ MODULE_FILES = (
     "body/grasp.py",
     "brain/__init__.py",
     "brain/learning.py",
+    "brain/auto_observer.py",
     "language/__init__.py",
     "language/understanding.py",
     "teacher/__init__.py",
@@ -49,7 +50,7 @@ def _fetch_source(base, sha, path):
         f"{sha}/AMBOT2/{path}"
     )
     request = urllib.request.Request(
-        url, headers={"User-Agent": "ARCHMOBA-AMBOT2/0.2"}
+        url, headers={"User-Agent": "ARCHMOBA-AMBOT2/0.3"}
     )
     with urllib.request.urlopen(request, timeout=25) as response:
         source = response.read().decode("utf-8-sig")

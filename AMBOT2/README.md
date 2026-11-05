@@ -1,4 +1,4 @@
-# AMBOT 2.0 v0.2.0 — Maestro humano y robot aprendiz
+# AMBOT 2.0 v0.3.0 — Maestro humano y robot aprendiz
 
 Nueva implementación independiente en Python, Panda3D y Bullet. No usa
 Tkinter, navegador, servidor ni las rutinas de los tres instructores
@@ -18,6 +18,50 @@ directorio de dependencias. Alternativamente:
 Los datos persistentes están en:
 
     %LOCALAPPDATA%\ARCHMOBA\AMBOT2
+
+## Observación automática y preguntas — v0.3.0
+
+**AMBOT te observa desde que abres la aplicación.** Ya no debes pulsar
+GRABAR para cada movimiento.
+
+1. Mueve al MAESTRO caminando con WASD o manipulando cualquier
+   articulación, mano, dedo o objeto.
+2. Si sigues moviéndote, AMBOT agrupa el movimiento en una acción.
+3. Al detectar aproximadamente **1,15 segundos de reposo** después de
+   la acción, guarda la experiencia **sin nombre** y pregunta:
+   «¿Cómo se llama lo que acabas de hacer?».
+4. Responde en el campo inferior, por ejemplo: «Flexionar el codo»,
+   «Estoy girando a la izquierda» o «Eso se llama levantar el cuadro».
+5. AMBOT guarda la etiqueta junto con los movimientos, contactos y
+   contexto observado. Puedes escribir «practicar flexionar el codo»
+   para que intente imitar parte del movimiento aprendido.
+
+El nombre no se inventa: lo aporta el MAESTRO. Los movimientos se
+guardan antes de la respuesta y persisten si cierras la aplicación.
+Los ejemplos conservan trayectorias con distintos fotogramas, no solo
+la postura inicial y final. Si la mano se abre y cierra y termina donde
+empezó, AMBOT aún puede detectar que ocurrió algo.
+
+La sección expandible **OBSERVACION AUTOMATICA** permite pausar o activar
+la observación, repetir preguntas, consultar habilidades y omitir una
+pregunta sin perder la experiencia. Puedes escribir:
+
+    observar si
+    pausar observacion
+    repetir pregunta
+    omitir accion
+    habilidades
+
+La grabación manual anterior sigue disponible como alternativa.
+Al usarla se suspende la observación automática para evitar duplicados.
+
+**Alcance actual:** observación pasiva de posiciones, dedos y eventos
+físicos detectados por el simulador; asociación de palabras aportadas
+por el MAESTRO y política básica de imitación. No es reconocimiento
+visual universal de cualquier gesto ni capacidad autónoma de ejecutar
+toda acción compuesta. En acciones detectadas únicamente por un
+contacto, AMBOT recuerda el nombre, pero reconoce que todavía debe
+aprender el movimiento corporal correspondiente.
 
 ## Articulaciones corporales (v0.2.0)
 
