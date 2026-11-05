@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 APP_DIR=Path(__file__).resolve().parent
 DATA_DIR=Path(os.environ.get("LOCALAPPDATA",str(Path.home()/".local"/"share")))/"ARCHMOBA"/"AMBOT2"
 SCENE=DATA_DIR/"escena.json"
@@ -50,7 +50,7 @@ from direct.showbase.ShowBase import ShowBase
 from direct.gui.DirectGui import DirectFrame, DirectButton, DirectEntry, DirectSlider, DirectLabel
 from direct.gui.OnscreenText import OnscreenText
 from engine.world import LabWorld
-from body.robot import Humanoid, HAND_NAMES, FINGER_NAMES, clamp
+from body.robot import Humanoid, HAND_NAMES, FINGER_NAMES, clamp, tank_inputs
 from body.grasp import GraspSystem
 from brain.learning import ObservationLearner
 from teacher.recorder import DemonstrationRecorder
@@ -401,7 +401,7 @@ class AMBOT2App(ShowBase):
             if command in ("soltar","liberar"):
                 return self.release()
             if command=="ayuda":
-                return self.say("WASD mover | 1/2 mano | [ ] dedo | Q/E flexionar | 3/4 ambas manos | B agarrar ambas | N soltar ambas | O/P grabar | H practicar | 5-8 objetos | lenguaje en el campo de texto.")
+                return self.say("TANQUE: W/S avance-retroceso, A/D giro sobre eje; flechas equivalentes | 1/2 mano | [ ] dedo | Q/E flexionar | 3/4 ambas manos | B agarrar ambas | N soltar ambas | O/P grabar | H practicar | 5-8 objetos | lenguaje en el campo de texto.")
             answer=self.language.hear(raw,self.editor.selected)
             return self.say("AMBOT: "+answer)
         except (ValueError,KeyError,TypeError,OSError) as exc:
@@ -465,7 +465,7 @@ class AMBOT2App(ShowBase):
             pos=(.02,-.85),scale=.029,align=TextNode.ALeft,
             fg=(.68,.78,.84,1))
         self.legend=OnscreenText(
-            parent=self.panel,text="WASD mover · T agarrar · G soltar · H practicar",
+            parent=self.panel,text="W/S AVANZAR-RETROCEDER · A/D GIRAR · T TOMAR",
             pos=(.02,-.93),scale=.026,align=TextNode.ALeft,
             fg=(.54,.69,.77,1))
 
@@ -491,11 +491,11 @@ class AMBOT2App(ShowBase):
 
     def _update(self,task):
         dt=max(0,min(.05,self.taskMgr.globalClock.getDt()))
-        dx=int("d" in self.keys or "arrow_right" in self.keys)-int(
-            "a" in self.keys or "arrow_left" in self.keys)
-        dy=int("w" in self.keys or "arrow_up" in self.keys)-int(
-            "s" in self.keys or "arrow_down" in self.keys)
-        self.teacher.move(dx,dy,dt)
+        # No mover el avatar mientras se escriben instrucciones al aprendiz.
+        if self.entry["focus"]:
+            self.keys.clear()
+        forward,turn=tank_inputs(self.keys)
+        self.teacher.drive(forward,turn,dt)
         if self.rotating_camera and self.mouseWatcherNode.hasMouse():
             m=self.mouseWatcherNode.getMouse()
             if self.mouse_prev:

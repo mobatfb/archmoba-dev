@@ -6,6 +6,18 @@ from engine.primitives import cuboid, sphere
 
 FINGER_NAMES=("pulgar","indice","medio","anular","menique")
 HAND_NAMES=("izquierda","derecha")
+WALK_SPEED=2.15
+TURN_SPEED=125.0
+
+
+def tank_inputs(keys):
+    """Flechas/WASD: avance y retroceso sobre eje frontal; giro sin strafe."""
+    keys=set(keys)
+    forward=int(bool({"w","arrow_up"} & keys))-int(bool({"s","arrow_down"} & keys))
+    turn=int(bool({"a","arrow_left"} & keys))-int(bool({"d","arrow_right"} & keys))
+    return forward,turn
+
+
 
 
 def clamp(value,minimum=0.0,maximum=1.0):
@@ -162,18 +174,27 @@ class Humanoid:
         self._leg("pierna_izquierda",phase)
         self._leg("pierna_derecha",-phase)
 
-    def move(self,x,y,dt=1/60):
-        if not x and not y:
-            self.walking=False
-            self.update_visual()
-            return
-        from math import radians, sin, cos
-        theta=radians(self.heading)
-        dx=x*cos(theta)-y*sin(theta)
-        dy=x*sin(theta)+y*cos(theta)
-        self.node.setPos(self.node.getPos()+Vec3(dx*dt*2.15,dy*dt*2.15,0))
-        self.walk_time+=dt
-        self.walking=True
+    def drive(self,forward=0,turn=0,dt=1/60):
+        """Movimiento tipo tanque: sin desplazamiento lateral.
+
+        W/S: hacia adelante o atras; A/D: rotacion sobre el eje vertical.
+        Las combinaciones W+A o W+D describen una curva.
+        """
+        from math import radians,sin,cos
+        dt=max(0.0,min(.05,float(dt)))
+        forward=max(-1.0,min(1.0,float(forward)))
+        turn=max(-1.0,min(1.0,float(turn)))
+        if turn:
+            self.heading=(self.heading+turn*TURN_SPEED*dt)%360
+        self.walking=bool(forward)
+        if forward:
+            angle=radians(self.heading)
+            distance=forward*WALK_SPEED*dt
+            current=self.node.getPos(self.root)
+            x=max(-24.5,min(24.5,current.x-sin(angle)*distance))
+            y=max(-24.5,min(24.5,current.y+cos(angle)*distance))
+            self.node.setPos(x,y,current.z)
+            self.walk_time+=dt
         self.update_visual()
 
     def turn(self,delta):

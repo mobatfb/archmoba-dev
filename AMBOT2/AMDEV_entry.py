@@ -4,7 +4,7 @@ AMDEV puede descargar un solo app.py. Este archivo trae los modulos
 oficiales de AMBOT2 desde un commit inmutable antes de arrancar
 la aplicacion nativa. En modo local usa los archivos del repositorio.
 """
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 
 import json
 import re
