@@ -34,7 +34,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -849,7 +849,7 @@ def _run_desktop_process(store: PersistentStore, desktop: Path, observer=None,
 def start_desktop(store: PersistentStore, name: str, desktop: Path, state: dict,
                   observer=None) -> int:
     if observer is not None:
-        observer.stage("qt", "Preparando el entorno grafico del escritorio...")
+        observer.stage("qt", "Verificando pip y PySide6 (primera instalacion puede tardar varios minutos)...")
     code = _run_desktop_process(store, desktop, observer=observer, requires_ready=True)
     if code == 0:
         return 0

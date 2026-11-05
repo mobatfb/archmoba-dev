@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.3.5
+"""PYRION OS Desktop v0.3.6
 
 Escritorio experimental para Windows/Linux, construido con PySide6.
 Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
@@ -21,8 +21,11 @@ import csv
 from datetime import datetime, timezone
 import json
 import os
+import queue
 from pathlib import Path
 import re
+import time
+import zipfile
 import shutil
 import subprocess
 import threading
@@ -338,33 +341,199 @@ class DependencyManager:
         except (OSError, ValueError, KeyError):
             return False
 
+    @staticmethod
+    def _run_monitored(command: list[str], env: dict[str, str],
+                       notify: Callable[[str], None], label: str,
+                       timeout: int = 180) -> tuple[int, str]:
+        """Show subprocess output without blocking the GUI's progress monitor.
+
+        A reader thread prevents pip output from filling the OS pipe; the main
+        thread emits a heartbeat even when pip is waiting on HTTPS responses.
+        """
+        pending: queue.Queue[str | None] = queue.Queue()
+        last_lines: list[str] = []
+        started = time.monotonic()
+        last_heartbeat = started
+        try:
+            with subprocess.Popen(
+                command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, errors="replace", bufsize=1,
+                stdin=subprocess.DEVNULL,
+            ) as process:
+                assert process.stdout is not None
+
+                def receive() -> None:
+                    try:
+                        for line in process.stdout:
+                            pending.put(line)
+                    finally:
+                        pending.put(None)
+
+                threading.Thread(target=receive, daemon=True).start()
+                reader_finished = False
+                while not reader_finished or process.poll() is None:
+                    try:
+                        item = pending.get(timeout=0.35)
+                        if item is None:
+                            reader_finished = True
+                        elif item.strip():
+                            line = item.strip()[-500:]
+                            last_lines.append(line)
+                            del last_lines[:-25]
+                            notify(label + ": " + line)
+                    except queue.Empty:
+                        pass
+                    elapsed = time.monotonic() - started
+                    if elapsed >= timeout and process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=8)
+                        raise TimeoutError(
+                            label + " no respondio en " + str(timeout)
+                            + " segundos. Revisa la conexion o compatibilidad de Python."
+                        )
+                    if elapsed - (last_heartbeat - started) >= 12 and process.poll() is None:
+                        notify(label + ": esperando respuesta (" + str(int(elapsed)) + " s)...")
+                        last_heartbeat = time.monotonic()
+                # Drain buffered lines after the subprocess exits.
+                while not pending.empty():
+                    item = pending.get_nowait()
+                    if item and item.strip():
+                        line = item.strip()[-500:]
+                        last_lines.append(line)
+                        del last_lines[:-25]
+                        notify(label + ": " + line)
+                return process.wait(), "\n".join(last_lines[-15:])
+        except TimeoutError:
+            # TimeoutError hereda de OSError: nunca ocultar el diagnostico.
+            raise
+        except OSError as exc:
+            raise RuntimeError(label + ": no se pudo iniciar el proceso: " + str(exc)) from exc
+
+    @staticmethod
+    def _download_bootstrap(url: str, limit: int,
+                            notify: Callable[[str], None], label: str) -> bytes:
+        """Download incrementally, displaying progress and limiting file size."""
+        request = urllib.request.Request(url, headers={
+            "User-Agent": "PYRION-OS/0.3.6", "Accept": "application/octet-stream",
+        })
+        data = bytearray()
+        last_report = 0
+        notify(label + ": conectando por HTTPS...")
+        with urllib.request.urlopen(request, timeout=25) as response:
+            expected = response.headers.get("Content-Length", "")
+            if expected.isdigit() and int(expected) > limit:
+                raise RuntimeError(label + ": descarga demasiado grande")
+            while True:
+                chunk = response.read(256 * 1024)
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if len(data) > limit:
+                    raise RuntimeError(label + ": descarga excede el limite")
+                if len(data) - last_report >= 1024 * 1024:
+                    notify(label + ": " + str(len(data) // 1024) + " KiB recibidos")
+                    last_report = len(data)
+        if not data:
+            raise RuntimeError(label + ": respuesta vacia")
+        notify(label + ": descarga completa (" + str(len(data) // 1024) + " KiB)")
+        return bytes(data)
+
     def _pip_cmd(self, notify: Callable[[str], None]) -> tuple[list[str], dict[str, str]]:
+        """Select persistent pip, bootstrap it, or use a cached standalone zip.
+
+        The system interpreter is never modified and every package install
+        still requires an explicit --target in pyrionos/.
+        """
         env = os.environ.copy()
         env["PYTHONNOUSERSITE"] = "1"
         env["PIP_CACHE_DIR"] = str(self.cache_dir)
-        cmd = [self.python, "-m", "pip"]
-        result = subprocess.run(cmd + ["--version"], env=env, capture_output=True, timeout=30)
-        if result.returncode == 0:
-            return cmd, env
-        env["PYTHONPATH"] = os.pathsep.join([str(self.pip_runtime), env.get("PYTHONPATH", "")]).strip(os.pathsep)
-        if subprocess.run(cmd + ["--version"], env=env, capture_output=True, timeout=30).returncode == 0:
-            return cmd, env
-        notify("Python no incluye pip; preparando pip en pyrionos/runtime/pip...")
-        url = "https://bootstrap.pypa.io/get-pip.py"
+        env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+        env["PIP_NO_INPUT"] = "1"
+        normal_cmd = [self.python, "-m", "pip"]
+        env["PYTHONPATH"] = os.pathsep.join([
+            str(self.pip_runtime), env.get("PYTHONPATH", "")
+        ]).strip(os.pathsep)
+
+        def working(cmd: list[str]) -> bool:
+            try:
+                proc = subprocess.run(
+                    cmd + ["--version"], env=env, capture_output=True,
+                    text=True, errors="replace", timeout=14, check=False,
+                )
+                if proc.returncode == 0:
+                    notify("pip disponible: " + (proc.stdout or "").strip()[:160])
+                    return True
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            return False
+
+        if working(normal_cmd):
+            return normal_cmd, env
+
+        zipapp = self.root / "runtime" / "pip.pyz"
+        zip_cmd = [self.python, str(zipapp)]
+        if zipapp.is_file() and zipfile.is_zipfile(zipapp) and working(zip_cmd):
+            notify("Reutilizando pip.pyz guardado en el disco persistente.")
+            return zip_cmd, env
+
+        notify("Python no incluye pip; intentando preparar el instalador persistente...")
+        reasons: list[str] = []
         bootstrap = self.root / "runtime" / "get-pip.py"
         bootstrap.parent.mkdir(parents=True, exist_ok=True)
-        script = ToolCatalog._download(url, 3 * 1024 * 1024)
-        atomic_bytes(bootstrap, script)
         try:
-            cmd_boot = [self.python, str(bootstrap), "--no-warn-script-location", "--disable-pip-version-check", "--target", str(self.pip_runtime)]
-            complete = subprocess.run(cmd_boot, env=env, capture_output=True, text=True, timeout=420)
-            if complete.returncode != 0:
-                raise RuntimeError("No fue posible preparar pip: " + complete.stdout[-1000:] + complete.stderr[-1000:])
+            data = self._download_bootstrap(
+                "https://bootstrap.pypa.io/get-pip.py", 4 * 1024 * 1024,
+                notify, "Descarga get-pip.py",
+            )
+            atomic_bytes(bootstrap, data)
+            command = [
+                self.python, str(bootstrap), "--no-warn-script-location",
+                "--disable-pip-version-check", "--no-input", "--timeout", "18",
+                "--retries", "1", "--target", str(self.pip_runtime),
+            ]
+            notify("Preparando pip en " + str(self.pip_runtime))
+            rc, output = self._run_monitored(
+                command, env, notify, "Instalando pip local", timeout=150,
+            )
+            if rc != 0:
+                raise RuntimeError("get-pip termino con codigo " + str(rc) + ": " + output[-1200:])
+            if working(normal_cmd):
+                notify("pip preparado en el almacenamiento persistente.")
+                return normal_cmd, env
+            raise RuntimeError("get-pip termino pero el modulo pip aun no se puede usar")
+        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+            reasons.append("get-pip: " + str(exc)[-1100:])
+            notify("get-pip no pudo completarse: " + str(exc)[-250:])
         finally:
             bootstrap.unlink(missing_ok=True)
-        if subprocess.run(cmd + ["--version"], env=env, capture_output=True, timeout=30).returncode != 0:
-            raise RuntimeError("pip no funciona en el runtime persistente")
-        return cmd, env
+
+        # Experimental upstream zipapp, only a fallback when the standard
+        # get-pip bootstrap fails. It is kept in the persistent runtime.
+        try:
+            if not (zipapp.is_file() and zipfile.is_zipfile(zipapp)):
+                notify("Probando metodo alternativo de pip sin instalacion global...")
+                payload = self._download_bootstrap(
+                    "https://bootstrap.pypa.io/pip/pip.pyz", 30 * 1024 * 1024,
+                    notify, "Descarga pip.pyz",
+                )
+                atomic_bytes(zipapp, payload)
+            if not zipfile.is_zipfile(zipapp):
+                raise RuntimeError("pip.pyz no es un archivo ZIP valido")
+            with zipfile.ZipFile(zipapp) as package:
+                if "__main__.py" not in package.namelist():
+                    raise RuntimeError("pip.pyz no tiene punto de entrada")
+            if not working(zip_cmd):
+                raise RuntimeError("pip.pyz no es compatible con este Python")
+            notify("pip.pyz disponible en el disco persistente.")
+            return zip_cmd, env
+        except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
+            reasons.append("pip.pyz: " + str(exc)[-800:])
+            notify("Metodo alternativo de pip no disponible: " + str(exc)[-200:])
+
+        raise RuntimeError(
+            "No se pudo preparar pip sin modificar Linux.\n" + "\n".join(reasons)
+            + "\nRevisa el acceso HTTPS a bootstrap.pypa.io, DNS y la version de Python."
+        )
 
     def install(self, tool: Tool, packages: list[str], notify: Callable[[str], None] = lambda _: None) -> bool:
         """Called on a worker thread, after explicit user approval of new packages."""
@@ -417,7 +586,7 @@ class DependencyManager:
 
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -801,15 +970,11 @@ def ensure_desktop_qt() -> None:
             str(root / "cache" / "pip"), DESKTOP_QT_PACKAGE,
         ]
         notify("Instalando PySide6-Essentials y shiboken6 en el disco persistente...")
-        completed = subprocess.run(
-            cmd, env=pip_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, errors="replace", timeout=900, check=False,
+        rc, details = manager._run_monitored(
+            cmd, pip_env, notify, "Instalacion de PySide6", timeout=900,
         )
-        if completed.returncode != 0:
-            tail = (completed.stdout or "")[-2500:]
-            raise RuntimeError(
-                f"pip termino con codigo {completed.returncode}: " + tail
-            )
+        if rc != 0:
+            raise RuntimeError("pip termino con codigo " + str(rc) + ": " + details[-2500:])
         passed, reason = _qt_import_probe(stage)
         if not passed:
             raise RuntimeError(
