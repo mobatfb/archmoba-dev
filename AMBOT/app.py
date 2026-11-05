@@ -1265,7 +1265,7 @@ class FurnitureEditor:
                     self.chairs.pop(idx)
                     self.history.pop()
                     self.save()
-                    return True,"Deshice la colocacion de la silla."
+                    return True,"Quite la silla agregada: deshice su colocacion."
             return False,"La silla ya no esta en esa posicion."
         if kind=="remove_chair":
             chair=action["chair"]
