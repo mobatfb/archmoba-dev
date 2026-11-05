@@ -44,7 +44,7 @@ ensure_panda3d()
 from panda3d.bullet import BulletWorld
 from panda3d.core import (
     AmbientLight, DirectionalLight, Vec3, Point3, Point2, TextNode,
-    WindowProperties, loadPrcFileData
+    WindowProperties, loadPrcFileData, Camera, PerspectiveLens
 )
 from direct.showbase.ShowBase import ShowBase
 from direct.gui.DirectGui import DirectFrame, DirectButton, DirectEntry, DirectSlider, DirectLabel
@@ -67,6 +67,10 @@ class AMBOT2App(ShowBase):
             loadPrcFileData("","window-title AMBOT2 - Laboratorio de aprendizaje\n"
                         "win-size 1380 790\nsync-video true")
         super().__init__(windowType="none" if headless else "onscreen")
+        if headless and self.camera is None:
+            self.camLens=PerspectiveLens()
+            self.camera=self.render.attachNewNode(Camera("camara-sin-monitor"))
+            self.camera.node().setLens(self.camLens)
         self.headless=headless
         self.disableMouse()
         self.setBackgroundColor(.043,.07,.105,1)

@@ -64,7 +64,7 @@ class BasisTests(unittest.TestCase):
         teacher.hand_close("izquierda",1)
         grasp.sync()
         point=teacher.all_fingertips()[("izquierda",1)]
-        obj=lab.spawn("caja",pos=tuple(point),size=(.65,.65,.65),mass=.5)
+        obj=lab.spawn("caja",pos=tuple(point),size=(1.0,1.0,1.0),mass=.5)
         lab.step(.015)
         ok,contacts=grasp.inspect("izquierda",obj)
         self.assertTrue(ok,contacts)

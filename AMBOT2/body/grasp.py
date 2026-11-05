@@ -46,14 +46,33 @@ class GraspSystem:
         for key,position in self.robot.all_fingertips().items():
             self.fingers[key].setPos(position)
 
+    def _overlap(self,tip,obj,radius=.07):
+        """Interseccion de esfera de dedo con caja orientada / esfera.
+
+        Usa la misma geometria de colision que los cuerpos Bullet; evita
+        perder contactos cuando el broadphase se actualiza un frame despues
+        de modificar articulaciones cinematicas.
+        """
+        from engine.world import ROUND
+        local=obj.np.getRelativePoint(self.lab.root,tip)
+        if obj.kind in ROUND:
+            return local.length_squared() <= (radius+obj.size[0]*.5)**2
+        dx=max(0.0,abs(local.x)-obj.size[0]*.5)
+        dy=max(0.0,abs(local.y)-obj.size[1]*.5)
+        dz=max(0.0,abs(local.z)-obj.size[2]*.5)
+        return dx*dx+dy*dy+dz*dz <= radius*radius
+
     def _contacts(self,hand,obj):
-        """Contacto Bullet actual y no proximidad basada en nombres."""
-        return {
-            i:bool(self.lab.physics.contactTestPair(
-                self.fingers[(hand,i)].node(),obj.np.node()
+        """Interseccion fisica de yema/cuerpo (Bullet o esfera-caja OBB)."""
+        out={}
+        for i in range(5):
+            finger=self.fingers[(hand,i)]
+            bullet=bool(self.lab.physics.contactTestPair(
+                finger.node(),obj.np.node()
             ).getNumContacts())
-            for i in range(5)
-        }
+            geom=self._overlap(finger.getPos(self.lab.root),obj)
+            out[i]=bullet or geom
+        return out
 
     def inspect(self,hand,obj):
         contacts=self._contacts(hand,obj)
