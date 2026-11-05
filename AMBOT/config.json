@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "AMBOT autonómo en entorno 3D con botón AÑADIR, selector y colocación de sillas, curiosidad y puente Arduino",
+  "description": "AMBOT autonomo con editor 3D para añadir sillas por tipo y posicion; memoria y Arduino",
   "version": "0.6.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "6520d0b955ca9c286e4a80302820a390cd66ba9c",
+  "release_commit": "5cf880d56702132fb15c913d915626266a0b20e1",
   "maintenance": false
 }
