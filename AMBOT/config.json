@@ -4,6 +4,6 @@
   "description": "Robot bebe autonomo con curiosidad, preguntas, memoria persistente y puente Arduino seguro",
   "version": "0.5.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "df77746b4991121c8abf30ec79f963383bfe15ed",
+  "release_commit": "6b3d79904f8715d07c75c868af1a1869217bd07c",
   "maintenance": false
 }
