@@ -1586,6 +1586,26 @@ class Scene3D:
             depth
         )
 
+    def pick_floor(self, screen_pos):
+        """Invertir la perspectiva para elegir una celda del suelo 3D."""
+        if not self.rect.collidepoint(screen_pos):
+            return None
+        nx=(screen_pos[0]-self.rect.centerx)/self.focal
+        ny=-(screen_pos[1]-self.rect.centery)/self.focal
+        ray=unit(vadd(self.forward,vadd(vmul(self.right,nx),
+                                       vmul(self.up,ny))))
+        if ray[1]>=-1e-6:
+            return None
+        distance=(.02-self.camera[1])/ray[1]
+        if distance<=0:
+            return None
+        point=vadd(self.camera,vmul(ray,distance))
+        cell_x=round(point[0]/TILE+(len(WORLD[0])-1)/2)
+        cell_z=round(point[2]/TILE+(len(WORLD)-1)/2)
+        if 0<=cell_z<len(WORLD) and 0<=cell_x<len(WORLD[0]):
+            return (cell_x,cell_z)
+        return None
+
     def quad(self, pts, c):
         projected = [self.project(pt) for pt in pts]
         if any(x is None for x in projected):
@@ -1691,6 +1711,59 @@ class Scene3D:
         self.box(dx,2.18,dz,.14,.14,TILE*1.08,COLOR["cyan"])
         self.box(dx,.012,dz,TILE*.94,.035,TILE*.86,COLOR["rug"])
 
+    def build_user_chairs(self, furniture):
+        """Dibujar los tres modelos de silla orientados en el plano XZ."""
+        for chair in furniture.chairs:
+            center_x,center_z=self.world(chair["x"],chair["z"])
+            style=chair["style"]
+            orientation=chair["orientation"]
+            def position(dx,dz):
+                if orientation==0:return center_x+dx,center_z+dz
+                if orientation==1:return center_x-dz,center_z+dx
+                if orientation==2:return center_x-dx,center_z-dz
+                return center_x+dz,center_z-dx
+
+            def part(dx,y,dz,sx,sy,sz,color,neon=False):
+                px,pz=position(dx,dz)
+                if orientation%2:
+                    sx,sz=sz,sx
+                self.box(px,y,pz,sx,sy,sz,color,neon=neon)
+
+            if style=="alta":
+                seat_y=.87
+                color=COLOR["yellow"]
+                back=COLOR["wood"]
+            elif style=="oficina":
+                seat_y=.57
+                color=COLOR["window"]
+                back=COLOR["room_wall"]
+            else:
+                seat_y=.43
+                color=COLOR["wood"]
+                back=COLOR["room_wall"]
+
+            part(0,seat_y,0,.77,.12,.70,color,neon=True)
+            part(0,seat_y+.12,.30,.76,.65,.12,back)
+            for dx in (-.28,.28):
+                for dz in (-.25,.25):
+                    if style=="oficina":
+                        continue
+                    part(dx,0,dz,.065,seat_y,.065,COLOR["blue"])
+            if style=="alta":
+                for z in (-.25,.25):
+                    part(0,.28,z,.53,.045,.045,COLOR["cyan"])
+            if style=="oficina":
+                part(0,.07,0,.09,.49,.09,COLOR["blue"])
+                for dx,dz in ((-.42,0),(.42,0),(0,-.35),(0,.35)):
+                    px,pz=position(dx,dz)
+                    center=position(0,0)
+                    self.line((center[0],.09,center[1]),(px,.09,pz),
+                              COLOR["cyan"],.055)
+                    self.ball((px,.072,pz),.075,COLOR["wood"])
+                for dx in (-.39,.39):
+                    part(dx,.67,-.02,.055,.09,.44,COLOR["cyan"])
+                part(0,seat_y+.23,.35,.52,.21,.10,COLOR["blue"])
+
     def build_world(self, robot):
         for z,row in enumerate(WORLD):
             for x,c in enumerate(row):
@@ -1723,6 +1796,8 @@ class Scene3D:
                     if not edge and not is_room_wall:
                         self.box(px,height,pz,.13,.05,.13,COLOR["pink"])
         self.build_room_details()
+        if hasattr(robot,"furniture"):
+            self.build_user_chairs(robot.furniture)
         # Sensor virtual orientado: detecta la siguiente pared.
         dx,dz=DIRECTIONS[robot.facing]
         bx,bz=self.world(self.rx,self.rz)
