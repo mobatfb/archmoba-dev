@@ -9,7 +9,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 class NativeAppTests(unittest.TestCase):
     def test_aplicacion_nativa_y_maestro(self):
         from app import AMBOT2App,VERSION
-        self.assertEqual(VERSION,"0.1.0")
+        self.assertEqual(VERSION,"0.1.1")
         with tempfile.TemporaryDirectory() as td:
             app=AMBOT2App(headless=True,data_dir=td)
             try:

@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 
 CHANNELS=(
-    "dx","dy","reach","spread","altura",
+    "dx","dy","forward","heading","reach","spread","altura",
     "izquierda_0","izquierda_1","izquierda_2","izquierda_3","izquierda_4",
     "derecha_0","derecha_1","derecha_2","derecha_3","derecha_4"
 )
@@ -20,7 +20,9 @@ def channels(p):
     out={"dx":float(pos[0]),"dy":float(pos[1]),
          "reach":float(p.get("reach",0)),
          "spread":float(p.get("spread",0)),
-         "altura":float(p.get("hand_height",0))}
+         "altura":float(p.get("hand_height",0)),
+         "heading":float(p.get("heading",0)),
+         "forward":0.0}
     for hand in ("izquierda","derecha"):
         for i,v in enumerate(p["fingers"][hand]):
             out[f"{hand}_{i}"]=float(v)
@@ -66,6 +68,14 @@ class ObservationLearner:
             raise ValueError("Necesito una demostracion con movimiento observable.")
         first,last=channels(frames[0]),channels(frames[-1])
         signal={k:last[k]-first[k] for k in CHANNELS}
+        # Desenrollar rumbo circular: 350 a 10 grados = +20.
+        signal["heading"]=(signal["heading"]+180)%360-180
+        start_heading=math.radians(first["heading"])
+        # Distancia sobre el frente del maestro, sin movimientos laterales.
+        signal["forward"]=(
+            -math.sin(start_heading)*signal["dx"]
+            +math.cos(start_heading)*signal["dy"]
+        )
         magnitude=math.sqrt(sum(v*v for v in signal.values()))
         if magnitude<.02:
             raise ValueError("No hubo movimientos suficientes para aprender.")
@@ -73,7 +83,7 @@ class ObservationLearner:
         if old:
             count=int(old["seen"])+1
             old["delta"]={
-                k:round(old["delta"][k]+.24*(signal[k]-old["delta"][k]),6)
+                k:round(old["delta"].get(k,0.0)+.24*(signal[k]-old["delta"].get(k,0.0)),6)
                 for k in CHANNELS
             }
             old["seen"]=count
@@ -109,8 +119,21 @@ class ObservationLearner:
         p["reach"]=max(0,min(1,p["reach"]+d["reach"]*factor))
         p["spread"]=max(0,min(1,p["spread"]+d["spread"]*factor))
         p["hand_height"]=max(-1,min(1,p["hand_height"]+d["altura"]*factor))
-        p["position"][0]+=max(-.7,min(.7,d["dx"]*factor))
-        p["position"][1]+=max(-.7,min(.7,d["dy"]*factor))
+        # La imitacion mantiene las reglas de locomocion del maestro:
+        # giro y desplazamiento sobre el eje frontal, sin strafe.
+        old_heading=p["heading"]
+        p["heading"]=(old_heading+d.get("heading",0.0)*factor)%360
+        angle=math.radians(p["heading"])
+        if "forward" in d:
+            forward=d["forward"]
+        else:
+            # Memorias v0.1.0 sin campos de giro y avance frontal.
+            original_angle=math.radians(old_heading)
+            forward=(-math.sin(original_angle)*d.get("dx",0.0)
+                     +math.cos(original_angle)*d.get("dy",0.0))
+        step=max(-.7,min(.7,forward*factor))
+        p["position"][0]=max(-24.5,min(24.5,p["position"][0]-math.sin(angle)*step))
+        p["position"][1]=max(-24.5,min(24.5,p["position"][1]+math.cos(angle)*step))
         robot.set_pose(p)
         self.attempts+=1
         self.history.append({"event":"ensayo","skill":label,"factor":round(factor,3)})

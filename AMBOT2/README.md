@@ -23,7 +23,10 @@ Los datos persistentes están en:
 
 | Tecla | Acción |
 | --- | --- |
-| WASD / flechas | Caminar con el MAESTRO |
+| W / flecha arriba | Avanzar hacia donde mira el MAESTRO |
+| S / flecha abajo | Retroceder sin cambiar de orientación |
+| A / flecha izquierda | Girar sobre el propio eje hacia la izquierda |
+| D / flecha derecha | Girar sobre el propio eje hacia la derecha |
 | Ratón derecho + mover | Rotar cámara |
 | Rueda de ratón | Zoom |
 | Clic sobre objeto | Seleccionar |
@@ -39,6 +42,18 @@ Los datos persistentes están en:
 | 5, 6, 7, 8 | Crear cubo, pelota, cuadro o caja |
 | O / P | Iniciar / finalizar demostración |
 | H | Intentar habilidad observada |
+
+### Movimiento tipo tanque
+
+Los movimientos laterales han sido eliminados: **W/S** trasladan al maestro
+hacia adelante y hacia atrás respecto a su orientación, mientras **A/D**
+lo giran sobre el propio eje. W+A y W+D permiten curvas continuas.
+Las cuatro flechas son equivalentes. El giro en el sitio no camina
+hacia los lados. La cámara permanece independiente del movimiento.
+
+Las demostraciones de locomoción del maestro también enseñan cambios
+de orientación y distancia sobre el eje frontal del aprendiz. Así,
+AMBOT puede imitar giros y avances sin realizar desplazamiento lateral.
 
 Los dos humanoides tienen 5 dedos por mano. El MAESTRO es manejado por el
 usuario; AMBOT es aprendiz, sin guías automáticos.

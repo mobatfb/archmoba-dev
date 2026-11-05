@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
 from panda3d.core import NodePath
-from body.robot import Humanoid, FINGER_NAMES
+from body.robot import Humanoid, FINGER_NAMES, WALK_SPEED, TURN_SPEED, tank_inputs
 from body.grasp import GraspSystem
 from engine.world import LabWorld
 from brain.learning import ObservationLearner
@@ -20,6 +20,81 @@ class BasisTests(unittest.TestCase):
         self.temporary=tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.data=Path(self.temporary.name)
+
+    def test_controles_tanque_y_flechas(self):
+        self.assertEqual(tank_inputs({"w"}),(1,0))
+        self.assertEqual(tank_inputs({"s"}),(-1,0))
+        self.assertEqual(tank_inputs({"a"}),(0,1))
+        self.assertEqual(tank_inputs({"d"}),(0,-1))
+        self.assertEqual(tank_inputs({"arrow_up","arrow_left"}),(1,1))
+        self.assertEqual(tank_inputs({"arrow_down","arrow_right"}),(-1,-1))
+        self.assertEqual(tank_inputs({"w","s","a","d"}),(0,0))
+        self.assertEqual(tank_inputs(set()),(0,0))
+
+    def test_girar_sobre_eje_sin_traslacion(self):
+        root=NodePath("laboratorio")
+        teacher=Humanoid(root,"MAESTRO",(.1,.7,.9,1),teacher=True)
+        origin=teacher.node.getPos(root)
+        for _ in range(10):
+            teacher.drive(0,1,.05)  # A: gira a la izquierda.
+        self.assertAlmostEqual(teacher.heading,TURN_SPEED*.5,places=3)
+        self.assertEqual(teacher.node.getPos(root),origin)
+        self.assertFalse(teacher.walking)
+        for _ in range(10):
+            teacher.drive(0,-1,.05)  # D: gira a la derecha.
+        self.assertAlmostEqual(teacher.heading,0,places=5)
+        self.assertEqual(teacher.node.getPos(root),origin)
+
+    def test_avance_retroceso_y_sin_desplazamiento_lateral(self):
+        import math
+        root=NodePath("laboratorio")
+        teacher=Humanoid(root,"MAESTRO",(.1,.7,.9,1),teacher=True)
+        teacher.drive(1,0,.05)
+        self.assertAlmostEqual(teacher.node.getX(root),0)
+        self.assertAlmostEqual(teacher.node.getY(root),WALK_SPEED*.05)
+        teacher.drive(-1,0,.05)
+        self.assertAlmostEqual(teacher.node.getX(root),0)
+        self.assertAlmostEqual(teacher.node.getY(root),0)
+        teacher.turn(90)
+        before=teacher.node.getPos(root)
+        teacher.drive(1,0,.05)
+        after=teacher.node.getPos(root)
+        self.assertLess(after.x,before.x)
+        self.assertAlmostEqual(after.y,before.y)
+        theta=math.radians(teacher.heading)
+        side=(after.x-before.x)*math.cos(theta)+(after.y-before.y)*math.sin(theta)
+        self.assertAlmostEqual(side,0,places=5)
+        before=after
+        teacher.drive(1,-1,.05)  # W+D: avance curvo.
+        after=teacher.node.getPos(root)
+        theta=math.radians(teacher.heading)
+        side=(after.x-before.x)*math.cos(theta)+(after.y-before.y)*math.sin(theta)
+        self.assertAlmostEqual(side,0,places=5)
+
+    def test_ambot_imita_rotacion_y_avance_frontal(self):
+        root=NodePath("laboratorio")
+        teacher=Humanoid(root,"MAESTRO",(.1,.7,.9,1),teacher=True)
+        baby=Humanoid(root,"AMBOT",(.9,.4,.8,1),position=(3,0,0))
+        learner=ObservationLearner(self.data/"giro-tanque.json")
+        start=teacher.pose()
+        for _ in range(8):
+            teacher.drive(0,1,.05)
+        learner.observe("girar izquierda",[start,teacher.pose()])
+        previous=baby.node.getPos(root)
+        self.assertIn("probando",learner.try_skill("girar izquierda",baby))
+        self.assertGreater(baby.heading,0)
+        self.assertEqual(baby.node.getPos(root),previous)
+        teacher.turn(-teacher.heading)
+        start=teacher.pose()
+        for _ in range(8):
+            teacher.drive(1,0,.05)
+        learner.observe("avanzar",[start,teacher.pose()])
+        baby.turn(90-baby.heading)
+        before=baby.node.getPos(root)
+        learner.try_skill("avanzar",baby)
+        after=baby.node.getPos(root)
+        self.assertLess(after.x,before.x)
+        self.assertAlmostEqual(after.y,before.y,places=5)
 
     def test_dos_personajes_diez_dedos_por_robot(self):
         root=NodePath("laboratorio")
