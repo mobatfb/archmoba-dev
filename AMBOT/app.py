@@ -2283,7 +2283,25 @@ def main(argv=None):
     parser.add_argument("--smoke",action="store_true",help="Prueba de ventana sin interacción")
     parser.add_argument("--frames",type=int,default=12,help="Fotogramas en prueba")
     parser.add_argument("--no-install",action="store_true",help="No instalar pygame-ce")
+    parser.add_argument("--train-steps",type=int,default=0,
+                        help="Practicar sin ventana durante N pasos de simulacion")
     args=parser.parse_args(argv)
+    if args.train_steps>0:
+        robot=Robot()
+        last=0
+        steps=min(args.train_steps,100000)
+        for i in range(steps):
+            robot.training.update(.05)
+            for event in list(robot.training.messages):
+                if event["serial"]>last:
+                    last=event["serial"]
+                    robot.brain.observe_guide(event,robot.training)
+            if i%10==0:
+                robot.brain.autonomous_step()
+        robot.brain.save()
+        print("AMBOT / entrenamiento autonomo: "+str(steps)+" pasos. "
+              +robot.brain.summary())
+        return
     if args.smoke:
         os.environ.setdefault("SDL_VIDEODRIVER","dummy")
         os.environ.setdefault("SDL_AUDIODRIVER","dummy")
