@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "Robot Python de escritorio con habitacion 3D, visor sincronizado y burbuja de dialogo",
-  "version": "0.3.0",
+  "description": "AMBOT bebe aprende observando a 3 robots guia: caminar, agarrar, mover objetos y descansar",
+  "version": "0.4.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "f1a4594c3898fd5f86fb2314aa5b551c2d278203",
+  "release_commit": "b7798af36f67ed4b437c6a082a2c739473914d1f",
   "maintenance": false
 }
