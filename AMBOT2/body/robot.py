@@ -219,9 +219,13 @@ class Humanoid:
             return self._arm_rotate(vector,hand,elbow=True,wrist=True)
         if index==0:
             start=palm+direction(Vec3(side*.115,.025,-.065))
-            middle=start+direction(Vec3(-side*(.07+.05*curl),.075,.035))
+            # El pulgar se opone a las otras yemas al cerrar: las
+            # falanges avanzan sobre el objeto, no quedan atras de un
+            # cuadro delgado sujetado con ambas manos.
+            middle=start+direction(Vec3(-side*(.07+.05*curl),
+                                        .08-.10*curl,.035))
             tip=middle+direction(Vec3(-side*(.065+.06*curl),
-                                      .085-.045*curl,.03-.045*curl))
+                                      .085-.10*curl,.03-.045*curl))
         else:
             base=palm+direction(Vec3(side*(index-2)*.048,0,(2-index)*.037))
             first=math.radians(curl*77)
