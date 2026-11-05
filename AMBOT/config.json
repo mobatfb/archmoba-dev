@@ -1,9 +1,9 @@
 {
   "app": "AMBOT",
   "name": "AMBOT",
-  "description": "Robot stickman 3D con cerebro Python y exploracion autonoma",
-  "version": "0.1.2",
+  "description": "Robot stickman 3D nativo en Python, sin servidor HTTP ni navegador",
+  "version": "0.2.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "f0f4f196f2b4b922077117eec61aa2e90e6e9137",
+  "release_commit": "0fb93e0f65dacc5db4cb5aef7542c973dd0e3ecc",
   "maintenance": false
 }
