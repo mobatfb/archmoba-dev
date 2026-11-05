@@ -8,6 +8,7 @@ solo app.py y config.json, descarga los recursos faltantes del release inmutable
 from __future__ import annotations
 import base64
 import json
+import os
 import time
 import traceback
 import re
@@ -16,7 +17,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.parse import quote
 
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 APP_NAME = "AMBOT"
 ROOT = Path(__file__).resolve().parent
 LAUNCH_LOG = ROOT / "launch.log"
@@ -34,7 +35,7 @@ def _remote_bytes(path: str, release_commit: str) -> bytes:
         for provider, url in (("raw", raw_url), ("api", api_url)):
             try:
                 req = Request(url, headers={
-                    "User-Agent": "AMBOT/0.1.1 (ARCHMOBA)",
+                    "User-Agent": "AMBOT/0.1.2 (ARCHMOBA)",
                     "Accept": "application/vnd.github+json" if provider == "api" else "*/*",
                 })
                 with urlopen(req, timeout=15) as response:
@@ -65,27 +66,44 @@ def _remote_bytes(path: str, release_commit: str) -> bytes:
 
 
 def ensure_assets():
+    """Sincroniza tambien archivos presentes de versiones antiguas en AMDEV."""
     missing = [path for path in NECESSARY if not (ROOT / path).is_file()]
-    if not missing:
+    repo_mode = os.environ.get("AMDEV_MODE") == "repo"
+    if not repo_mode and not missing:
         return
+
     config_path = ROOT / "config.json"
     if not config_path.is_file():
-        raise RuntimeError(
-            "Falta AMBOT/config.json. Abre AMBOT desde AMDEV remoto "
-            "o clona la carpeta AMBOT completa."
-        )
+        raise RuntimeError("Falta AMBOT/config.json. Inicia desde AMDEV o clona AMBOT completo.")
     config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     release_commit = str(config.get("release_commit", "")).strip()
     if not re.fullmatch(r"[0-9a-fA-F]{40}", release_commit):
         raise RuntimeError("AMBOT/config.json no tiene release_commit valido.")
 
-    downloaded = {path: _remote_bytes(path, release_commit) for path in missing}
+    marker = ROOT / ".ambot_release"
+    installed_release = marker.read_text(encoding="utf-8").strip() if marker.is_file() else ""
+    if repo_mode and installed_release != release_commit:
+        # AMDEV reutiliza la carpeta local; un archivo antiguo puede estar roto.
+        needed = list(NECESSARY)
+    else:
+        needed = missing
+    if not needed:
+        return
+
+    downloaded = {path: _remote_bytes(path, release_commit) for path in needed}
+    for path, data in downloaded.items():
+        if path.endswith(".py"):
+            compile(data.decode("utf-8"), path, "exec")
+
     for path, data in downloaded.items():
         target = ROOT / path
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(target.name + ".tmp")
         tmp.write_bytes(data)
         tmp.replace(target)
+    if repo_mode:
+        marker.write_text(release_commit + "\n", encoding="utf-8")
+    print("AMBOT: sincronizado con release " + release_commit[:12], flush=True)
 
 
 def main():

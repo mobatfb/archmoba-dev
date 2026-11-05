@@ -240,7 +240,7 @@ class Cerebro:
             try:
                 ok = self.memoria.olvidar(clave)
                 return (f"He olvidado '{clave}'." if ok
-                        else f"No encontre '{clave}' en la memoria."), False)
+                        else f"No encontre '{clave}' en la memoria."), False
             except OSError as exc:
                 return f"No pude actualizar la memoria: {exc}", False
         return ("No reconozco esa instruccion todavia. Escribe 'ayuda'. "
