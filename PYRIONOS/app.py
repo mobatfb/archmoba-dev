@@ -34,7 +34,7 @@ import uuid
 from typing import Any
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime", "system")
 
@@ -245,6 +245,18 @@ def _linux_filesystem_type(device: Path) -> str:
     return ''
 
 
+def _linux_existing_old_pyrion_ext2(device: Path) -> bool:
+    """Read-only identification of the old Mini Linux EXT2 test volume."""
+    try:
+        with device.open('rb', buffering=0) as handle:
+            header = handle.read(2048)
+        # ext2/ext3/ext4 magic and superblock name (1024+120).
+        return (header[1080:1082] == b'\x53\xef' and
+                header[1144:1160].split(b'\0', 1)[0] == b'PYRIONDATA')
+    except OSError:
+        return False
+
+
 def _linux_disk_blank(device: Path, size: int) -> bool:
     """Strict safety check: no partitions and all-zero sampled ends."""
     if size < 512 * 1024 * 1024 or size > 64 * 1024 ** 4:
@@ -263,21 +275,23 @@ def _linux_disk_blank(device: Path, size: int) -> bool:
         return False
 
 
-def _linux_confirm_format(device: Path, size: int) -> bool:
+def _linux_confirm_format(device: Path, size: int, filesystem: str = "fat32", existing: bool = False) -> bool:
     """Require a typed confirmation; no destructive action during unattended boot."""
     mib = size // (1024 * 1024)
     expected = 'FORMATEAR ' + str(device)
-    _storage_note(f'Disco sin formato detectado: {device}, {mib} MiB; esperando confirmacion')
+    _storage_note("Formato solicitado: " + filesystem.upper())
+    _storage_note(f'Disco candidato: {device}, {mib} MiB; FAT32; existente={existing}; esperando autorizacion')
     if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'):
         script = '''import sys
 try:
  import tkinter as tk
  from tkinter import simpledialog, messagebox
  root=tk.Tk(); root.withdraw(); root.attributes('-topmost', True)
- device,size,expected=sys.argv[1:]
- ok=messagebox.askyesno('PYRION OS - DISCO SIN FORMATO',
-     'Se detecto un unico disco sin particiones: '+device+' ('+size+' MiB).\\n'
-     'Inicializarlo con ext4 BORRARA TODO SU CONTENIDO.\\n'
+ device,size,expected,filesystem,existing=sys.argv[1:]
+ ok=messagebox.askyesno('PYRION OS - FORMATEO DEL DISCO',
+     'Disco candidato: '+device+' ('+size+' MiB).\\n'
+     +('ATENCION: ya contiene EXT2 de una prueba anterior.\\n' if existing=='1' else 'Disco detectado sin formato.\\n')
+     +'Convertir a '+filesystem.upper()+' BORRARA TODOS LOS DATOS DE ESE DISCO.\\n'
      'No se modificara si cancelas.\\n\\nDeseas continuar?', parent=root)
  if not ok: sys.exit(1)
  answer=simpledialog.askstring('Confirmacion irreversible',
@@ -287,7 +301,7 @@ except Exception:
  sys.exit(2)
 '''
         try:
-            result = subprocess.run([sys.executable, '-c', script, str(device), str(mib), expected],
+            result = subprocess.run([sys.executable, '-c', script, str(device), str(mib), expected, filesystem, '1' if existing else '0'],
                                     timeout=180, check=False,
                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL)
@@ -297,7 +311,7 @@ except Exception:
             pass
     if getattr(sys.stdin, 'isatty', lambda: False)():
         try:
-            print(f'ADVERTENCIA: BORRADO IRREVERSIBLE del disco {device} ({mib} MiB)')
+            print(f'ADVERTENCIA: BORRADO IRREVERSIBLE del disco {device} ({mib} MiB), formato {filesystem.upper()}. Disco ya formateado: {existing}')
             return input('Escribe exactamente ' + expected + ': ').strip() == expected
         except (OSError, EOFError, KeyboardInterrupt):
             return False
@@ -305,7 +319,7 @@ except Exception:
 
 
 class _LinuxStorageFinder:
-    """Find installed PYRION first, then the best actual writable disk."""
+    """Prioritize existing installations, default to FAT32 for new storage."""
 
     def __init__(self, is_installation, recorded: dict):
         self.is_installation = is_installation
@@ -330,21 +344,23 @@ class _LinuxStorageFinder:
     def _run_mount(self, device: Path, directory: Path, fstype: str, rw: bool) -> bool:
         if not self.mount_tool:
             return False
-        kinds = [fstype]
+        kinds = ['ext4', 'ext2'] if fstype == 'ext2' else [fstype]
         if fstype == 'ntfs':
             kinds = ['ntfs3', 'ntfs', 'ntfs-3g']
-        if fstype == 'fat':
+        if fstype in ('fat', 'vfat'):
             kinds = ['vfat']
         for kind in kinds:
             if kind == 'ntfs-3g' and not shutil.which('mount.ntfs-3g'):
                 continue
-            flags = 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'
+            flags = ('rw,nosuid,nodev,umask=022' if kind == 'vfat' else 'rw,nosuid,nodev') if rw else 'ro,nosuid,nodev'
             try:
                 run = subprocess.run([self.mount_tool, '-t', kind, '-o', flags,
                                       str(device), str(directory)],
                                      capture_output=True, text=True, timeout=12, check=False)
             except (OSError, subprocess.TimeoutExpired):
                 continue
+            if run.returncode != 0:
+                _storage_note("Error mount " + kind + " " + str(device) + ": " + ((run.stderr or run.stdout or str(run.returncode)).strip())[-500:])
             if run.returncode == 0 and directory.is_mount():
                 _storage_note(f'{device} montado en {directory} ({kind}, {"rw" if rw else "ro"})')
                 return True
@@ -427,37 +443,52 @@ class _LinuxStorageFinder:
             return installed[0]
         raise StorageError('Hay varias instalaciones PYRION en discos diferentes; selecciona una ubicacion manualmente.')
 
-    def _format_unique_blank(self, item: dict) -> dict:
+    def _format_unique_blank(self, item: dict, *, convert_existing: bool = False) -> dict:
+        """Make FAT32 on an entire disk only after explicit typed authorization.
+
+        A single unmountable older PYRIONDATA EXT2 disk may be converted, but
+        never silently, and only after an additional signature/label check.
+        """
         device = item['device']
         if not self.mount_tool or not self.umount_tool or os.geteuid() != 0:
-            raise StorageError(f'El disco {device} no tiene formato, pero mount o permisos de root faltan.')
-        mkfs = shutil.which('mkfs.ext4') or shutil.which('mke2fs')
+            raise StorageError(f'Faltan mount/umount o permisos para preparar {device}.')
+        mkfs = shutil.which('mkdosfs') or shutil.which('mkfs.fat') or shutil.which('mkfs.vfat')
         if not mkfs:
-            raise StorageError(f'{device} esta vacio, pero falta mkfs.ext4/mke2fs en la ISO. '
-                               'Incorpora e2fsprogs al Mini Linux antes de preparar el disco.')
-        if not _linux_disk_blank(device, item['bytes']) or item['partitions'] or self._existing_mount(device):
-            raise StorageError(f'No se puede certificar que {device} este vacio. No se formateo.')
-        if not _linux_confirm_format(device, item['bytes']):
-            raise StorageError(f'Inicializacion cancelada de {device}. No se modifico el disco.')
-        # Re-check after the user confirms to avoid accidental target reuse.
+            raise StorageError('Falta mkdosfs o mkfs.fat en Mini Linux. No se modifico el disco.')
+        if item['partitions'] or self._existing_mount(device):
+            raise StorageError('El disco tiene particiones o esta montado. No se formateara.')
+        if convert_existing:
+            if not _linux_existing_old_pyrion_ext2(device):
+                raise StorageError('El disco no tiene la firma EXT2 PYRIONDATA esperada. Se cancelo el formateo.')
+            _storage_note('Disco EXT2 PYRIONDATA anterior encontrado sin poderse montar: conversion FAT32 disponible con confirmacion.')
+        elif not _linux_disk_blank(device, item['bytes']):
+            raise StorageError('No se puede garantizar que el disco este vacio; no se formateo.')
+        if not _linux_confirm_format(device, item['bytes'], 'fat32', existing=convert_existing):
+            raise StorageError('Formato FAT32 cancelado por el usuario. Ningun archivo fue borrado por PYRION.')
         fresh = {d['name']: d for d in _linux_disks()}.get(item['name'])
-        if not fresh or fresh['partitions'] or fresh['bytes'] != item['bytes'] or not _linux_disk_blank(device, item['bytes']):
-            raise StorageError('El disco cambio durante la confirmacion. Se aborto el formateo.')
-        _storage_note('Preparando EXT4 en el unico dispositivo vacio autorizado: ' + str(device))
-        command = [mkfs, '-F', '-L', 'PYRIONDATA', str(device)]
+        if not fresh or fresh['partitions'] or fresh['bytes'] != item['bytes'] or self._existing_mount(device):
+            raise StorageError('El hardware cambio durante la confirmacion. Formateo cancelado.')
+        if convert_existing:
+            if not _linux_existing_old_pyrion_ext2(device):
+                raise StorageError('La firma del disco cambio. Formateo cancelado.')
+        elif not _linux_disk_blank(device, item['bytes']):
+            raise StorageError('El disco dejo de estar vacio. Formateo cancelado.')
+        _storage_note('Formateando exclusivamente ' + str(device) + ' en FAT32 (BORRADO CONFIRMADO).')
+        # BusyBox mkdosfs creates FAT32 and accepts -n LABEL; no partitioning.
+        command = [mkfs, '-n', 'PYRIONDATA', str(device)]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=240, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            raise StorageError(f'No se pudo crear ext4 en {device}: {exc}') from exc
+            raise StorageError('No se pudo ejecutar mkdosfs: ' + str(exc)) from exc
         if result.returncode != 0:
-            raise StorageError(f'Falló mkfs.ext4 en {device}: {(result.stderr or result.stdout)[-650:]}')
-        if _linux_filesystem_type(device) not in ('ext4', 'ext3', 'ext2'):
-            raise StorageError('El formateo no produjo un ext4 reconocible; no se monta automaticamente.')
+            raise StorageError('Falló mkdosfs: ' + ((result.stderr or result.stdout) or '')[-800:])
+        if _linux_filesystem_type(device) != 'vfat':
+            raise StorageError('mkdosfs termino pero FAT32 no fue reconocido. Revisa el disco.')
         directory = STORAGE_MOUNT_BASE / device.name
         directory.mkdir(parents=True, exist_ok=True)
-        if not self._run_mount(device, directory, 'ext4', rw=True):
-            raise StorageError(f'EXT4 creado pero no se pudo montar {device}. Revisa el controlador ext4 del kernel.')
-        return {'device': device, 'path': directory, 'rw': True, 'temporary': False, 'fs': 'ext4'}
+        if not self._run_mount(device, directory, 'vfat', rw=True):
+            raise StorageError('FAT32 creado, pero no se pudo montar. Verifica /var/log/modules-cd.log, /proc/filesystems y dmesg; NO vuelvas a formatear.')
+        return {'device': device, 'path': directory, 'rw': True, 'temporary': False, 'fs': 'vfat'}
 
     def _copy_ram_installation(self, target: Path) -> None:
         """Move an ephemeral live-session installation without deleting the original."""
@@ -481,7 +512,7 @@ class _LinuxStorageFinder:
                 if shutil.disk_usage(target.parent).free < bytes_required + 40 * 1024 * 1024:
                     raise StorageError('No hay espacio para trasladar la copia anterior de PYRION.')
                 _storage_note(f'Copiando instalacion temporal {src} a disco persistente {target}')
-                shutil.copytree(src, target, dirs_exist_ok=True, symlinks=True)
+                shutil.copytree(src, target, dirs_exist_ok=True, symlinks=False)  # FAT32 no admite enlaces simbolicos
                 if not self.is_installation(target):
                     raise StorageError('La copia no fue validada; se conserva la original sin cambios.')
                 _storage_note('Instalacion anterior copiada correctamente; original preservado.')
@@ -500,7 +531,7 @@ class _LinuxStorageFinder:
             f"{d['device']} ({d['bytes'] // (1024 * 1024)} MiB, "
             f"{'SSD' if d['ssd'] else 'HDD'}, {len(d['partitions'])} particiones)" for d in disks
         ))
-        installed, available, blank = [], [], []
+        installed, available, blank, old_unmounted = [], [], [], []
         try:
             for disk in disks:
                 if not disk['partitions'] and _linux_disk_blank(disk['device'], disk['bytes']):
@@ -512,6 +543,9 @@ class _LinuxStorageFinder:
                         continue
                     volume = self._candidate_location(device, filesystem)
                     if volume is None:
+                        if (not disk['partitions'] and device == disk['device']
+                                and _linux_existing_old_pyrion_ext2(device)):
+                            old_unmounted.append(disk)
                         continue
                     volume['disk'] = disk
                     folder = self._installation_at(volume['path'], self.is_installation)
@@ -528,7 +562,7 @@ class _LinuxStorageFinder:
                     if free < STORAGE_MIN_FREE:
                         _storage_note(f'{device} tiene {free // (1024 * 1024)} MiB; se requieren 700 MiB libres.')
                         continue
-                    score = (100 if disk['ssd'] else 0) + (50 if filesystem in ('ext4', 'ext3', 'ext2') else 20 if filesystem == 'exfat' else 10) + min(free // (1024**3), 25)
+                    score = (100 if disk['ssd'] else 0) + (65 if filesystem in ('vfat', 'fat') else 50 if filesystem in ('ext4', 'ext3', 'ext2') else 20 if filesystem == 'exfat' else 10) + min(free // (1024**3), 25)
                     if disk['removable']:
                         score -= 40
                     volume['score'] = score
@@ -571,6 +605,11 @@ class _LinuxStorageFinder:
                 folder = item['path'] / DIR_NAME
                 self._copy_ram_installation(folder)
                 _storage_note('Disco inicializado para PYRION: ' + str(folder))
+                return folder
+            if len(disks) == 1 and len(old_unmounted) == 1 and not blank:
+                item = self._format_unique_blank(old_unmounted[0], convert_existing=True)
+                folder = item['path'] / DIR_NAME
+                self._copy_ram_installation(folder)
                 return folder
             if blank:
                 raise StorageError('Existen varios dispositivos o candidatos dudosos. Discos vacios: ' + ', '.join(str(d['device']) for d in blank)
