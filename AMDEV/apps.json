@@ -35,6 +35,13 @@
       "description": "Laboratorio de robot stickman 3D con cerebro Python, sensores y memoria simulados",
       "config": "AMBOT/config.json",
       "active": true
+    },
+    {
+      "id": "ambot2",
+      "name": "AMBOT 2.0",
+      "description": "Laboratorio 3D: maestro humano, aprendiz, manos con dedos y objetos físicos",
+      "config": "AMBOT2/config.json",
+      "active": true
     }
   ]
 }
