@@ -28,6 +28,13 @@
       "description": "Escritorio inteligente desarrollado en Python",
       "config": "PYRIONOS/config.json",
       "active": true
+    },
+    {
+      "id": "ambot",
+      "name": "AMBOT",
+      "description": "Laboratorio de robot stickman 3D con cerebro Python, sensores y memoria simulados",
+      "config": "AMBOT/config.json",
+      "active": true
     }
   ]
 }

@@ -7,6 +7,13 @@
       "description": "Buscador y lanzador de herramientas Python",
       "config": "PTM/config.json",
       "active": true
+    },
+    {
+      "id": "ambot",
+      "name": "AMBOT",
+      "description": "Laboratorio de robot stickman 3D con cerebro Python, sensores y memoria simulados",
+      "config": "AMBOT/config.json",
+      "active": true
     }
   ]
 }
