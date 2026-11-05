@@ -4,6 +4,6 @@
   "description": "AMBOT bebe aprende observando a 3 robots guia: caminar, agarrar, mover objetos y descansar",
   "version": "0.4.0",
   "app_path": "AMBOT/app.py",
-  "release_commit": "b7798af36f67ed4b437c6a082a2c739473914d1f",
+  "release_commit": "4300fddb6ae31088fb426fd3bd36f1016480d2a6",
   "maintenance": false
 }
