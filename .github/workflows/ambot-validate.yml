@@ -1,4 +1,4 @@
-name: AMBOT Python Windows/Linux
+name: AMBOT Python escritorio
 
 on:
   push:
@@ -13,14 +13,21 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
-        python-version: ["3.11", "3.13"]
+        python-version: ["3.11", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Validar sintaxis Python
+      - name: Dependencia de ventana nativa
+        run: python -m pip install "pygame-ce>=2.5.7,<3"
+      - name: Compilar Python
         run: python -m compileall -q AMBOT
-      - name: Probar cerebro, API y actualizacion de cache
+      - name: Probar cerebro y escena 3D
         run: python -m unittest discover -s AMBOT/tests -p "test_*.py" -v
+      - name: Abrir ventana nativa (SDL sin monitor)
+        run: python AMBOT/app.py --smoke --no-install --frames 8
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy

@@ -2,5 +2,3 @@ __pycache__/
 *.pyc
 *.log
 *.pid
-data/memoria.json
-.ambot_release

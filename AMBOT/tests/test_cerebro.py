@@ -1,70 +1,57 @@
-"""Pruebas AMBOT: comandos, memoria, API y sustitucion de cache."""
-from __future__ import annotations
-import json
-import os
-import sys
+"""Validacion de AMBOT sin servidor HTTP ni navegador."""
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import app
-from cerebro_robot import Cerebro, CuerpoSimulado, Memoria
-from servidor import estado
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from app import APP_VERSION, WORLD, Robot, Scene3D
 
-class TestCerebro(unittest.TestCase):
+class RobotTests(unittest.TestCase):
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tempdir.cleanup)
-        self.memoria = Memoria(Path(self.tempdir.name) / "memoria.json")
-        self.cerebro = Cerebro(CuerpoSimulado(), self.memoria)
+        self.tmp=tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.robot=Robot(Path(self.tmp.name)/"memoria.json")
 
-    def test_comandos(self):
-        for comando in ("estado", "mapa", "plan", "gira derecha", "avanza", "explora", "auto 3"):
-            respuesta, salir = self.cerebro.ejecutar(comando)
-            self.assertIsInstance(respuesta, str)
-            self.assertFalse(salir)
+    def test_version_y_mapa(self):
+        self.assertEqual(APP_VERSION,"0.2.0")
+        self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
+        self.assertTrue(all(len(r)==len(WORLD[0]) for r in WORLD))
 
-    def test_memoria(self):
-        texto, _ = self.cerebro.ejecutar("recuerda nombre = AMBOT")
-        self.assertIn("AMBOT", texto)
-        texto, _ = self.cerebro.ejecutar("que sabes de nombre")
-        self.assertIn("AMBOT", texto)
-        texto, _ = self.cerebro.ejecutar("olvida nombre")
-        self.assertIn("olvidado", texto.lower())
-        texto, _ = self.cerebro.ejecutar("olvida nombre")
-        self.assertIn("no encontre", texto.lower())
+    def test_decision_legal(self):
+        self.assertIn(self.robot.decide()[0],{"detener","avanzar","derecha","izquierda"})
+        for _ in range(160):
+            self.robot.explore()
+            self.assertTrue(self.robot.free(self.robot.x,self.robot.z))
+        self.assertGreater(self.robot.steps,0)
 
-    def test_api_estado(self):
-        state = estado()
-        self.assertIn("robot", state)
-        self.assertIn("mapa", state)
-        self.assertIn("decision", state)
+    def test_manual_y_sensores(self):
+        self.assertIn("cm",self.robot.command("sensores"))
+        self.assertIn("Movimiento",self.robot.command("avanza"))
+        self.assertIn("Gire",self.robot.command("gira derecha"))
+        self.assertIn("recargada",self.robot.command("cargar"))
 
-    def test_cache_old_release_is_replaced(self):
-        root = Path(self.tempdir.name) / "cache"
-        root.mkdir()
-        commit = "e" * 40
-        (root / "config.json").write_text(json.dumps({
-            "release_commit": commit, "version": "0.1.2"
-        }), encoding="utf-8")
-        for name in app.NECESSARY:
-            target = root / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text("contenido anterior", encoding="utf-8")
-        (root / ".ambot_release").write_text("a"*40+"\n", encoding="utf-8")
-        def fake_download(name, _release):
-            return (b"pass\n" if name.endswith(".py") else b"nuevo archivo\n")
-        with patch.object(app, "ROOT", root), \
-             patch.dict(os.environ, {"AMDEV_MODE":"repo"}), \
-             patch.object(app, "_remote_bytes", side_effect=fake_download) as download:
-            app.ensure_assets()
-            self.assertEqual(download.call_count, len(app.NECESSARY))
-            self.assertEqual((root / "cerebro_robot.py").read_text(), "pass\n")
-            self.assertEqual((root / ".ambot_release").read_text().strip(), commit)
-            app.ensure_assets()
-            self.assertEqual(download.call_count, len(app.NECESSARY))
+    def test_memoria_persistente(self):
+        self.robot.command("recuerda nombre = AMBOT")
+        self.assertEqual(Robot(self.robot.memory_path).facts["nombre"],"AMBOT")
+        self.assertEqual(self.robot.command("que sabes de nombre"),"AMBOT")
+        self.assertEqual(self.robot.command("olvida nombre"),"Dato olvidado.")
 
-if __name__ == "__main__":
+    def test_3d_projection(self):
+        import pygame
+        pygame.init()
+        try:
+            camera=Scene3D(pygame)
+            camera.camera_update(pygame.Rect(0,0,900,500))
+            center=camera.project((0,0,0))
+            self.assertIsNotNone(center)
+            self.assertGreater(center[2],0)
+            self.assertEqual(len(center),3)
+            camera.build_world(self.robot)
+            camera.build_robot(self.robot,.016,0)
+            self.assertGreater(len(camera.faces),100)
+        finally:
+            pygame.quit()
+
+if __name__=="__main__":
     unittest.main()
