@@ -9,7 +9,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 class NativeAppTests(unittest.TestCase):
     def test_aplicacion_nativa_y_maestro(self):
         from app import AMBOT2App,VERSION
-        self.assertEqual(VERSION,"0.1.1")
+        self.assertEqual(VERSION,"0.2.0")
         with tempfile.TemporaryDirectory() as td:
             app=AMBOT2App(headless=True,data_dir=td)
             try:
@@ -18,6 +18,27 @@ class NativeAppTests(unittest.TestCase):
                 self.assertEqual(len(app.grasp.fingers),10)
                 self.assertEqual(len(app.lab.objects),3)
                 self.assertIsNotNone(app.panel)
+                # Secciones expandibles que conservan angulos al cerrarse.
+                self.assertIn("BRAZO IZQUIERDO",app.menu_order)
+                self.assertIn("CABEZA Y TRONCO",app.menu_order)
+                self.assertTrue(app.menu_state["CABEZA Y TRONCO"])
+                self.assertFalse(app.menu_state["BRAZO IZQUIERDO"])
+                self.assertTrue(app.toggle_section("BRAZO IZQUIERDO"))
+                self.assertIn("codo_izq",app.joint_sliders)
+                app.joint_sliders["codo_izq"]["value"]=38
+                app._on_joint_slider("codo_izq")
+                self.assertEqual(app.teacher.joints["codo_izq"],38)
+                self.assertFalse(app.toggle_section("BRAZO IZQUIERDO"))
+                self.assertNotIn("codo_izq",app.joint_sliders)
+                self.assertTrue(app.toggle_section("BRAZO IZQUIERDO"))
+                self.assertEqual(app.joint_sliders["codo_izq"]["value"],38)
+                self.assertTrue(app.toggle_section("MANOS Y DEDOS"))
+                self.assertEqual(len(app.finger_sliders),5)
+                app.handle_command("articulacion rodilla_der 80")
+                self.assertEqual(app.teacher.joints["rodilla_der"],80)
+                app.handle_command("postura neutra")
+                self.assertEqual(app.teacher.joints["rodilla_der"],0)
+                self.assertEqual(app.teacher.joints["codo_izq"],0)
                 app.handle_command("esto es un cuadro")
                 self.assertIn("cuadro",app.language.labels.values())
                 app.handle_command("enseñar agarrar")

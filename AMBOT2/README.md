@@ -1,4 +1,4 @@
-# AMBOT 2.0 — Maestro humano y robot aprendiz
+# AMBOT 2.0 v0.2.0 — Maestro humano y robot aprendiz
 
 Nueva implementación independiente en Python, Panda3D y Bullet. No usa
 Tkinter, navegador, servidor ni las rutinas de los tres instructores
@@ -18,6 +18,51 @@ directorio de dependencias. Alternativamente:
 Los datos persistentes están en:
 
     %LOCALAPPDATA%\ARCHMOBA\AMBOT2
+
+## Articulaciones corporales (v0.2.0)
+
+Los dos robots tienen **30 articulaciones corporales** con limites de
+movimiento, ademas de cinco dedos por mano (10 canales de flexion por robot):
+
+- **Cabeza y torso:** cuello giro, inclinacion y lateral; torso giro,
+  inclinacion y lateral.
+- **Brazos:** tres ejes de hombro, codo y dos ejes de muneca por brazo.
+- **Piernas:** tres ejes de cadera, rodilla y dos ejes de tobillo por pierna.
+- **Manos:** flexion separada de pulgar, indice, medio, anular y menique
+  en ambas manos.
+
+Mover el angulo de una articulacion desplaza sus segmentos conectados
+y los dedos en la escena tridimensional. Esto tambien modifica las
+posiciones de contacto que recibe Bullet para el agarre. Las posiciones
+articulares se incluyen en las demostraciones y en el aprendizaje
+por imitacion del aprendiz.
+
+**Nota:** son articulaciones cinematicas con limites en grados;
+todavia no son un esqueleto de cuerpos rigidos con motores fisicos
+independientes ni garantizan equilibrio humano.
+
+## Menu lateral expandible
+
+El panel derecho se ha organizado en 10 secciones plegables, con barra
+de desplazamiento, para separar articulaciones, manos, agarre, objetos,
+aprendizaje y ayuda.
+
+- Haz clic en **[ + ]** para abrir una seccion, **[ - ]** para cerrarla.
+- Cada articulacion se cambia mediante su propio deslizador angular.
+- Puedes abrir varias secciones. Cerrarlas no borra los valores.
+- **NEUTRO** reinicia la seccion y **RESET TOTAL** todas las articulaciones.
+- **MANOS Y DEDOS** permite seleccionar una mano y mover cada dedo.
+- **AGARRE** permite sujetar o soltar con una o ambas manos.
+- **OBJETOS** permite añadir piezas, guardar, cargar y borrar.
+- **APRENDIZAJE** permite grabar, practicar y corregir demostraciones.
+- El dialogo permanece disponible en la parte inferior.
+
+Tambien se admiten ordenes por texto:
+
+    articulacion hombro_izq_elev 50
+    articulacion codo_der 90
+    articulacion rodilla_izq 75
+    postura neutra
 
 ## Controles
 

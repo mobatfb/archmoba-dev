@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
 from panda3d.core import NodePath
-from body.robot import Humanoid, FINGER_NAMES, WALK_SPEED, TURN_SPEED, tank_inputs
+from body.robot import Humanoid, FINGER_NAMES, WALK_SPEED, TURN_SPEED, tank_inputs, JOINT_GROUPS, JOINT_LIMITS, JOINT_NAMES
 from body.grasp import GraspSystem
 from engine.world import LabWorld
 from brain.learning import ObservationLearner
@@ -20,6 +20,79 @@ class BasisTests(unittest.TestCase):
         self.temporary=tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.data=Path(self.temporary.name)
+
+    def test_cuerpo_tiene_30_articulaciones_con_limites(self):
+        self.assertEqual(len(JOINT_NAMES),30)
+        self.assertEqual(len(JOINT_GROUPS),5)
+        self.assertEqual(len(set(JOINT_NAMES)),30)
+        root=NodePath("cuerpo")
+        maestro=Humanoid(root,"MAESTRO",(.3,.7,.9,1),teacher=True)
+        aprendiz=Humanoid(root,"AMBOT",(.9,.5,.7,1),position=(3,0,0))
+        self.assertEqual(set(maestro.joints),set(JOINT_NAMES))
+        self.assertEqual(set(aprendiz.joints),set(JOINT_NAMES))
+        self.assertIn("cuello_flex",maestro.joints)
+        self.assertIn("codo_izq",maestro.joints)
+        self.assertIn("rodilla_der",maestro.joints)
+        self.assertIn("tobillo_izq_lateral",maestro.joints)
+        self.assertEqual(maestro.set_joint("codo_izq",1000),145)
+        self.assertEqual(maestro.set_joint("tobillo_izq_lateral",-1000),-30)
+        with self.assertRaises(ValueError):
+            maestro.set_joint("articulacion_inventada",10)
+        maestro.reset_joints()
+        self.assertTrue(all(value==0 for value in maestro.joints.values()))
+
+    def test_movimientos_articulados_mueven_segmentos_y_sensores(self):
+        root=NodePath("cuerpo")
+        robot=Humanoid(root,"MAESTRO",(.2,.7,.9,1),teacher=True)
+        head=robot._joints["cabeza"].getPos()
+        arm=robot.hand_points("izquierda")[-1]
+        hand=robot.all_fingertips()[("izquierda",1)]
+        right=robot.hand_points("derecha")[-1]
+        ankle=robot._joints["pierna_izquierda_tobillo"].getPos()
+        robot.set_joint("cuello_flex",35)
+        self.assertNotEqual(robot._joints["cabeza"].getPos(),head)
+        robot.set_joint("hombro_izq_elev",55)
+        self.assertNotEqual(robot.hand_points("izquierda")[-1],arm)
+        self.assertNotEqual(robot.all_fingertips()[("izquierda",1)],hand)
+        self.assertEqual(robot.hand_points("derecha")[-1],right)
+        robot.set_joint("cadera_izq_flex",40)
+        self.assertNotEqual(robot._joints["pierna_izquierda_tobillo"].getPos(),ankle)
+        robot.set_joint("muneca_izq_giro",38)
+        self.assertNotEqual(robot.all_fingertips()[("izquierda",1)],hand)
+        self.assertEqual(len(robot.all_fingertips()),10)
+
+    def test_pose_articulaciones_serializable_y_retrocompatible(self):
+        root=NodePath("cuerpo")
+        a=Humanoid(root,"MAESTRO",(.3,.8,.9,1),teacher=True)
+        a.set_joint("hombro_der_giro",-43)
+        a.set_joint("rodilla_izq",100)
+        a.finger("izquierda",3,.7)
+        position=a.pose()
+        self.assertEqual(position["joints"]["hombro_der_giro"],-43)
+        b=Humanoid(root,"AMBOT",(.8,.4,.7,1))
+        b.set_pose(position)
+        self.assertEqual(b.joints["rodilla_izq"],100)
+        self.assertEqual(b.joints["hombro_der_giro"],-43)
+        self.assertAlmostEqual(b.curls["izquierda"][3],.7)
+        b.set_pose({"heading":20,"fingers":{"derecha":[0,0,0,0,0]}})
+        self.assertEqual(b.joints["rodilla_izq"],100)
+
+    def test_aprendiz_observa_articulaciones_individuales(self):
+        root=NodePath("aprendizaje")
+        maestro=Humanoid(root,"MAESTRO",(.3,.8,.9,1),teacher=True)
+        ambot=Humanoid(root,"AMBOT",(.8,.4,.7,1))
+        mind=ObservationLearner(self.data/"motor-joints.json")
+        before=maestro.pose()
+        maestro.set_joint("codo_izq",82)
+        maestro.set_joint("hombro_der_elev",48)
+        mind.observe("flexionar brazos",[before,maestro.pose()])
+        self.assertEqual(mind.episodes,1)
+        mind.try_skill("flexionar brazos",ambot)
+        self.assertGreater(ambot.joints["codo_izq"],0)
+        self.assertGreater(ambot.joints["hombro_der_elev"],0)
+        self.assertEqual(ambot.joints["rodilla_izq"],0)
+        mind.save()
+        self.assertIn("joint_codo_izq",ObservationLearner(mind.path).policies["flexionar brazos"]["delta"])
 
     def test_controles_tanque_y_flechas(self):
         self.assertEqual(tank_inputs({"w"}),(1,0))
