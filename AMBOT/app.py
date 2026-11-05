@@ -1731,6 +1731,111 @@ class Scene3D:
             return (cell_x,cell_z)
         return None
 
+    def object_bounds(self, robot):
+        """Volumenes de seleccion para muebles y objetos; excluye la estructura."""
+        result=[]
+        furniture=getattr(robot,"furniture",None)
+        if furniture:
+            fixtures=[
+                ("cama",4.5,7.0,1.34,.68,0.0,.94),
+                ("mesa",4.0,4.0,.67,.55,0.0,1.34),
+                ("silla",4.0,5.0,.45,.46,0.0,1.40),
+                ("armario",7.0,3.0,.63,.58,0.0,2.20),
+                ("ventana",5.5,2.0,.96,.065,1.38,2.28),
+                ("alfombra",5.8,5.5,TILE*1.2,TILE*.82,.018,.066),
+            ]
+            for name,x,z,hx,hz,ylo,yhi in fixtures:
+                if name in furniture.removed_fixed:continue
+                wx,wz=self.world(x,z)
+                if name=="ventana":wz+=TILE*.49
+                result.append({
+                    "kind":"fixture","key":name,"label":name.upper(),
+                    "bounds":(wx-hx,wx+hx,ylo,yhi,wz-hz,wz+hz),
+                })
+            for chair in furniture.chairs:
+                wx,wz=self.world(chair["x"],chair["z"])
+                height=1.72 if chair["style"]=="alta" else 1.46
+                result.append({
+                    "kind":"chair","key":(chair["x"],chair["z"]),
+                    "label":CHAIR_STYLES[chair["style"]],
+                    "bounds":(wx-.55,wx+.55,0,height,wz-.55,wz+.55),
+                })
+        if hasattr(robot,"training"):
+            for name,item in robot.training.items.items():
+                wx,wz=self.world(item.x,item.z)
+                radius=max(.22,item.radius*TILE*1.1)
+                result.append({
+                    "kind":"movable","key":name,"label":name.upper(),
+                    "bounds":(wx-radius,wx+radius,
+                              max(0,item.y-radius),item.y+radius,
+                              wz-radius,wz+radius),
+                })
+            for guide in robot.training.guides:
+                wx,wz=self.world(guide.x,guide.z)
+                result.append({
+                    "kind":"protected","key":guide.name,
+                    "label":"ROBOT "+guide.name,
+                    "bounds":(wx-.30,wx+.30,.05,3.0,wz-.30,wz+.30),
+                })
+        wx,wz=self.world(robot.x,robot.z)
+        result.append({
+            "kind":"protected","key":"AMBOT","label":"ROBOT AMBOT",
+            "bounds":(wx-.30,wx+.30,.05,3.0,wz-.30,wz+.30),
+        })
+        return result
+
+    def pick_object(self, screen_pos, robot):
+        """Rayo 3D exacto contra cajas de seleccion, ordenado por profundidad."""
+        if not self.rect.collidepoint(screen_pos):
+            return None
+        nx=(screen_pos[0]-self.rect.centerx)/self.focal
+        ny=-(screen_pos[1]-self.rect.centery)/self.focal
+        ray=unit(vadd(self.forward,vadd(vmul(self.right,nx),
+                                       vmul(self.up,ny))))
+        closest=None
+        closest_t=float("inf")
+        for obj in self.object_bounds(robot):
+            left,right,low,high,back,front=obj["bounds"]
+            minimum=-float("inf")
+            maximum=float("inf")
+            valid=True
+            for o,d,lo,hi in zip(self.camera,ray,
+                                  (left,low,back),(right,high,front)):
+                if abs(d)<1e-9:
+                    if not lo<=o<=hi:
+                        valid=False
+                        break
+                    continue
+                near=(lo-o)/d
+                far=(hi-o)/d
+                if near>far:near,far=far,near
+                minimum=max(minimum,near)
+                maximum=min(maximum,far)
+                if maximum<minimum:
+                    valid=False
+                    break
+            if not valid or maximum<=0:
+                continue
+            distance=minimum if minimum>0 else maximum
+            if distance<closest_t:
+                closest,closest_t=obj,distance
+        if closest is not None:
+            return closest
+        # Una pulsacion cerca de la base del mueble tambien sirve.
+        cell=self.pick_floor(screen_pos)
+        if cell is None or furniture is None:
+            return None
+        x,z=cell
+        for item in self.object_bounds(robot):
+            if item["kind"]=="protected":
+                continue
+            if item["kind"]=="chair" and item["key"]==(x,z):
+                return item
+            if item["kind"]=="fixture" and item["key"] in ROOM_OBJECTS:
+                if (x,z) in ROOM_OBJECTS[item["key"]]:
+                    return item
+        return None
+
     def quad(self, pts, c):
         projected = [self.project(pt) for pt in pts]
         if any(x is None for x in projected):
@@ -1772,62 +1877,69 @@ class Scene3D:
             self.line((xl,h,zb),(xr,h,zb),COLOR["blue"],.035)
             self.line((xr,h,zb),(xr,h,zf),COLOR["cyan"],.035)
 
-    def build_room_details(self):
-        """Muebles de dormitorio y marco de puerta para la nueva habitacion."""
-        # Alfombra central y costuras neon.
-        x, z = self.world(5.8, 5.5)
-        rx, rz = TILE*1.20, TILE*.82
-        self.quad(((x-rx,.020,z-rz),(x-rx,.020,z+rz),
-                   (x+rx,.020,z+rz),(x+rx,.020,z-rz)), COLOR["rug"])
-        for q in range(4):
-            sx=x-rx+(2*rx)*q/3
-            self.line((sx,.027,z-rz),(sx,.027,z+rz),COLOR["blue"],.024)
+    def build_room_details(self, furniture=None):
+        """Dibujar solo los muebles y accesorios que siguen presentes."""
+        hidden=furniture.removed_fixed if furniture is not None else set()
+        if "alfombra" not in hidden:
+            # Alfombra central y costuras neon.
+            x, z = self.world(5.8, 5.5)
+            rx, rz = TILE*1.20, TILE*.82
+            self.quad(((x-rx,.020,z-rz),(x-rx,.020,z+rz),
+                       (x+rx,.020,z+rz),(x+rx,.020,z-rz)), COLOR["rug"])
+            for q in range(4):
+                sx=x-rx+(2*rx)*q/3
+                self.line((sx,.027,z-rz),(sx,.027,z+rz),COLOR["blue"],.024)
 
-        # Cama y almohadas en la esquina inferior izquierda.
-        bx,bz=self.world(4.5,7)
-        self.box(bx,.10,bz,TILE*1.95,.21,TILE*.86,COLOR["wood"],neon=True)
-        self.box(bx,.33,bz,TILE*1.83,.26,TILE*.77,COLOR["bed"])
-        self.box(bx-TILE*.64,.60,bz,TILE*.35,.11,TILE*.49,COLOR["ink"])
-        self.box(bx+TILE*.58,.58,bz,TILE*.38,.08,TILE*.49,COLOR["cyan"])
-        self.box(bx-TILE*.96,.08,bz,.09,.83,TILE*.87,COLOR["wood"])
+        if "cama" not in hidden:
+            # Cama y almohadas en la esquina inferior izquierda.
+            bx,bz=self.world(4.5,7)
+            self.box(bx,.10,bz,TILE*1.95,.21,TILE*.86,COLOR["wood"],neon=True)
+            self.box(bx,.33,bz,TILE*1.83,.26,TILE*.77,COLOR["bed"])
+            self.box(bx-TILE*.64,.60,bz,TILE*.35,.11,TILE*.49,COLOR["ink"])
+            self.box(bx+TILE*.58,.58,bz,TILE*.38,.08,TILE*.49,COLOR["cyan"])
+            self.box(bx-TILE*.96,.08,bz,.09,.83,TILE*.87,COLOR["wood"])
 
-        # Mesa con libro, lampara y cuatro patas.
-        tx,tz=self.world(4,4)
-        for dx in (-.49,.49):
-            for dz in (-.31,.31):
-                self.box(tx+dx,0,tz+dz,.07,.74,.07,COLOR["wood"])
-        self.box(tx,.74,tz,1.18,.12,.82,COLOR["wood"],neon=True)
-        self.box(tx+.11,.89,tz-.10,.34,.04,.23,COLOR["cyan"])
-        self.line((tx-.36,.89,tz+.11),(tx-.36,1.20,tz+.11),COLOR["ink"],.065)
-        self.box(tx-.36,1.18,tz+.11,.26,.09,.25,COLOR["window"])
+        if "mesa" not in hidden:
+            # Mesa con libro, lampara y cuatro patas.
+            tx,tz=self.world(4,4)
+            for dx in (-.49,.49):
+                for dz in (-.31,.31):
+                    self.box(tx+dx,0,tz+dz,.07,.74,.07,COLOR["wood"])
+            self.box(tx,.74,tz,1.18,.12,.82,COLOR["wood"],neon=True)
+            self.box(tx+.11,.89,tz-.10,.34,.04,.23,COLOR["cyan"])
+            self.line((tx-.36,.89,tz+.11),(tx-.36,1.20,tz+.11),COLOR["ink"],.065)
+            self.box(tx-.36,1.18,tz+.11,.26,.09,.25,COLOR["window"])
 
-        # Silla delante de la mesa.
-        cx,cz=self.world(4,5)
-        self.box(cx,.43,cz,.74,.11,.68,COLOR["wood"],neon=True)
-        self.box(cx,.54,cz+.29,.74,.72,.11,COLOR["room_wall"])
-        for dx in (-.27,.27):
-            for dz in (-.23,.23):
-                self.box(cx+dx,0,cz+dz,.07,.42,.07,COLOR["blue"])
+        if "silla" not in hidden:
+            # Silla delante de la mesa.
+            cx,cz=self.world(4,5)
+            self.box(cx,.43,cz,.74,.11,.68,COLOR["wood"],neon=True)
+            self.box(cx,.54,cz+.29,.74,.72,.11,COLOR["room_wall"])
+            for dx in (-.27,.27):
+                for dz in (-.23,.23):
+                    self.box(cx+dx,0,cz+dz,.07,.42,.07,COLOR["blue"])
 
-        # Armario con dos puertas y tiradores.
-        ax,az=self.world(7,3)
-        self.box(ax,0,az,TILE*.83,2.12,TILE*.66,COLOR["room_wall"])
-        self.box(ax-.27,.15,az+.46,.45,1.77,.045,COLOR["wood"])
-        self.box(ax+.27,.15,az+.46,.45,1.77,.045,COLOR["wood"])
-        self.line((ax,.19,az+.49),(ax,1.93,az+.49),COLOR["cyan"],.035)
-        self.ball((ax-.06,1.09,az+.52),.050,COLOR["pink"])
-        self.ball((ax+.06,1.09,az+.52),.050,COLOR["pink"])
+        if "armario" not in hidden:
+            # Armario con dos puertas y tiradores.
+            ax,az=self.world(7,3)
+            self.box(ax,0,az,TILE*.83,2.12,TILE*.66,COLOR["room_wall"])
+            self.box(ax-.27,.15,az+.46,.45,1.77,.045,COLOR["wood"])
+            self.box(ax+.27,.15,az+.46,.45,1.77,.045,COLOR["wood"])
+            self.line((ax,.19,az+.49),(ax,1.93,az+.49),COLOR["cyan"],.035)
+            self.ball((ax-.06,1.09,az+.52),.050,COLOR["pink"])
+            self.ball((ax+.06,1.09,az+.52),.050,COLOR["pink"])
 
-        # Ventana luminosa: marco en la pared norte de la habitacion.
-        wx,wz=self.world(5.5,2)
-        front=wz+TILE*.49
-        self.box(wx,1.46,front,1.58,.70,.045,COLOR["window"])
-        for yy in (1.43,2.18):
-            self.line((wx-.84,yy,front+.04),(wx+.84,yy,front+.04),
-                      COLOR["ink"],.05)
-        for xx in (-.84,0,.84):
-            self.line((wx+xx,1.43,front+.04),(wx+xx,2.18,front+.04),
-                      COLOR["ink"],.05)
+        if "ventana" not in hidden:
+            # Ventana luminosa: marco en la pared norte de la habitacion.
+            wx,wz=self.world(5.5,2)
+            front=wz+TILE*.49
+            self.box(wx,1.46,front,1.58,.70,.045,COLOR["window"])
+            for yy in (1.43,2.18):
+                self.line((wx-.84,yy,front+.04),(wx+.84,yy,front+.04),
+                          COLOR["ink"],.05)
+            for xx in (-.84,0,.84):
+                self.line((wx+xx,1.43,front+.04),(wx+xx,2.18,front+.04),
+                          COLOR["ink"],.05)
 
         # Entrada abierta: dos postes y dintel sin bloquear el paso.
         dx,dz=self.world(*ROOM_DOOR)
@@ -1920,7 +2032,7 @@ class Scene3D:
                     self.box(px,0,pz,TILE-.04,height,TILE-.04,cwall,neon=True)
                     if not edge and not is_room_wall:
                         self.box(px,height,pz,.13,.05,.13,COLOR["pink"])
-        self.build_room_details()
+        self.build_room_details(getattr(robot,"furniture",None))
         if hasattr(robot,"furniture"):
             self.build_user_chairs(robot.furniture)
         # Sensor virtual orientado: detecta la siguiente pared.
