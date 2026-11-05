@@ -1,9 +1,9 @@
 {
   "app": "AMBOT2",
   "name": "AMBOT 2.0",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "app_path": "AMBOT2/AMDEV_entry.py",
-  "description": "AMBOT2: laboratorio 3D nativo; maestro humano y aprendiz, dedos articulados y objetos físicos",
+  "description": "AMBOT2 tanque: W/S avanzar y retroceder, A/D giro sobre eje, dos robots con dedos, fisica Bullet",
   "maintenance": false,
-  "release_commit": "8f0be323606e17a661d428a2bd0e3894a1e1e860"
+  "release_commit": "a6657129c273e9dd4c6f55b291a4b268aab2814e"
 }
