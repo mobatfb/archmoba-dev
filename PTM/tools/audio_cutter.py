@@ -56,7 +56,38 @@ def hidden_kwargs():
     return {}
 
 
+def get_ffmpeg():
+    """Prioriza FFmpeg del sistema y utiliza el binario portable de imageio-ffmpeg."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+        binary = imageio_ffmpeg.get_ffmpeg_exe()
+        if binary and Path(binary).is_file():
+            return binary
+    except (ImportError, RuntimeError, OSError):
+        pass
+    return None
+
+
 def audio_duration(path):
+    """Mutagen lee los metadatos sin requerir ffprobe ni un FFmpeg instalado."""
+    try:
+        from mutagen import File as AudioFile
+        audio = AudioFile(str(path))
+        if audio is not None and audio.info is not None:
+            value = float(audio.info.length)
+            if 0 < value < float("inf"):
+                return value
+    except (ImportError, ValueError, OSError, AttributeError):
+        pass
+    if path.suffix.lower() == ".wav":
+        try:
+            with wave.open(str(path), "rb") as source:
+                return source.getnframes() / source.getframerate()
+        except (wave.Error, EOFError, OSError):
+            pass
     probe = shutil.which("ffprobe")
     if probe:
         command = [probe, "-v", "error", "-show_entries", "format=duration",
@@ -70,10 +101,7 @@ def audio_duration(path):
                     return value
             except ValueError:
                 pass
-    if path.suffix.lower() == ".wav":
-        with wave.open(str(path), "rb") as source:
-            return source.getnframes() / source.getframerate()
-    raise RuntimeError("Instala FFmpeg (incluido ffprobe) para analizar este formato.")
+    raise RuntimeError("No se pudo obtener la duración del audio. Comprueba que el archivo sea válido.")
 
 
 def trim_pcm_wav(source, destination, start, end, cancel):
@@ -329,10 +357,10 @@ class AudioCutter(tk.Frame):
         if destination.resolve() == self.source.resolve():
             messagebox.showwarning("Archivo original", "Elige otro nombre para no sobrescribir el original.", parent=self)
             return
-        ffmpeg = shutil.which("ffmpeg")
+        ffmpeg = get_ffmpeg()
         if not ffmpeg and not (self.source.suffix.lower() == ".wav" and extension == "wav"):
             messagebox.showerror("FFmpeg requerido",
-                "Instala FFmpeg y agrégalo al PATH para cortar y convertir este formato.", parent=self)
+                "No se encontró el motor FFmpeg. Vuelve a abrir Audio Cutter para preparar sus dependencias.", parent=self)
             return
         self.cancel.clear()
         self._busy(True)
