@@ -111,7 +111,7 @@ def audio_duration(path):
                 stdin=subprocess.DEVNULL, capture_output=True, text=True,
                 timeout=35, **hidden_kwargs(),
             )
-            match = re.search(r"Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)", result.stderr)
+            match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr)
             if match:
                 hours, minutes, seconds = match.groups()
                 value = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
