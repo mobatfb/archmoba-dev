@@ -131,8 +131,12 @@ class TVAppManager:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("ARCHMOBA | TVAPP")
-        self.root.geometry("920x580")
-        self.root.minsize(550, 360)
+        self.root.geometry("400x800")
+        self.root.minsize(360, 640)
+        self.root.update_idletasks()
+        pos_x = max(0, (self.root.winfo_screenwidth() - 400) // 2)
+        pos_y = max(0, (self.root.winfo_screenheight() - 800) // 2)
+        self.root.geometry(f"400x800+{pos_x}+{pos_y}")
         self.root.configure(bg="#f3f6fa")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
