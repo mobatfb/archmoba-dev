@@ -24,7 +24,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.4-boceto-remoto"
+APP_VERSION = "0.2.5-boceto-remoto"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
 LOGO_URL = SERVER + "pyrion-logo.png"
