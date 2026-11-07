@@ -27,7 +27,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.27-pestanas-superiores"
+APP_VERSION = "0.2.28-ptm-buscador-pestanas"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -190,6 +190,7 @@ class PyrionDesktop:
         self.state_file = self.cache_dir / "user_state.json"
         self.user_state = self._load_user_state()
         self.results_click_areas = []
+        self.tab_menu = None
         self.tool_events = queue.Queue()
         self.xft_lib = None
         self.logo_xft_font = None
@@ -427,6 +428,7 @@ class PyrionDesktop:
         """Ejecuta una tool Tk en su propio proceso y publica su XID X11."""
         return r'''#!/usr/bin/env python3
 import importlib.util
+import inspect
 import sys
 import traceback
 from pathlib import Path
@@ -466,17 +468,31 @@ try:
     # Evitar bytecode desactualizado.
     exec(compile(tool_path.read_bytes(), str(tool_path), "exec"), module.__dict__)
     entry = None
-    for candidate in ("App", "create_tool", "create_app", "build_app", "build_ui"):
+    for candidate in ("App", "Application", "create_tool",
+                      "create_app", "build_app", "build_ui"):
         callable_entry = getattr(module, candidate, None)
         if callable(callable_entry):
             entry = callable_entry
             break
     if entry is None:
-        raise RuntimeError("Esta tool no expone App/create_tool; requiere adaptacion de PTM")
-    try:
+        for candidate in vars(module).values():
+            if (inspect.isclass(candidate)
+                    and candidate.__module__ == module.__name__
+                    and issubclass(candidate, tk.Frame)):
+                entry = candidate
+                break
+    if entry is None:
+        raise RuntimeError("No se detecto una interfaz embebible (App/Application/create_tool)")
+    params = inspect.signature(entry).parameters.values()
+    positional = [p for p in params
+                  if p.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                                inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+    if len(positional) >= 2:
         widget = entry(root, Bridge())
-    except TypeError:
+    elif len(positional) == 1:
         widget = entry(root)
+    else:
+        widget = entry()
     if isinstance(widget, (tuple, list)):
         widget = widget[0]
     if isinstance(widget, tk.Widget):
@@ -508,7 +524,7 @@ except Exception as error:
 root.mainloop()
 '''
 
-    def _download_tool_async(self, tool, key):
+    def _download_tool_async(self, tool, key, force_remote=False):
         meta = self.open_tabs.get(key)
         if not meta:
             return
@@ -517,7 +533,7 @@ root.mainloop()
         local = self.cache_dir / "tools" / tool["key"] / Path(tool["repo_path"]).name
         def worker():
             try:
-                if not local.is_file():
+                if force_remote or not local.is_file():
                     url = TOOLS_URL + tool["repo_path"]
                     req = urllib.request.Request(url, headers={
                         "User-Agent": "PYRIONOS/" + APP_VERSION})
@@ -669,6 +685,7 @@ root.mainloop()
         if old and old.get("embedded") and old.get("xid"):
             self.unmap_window(self.dpy, old["xid"])
         self.selected_top_tab = key
+        self.tab_menu = None
         self.search_focus = False
         self.paint()
         meta = self.open_tabs.get(key)
@@ -685,6 +702,8 @@ root.mainloop()
             return
         if key in self.top_tabs:
             self.top_tabs.remove(key)
+        if self.tab_menu and self.tab_menu["key"] == key:
+            self.tab_menu = None
         if meta.get("embedded") and meta.get("xid"):
             self.unmap_window(self.dpy, meta["xid"])
         process = meta.get("process")
@@ -879,7 +898,8 @@ root.mainloop()
             "%catalogo%": sorted(self.catalog_tools, key=lambda t: t["name"].lower()),
             "%recents%": [by_key[k] for k in self.user_state["recents"] if k in by_key],
             "%favorites%": [by_key[k] for k in self.user_state["favorites"] if k in by_key],
-            "%used%": sorted(self.catalog_tools, key=lambda t: -int(usage.get(t["key"], 0)))[:10],
+            "%used%": sorted((t for t in self.catalog_tools if int(usage.get(t["key"], 0)) > 0),
+                             key=lambda t: -int(usage.get(t["key"], 0)))[:10],
             "%recommended%": sorted(self.catalog_tools, key=lambda t: -t["visits"])[:20],
         }
         if q.lower() in commands:
@@ -1052,6 +1072,49 @@ root.mainloop()
                 self.rect(x + px, y + h - 1 - py, 1, 1, tint)
                 self.rect(x + w - 1 - px, y + h - 1 - py, 1, 1, tint)
 
+    def draw_tab_context_menu(self):
+        info = self.tab_menu
+        if not info or info["key"] not in self.open_tabs:
+            return
+        x, y = info["x"], info["y"]
+        w, row_h = 171, 29
+        favorites = self.user_state["favorites"]
+        is_fav = info["key"] in favorites
+        items = (("Quitar favorito" if is_fav else "Añadir favorito"),
+                 "Recargar desde GitHub", "Cerrar pestaña")
+        self.rect(x, y, w, len(items) * row_h, "#FFFFFF")
+        self.rect(x, y, w, 1, "#C8D3DD")
+        self.rect(x, y, 1, len(items) * row_h, "#C8D3DD")
+        self.rect(x+w-1, y, 1, len(items)*row_h, "#C8D3DD")
+        for index, label in enumerate(items):
+            top = y + row_h * index
+            if index:
+                self.rect(x+1, top, w-2, 1, "#E7EDF1")
+            self.text(x+10, top+19, label, "#173B50", "tab")
+
+    def _tab_menu_action(self, x, y):
+        info = self.tab_menu
+        self.tab_menu = None
+        if not info:
+            return False
+        mx, my, key = info["x"], info["y"], info["key"]
+        if mx <= x < mx + 171 and my <= y < my + 87:
+            meta = self.open_tabs.get(key)
+            if not meta:
+                return True
+            choice = (y - my) // 29
+            if choice == 0:
+                self._toggle_favorite(meta["tool"])
+            elif choice == 1:
+                self._download_tool_async(meta["tool"], key, force_remote=True)
+            else:
+                self._close_tool_tab(key)
+                return True
+            self._activate_tool_tab(self.selected_top_tab)
+            return True
+        self._activate_tool_tab(self.selected_top_tab)
+        return False
+
     def _result_geom(self):
         x, y, bw, bh = self._search_bounds()
         top = y + bh + 51
@@ -1200,14 +1263,21 @@ root.mainloop()
         if button in (4, 5):
             self._result_scroll(-1 if button == 4 else 1)
             return
+        if self.tab_menu and self._tab_menu_action(x, y):
+            return
         for title, tx, ty, tw, th in self._top_tabs_layout():
             if tx <= x < tx + tw and ty <= y < ty + th:
                 if title != "PYRIONOS" and button == 1 and x >= tx + tw - 20 and y <= ty + 19:
                     self._close_tool_tab(title)
                 elif title != "PYRIONOS" and button == 3:
-                    meta = self.open_tabs.get(title)
-                    if meta:
-                        self._toggle_favorite(meta["tool"])
+                    # Ocultar la ventana embebida para que el menu X11 quede visible.
+                    active = self.open_tabs.get(self.selected_top_tab)
+                    if active and active.get("embedded") and active.get("xid"):
+                        self.unmap_window(self.dpy, active["xid"])
+                    self.tab_menu = {"key": title,
+                                     "x": max(2, min(x, self.size[0]-182)),
+                                     "y": max(42, min(y, self.size[1]-94))}
+                    self.paint()
                 else:
                     self._activate_tool_tab(title)
                 return
@@ -1288,6 +1358,7 @@ root.mainloop()
             self.draw_results()
         else:
             self.draw_tool_panel()
+        self.draw_tab_context_menu()
         self.copy(self.dpy, self.pixmap, self.window, self.gc,
                   0, 0, w, h, 0, 0)
         self.flush(self.dpy)
@@ -1332,6 +1403,10 @@ root.mainloop()
             now=time.monotonic()
             if self._poll_catalog():
                 self.paint()
+            if (self.search_text.strip() and self.last_search_edit
+                    and now - self.last_search_edit > 0.8
+                    and now - self.catalog_last_check > 90):
+                self._refresh_catalog_async()
             if self._poll_tools():
                 self.paint()
             if now-last_check>1.2:
