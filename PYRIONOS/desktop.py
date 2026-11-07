@@ -7,6 +7,10 @@ Python estandar + ctypes + libX11. Interfaz publica: PyrionDesktop y main().
 """
 from __future__ import annotations
 
+import ast
+import importlib
+import importlib.util
+import importlib.metadata
 import ctypes as C
 import ctypes.util
 import hashlib
@@ -27,10 +31,11 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.33-visor-web-linux"
+APP_VERSION = "0.2.34-dependencias-auto"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
+PIP_BOOTSTRAP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -196,6 +201,14 @@ class PyrionDesktop:
         self.results_click_areas = []
         self.tab_menu = None
         self.tool_events = queue.Queue()
+        # Los paquetes se comparten entre herramientas, no modifican Python.
+        self.deps_root = self.cache_dir / "python_runtime"
+        self.deps_lib = self.deps_root / "packages"
+        self.pip_lib = self.deps_root / "pip_bootstrap"
+        self.deps_lock = threading.Lock()
+        for dep_path in (self.deps_lib, self.pip_lib):
+            if str(dep_path) not in sys.path:
+                sys.path.insert(0, str(dep_path))
         self.xft_lib = None
         self.logo_xft_font = None
         self.logo_core_font = None
@@ -1148,6 +1161,308 @@ root.mainloop()
                 self.tool_events.put(("failed", key, str(error)))
         threading.Thread(target=worker, daemon=True).start()
 
+    @staticmethod
+    def _distribution_name(spec):
+        return re.split(r"[<>=!~\[]", str(spec or "").strip(), 1)[0].strip()
+
+    @staticmethod
+    def _import_to_package(module):
+        mapping = {
+            "PIL": "Pillow", "cv2": "opencv-python",
+            "sklearn": "scikit-learn", "yaml": "PyYAML",
+            "bs4": "beautifulsoup4", "docx": "python-docx",
+            "pptx": "python-pptx", "fitz": "PyMuPDF",
+            "serial": "pyserial", "dateutil": "python-dateutil",
+            "dotenv": "python-dotenv", "Crypto": "pycryptodome",
+            "imageio_ffmpeg": "imageio-ffmpeg",
+            "vlc": "python-vlc", "ffmpeg": "ffmpeg-python",
+            "pkg_resources": "setuptools<81",
+            "win32api": "pywin32", "win32com": "pywin32",
+            "pythoncom": "pywin32", "System": "pythonnet",
+            "clr": "pythonnet",
+        }
+        return mapping.get(module, module)
+
+    def _compatible_package(self, spec):
+        """Equivalencias de PTM, ajustadas para MiniLinux."""
+        value = str(spec).strip()
+        name = self._distribution_name(value).lower()
+        if os.name != "nt" and name == "opencv-python":
+            # Grabador usa VideoWriter, no cv2.imshow: evita Qt/GL innecesario.
+            return re.sub(r"(?i)^opencv-python", "opencv-python-headless",
+                          value, count=1)
+        if os.name != "nt" and name == "pywebview":
+            return re.sub(r"(?i)^pywebview(?:\[[^\]]*\])?",
+                          "pywebview[qt]", value, count=1)
+        if sys.version_info >= (3, 14) and name == "pygame":
+            return "pygame-ce"
+        return value
+
+    @staticmethod
+    def _local_import(module_name, path):
+        return ((path.parent / (module_name + ".py")).is_file()
+                or (path.parent / module_name / "__init__.py").is_file()
+                or (path.parent / module_name).is_dir())
+
+    @staticmethod
+    def _extract_python_imports(path):
+        """AST: analiza imports, incluidos los usados dentro de funciones."""
+        source = path.read_text(encoding="utf-8-sig")
+        tree = ast.parse(source, filename=str(path))
+        names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0 and node.module:
+                    names.add(node.module.split(".")[0])
+        return names
+
+    @staticmethod
+    def _module_available(module):
+        try:
+            return importlib.util.find_spec(module) is not None
+        except (ImportError, ValueError, AttributeError, OSError):
+            return False
+
+    def _dist_available(self, spec):
+        name = self._distribution_name(spec)
+        if not name:
+            return True
+        module_by_dist = {
+            "pillow": "PIL", "opencv-python": "cv2",
+            "opencv-python-headless": "cv2",
+            "scikit-learn": "sklearn", "pyyaml": "yaml",
+            "beautifulsoup4": "bs4", "python-docx": "docx",
+            "python-pptx": "pptx", "pymupdf": "fitz",
+            "pyserial": "serial", "python-dateutil": "dateutil",
+            "python-dotenv": "dotenv", "pycryptodome": "Crypto",
+            "imageio-ffmpeg": "imageio_ffmpeg",
+            "python-vlc": "vlc", "ffmpeg-python": "ffmpeg",
+            "pywebview": "webview", "pygame-ce": "pygame",
+        }
+        lowered = name.lower()
+        name_to_check = module_by_dist.get(lowered,
+            name.replace("-", "_"))
+        if lowered == "pywebview" and os.name != "nt":
+            return (self._module_available("webview")
+                    and (self._module_available("PyQt6.QtWebEngineWidgets")
+                         or self._module_available("PySide6.QtWebEngineWidgets")
+                         or self._module_available("PyQt5.QtWebEngineWidgets")))
+        if lowered in module_by_dist:
+            return self._module_available(name_to_check)
+        if self._module_available(name_to_check):
+            return True
+        try:
+            importlib.metadata.distribution(name)
+            return True
+        except (importlib.metadata.PackageNotFoundError,
+                ValueError, ImportError):
+            return False
+
+    def _missing_tool_dependencies(self, tool, file_path):
+        """Cruza dependencias del guide y los imports reales del .py."""
+        declared = str(tool.get("dependencias") or "").strip()
+        declared_specs = [p.strip() for p in re.split(r"[;,\n]+", declared)
+                          if p.strip()]
+        required = []
+        recorded = set()
+        def add(package):
+            package = self._compatible_package(package)
+            key = self._distribution_name(package).lower().replace("_", "-")
+            if key and key not in recorded and not self._dist_available(package):
+                required.append(package)
+                recorded.add(key)
+
+        for package in declared_specs:
+            # Referencias a otros archivos .py del repositorio no son paquetes pip.
+            if package.lower().endswith(".py"):
+                continue
+            add(package)
+
+        stdlib = set(getattr(sys, "stdlib_module_names", ()))
+        stdlib.update({"tkinter", "os", "sys", "ctypes", "pathlib",
+                       "threading", "time", "typing", "queue", "json",
+                       "subprocess", "datetime", "asyncio", "importlib"})
+        linux_only_skip = {"msvcrt", "winreg", "winsound", "win32api",
+                           "win32com", "pythoncom", "win32gui", "win32con"}
+        for module in sorted(self._extract_python_imports(file_path)):
+            if module in stdlib:
+                continue
+            if os.name != "nt" and module in linux_only_skip:
+                continue
+            if self._local_import(module, file_path):
+                continue
+            if self._module_available(module):
+                continue
+            add(self._import_to_package(module))
+        return required
+
+    def _deps_python_env(self):
+        env = os.environ.copy()
+        paths = [str(self.deps_lib), str(self.pip_lib)]
+        if env.get("PYTHONPATH"):
+            paths.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(paths)
+        env["PYTHONUNBUFFERED"] = "1"
+        return env
+
+    def _deps_status(self, key, token, message):
+        self.tool_events.put(("deps_status", key,
+                              {"token": token, "message": str(message)}))
+
+    def _pip_works(self, env):
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "--version"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env, timeout=20, check=False)
+            return result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def _ensure_pip(self, key, token):
+        """Usa pip, ensurepip y get-pip oficial como PTM para Python mínimos."""
+        env = self._deps_python_env()
+        if self._pip_works(env):
+            return env
+        self.deps_root.mkdir(parents=True, exist_ok=True)
+        self._deps_status(key, token, "Python no incluye pip. Preparando instalador...")
+        details = []
+        try:
+            cmd = [sys.executable, "-m", "ensurepip", "--upgrade"]
+            if os.name != "nt":
+                cmd.append("--user")
+            completed = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, errors="replace", env=env, timeout=160)
+            if completed.stdout:
+                details.append(completed.stdout[-650:])
+            if self._pip_works(env):
+                return env
+        except (OSError, subprocess.TimeoutExpired) as error:
+            details.append("ensurepip: " + str(error))
+
+        self._deps_status(key, token, "Descargando pip para MiniLinux...")
+        bootstrap = self.deps_root / "get-pip.py"
+        try:
+            request = urllib.request.Request(
+                PIP_BOOTSTRAP_URL, headers={"User-Agent": "PYRIONOS/" + APP_VERSION})
+            with urllib.request.urlopen(request, timeout=30) as reply:
+                data = reply.read(4_000_001)
+            if not data or len(data) > 4_000_000:
+                raise RuntimeError("Bootstrap pip inválido o demasiado grande")
+            bootstrap.write_bytes(data)
+            self.pip_lib.mkdir(parents=True, exist_ok=True)
+            completed = subprocess.run([
+                sys.executable, str(bootstrap), "--disable-pip-version-check",
+                "--no-warn-script-location", "--target", str(self.pip_lib),
+            ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, errors="replace", env=env, timeout=600)
+            if completed.stdout:
+                details.append(completed.stdout[-850:])
+            importlib.invalidate_caches()
+            if self._pip_works(self._deps_python_env()):
+                return self._deps_python_env()
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            details.append("get-pip: " + str(error))
+        finally:
+            try:
+                bootstrap.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise RuntimeError(
+            "No se pudo preparar pip en Python. " +
+            (" | ".join(details)[-1200:] or "Verifica la conexión a Internet."))
+
+    def _install_package(self, key, token, name, index, total, env):
+        """pip en segundo plano: registra progreso y reintenta hasta 5 veces."""
+        self.deps_lib.mkdir(parents=True, exist_ok=True)
+        log_path = self.deps_root / ("pip-" + self._tool_safe_id(key) + ".log")
+        for attempt in range(1, 6):
+            self._deps_status(
+                key, token,
+                "Instalando %s (%d/%d), intento %d/5..." %
+                (name, index, total, attempt))
+            command = [
+                sys.executable, "-m", "pip", "install", "--no-input",
+                "--disable-pip-version-check", "--prefer-binary",
+                "--upgrade", "--target", str(self.deps_lib), name,
+            ]
+            try:
+                with log_path.open("wb") as output:
+                    proc = subprocess.Popen(command, stdout=output,
+                                            stderr=subprocess.STDOUT, env=env)
+                    start = time.monotonic()
+                    next_message = start + 2.0
+                    while proc.poll() is None:
+                        if time.monotonic() - start > 600:
+                            proc.kill()
+                            proc.wait(timeout=10)
+                            raise TimeoutError("pip superó 10 minutos")
+                        if time.monotonic() >= next_message:
+                            elapsed = int(time.monotonic() - start)
+                            self._deps_status(key, token,
+                                "Descargando/instalando %s (%d/%d): %ds" %
+                                (name, index, total, elapsed))
+                            next_message = time.monotonic() + 2.0
+                        time.sleep(0.2)
+                    result = proc.returncode
+                if result == 0:
+                    importlib.invalidate_caches()
+                    return
+                tail = log_path.read_text(
+                    encoding="utf-8", errors="replace")[-900:]
+                error = "pip devolvió %d: %s" % (result, tail.strip())
+            except (OSError, subprocess.TimeoutExpired, TimeoutError) as exc:
+                error = str(exc)
+            if attempt < 5:
+                time.sleep(2)
+        raise RuntimeError(
+            "No se pudo instalar %s tras 5 intentos. %s" %
+            (name, error[-900:]))
+
+    def _prepare_tool_async(self, tool, key, filename):
+        """No ejecutar el .py hasta resolver imports y guide.csv."""
+        meta = self.open_tabs.get(key)
+        if not meta:
+            return
+        token = int(meta.get("deps_token", 0)) + 1
+        meta["deps_token"] = token
+        meta["state"] = "preparing"
+        meta["message"] = "Comparando imports y dependencias..."
+        def worker():
+            try:
+                path = Path(filename).resolve()
+                missing = self._missing_tool_dependencies(tool, path)
+                if missing:
+                    self._deps_status(
+                        key, token, "Faltan: " + ", ".join(missing))
+                    # Pip modifica un entorno compartido: no ejecutar
+                    # dos instalaciones simultáneamente.
+                    with self.deps_lock:
+                        missing = self._missing_tool_dependencies(tool, path)
+                        if missing:
+                            env = self._ensure_pip(key, token)
+                            for index, package in enumerate(missing, 1):
+                                # Otra wheel pudo traer esta dependencia como
+                                # transitiva: evitar instalaciones duplicadas.
+                                if not self._dist_available(package):
+                                    self._install_package(
+                                        key, token, package, index,
+                                        len(missing), env)
+                            importlib.invalidate_caches()
+                            missing = self._missing_tool_dependencies(tool, path)
+                            if missing:
+                                raise RuntimeError(
+                                    "Tras instalar faltan: " + ", ".join(missing))
+                self.tool_events.put(("deps_ready", key,
+                    {"token": token, "filename": str(path)}))
+            except Exception as error:
+                self.tool_events.put(("deps_failed", key,
+                    {"token": token, "message": str(error)}))
+        threading.Thread(target=worker, daemon=True).start()
+
     def _tool_view_rect(self):
         """Área útil: bajo las pestañas; nunca cubre la barra superior."""
         w, h = self.size
@@ -1338,6 +1653,8 @@ root.mainloop()
         meta["zoom_seq"] = 0
         meta["zoom"] = 1.0
         meta["zoom_mode"] = "fit"
+        # Invalida notificaciones antiguas de preparacion.
+        meta["deps_token"] = int(meta.get("deps_token", 0)) + 1
 
     def _start_tool_process(self, key, local_file):
         meta = self.open_tabs.get(key)
@@ -1365,8 +1682,7 @@ root.mainloop()
             })
             wrapper = self.cache_dir / "tk_launcher.py"
             wrapper.write_text(self._tk_launcher_source(), encoding="utf-8")
-            env = os.environ.copy()
-            env["PYTHONUNBUFFERED"] = "1"
+            env = self._deps_python_env()
             _, _, width, height = self._tool_view_rect()
             command = [sys.executable, str(wrapper), str(path),
                        str(xid_file), str(ready_file),
@@ -1421,11 +1737,26 @@ root.mainloop()
                 break
             if key not in self.open_tabs:
                 continue
+            meta = self.open_tabs[key]
             if action == "downloaded":
-                self._start_tool_process(key, data)
+                # Primero validar imports + instalar paquetes. NO iniciar el .py.
+                self._prepare_tool_async(meta["tool"], key, data)
             elif action == "failed":
-                self.open_tabs[key]["state"] = "error"
-                self.open_tabs[key]["message"] = data
+                meta["state"] = "error"
+                meta["message"] = data
+            elif action in ("deps_status", "deps_ready", "deps_failed"):
+                # Evitar mensajes rezagados de una instalacion anterior.
+                if data.get("token") != meta.get("deps_token"):
+                    continue
+                if action == "deps_status":
+                    meta["state"] = "preparing"
+                    meta["message"] = data["message"]
+                elif action == "deps_failed":
+                    meta["state"] = "error"
+                    meta["message"] = "Dependencias: " + data["message"]
+                else:
+                    meta["message"] = "Dependencias listas. Iniciando..."
+                    self._start_tool_process(key, data["filename"])
             dirty = True
         for key, meta in tuple(self.open_tabs.items()):
             process = meta.get("process")
@@ -1523,13 +1854,26 @@ root.mainloop()
             return
         self.text(22, 85, self._ellipsize(meta["name"], w - 44, "label"),
                   "#173B50", "label")
-        self.text(22, 119, self._ellipsize(meta.get("message", ""),
-                  w - 44, "body"), "#546673", "body")
+        info = str(meta.get("message", ""))
+        line_width = max(100, w - 44)
+        # Mostrar instalacion y errores sin desbordar el ancho de la pestaña.
+        words = info.split()
+        rows = [""]
+        for word in words:
+            candidate = (rows[-1] + " " + word).strip()
+            if rows[-1] and self.text_width(candidate, "tab") > line_width:
+                rows.append(word)
+            else:
+                rows[-1] = candidate
+        for index, row in enumerate(rows[:6]):
+            self.text(22, 119 + index * 21, self._ellipsize(
+                row, line_width, "tab"), "#546673", "tab")
         if meta.get("state") in ("error", "ended"):
-            self.text(22, 151, "Haz clic aqui para reintentar", "#176684", "tab")
+            self.text(22, 140 + len(rows[:6]) * 21,
+                      "Haz clic para reintentar", "#176684", "tab")
 
     def _click_tool_panel(self, x, y, button):
-        if button != 1 or not (115 <= y <= 160):
+        if button != 1 or not (115 <= y <= self.size[1] - 55):
             return
         meta = self.open_tabs.get(self.selected_top_tab)
         if meta and meta.get("state") in ("error", "ended"):
