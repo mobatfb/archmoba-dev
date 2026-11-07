@@ -16,7 +16,8 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.25-bordes-suaves"
+APP_VERSION = "0.2.26-input-30"
+MAX_SEARCH_CHARS = 30
 
 U = C.c_ulong
 P = C.c_void_p
@@ -523,8 +524,10 @@ class PyrionDesktop:
             self.search_focus = False
         elif 0 < count <= 31:
             value = buffer.raw[:count].decode("utf-8", "ignore")
-            if value.isprintable() and len(self.search_text) + len(value) <= 120:
-                self.search_text += value
+            if value.isprintable():
+                available = MAX_SEARCH_CHARS - len(self.search_text)
+                if available > 0:
+                    self.search_text += value[:available]
         self.paint()
 
     def paint(self):
