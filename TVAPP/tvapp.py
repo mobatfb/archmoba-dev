@@ -7,7 +7,7 @@ Todo funciona con tkinter y recursos integrados sin archivos graficos externos.
 import os
 import tkinter as tk
 
-VERSION = "1.0.15"
+VERSION = "1.0.16"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 HERO_BOTTOM = 222  # El contenido empieza mas arriba, sin la barra de estado simulada
@@ -315,7 +315,8 @@ class TVSports(tk.Frame):
         self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0, relief="flat")
         self.canvas.pack(fill="both", expand=True)
         self.active_tab = "Vivo"
-        self.category = "Xtream TV"
+        self.mode = None  # Elegir modo de acceso en el primer inicio.
+        self.category = ""
         self.use_internal = False
         self.category_offset = 0
         self.channel_offset = 0
@@ -405,7 +406,8 @@ class TVSports(tk.Frame):
         self.canvas.bind("<Button-5>", lambda _: self._wheel_linux(1))
         self.bind("<Destroy>", self._on_destroy, add="+")
         self.after(100, self._check_events)
-        self._select_category("Xtream TV")
+        # Muestra la selección de modos; no inicia conexiones automáticamente.
+        self.redraw()
 
     def _build_xtream_form(self):
         form = tk.Frame(self, bg=PANEL, highlightthickness=0)
@@ -444,8 +446,8 @@ class TVSports(tk.Frame):
         )
         self.xc_disconnect_button.pack(side="right")
         self.xc_internal_button = tk.Button(
-            form, text="Usar interno  ·  IPTV-org",
-            command=self._use_internal,
+            form, text="← Cambiar modo de acceso",
+            command=self._switch_mode,
             bg="#24535d", fg=WHITE, activebackground="#367887",
             activeforeground=WHITE, relief="flat",
             font=("Segoe UI", 10, "bold"), cursor="hand2",
@@ -474,16 +476,52 @@ class TVSports(tk.Frame):
             state="normal" if self.xtream_session else "disabled",
         )
 
-    def _use_internal(self):
-        """Accede a las URLs M3U preconfiguradas, sin autenticar con Xtream."""
-        self.xtream_auth_token += 1  # Descarta inicios de sesión pendientes.
+    def _clear_external_session(self):
+        """Cancela consultas y descarta las credenciales del servidor externo."""
+        self.xtream_auth_token += 1
         self.xtream_connecting = False
+        self.xtream_session = None
         self.xc_password.set("")
+        self.catalogs = {
+            key: value for key, value in self.catalogs.items()
+            if key not in XTREAM_SECTIONS
+        }
+
+    def _use_internal(self):
+        """Usa los canales IPTV-org preconfigurados sin autenticación."""
+        self._clear_external_session()
+        self.mode = "local"
         self.use_internal = True
+        self.category_offset = 0
         self.active_tab = "Vivo"
-        # La opción Todos utiliza SOURCES["Todos"] (index.m3u);
-        # las categorías restantes quedan disponibles en el panel lateral.
         self._select_category("Todos")
+
+    def _use_external(self):
+        """Abre el inicio de sesión del servidor Xtream."""
+        self._clear_external_session()
+        self.mode = "external"
+        self.use_internal = False
+        self.category_offset = 0
+        self.active_tab = "Vivo"
+        self._select_category("Xtream TV")
+
+    def _switch_mode(self):
+        """Vuelve a elegir entre local multirregión y servidor externo."""
+        self._clear_external_session()
+        self.mode = None
+        self.use_internal = False
+        self.active_tab = "Vivo"
+        self.category = ""
+        self.category_offset = 0
+        self.channel_offset = 0
+        self.series_request_id += 1
+        self.series_items = None
+        self.series_name = ""
+        self.request_id += 1
+        self._release_player()
+        self.selected = None
+        self.group_picker.place_forget()
+        self.redraw()
 
     def _connect_xtream(self):
         if self.xtream_connecting:
@@ -541,9 +579,10 @@ class TVSports(tk.Frame):
         self._release_player()
         self.selected = None
         self.xtream_note = "Cuenta desconectada. La contraseña no se guardó."
+        self.mode = "external"
         self.use_internal = False
-        self._select_category("Xtream TV")
         self.active_tab = "Vivo"
+        self._select_category("Xtream TV")
         self.redraw()
 
     def _xtream_catalog_worker(self, category, token, session):
@@ -773,14 +812,37 @@ class TVSports(tk.Frame):
             pass
         self.after(110, self._check_events)
 
+    def _sidebar_categories(self):
+        """Categorías exclusivas para el modo de acceso elegido."""
+        if self.mode == "local":
+            return list(SOURCES.keys()) + ["Favoritos"]
+        if self.mode == "external":
+            return list(XTREAM_SECTIONS) + ["Favoritos"]
+        return []
+
+    def _sidebar_row_count(self, height):
+        """Filas del menú visibles sin invadir la navegación flotante."""
+        return max(1, int((height - HERO_BOTTOM - 138) // 44) + 1)
+
     def _select_category(self, category):
+        if self.mode == "local" and category not in SOURCES and category != "Favoritos":
+            return
+        if self.mode == "external" and category not in XTREAM_SECTIONS and category != "Favoritos":
+            return
+        if self.mode is None:
+            return
         self._release_player()
         self.selected = None
         self.category = category
-        if category in XTREAM_SECTIONS:
-            self.use_internal = False
-        elif category in SOURCES:
-            self.use_internal = True
+        self.use_internal = self.mode == "local"
+        sidebar = self._sidebar_categories()
+        rows = self._sidebar_row_count(self.canvas.winfo_height())
+        if category in sidebar:
+            index = sidebar.index(category)
+            if index < self.category_offset:
+                self.category_offset = index
+            elif index >= self.category_offset + rows:
+                self.category_offset = index - rows + 1
         self.series_request_id += 1
         self.series_items = None
         self.series_name = ""
@@ -824,6 +886,14 @@ class TVSports(tk.Frame):
     def _visible_channels(self):
         if self.category == "Favoritos":
             channels = list(self.favorites.values())
+            if self.mode == "local":
+                channels = [item for item in channels
+                            if item.get("source") != "xtream"]
+            elif self.mode == "external":
+                account = (self.xtream_session or {}).get("account_tag")
+                channels = [item for item in channels
+                            if item.get("source") == "xtream"
+                            and item.get("account_tag") == account]
         elif self.category == "Xtream Series" and self.series_items is not None:
             channels = self.series_items
         else:
@@ -850,15 +920,17 @@ class TVSports(tk.Frame):
             self.search_field.focus_set()
 
     def _select_tab(self, tab):
+        if self.mode is None:
+            self.redraw()
+            return
         self.active_tab = tab
         if tab in ("VOD", "Partidos", "Vivo"):
-            target = {
-                "VOD": ("Películas" if self.use_internal or not self.xtream_session
-                        else "Xtream Cine"),
-                "Partidos": "Deportes",
-                "Vivo": ("Todos" if self.use_internal else
-                         "Xtream TV" if self.xtream_session else "Deportes"),
-            }[tab]
+            if self.mode == "local":
+                target = {"VOD": "Películas", "Partidos": "Deportes",
+                          "Vivo": "Todos"}[tab]
+            else:
+                target = {"VOD": "Xtream Cine", "Partidos": "Xtream TV",
+                          "Vivo": "Xtream TV"}[tab]
             self._select_category(target)
         else:
             self._release_player()
@@ -887,7 +959,12 @@ class TVSports(tk.Frame):
         if self.active_tab not in ("Vivo", "VOD", "Partidos"):
             return
         if x is None or x < 112:
-            self.category_offset = max(0, min(len(self.CATEGORIES) - 5, self.category_offset + direction))
+            sidebar = self._sidebar_categories()
+            rows = self._sidebar_row_count(self.canvas.winfo_height())
+            self.category_offset = max(
+                0, min(max(0, len(sidebar) - rows),
+                       self.category_offset + direction)
+            )
         else:
             self._page_channels(direction)
         self.redraw()
@@ -1014,10 +1091,15 @@ class TVSports(tk.Frame):
         c.create_rectangle(0, HERO_BOTTOM, left, h, fill=SIDE, outline="")
         c.create_rectangle(left, HERO_BOTTOM, w, h, fill=PANEL, outline="")
 
-        for i, category in enumerate(self.CATEGORIES[self.category_offset:]):
+        sidebar = self._sidebar_categories()
+        rows = self._sidebar_row_count(h)
+        self.category_offset = max(
+            0, min(self.category_offset, max(0, len(sidebar) - rows))
+        )
+        for i, category in enumerate(
+            sidebar[self.category_offset:self.category_offset + rows]
+        ):
             y = HERO_BOTTOM + 32 + i * 44
-            if y + 18 > h-88:
-                break
             tag = f"category_{i}"
             if category == self.category:
                 self._round(5,y-19,left-6,y+19,10,"#24505e",tags=(tag,))
@@ -1087,14 +1169,45 @@ class TVSports(tk.Frame):
         if self.loading and not available:
             self._text(left+10,HERO_BOTTOM+112,"Obteniendo lista M3U...",10,CYAN,width=w-left-20)
 
+    def _draw_mode_choice(self, w, h):
+        """Selección inicial de acceso sin mezclar categorías."""
+        c = self.canvas
+        c.create_rectangle(0, HERO_BOTTOM, w, h, fill=PANEL, outline="")
+        self._text(w/2, HERO_BOTTOM+25, "Elige cómo ver TV",
+                   17, WHITE, bold=True, anchor="center")
+        y1 = HERO_BOTTOM + 49
+        self._round(13, y1, w-13, y1+78, 14, "#253f4c",
+                    outline="#3f798b", tags=("mode_local",))
+        self._text(28, y1+25, "Modo local multirregión", 14, CYAN,
+                   bold=True, tags=("mode_local",))
+        self._text(28, y1+53, "Canales IPTV-org por región y categoría",
+                   10, WHITE, tags=("mode_local",))
+        self._click("mode_local", self._use_internal)
+        y2 = HERO_BOTTOM + 140
+        self._round(13, y2, w-13, y2+78, 14, "#302e3e",
+                    outline="#59546e", tags=("mode_external",))
+        self._text(28, y2+25, "Modo servidor externo", 14, WHITE,
+                   bold=True, tags=("mode_external",))
+        self._text(28, y2+53, "Conexión Xtream con usuario y contraseña",
+                   10, MUTED, tags=("mode_external",))
+        self._click("mode_external", self._use_external)
+        self._text(w/2, HERO_BOTTOM+247,
+                   "Puedes cambiar de modo desde Cuenta.",
+                   9, MUTED, anchor="center")
+
     def _draw_other(self, w, h):
         c=self.canvas
         c.create_rectangle(0,HERO_BOTTOM,w,h,fill=PANEL,outline="")
         if self.active_tab == "Cuenta":
-            self._draw_xtream_form(w, h)
+            self._draw_mode_choice(w, h)
             return
         if self.active_tab=="Inicio":
-            heading,desc="TVAPP · IPTV-org","Miles de canales públicos organizados por tema."
+            heading = "TVAPP · " + (
+                "IPTV-org" if self.mode == "local" else "Servidor externo"
+            )
+            desc = ("Canales por región y categoría."
+                    if self.mode == "local"
+                    else "Canales disponibles desde tu servidor Xtream.")
         elif self.active_tab=="Cuenta":
             heading,desc="Tu cuenta","Favoritos guardados en este dispositivo."
         else:
@@ -1337,7 +1450,10 @@ class TVSports(tk.Frame):
         c.create_rectangle(0,0,w,h,fill=BG,outline="")
         self._draw_header(w)
         self._draw_hero(w)
-        if self.active_tab in ("Vivo","VOD","Partidos"):
+        if self.mode is None:
+            self.group_picker.place_forget()
+            self._draw_mode_choice(w,h)
+        elif self.active_tab in ("Vivo","VOD","Partidos"):
             self._draw_live(w,h)
         else:
             self.group_picker.place_forget()
