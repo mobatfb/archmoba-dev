@@ -1,5 +1,7 @@
 # ARGUMENTOS: grabar pantalla video mp4 seleccionar marco region ventana monitor fps grabador
 """Grabador de pantalla con seleccion rectangular para PTM."""
+import ctypes as C
+import ctypes.util
 import os
 import queue
 import sys
@@ -12,26 +14,170 @@ from tkinter import filedialog, messagebox, ttk
 
 TOOL_NAME = "Grabador de Pantalla"
 TOOL_DESCRIPTION = "Graba una region seleccionada de la pantalla y exporta video MP4."
-TOOL_VERSION = "1.0.2"
+TOOL_VERSION = "1.0.3"
+
+
+class _XImage(C.Structure):
+    """Campos públicos iniciales de XImage (Xlib.h)."""
+
+    _fields_ = (
+        ("width", C.c_int), ("height", C.c_int),
+        ("xoffset", C.c_int), ("format", C.c_int),
+        ("data", C.c_void_p), ("byte_order", C.c_int),
+        ("bitmap_unit", C.c_int), ("bitmap_bit_order", C.c_int),
+        ("bitmap_pad", C.c_int), ("depth", C.c_int),
+        ("bytes_per_line", C.c_int), ("bits_per_pixel", C.c_int),
+        ("red_mask", C.c_ulong), ("green_mask", C.c_ulong),
+        ("blue_mask", C.c_ulong),
+    )
+
+
+class _X11Capture:
+    """Captura la pantalla con XGetImage, solo libX11; sin mss/XCB/Xrandr."""
+
+    def __init__(self):
+        self.display = None
+        library = ctypes.util.find_library("X11") or "libX11.so.6"
+        try:
+            self.x11 = C.CDLL(library)
+        except OSError as error:
+            raise RuntimeError(
+                "No se puede cargar libX11.so.6. Esta es una biblioteca "
+                "nativa del sistema, no un paquete instalable con pip. "
+                "Detalle: " + str(error)) from error
+
+        self.x11.XOpenDisplay.argtypes = [C.c_char_p]
+        self.x11.XOpenDisplay.restype = C.c_void_p
+        self.x11.XDefaultScreen.argtypes = [C.c_void_p]
+        self.x11.XDefaultScreen.restype = C.c_int
+        self.x11.XDefaultRootWindow.argtypes = [C.c_void_p]
+        self.x11.XDefaultRootWindow.restype = C.c_ulong
+        self.x11.XDisplayWidth.argtypes = [C.c_void_p, C.c_int]
+        self.x11.XDisplayWidth.restype = C.c_int
+        self.x11.XDisplayHeight.argtypes = [C.c_void_p, C.c_int]
+        self.x11.XDisplayHeight.restype = C.c_int
+        self.x11.XGetImage.argtypes = [
+            C.c_void_p, C.c_ulong, C.c_int, C.c_int,
+            C.c_uint, C.c_uint, C.c_ulong, C.c_int,
+        ]
+        self.x11.XGetImage.restype = C.POINTER(_XImage)
+        self.x11.XDestroyImage.argtypes = [C.POINTER(_XImage)]
+        self.x11.XDestroyImage.restype = C.c_int
+        self.x11.XCloseDisplay.argtypes = [C.c_void_p]
+        self.x11.XCloseDisplay.restype = C.c_int
+
+        display_name = os.environ.get("DISPLAY", "")
+        if not display_name:
+            raise RuntimeError(
+                "DISPLAY no está configurado: se necesita una sesión X11.")
+        self.display = self.x11.XOpenDisplay(display_name.encode("utf-8"))
+        if not self.display:
+            raise RuntimeError(
+                "XOpenDisplay no pudo conectarse a " + display_name)
+        try:
+            screen = self.x11.XDefaultScreen(self.display)
+            self.root = self.x11.XDefaultRootWindow(self.display)
+            width = int(self.x11.XDisplayWidth(self.display, screen))
+            height = int(self.x11.XDisplayHeight(self.display, screen))
+            if width <= 0 or height <= 0:
+                raise RuntimeError("El escritorio X11 no informa dimensiones.")
+            self.monitors = [
+                {"left": 0, "top": 0, "width": width, "height": height}
+            ]
+        except Exception:
+            self.close()
+            raise
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
+
+    def close(self):
+        if self.display:
+            self.x11.XCloseDisplay(self.display)
+            self.display = None
+
+    def grab(self, region):
+        """Devuelve BGRA compatible con numpy y cv2.VideoWriter."""
+        import numpy as np
+
+        if not self.display:
+            raise RuntimeError("La conexión X11 está cerrada.")
+        x, y, width, height = (
+            int(region[key]) for key in ("left", "top", "width", "height")
+        )
+        desktop = self.monitors[0]
+        if (width < 1 or height < 1 or x < 0 or y < 0 or
+                x + width > desktop["width"] or
+                y + height > desktop["height"]):
+            raise ValueError("El marco está fuera de la pantalla X11.")
+
+        image = self.x11.XGetImage(
+            self.display, self.root, x, y, width, height,
+            C.c_ulong(-1).value, 2,  # AllPlanes, ZPixmap
+        )
+        if not image:
+            raise RuntimeError(
+                "XGetImage no pudo capturar la región seleccionada.")
+        try:
+            info = image.contents
+            bpp = info.bits_per_pixel
+            pitch = info.bytes_per_line
+            if (not info.data or bpp not in (16, 24, 32) or
+                    pitch < (width * bpp + 7) // 8):
+                raise RuntimeError(
+                    "Formato de imagen X11 no compatible (%s bpp)." % bpp)
+            raw = C.string_at(info.data, pitch * height)
+
+            # Caso habitual de Xorg/PYRIONOS: B,G,R,X en little-endian.
+            if (bpp == 32 and info.byte_order == 0 and
+                    (info.red_mask, info.green_mask, info.blue_mask) ==
+                    (0xFF0000, 0x00FF00, 0x0000FF)):
+                return np.ndarray(
+                    (height, width, 4), dtype=np.uint8, buffer=raw,
+                    strides=(pitch, 4, 1)).copy()
+
+            if bpp == 24:
+                pixels = np.ndarray(
+                    (height, width, 3), dtype=np.uint8, buffer=raw,
+                    strides=(pitch, 3, 1))
+                if info.byte_order != 0:
+                    pixels = pixels[:, :, ::-1]
+                out = np.empty((height, width, 4), dtype=np.uint8)
+                out[:, :, :3] = pixels
+                out[:, :, 3] = 255
+                return out
+
+            order = "<" if info.byte_order == 0 else ">"
+            dtype = order + ("u4" if bpp == 32 else "u2")
+            pixels = np.ndarray(
+                (height, width), dtype=dtype, buffer=raw,
+                strides=(pitch, bpp // 8))
+            out = np.empty((height, width, 4), dtype=np.uint8)
+            for channel, mask in (
+                    (2, int(info.red_mask)),
+                    (1, int(info.green_mask)),
+                    (0, int(info.blue_mask))):
+                if not mask:
+                    raise RuntimeError("Máscara RGB inválida en X11.")
+                shift = (mask & -mask).bit_length() - 1
+                maximum = mask >> shift
+                out[:, :, channel] = (
+                    ((pixels & mask) >> shift) * 255 // maximum
+                ).astype(np.uint8)
+            out[:, :, 3] = 255
+            return out
+        finally:
+            self.x11.XDestroyImage(image)
 
 
 def _open_capture():
-    """Abre mss sin depender de libxcb en MiniLinux/PYRIONOS.
-
-    Desde mss 10.2, el backend XCB es el predeterminado, pero requiere
-    libxcb.so. El escritorio PYRIONOS ya utiliza libX11, por lo que
-    seleccionamos expresamente el backend Xlib al capturar en Linux.
-    En versiones antiguas de mss, Xlib era el backend predeterminado.
-    """
-    import mss
-
+    """Linux utiliza Xlib directo; Windows conserva la captura con mss."""
     if sys.platform.startswith("linux"):
-        try:
-            return mss.mss(backend="xlib")
-        except TypeError as error:
-            # Compatibilidad con mss anterior a la opcion backend.
-            if "backend" not in str(error):
-                raise
+        return _X11Capture()
+    import mss
     return mss.mss()
 
 
@@ -103,9 +249,8 @@ class ScreenRecorder(tk.Frame):
         except Exception as exc:
             messagebox.showerror(
                 "Captura X11 no disponible",
-                "No se pudo iniciar la captura de pantalla Xlib. "
-                "El paquete Python mss puede estar instalado, pero una "
-                "biblioteca nativa de X11 o DISPLAY podría no estar disponible.\n\n"
+                "PYRIONOS no pudo acceder directamente al servidor X11. "
+                "Comprueba la biblioteca libX11.so.6 y la variable DISPLAY.\n\n"
                 + str(exc))
             return
         overlay = tk.Toplevel(self)
@@ -163,9 +308,13 @@ class ScreenRecorder(tk.Frame):
         try:
             import cv2
             import numpy
-            import mss
+            if not sys.platform.startswith("linux"):
+                import mss
         except ImportError as exc:
-            messagebox.showerror("Dependencias", "Instala: python -m pip install mss opencv-python numpy\n\n" + str(exc))
+            messagebox.showerror(
+                "Dependencias Python",
+                "PYRIONOS debe preparar OpenCV, NumPy y, en Windows, mss.\n\n"
+                + str(exc))
             return
         try:
             folder = Path(self.path.get()).expanduser()
@@ -189,7 +338,6 @@ class ScreenRecorder(tk.Frame):
         try:
             import cv2
             import numpy as np
-            import mss
             # El codificador MP4 necesita dimensiones pares.
             w = region["width"] - region["width"] % 2
             h = region["height"] - region["height"] % 2
