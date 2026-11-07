@@ -2,6 +2,7 @@
 """Grabador de pantalla con seleccion rectangular para PTM."""
 import os
 import queue
+import sys
 import threading
 import time
 import tkinter as tk
@@ -11,7 +12,27 @@ from tkinter import filedialog, messagebox, ttk
 
 TOOL_NAME = "Grabador de Pantalla"
 TOOL_DESCRIPTION = "Graba una region seleccionada de la pantalla y exporta video MP4."
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.0.1"
+
+
+def _open_capture():
+    """Abre mss sin depender de libxcb en MiniLinux/PYRIONOS.
+
+    Desde mss 10.2, el backend XCB es el predeterminado, pero requiere
+    libxcb.so. El escritorio PYRIONOS ya utiliza libX11, por lo que
+    seleccionamos expresamente el backend Xlib al capturar en Linux.
+    En versiones antiguas de mss, Xlib era el backend predeterminado.
+    """
+    import mss
+
+    if sys.platform.startswith("linux"):
+        try:
+            return mss.mss(backend="xlib")
+        except TypeError as error:
+            # Compatibilidad con mss anterior a la opcion backend.
+            if "backend" not in str(error):
+                raise
+    return mss.mss()
 
 
 class ScreenRecorder(tk.Frame):
@@ -69,13 +90,23 @@ class ScreenRecorder(tk.Frame):
         if self.recording:
             return
         try:
-            import mss
-            with mss.mss() as sct:
+            with _open_capture() as sct:
                 desktop = sct.monitors[0]
                 left, top = desktop["left"], desktop["top"]
                 width, height = desktop["width"], desktop["height"]
+        except ModuleNotFoundError as exc:
+            messagebox.showerror(
+                "Dependencia Python faltante",
+                "No se encontró mss. PYRIONOS debe instalarlo antes de abrir "
+                "esta herramienta.\n\n" + str(exc))
+            return
         except Exception as exc:
-            messagebox.showerror("Captura", "Instala mss: python -m pip install mss\n\n" + str(exc))
+            messagebox.showerror(
+                "Captura X11 no disponible",
+                "No se pudo iniciar la captura de pantalla Xlib. "
+                "El paquete Python mss puede estar instalado, pero una "
+                "biblioteca nativa de X11 o DISPLAY podría no estar disponible.\n\n"
+                + str(exc))
             return
         overlay = tk.Toplevel(self)
         overlay.overrideredirect(True)
@@ -169,7 +200,7 @@ class ScreenRecorder(tk.Frame):
                 raise RuntimeError("No se pudo abrir el codificador MP4")
             interval = 1.0 / fps
             deadline = time.perf_counter()
-            with mss.mss() as sct:
+            with _open_capture() as sct:
                 while not self.stop_event.is_set():
                     image = np.asarray(sct.grab(region))
                     frame = cv2.cvtColor(image[:h, :w], cv2.COLOR_BGRA2BGR)
