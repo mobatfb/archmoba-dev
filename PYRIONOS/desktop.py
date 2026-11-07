@@ -9,6 +9,17 @@ from __future__ import annotations
 
 import ctypes as C
 import ctypes.util
+import csv
+import io
+import json
+import queue
+import re
+import subprocess
+import tempfile
+import threading
+import unicodedata
+import urllib.request
+import zipfile
 from pathlib import Path
 import os
 import signal
@@ -18,6 +29,8 @@ import time
 APP_NAME = "PYRION OS"
 APP_VERSION = "0.2.27-pestanas-superiores"
 MAX_SEARCH_CHARS = 30
+CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
+TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -154,9 +167,26 @@ class PyrionDesktop:
         self.search_text = ""
         self.search_focus = False
         self.active_tab = "Recientes"
-        # Boceto inicial de pestañas; se pueden registrar otras posteriormente.
-        self.top_tabs = ["PYRIONOS", "PTM", "Convertidor PDF"]
+        # Al estilo PTM: inicio permanente; las demas pestañas nacen al abrir tools.
+        self.top_tabs = ["PYRIONOS"]
         self.selected_top_tab = "PYRIONOS"
+        self.open_tabs = {}
+        self.catalog_tools = []
+        self.catalog_status = "Cargando catalogo PTM..."
+        self.catalog_queue = queue.Queue()
+        self.catalog_fetching = False
+        self.catalog_last_check = 0.0
+        self.catalog_check_pending = False
+        self.expand_after_update = False
+        self.show_all_results = False
+        self.results_scroll = 0
+        self.last_search_edit = 0.0
+        self.cache_dir = Path.home() / ".cache" / "pyrionos" / "ptm"
+        self.catalog_cache = self.cache_dir / "guide.csv"
+        self.state_file = self.cache_dir / "user_state.json"
+        self.user_state = self._load_user_state()
+        self.results_click_areas = []
+        self.tool_events = queue.Queue()
         self.xft_lib = None
         self.logo_xft_font = None
         self.logo_core_font = None
@@ -387,6 +417,240 @@ class PyrionDesktop:
             result.append((tab, cursor, width))
             cursor += width + gap
         return result
+
+    def _load_user_state(self):
+        try:
+            state = json.loads(self.state_file.read_text(encoding="utf-8"))
+            if isinstance(state, dict):
+                return {"recents": list(state.get("recents", []))[:10],
+                        "favorites": list(state.get("favorites", [])),
+                        "usage": dict(state.get("usage", {}))}
+        except (OSError, ValueError, TypeError):
+            pass
+        return {"recents": [], "favorites": [], "usage": {}}
+
+    def _save_user_state(self):
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            tmp = self.state_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.user_state, ensure_ascii=False),
+                           encoding="utf-8")
+            tmp.replace(self.state_file)
+        except OSError as error:
+            print("PYRION: estado de tools:", error, file=sys.stderr)
+
+    @staticmethod
+    def _normalize_text(value):
+        text = unicodedata.normalize("NFKD", str(value or ""))
+        text = "".join(c for c in text if not unicodedata.combining(c))
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+
+    def _accept_catalog(self, raw):
+        reader = csv.DictReader(io.StringIO(raw), delimiter=";")
+        fields = set(reader.fieldnames or [])
+        required = {"slug", "titulo", "descripcion", "keywords", "categoria",
+                    "version", "ruta", "activo", "visitas", "tipo_archivo",
+                    "archivo_principal", "autor"}
+        if not required.issubset(fields):
+            raise ValueError("guide.csv PTM: encabezados no compatibles")
+        catalog, seen = [], set()
+        for row in reader:
+            if not row or None in row:
+                continue
+            if str(row.get("activo", "")).strip().lower() not in (
+                    "1", "true", "si", "sí", "yes", "activo"):
+                continue
+            rel = str(row.get("ruta", "")).strip().replace("\\", "/")
+            parts = rel.split("/")
+            typ = str(row.get("tipo_archivo", "")).lower().strip()
+            if (len(parts) < 2 or parts[0] != "tools"
+                    or any(p in ("", ".", "..") for p in parts)
+                    or typ not in ("py", "zip")
+                    or not rel.lower().endswith("." + typ)):
+                continue
+            key = str(row.get("slug", "")).strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            item = dict(row)
+            item["key"] = key
+            item["name"] = row.get("titulo", key).strip()
+            item["repo_path"] = rel
+            item["file_type"] = typ
+            try:
+                item["visits"] = int(row.get("visitas", 0) or 0)
+            except ValueError:
+                item["visits"] = 0
+            item["search_fields"] = (
+                (self._normalize_text(item["name"]), 50),
+                (self._normalize_text(key), 40),
+                (self._normalize_text(row.get("keywords")), 30),
+                (self._normalize_text(row.get("categoria")), 20),
+                (self._normalize_text(rel), 15),
+                (self._normalize_text(row.get("descripcion")), 10),
+                (self._normalize_text(row.get("autor")), 8),
+                (self._normalize_text(row.get("dependencias")), 6),
+            )
+            catalog.append(item)
+        self.catalog_tools = catalog
+        self.catalog_status = str(len(catalog)) + " herramientas PTM disponibles"
+        self.results_scroll = 0
+
+    def _refresh_catalog_async(self, force=False):
+        if self.catalog_fetching:
+            return
+        if not force and time.monotonic() - self.catalog_last_check < 90:
+            return
+        self.catalog_fetching = True
+        self.catalog_last_check = time.monotonic()
+
+        def worker():
+            try:
+                req = urllib.request.Request(
+                    CATALOG_URL + "?t=" + str(time.time_ns()),
+                    headers={"Cache-Control": "no-cache", "User-Agent": "PYRIONOS/" + APP_VERSION})
+                with urllib.request.urlopen(req, timeout=7) as response:
+                    data = response.read(400001)
+                if len(data) > 400000:
+                    raise ValueError("Catalogo demasiado grande")
+                raw = data.decode("utf-8-sig")
+                self.catalog_queue.put(("success", raw))
+                try:
+                    self.cache_dir.mkdir(parents=True, exist_ok=True)
+                    tmp = self.catalog_cache.with_suffix(".tmp")
+                    tmp.write_text(raw, encoding="utf-8")
+                    tmp.replace(self.catalog_cache)
+                except OSError:
+                    pass
+            except Exception as error:
+                self.catalog_queue.put(("error", str(error)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _init_catalog(self):
+        candidates = (self.catalog_cache,
+                      Path(__file__).resolve().parent / "guide.csv",
+                      Path(__file__).resolve().parent.parent / "PTM" / "guide.csv")
+        for path in candidates:
+            try:
+                self._accept_catalog(path.read_text(encoding="utf-8-sig"))
+                break
+            except (OSError, ValueError, UnicodeError):
+                continue
+        self._refresh_catalog_async(force=True)
+
+    def _poll_catalog(self):
+        dirty = False
+        while True:
+            try:
+                action, value = self.catalog_queue.get_nowait()
+            except queue.Empty:
+                break
+            self.catalog_fetching = False
+            if action == "success":
+                try:
+                    self._accept_catalog(value)
+                    dirty = True
+                except (ValueError, TypeError) as error:
+                    self.catalog_status = "Error de catalogo: " + str(error)[:100]
+            elif not self.catalog_tools:
+                self.catalog_status = "Sin conexion PTM: " + value[:85]
+            if self.expand_after_update:
+                self.show_all_results = True
+                self.expand_after_update = False
+                dirty = True
+        return dirty
+
+    def _search_matches(self):
+        q = self.search_text.strip()
+        if not q:
+            return []
+        by_key = {tool["key"]: tool for tool in self.catalog_tools}
+        usage = self.user_state["usage"]
+        commands = {
+            "%todos%": sorted(self.catalog_tools, key=lambda t: t["name"].lower()),
+            "%all%": sorted(self.catalog_tools, key=lambda t: t["name"].lower()),
+            "%catalogo%": sorted(self.catalog_tools, key=lambda t: t["name"].lower()),
+            "%recents%": [by_key[k] for k in self.user_state["recents"] if k in by_key],
+            "%favorites%": [by_key[k] for k in self.user_state["favorites"] if k in by_key],
+            "%used%": sorted(self.catalog_tools, key=lambda t: -int(usage.get(t["key"], 0)))[:10],
+            "%recommended%": sorted(self.catalog_tools, key=lambda t: -t["visits"])[:20],
+        }
+        if q.lower() in commands:
+            return commands[q.lower()]
+        normalized = self._normalize_text(q)
+        if normalized in ("todos", "todas", "catalogo", "herramientas", "listar herramientas"):
+            return commands["%todos%"]
+        filler = {"quiero", "necesito", "puedes", "por", "favor", "abrir", "abre",
+                  "ejecutar", "ejecuta", "usar", "un", "una", "el", "la",
+                  "los", "las", "de", "del", "para", "con", "en", "mi",
+                  "me", "al", "a", "que"}
+        tokens = [t for t in normalized.split() if t not in filler]
+        tokens = tokens or normalized.split()
+        phrase = " ".join(tokens)
+        hits = []
+        for tool in self.catalog_tools:
+            fields = tool["search_fields"]
+            title, slug = fields[0][0], fields[1][0]
+            score = (100 if phrase == title else 70 if title.startswith(phrase) else 0)
+            score += (80 if phrase == slug else 55 if slug.startswith(phrase) else 0)
+            for token in tokens:
+                best = 0
+                for field, weight in fields:
+                    if token in field.split():
+                        best = max(best, weight)
+                    elif any(word.startswith(token) for word in field.split()):
+                        best = max(best, int(weight * .9))
+                    elif token in field:
+                        best = max(best, int(weight * .7))
+                if best == 0:
+                    score = -1
+                    break
+                score += best
+            if score >= 0:
+                hits.append((score, tool["visits"], tool["name"].lower(), tool))
+        hits.sort(key=lambda hit: (-hit[0], -hit[1], hit[2]))
+        return [hit[3] for hit in hits]
+
+    def _set_search_command(self, command):
+        self.search_text = command[:MAX_SEARCH_CHARS]
+        self.results_scroll = 0
+        self.search_focus = True
+        self.show_all_results = True
+        self.paint()
+
+    def _expand_results(self):
+        if not self.search_text.strip():
+            return
+        self.results_scroll = 0
+        self.search_focus = False
+        # Igual que PTM: verificar guide remoto antes de mostrar el catalogo completo.
+        if self.catalog_fetching:
+            self.expand_after_update = True
+        else:
+            self.show_all_results = True
+            self._refresh_catalog_async(force=True)
+        self.paint()
+
+    def _record_tool_open(self, tool):
+        key = tool["key"]
+        recents = self.user_state["recents"]
+        if key in recents:
+            recents.remove(key)
+        recents.insert(0, key)
+        del recents[10:]
+        usage = self.user_state["usage"]
+        usage[key] = int(usage.get(key, 0)) + 1
+        self._save_user_state()
+
+    def _toggle_favorite(self, tool):
+        key = tool["key"]
+        favorites = self.user_state["favorites"]
+        if key in favorites:
+            favorites.remove(key)
+        else:
+            favorites.append(key)
+        self._save_user_state()
+        self.paint()
 
     def add_top_tab(self, title):
         """Permite a futuras aplicaciones registrar su pestaña."""
