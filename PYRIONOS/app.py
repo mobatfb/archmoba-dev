@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS - lanzador de PRUEBA en memoria RAM.
+"""PYRION OS - inicio del escritorio remoto desde GitHub, solo RAM.
 
-Inicia el desktop.py que esta junto a este archivo. No busca discos, no monta,
-no formatea, no descarga versiones y no instala dependencias. En Linux utiliza
-exclusivamente un sistema de archivos en memoria (tmpfs, ramfs o rootfs).
-Elimina los datos temporales al cerrar el escritorio.
-
-En Windows, si no hay una unidad RAM configurada, la opcion explicita
---permitir-temporal-disco permite una prueba con carpeta temporal NO-RAM.
+Descarga PYRIONOS/desktop.py en el RAM filesystem del sistema, comprueba
+la sintaxis, lo ejecuta y elimina sus datos cuando termina. Una copia del
+escritorio en la ISO permite iniciar sin Internet; se prefiere GitHub.
+No busca discos, no los monta y nunca formatea.
 """
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import json
+import time
+import urllib.error
+import urllib.request
 import os
 from pathlib import Path
 import shutil
@@ -22,8 +25,11 @@ import sys
 import tempfile
 
 APP_NAME = "PYRION OS - Prueba RAM"
-APP_VERSION = "0.4.3-ram-prueba"
+APP_VERSION = "0.4.4-ram-github"
 DESKTOP_NAME = "desktop.py"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/desktop.py"
+GITHUB_API_URL = "https://api.github.com/repos/mobatfb/archmoba-dev/contents/PYRIONOS/desktop.py?ref=main"
+DOWNLOAD_LIMIT = 2 * 1024 * 1024
 MEMORY_FILESYSTEMS = {"tmpfs", "ramfs", "rootfs"}
 
 
@@ -123,71 +129,158 @@ def _prepare_environment(root: Path) -> dict[str, str]:
     return env
 
 
+
+def _validate_source(raw: bytes, origin: str) -> bytes:
+    if not raw or len(raw) > DOWNLOAD_LIMIT:
+        raise ValueError('El escritorio supera el limite de 2 MiB o esta vacio: ' + origin)
+    source = raw.decode('utf-8-sig')
+    compile(source, 'PYRIONOS/desktop.py', 'exec')
+    # Restrict accidental downloads of GitHub error pages or other Python scripts.
+    if 'class PyrionDesktop' not in source or 'def main()' not in source:
+        raise ValueError('El archivo recibido no es PYRIONOS/desktop.py: ' + origin)
+    return source.encode('utf-8')
+
+
+def _fetch_github() -> tuple[bytes, str]:
+    errors = []
+    for url, via_api in ((GITHUB_RAW_URL, False), (GITHUB_API_URL, True)):
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(url, headers={
+                    'User-Agent': 'PYRIONOS/' + APP_VERSION,
+                    'Accept': 'application/vnd.github+json' if via_api else 'text/plain',
+                    'Cache-Control': 'no-cache',
+                })
+                with urllib.request.urlopen(req, timeout=13) as response:
+                    raw = response.read(DOWNLOAD_LIMIT * 2 + 1)
+                if via_api:
+                    data = json.loads(raw.decode('utf-8'))
+                    if data.get('encoding') != 'base64':
+                        raise ValueError('Respuesta de GitHub sin codigo base64')
+                    raw = base64.b64decode(data['content'], validate=False)
+                return _validate_source(raw, url), url
+            except (OSError, ValueError, KeyError, TypeError, UnicodeError,
+                    SyntaxError, json.JSONDecodeError) as exc:
+                errors.append(type(exc).__name__ + ': ' + str(exc))
+                if attempt == 0:
+                    time.sleep(1)
+    raise RuntimeError('No se pudo descargar desktop.py desde GitHub. ' + ' | '.join(errors)[-800:])
+
+
+def _offline_copy() -> tuple[bytes, str] | None:
+    script_dir = Path(__file__).resolve().parent
+    for candidate in (script_dir / 'desktop_offline.py',
+                      script_dir / 'desktop.py',
+                      Path('/opt/pyrionos/desktop_offline.py')):
+        try:
+            if candidate.is_file():
+                return _validate_source(candidate.read_bytes(), str(candidate)), str(candidate)
+        except (OSError, ValueError, UnicodeError, SyntaxError) as exc:
+            print('Copia local no valida:', candidate, exc, file=sys.stderr, flush=True)
+    return None
+
+
+def _notice(title: str, message: str) -> None:
+    print('\n' + title + ': ' + message, file=sys.stderr, flush=True)
+    if not (os.getenv('DISPLAY') or os.getenv('WAYLAND_DISPLAY')):
+        return
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(title, message, parent=root)
+        root.destroy()
+    except Exception as exc:
+        print('Aviso grafico no disponible:', exc, file=sys.stderr, flush=True)
+
+
+def _start_desktop(root: Path, *, in_ram: bool, offline_allowed: bool) -> int:
+    env = _prepare_environment(root)
+    desktop = root / DESKTOP_NAME
+    print(f'{APP_NAME} {APP_VERSION}', flush=True)
+    print('Almacenamiento:', 'RAM' if in_ram else 'temporal NO-RAM', flush=True)
+    print('Ruta temporal:', root, flush=True)
+    print('Descargando PYRIONOS/desktop.py desde GitHub...', flush=True)
+    try:
+        source, origin = _fetch_github()
+        print('Descarga correcta desde:', origin, flush=True)
+    except Exception as exc:
+        print('GitHub no disponible:', exc, file=sys.stderr, flush=True)
+        local = _offline_copy() if offline_allowed else None
+        if local is None:
+            _notice('PYRION OS', 'No se pudo descargar desktop.py desde GitHub.\n' + str(exc))
+            return 5
+        source, origin = local
+        print('Iniciando con copia local de respaldo:', origin, flush=True)
+
+    # Make no writes to the mounted ISO or a physical disk.
+    temp = root / 'desktop.py.tmp'
+    try:
+        with temp.open('wb') as handle:
+            handle.write(source)
+        temp.replace(desktop)
+    except OSError as exc:
+        _notice('PYRION OS', 'No se pudo guardar desktop.py en RAM: ' + str(exc))
+        return 6
+    digest = hashlib.sha256(source).hexdigest()
+    print('desktop.py: ' + str(len(source)) + ' bytes; SHA-256: ' + digest, flush=True)
+
+    try:
+        result = subprocess.run([sys.executable, '-B', str(desktop)],
+                                cwd=str(root), env=env, check=False)
+    except (OSError, KeyboardInterrupt) as exc:
+        _notice('PYRION OS', 'Fallo al iniciar el escritorio: ' + str(exc))
+        return 7
+    if result.returncode == 2:
+        _notice('PYRION OS: falta PySide6',
+                'desktop.py se obtuvo desde GitHub, pero el interprete Linux '
+                'necesita PySide6-Essentials para mostrar la interfaz. '
+                'El lanzador no instala librerias grandes automaticamente en RAM.')
+    elif result.returncode != 0:
+        _notice('PYRION OS', 'desktop.py termino con codigo ' + str(result.returncode))
+    return result.returncode
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
-    parser.add_argument("--diagnostico", action="store_true",
-                        help="mostrar el almacenamiento de RAM disponible")
-    parser.add_argument("--permitir-temporal-disco", action="store_true",
-                        help="permitir carpeta temporal en disco donde no existe tmpfs (NO es RAM)")
+    parser.add_argument('--diagnostico', action='store_true',
+                        help='mostrar los sistemas de archivos RAM disponibles')
+    parser.add_argument('--solo-github', action='store_true',
+                        help='no utilizar la copia del escritorio incluida en la ISO')
+    parser.add_argument('--permitir-temporal-disco', action='store_true',
+                        help='permitir temporal no-RAM en Windows u otros sistemas')
     options = parser.parse_args(argv)
-    desktop = Path(__file__).resolve().with_name(DESKTOP_NAME)
     ram = _ram_candidates()
-
     if options.diagnostico:
-        print(f"{APP_NAME} {APP_VERSION}")
-        print("Escritorio:", desktop)
-        print("Existe:", desktop.is_file())
+        print(f'{APP_NAME} {APP_VERSION}')
+        print('Descarga:', GITHUB_RAW_URL)
         for path, free, fs in ram:
-            print(f"RAM {path}: {fs}, {free // (1024 * 1024)} MiB libres")
+            print(f'RAM {path}: {fs}; {free // (1024 * 1024)} MiB libres')
         if not ram:
-            print("No se ha detectado una ubicacion RAM de escritura.")
+            print('No se ha detectado una ubicacion RAM de escritura.')
         return 0
 
-    if not desktop.is_file():
-        print(f"ERROR: falta {DESKTOP_NAME} junto a app.py: {desktop}", file=sys.stderr)
-        return 2
-
-    chosen: Path | None = None
     for path, _free, _kind in ram:
         try:
-            with tempfile.TemporaryDirectory(prefix="pyrion-test-", dir=str(path)) as folder:
-                return _start_desktop(desktop, Path(folder), in_ram=True)
-        except (PermissionError, FileNotFoundError) as exc:
-            print(f"No se pudo usar {path}: {exc}", file=sys.stderr)
-            continue
-        except OSError as exc:
-            print(f"Fallo al utilizar {path}: {exc}", file=sys.stderr)
-            continue
+            with tempfile.TemporaryDirectory(prefix='pyrion-github-', dir=str(path)) as folder:
+                return _start_desktop(Path(folder), in_ram=True,
+                                      offline_allowed=not options.solo_github)
+        except (OSError, PermissionError) as exc:
+            print('No se pudo iniciar en ' + str(path) + ': ' + str(exc),
+                  file=sys.stderr, flush=True)
 
     if not options.permitir_temporal_disco:
-        print("ERROR: no se encontro almacenamiento RAM utilizable. Se detuvo para evitar "
-              "escribir datos de PYRION en el disco. Usa --diagnostico para comprobar.",
-              file=sys.stderr)
+        _notice('PYRION OS', 'No hay un sistema RAM escribible; no se utilizaran discos. '
+                'Ejecuta app.py --diagnostico o amplia la memoria de la VM.')
         return 3
 
-    print("AVISO: no hay sistema RAM. Esta prueba usara una carpeta temporal en "
-          "DISCO y la eliminara al salir.", file=sys.stderr)
-    with tempfile.TemporaryDirectory(prefix="pyrion-test-") as folder:
-        return _start_desktop(desktop, Path(folder), in_ram=False)
+    print('AVISO: usando almacenamiento temporal NO-RAM por solicitud explicita.',
+          file=sys.stderr, flush=True)
+    with tempfile.TemporaryDirectory(prefix='pyrion-github-') as folder:
+        return _start_desktop(Path(folder), in_ram=False,
+                              offline_allowed=not options.solo_github)
 
 
-def _start_desktop(desktop: Path, root: Path, *, in_ram: bool) -> int:
-    env = _prepare_environment(root)
-    print(f"{APP_NAME} {APP_VERSION}", flush=True)
-    print("Almacenamiento:", "RAM" if in_ram else "temporal NO-RAM", flush=True)
-    print("Ruta de prueba:", env["PYRION_TEST_DATA_DIR"], flush=True)
-    print("Sin busqueda de discos, formato ni actualizaciones.", flush=True)
-    try:
-        # -B evita generar __pycache__ en el directorio del proyecto.
-        result = subprocess.run([sys.executable, "-B", str(desktop)],
-                                cwd=str(desktop.parent), env=env, check=False)
-        return result.returncode
-    except FileNotFoundError as exc:
-        print(f"ERROR al iniciar PYRION Desktop: {exc}", file=sys.stderr)
-        return 4
-    except KeyboardInterrupt:
-        return 130
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(main())
