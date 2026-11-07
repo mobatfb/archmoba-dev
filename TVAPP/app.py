@@ -30,6 +30,7 @@ except ImportError as exc:
     ) from exc
 
 
+APP_VERSION = "1.0.6"
 REPOSITORY = "mobatfb/archmoba-dev"
 BRANCH = "main"
 COMMITS_URL = (
@@ -130,7 +131,7 @@ def atomic_write(path: Path, source: str) -> None:
 class TVAppManager:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("ARCHMOBA | TVAPP")
+        self.root.title(f"ARCHMOBA | TVAPP - APP v{APP_VERSION}")
         self.root.geometry("400x800")
         self.root.minsize(360, 640)
         self.root.update_idletasks()
