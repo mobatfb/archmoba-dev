@@ -30,8 +30,8 @@ from tkinter import filedialog, messagebox, ttk
 
 APP_TITLE = "PTM - Buscador y lanzador de herramientas"
 APP_VERSION = "1.0.81"
-APP_UPDATE_DATE = "04/11/2026"
-APP_UPDATE_TIME = "18:53"
+APP_UPDATE_DATE = "07/11/2026"
+APP_UPDATE_TIME = "04:50"
 SEARCH_MAX_LENGTH = 40
 
 REPO_OWNER = "mobatfb"
