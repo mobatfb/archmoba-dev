@@ -27,7 +27,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.29-tools-embebidas"
+APP_VERSION = "0.2.30-enter-estilo-ptm"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -183,6 +183,9 @@ class PyrionDesktop:
         self.catalog_last_check = 0.0
         self.catalog_check_pending = False
         self.expand_after_update = False
+        self.enter_refresh_queued = False
+        self.expanded_loading = False
+        self.expanded_notice = ""
         self.show_all_results = False
         self.results_scroll = 0
         self.last_search_edit = 0.0
@@ -362,12 +365,21 @@ class PyrionDesktop:
 
     def _search_bounds(self):
         w, h = self.size
-        bw = max(260, min(500, w - 40))
         bh = 44
+        if self.show_all_results:
+            # PTM al pulsar Enter: logo pequeño a la izquierda del buscador.
+            if w >= 480:
+                bw = min(500, max(260, w - 150))
+                group_width = 110 + 12 + bw
+                x = (w - group_width) // 2 + 122
+                return x, 83, bw, bh
+            bw = max(180, w - 24)
+            return (w - bw) // 2, 133, bw, bh
+        bw = max(260, min(500, w - 40))
         x = (w - bw) // 2
-        # Centrar verticalmente el conjunto: logo (101), espacio (14), buscador (44) y categorias.
         y = max(125, (h + 40) // 2 - (70 if self.search_text.strip() else 0))
         return x, y, bw, bh
+
 
     def draw_pyrionos_logo(self, x, y):
         """Logo estilo PTM dibujado localmente con primitivas X11."""
@@ -395,6 +407,22 @@ class PyrionDesktop:
         self.text(subtitle_x, y + main_h + 13, subtitle,
                   "#FFFFFF", "caption")
 
+    def draw_pyrionos_logo_compact(self, x, y):
+        """Logotipo pequeño del modo Enter, equivalente al logo PTM compacto."""
+        width, height = 110, 50
+        self.rect(x, y, width, height, "#1D6684")
+        self.rect(x, y, width, 1, "#161616")
+        self.rect(x, y, 1, height, "#161616")
+        self.rect(x + width - 1, y, 1, height, "#161616")
+        corner = 17
+        for i in range(corner):
+            self.rect(x + width - corner + i, y + i,
+                      corner - i, 1, "#FF1B1B")
+        caption = "PYRIONOS"
+        left = x + (width - self.text_width(caption, "tab_active")) // 2
+        self.text(left, y + 29, caption, "#FFFFFF", "tab_active")
+        self.rect(x, y + height - 9, width, 9, "#FF1B1B")
+
     def _search_input_layout(self):
         """Texto visible y boton de borrar usando anchuras de fuente reales."""
         x, _, bw, _ = self._search_bounds()
@@ -410,14 +438,14 @@ class PyrionDesktop:
         return tx, visible, clear_x
 
     def _tab_layout(self):
-        """Posiciones estables para pintar y seleccionar las categorias."""
+        """PTM coloca los filtros debajo de la barra, a su izquierda en Enter."""
         x, _, bw, _ = self._search_bounds()
         tabs = ("Recientes", "Favoritos", "Más usados", "Recomendados")
         widths = [max(self.text_width(tab, "tab"),
                       self.text_width(tab, "tab_active")) for tab in tabs]
         gap = 18
         total = sum(widths) + gap * (len(tabs) - 1)
-        cursor = x + (bw - total) // 2
+        cursor = x if self.show_all_results else x + (bw - total) // 2
         result = []
         for tab, width in zip(tabs, widths):
             result.append((tab, cursor, width))
@@ -1020,6 +1048,7 @@ root.mainloop()
         self._refresh_catalog_async(force=True)
 
     def _poll_catalog(self):
+        """PTM: Enter espera la respuesta remota, con copia local como respaldo."""
         dirty = False
         while True:
             try:
@@ -1032,12 +1061,27 @@ root.mainloop()
                     self._accept_catalog(value)
                     dirty = True
                 except (ValueError, TypeError) as error:
-                    self.catalog_status = "Error de catalogo: " + str(error)[:100]
-            elif not self.catalog_tools:
-                self.catalog_status = "Sin conexion PTM: " + value[:85]
-            if self.expand_after_update:
-                self.show_all_results = True
+                    action = "error"
+                    value = "Catalogo invalido: " + str(error)
+            if action == "error" and not self.catalog_tools:
+                self.catalog_status = "Sin acceso a catalogo PTM: " + value[:85]
+                dirty = True
+            if self.expand_after_update and self.show_all_results:
+                if self.enter_refresh_queued:
+                    # Consulta exclusiva solicitada por Enter despues de la anterior.
+                    self.enter_refresh_queued = False
+                    self._refresh_catalog_async(force=True)
+                    continue
                 self.expand_after_update = False
+                self.expanded_loading = False
+                if action == "error":
+                    self.expanded_notice = (
+                        "Sin conexión con GitHub; mostrando catálogo local."
+                        if self.catalog_tools else
+                        "Sin acceso remoto ni catálogo local válido.")
+                else:
+                    self.expanded_notice = ""
+                self.results_scroll = 0
                 dirty = True
         return dirty
 
@@ -1093,23 +1137,34 @@ root.mainloop()
         hits.sort(key=lambda hit: (-hit[0], -hit[1], hit[2]))
         return [hit[3] for hit in hits]
 
+    def _cancel_expanded_search(self):
+        """Al editar o borrar se restaura el modo de 5 sugerencias de PTM."""
+        self.show_all_results = False
+        self.expand_after_update = False
+        self.enter_refresh_queued = False
+        self.expanded_loading = False
+        self.expanded_notice = ""
+        self.results_scroll = 0
+
     def _set_search_command(self, command):
         self.search_text = command[:MAX_SEARCH_CHARS]
-        self.results_scroll = 0
-        self.search_focus = True
-        self.show_all_results = True
-        self.paint()
+        self.search_focus = False
+        self._expand_results()
 
     def _expand_results(self):
-        if not self.search_text.strip():
-            return
+        """Enter/rojo: panel PTM expandido, catalogo actualizado antes de listar."""
         self.results_scroll = 0
         self.search_focus = False
-        # Igual que PTM: verificar guide remoto antes de mostrar el catalogo completo.
-        if self.catalog_fetching:
-            self.expand_after_update = True
-        else:
-            self.show_all_results = True
+        # No abrir una herramienta automáticamente al pulsar Enter.
+        # La selección y ejecución corresponden al clic sobre un resultado.
+        self.show_all_results = True
+        self.expanded_loading = True
+        self.expanded_notice = "Actualizando catálogo..."
+        self.expand_after_update = True
+        # Si habia una revision al escribir, Enter solicita su propia revision
+        # despues de ella para no usar un catalogo remoto anterior al Enter.
+        self.enter_refresh_queued = bool(self.catalog_fetching)
+        if not self.catalog_fetching:
             self._refresh_catalog_async(force=True)
         self.paint()
 
@@ -1273,11 +1328,11 @@ root.mainloop()
 
     def _result_geom(self):
         x, y, bw, bh = self._search_bounds()
-        top = y + bh + 51
-        bottom = max(top + 12, self.size[1] - 29)
-        row_height = 68 if self.show_all_results else 38
-        n_visible = max(1, (bottom - top - 10) // row_height)
-        return x, top, bw, row_height, n_visible
+        top = y + bh + (66 if self.show_all_results else 51)
+        bottom = max(top + 12, self.size[1] - 30)
+        row_height = 78 if self.show_all_results else 39
+        count = max(1, min(10, (bottom - top - 8) // row_height))
+        return x, top, bw, row_height, count
 
     def _ellipsize(self, value, max_px, style="body"):
         text = str(value or "")
@@ -1288,62 +1343,112 @@ root.mainloop()
         return text + "…" if text else ""
 
     def draw_results(self):
-        """Durante escritura: 5 compactos; Enter: todos con scroll y detalles."""
+        """PTM: 5 sugerencias compactas o listado detallado y desplazable con Enter."""
         self.results_click_areas = []
-        if self.selected_top_tab != "PYRIONOS" or not self.search_text.strip():
+        if self.selected_top_tab != "PYRIONOS":
+            return
+        expanded = self.show_all_results
+        if not expanded and not self.search_text.strip():
             return
         x, top, bw, rh, max_rows = self._result_geom()
-        matches = self._search_matches()
-        visible = matches if self.show_all_results else matches[:5]
-        if not visible:
-            msg = ("Consultando herramientas PTM..." if self.catalog_fetching and
-                   not self.catalog_tools else "Sin coincidencias")
-            self.text(x + 6, top + 15, msg, "#5B6974", "tab")
+        if expanded and self.expanded_loading:
+            self.text(x + 2, top - 14, "Actualizando catálogo...",
+                      "#5B6974", "tab")
             return
-        scroll_max = max(0, len(visible) - max_rows)
-        self.results_scroll = min(max(0, self.results_scroll), scroll_max)
-        display = visible[self.results_scroll:self.results_scroll + max_rows]
-        for index, tool in enumerate(display):
+
+        matches = self._search_matches()
+        total = len(matches)
+        if expanded:
+            if self.expanded_notice:
+                info = self.expanded_notice
+            elif not self.search_text.strip():
+                info = "%s herramientas disponibles · escribe para buscar" % len(self.catalog_tools)
+            else:
+                info = "%s coincidencia(s)" % total
+            self.text(x, top - 17, self._ellipsize(info, bw, "tab"),
+                      "#596B78", "tab")
+        if not self.search_text.strip():
+            return
+        if not total:
+            self.text(x + 6, top + 22, "Sin coincidencias",
+                      "#5B6974", "tab")
+            return
+
+        shown = matches if expanded else matches[:5]
+        max_scroll = max(0, len(shown) - max_rows)
+        self.results_scroll = min(max(0, self.results_scroll), max_scroll)
+        displayed = shown[self.results_scroll:self.results_scroll + max_rows]
+
+        for index, tool in enumerate(displayed):
             ry = top + index * rh
             self.rect(x, ry, bw, rh - 4, "#F3F6F8")
             self.rect(x, ry, bw, 1, "#D8E0E7")
             self.rect(x, ry + rh - 5, bw, 1, "#D8E0E7")
             self.rect(x, ry, 1, rh - 4, "#D8E0E7")
             self.rect(x + bw - 1, ry, 1, rh - 4, "#D8E0E7")
-            starred = tool["key"] in self.user_state["favorites"]
-            name = ("* " if starred else "") + tool["name"]
-            if self.show_all_results:
-                self.text(x + 10, ry + 19, self._ellipsize(name, bw - 26, "label"),
+            favored = tool["key"] in self.user_state["favorites"]
+            name = ("★ " if favored else "") + tool["name"]
+            if expanded:
+                left_width = max(116, int(bw * 0.61) - 16)
+                right_x = x + left_width + 17
+                right_width = max(75, bw - (right_x - x) - 10)
+                self.text(x + 10, ry + 20,
+                          self._ellipsize(name, left_width - 5, "label"),
                           "#172B40", "label")
-                description = self._ellipsize(tool.get("descripcion", ""), bw - 26, "tab")
-                self.text(x + 10, ry + 37, description, "#56636D", "tab")
-                desc = (tool.get("categoria", "") + "  ·  v" +
-                        tool.get("version", "") + "  ·  " +
-                        str(tool["visits"]) + " visitas  ·  " + tool.get("autor", ""))
-                self.text(x + 10, ry + 54, self._ellipsize(desc, bw - 26, "caption"),
-                          "#677683", "caption")
+                description = tool.get("descripcion", "").strip() or "Sin descripción."
+                self.text(x + 10, ry + 40,
+                          self._ellipsize(description, left_width - 5, "tab"),
+                          "#536470", "tab")
+                author = tool.get("autor", "") or "Sin autor"
+                self.text(right_x, ry + 19,
+                          self._ellipsize(author, right_width, "tab_active"),
+                          "#263B4A", "tab_active")
+                self.text(right_x, ry + 37,
+                          self._ellipsize(
+                              "%s · v%s · %s visitas" % (
+                                  tool.get("categoria", ""),
+                                  tool.get("version", "-"), tool["visits"]),
+                              right_width, "caption"), "#647484", "caption")
+                self.text(right_x, ry + 54,
+                          self._ellipsize(
+                              "%s · %s" % (
+                                  tool.get("modo", "Integrado"),
+                                  tool.get("dependencias", "") or "Sin dependencias"),
+                              right_width, "caption"), "#647484", "caption")
+                self.text(x + 10, ry + 59,
+                          self._ellipsize(
+                              "Clic: abrir en pestaña · derecho: favorito",
+                              left_width - 5, "caption"), "#677683", "caption")
             else:
-                self.text(x + 10, ry + 24, self._ellipsize(name, bw - 180, "label"),
+                self.text(x + 9, ry + 25,
+                          self._ellipsize(name, bw - 175, "label"),
                           "#172B40", "label")
-                meta = tool.get("categoria", "") + " · v" + tool.get("version", "")
-                tw = self.text_width(meta, "caption")
-                self.text(x + bw - min(bw - 15, tw + 10), ry + 24,
-                          self._ellipsize(meta, 150, "caption"), "#56636D", "caption")
+                meta = "%s · v%s" % (tool.get("categoria", ""),
+                                     tool.get("version", "-"))
+                self.text(x + bw - 165, ry + 25,
+                          self._ellipsize(meta, 150, "caption"),
+                          "#56636D", "caption")
             self.results_click_areas.append((x, ry, bw, rh - 4, tool))
-        if len(visible) > max_rows:
-            tip = ("%s resultados · rueda del raton para desplazarse" % len(matches))
-            self.text(x + 3, self.size[1] - 10, tip, "#607384", "caption")
-        elif not self.show_all_results and len(matches) > 5:
-            self.text(x + 3, self.size[1] - 10,
-                      "%s coincidencias · mostrando 5 · Enter para ver todas" % len(matches),
-                      "#607384", "caption")
-        elif self.show_all_results:
-            self.text(x + 3, self.size[1] - 10,
-                      "%s coincidencias · clic derecho para favoritos" % len(matches),
+
+        if max_scroll:
+            track_x, track_y = x + bw - 7, top + 2
+            track_h = max(12, max_rows * rh - 9)
+            thumb_h = max(18, int(track_h * max_rows / len(shown)))
+            thumb_y = track_y + int(
+                (track_h - thumb_h) * self.results_scroll / max_scroll)
+            self.rect(track_x, track_y, 4, track_h, "#E1E8ED")
+            self.rect(track_x, thumb_y, 4, thumb_h, "#69899B")
+
+        if not expanded:
+            tip = ("%s coincidencias · mostrando 5 · Enter para ver todas" % total
+                   if total > 5 else "%s coincidencia(s)" % total)
+            self.text(x, self.size[1] - 10,
+                      self._ellipsize(tip, bw, "caption"),
                       "#607384", "caption")
 
     def _result_scroll(self, delta):
-        if not self.search_text.strip() or self.selected_top_tab != "PYRIONOS":
+        if (self.expanded_loading or not self.search_text.strip()
+                or self.selected_top_tab != "PYRIONOS"):
             return
         _, _, _, _, rows = self._result_geom()
         matches = self._search_matches()
@@ -1355,9 +1460,17 @@ root.mainloop()
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
-        # Logo centrado encima del buscador sobre el fondo blanco.
-        logo_w, logo_h, gap = 226, 101, 14
-        self.draw_pyrionos_logo(x + (bw - logo_w) // 2, y - logo_h - gap)
+        if self.show_all_results:
+            # Enter: PYRIONOS compacto a la izquierda, estilo PTM.
+            if self.size[0] >= 480:
+                self.draw_pyrionos_logo_compact(x - 122, y - 4)
+            else:
+                self.draw_pyrionos_logo_compact(
+                    (self.size[0] - 110) // 2, y - 60)
+        else:
+            logo_w, logo_h, gap = 226, 101, 14
+            self.draw_pyrionos_logo(x + (bw - logo_w) // 2,
+                                   y - logo_h - gap)
 
         # Contorno natural: radio de 14 px y esquinas suavizadas.
         self.rounded_outline(x, y, bw, bh, radius=14, color="#111111")
@@ -1440,6 +1553,18 @@ root.mainloop()
         if self.selected_top_tab != "PYRIONOS":
             self._click_tool_panel(x, y, button)
             return
+        # La barra lateral del listado PTM también permite saltar de posición.
+        if (button == 1 and self.show_all_results
+                and not self.expanded_loading and self.search_text.strip()):
+            list_x, list_y, list_w, row_h, rows = self._result_geom()
+            total = len(self._search_matches())
+            if (total > rows and list_x + list_w - 15 <= x <= list_x + list_w
+                    and list_y <= y <= list_y + rows * row_h):
+                proportion = (y - list_y) / max(1, rows * row_h)
+                self.results_scroll = min(
+                    total - rows, max(0, round(proportion * (total - rows))))
+                self.paint()
+                return
         for rx, ry, rw, rh, tool in self.results_click_areas:
             if rx <= x < rx + rw and ry <= y < ry + rh:
                 if button == 3:
@@ -1454,8 +1579,7 @@ root.mainloop()
                 # La X borra solo la consulta y deja el cursor listo para escribir.
                 self.search_text = ""
                 self.search_focus = True
-                self.show_all_results = False
-                self.results_scroll = 0
+                self._cancel_expanded_search()
             elif bx + bw - 84 <= x < bx + bw - 50:
                 # Boton rojo equivale a Enter: todas las coincidencias PTM.
                 self._expand_results()
@@ -1495,9 +1619,8 @@ root.mainloop()
                 available = MAX_SEARCH_CHARS - len(self.search_text)
                 if available > 0:
                     self.search_text += value[:available]
-        # Buscar durante la escritura: mostrar como maximo 5 sugerencias.
-        self.show_all_results = False
-        self.results_scroll = 0
+        # PTM: escribir de nuevo restaura 5 resultados, sin abrir herramientas.
+        self._cancel_expanded_search()
         self.last_search_edit = time.monotonic()
         self.paint()
 
