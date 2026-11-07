@@ -2,6 +2,8 @@
 import ctypes
 import ctypes.util
 import importlib
+import importlib.util
+import traceback
 import json
 import os
 import queue
@@ -23,7 +25,7 @@ TOOL_DESCRIPTION = (
     "Navegador web real integrado en PTM con Edge WebView2 en Windows y "
     "Qt WebEngine en Linux, JavaScript, CSS, imagenes, historial, favoritos y zoom."
 )
-TOOL_VERSION = "2.0.11"
+TOOL_VERSION = "2.0.12"
 
 HOME_URL = "https://www.google.com/"
 SEARCH_URL = "https://www.google.com/search?q={query}"
@@ -45,6 +47,7 @@ def _child_send(conn, payload):
 def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
     conn = None
     window = None
+    started = False
 
     try:
         # Linux no necesita loopback IPv4: el control del navegador utiliza
@@ -68,6 +71,39 @@ def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
                 "Falta el motor web para " + sys.platform +
                 ". Instálalo en el Python que ejecuta Visor Web: " + hint
             ) from exc
+
+
+        # Linux necesita un renderizador real; importar pywebview no basta.
+        gui_backend = "edgechromium" if os.name == "nt" else None
+        if os.name != "nt":
+            diagnostics = []
+            for module in ("PyQt6.QtWebEngineWidgets",
+                           "PySide6.QtWebEngineWidgets",
+                           "PyQt5.QtWebEngineWidgets"):
+                try:
+                    importlib.import_module(module)
+                    gui_backend = "qt"
+                    break
+                except (ImportError, OSError) as exc:
+                    diagnostics.append(module.split(".")[0] + ": " + str(exc)[:90])
+            if gui_backend is None:
+                try:
+                    gi = importlib.import_module("gi")
+                    gi.require_version("Gtk", "3.0")
+                    try:
+                        gi.require_version("WebKit2", "4.1")
+                    except ValueError:
+                        gi.require_version("WebKit2", "4.0")
+                    from gi.repository import Gtk, WebKit2
+                    gui_backend = "gtk"
+                except (ImportError, OSError, ValueError) as exc:
+                    diagnostics.append("GTK/WebKit2: " + str(exc)[:90])
+            if gui_backend is None:
+                raise RuntimeError(
+                    "Falta el motor grafico de navegacion en Linux. "
+                    "Se requiere Qt WebEngine (pywebview[qt]) o GTK WebKit2. "
+                    + "; ".join(diagnostics[:2]))
+        _child_send(conn, {"type": "engine", "backend": gui_backend})
 
         window = webview.create_window(
             window_title,
@@ -96,11 +132,12 @@ def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
         }
 
         def browser_loop():
+            nonlocal started
             form_hwnd = 0
             webview_hwnd = 0
             deadline = time.monotonic() + 10.0
 
-            renderer = "edgechromium" if os.name == "nt" else "qt"
+            renderer = gui_backend
 
             while state["alive"] and time.monotonic() < deadline:
                 try:
@@ -121,13 +158,14 @@ def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
                                 form_hwnd = int(win_id())
 
                             native_webview = getattr(native, "webview", None)
-                            child_win_id = getattr(
-                                native_webview,
-                                "winId",
-                                None,
-                            )
+                            child_win_id = getattr(native_webview, "winId", None)
                             if callable(child_win_id):
                                 webview_hwnd = int(child_win_id())
+                            if gui_backend == "gtk" and not form_hwnd:
+                                gdk_window = getattr(native, "get_window", lambda: None)()
+                                get_xid = getattr(gdk_window, "get_xid", None)
+                                if callable(get_xid):
+                                    form_hwnd = int(get_xid())
 
                         if form_hwnd:
                             break
@@ -135,6 +173,8 @@ def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
                     pass
                 time.sleep(0.05)
 
+            if form_hwnd:
+                started = True
             _child_send(
                 conn,
                 {
@@ -529,7 +569,6 @@ def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
                     time.sleep(0.12)
 
         try:
-            gui_backend = "edgechromium" if os.name == "nt" else "qt"
             webview.start(
                 func=browser_loop,
                 gui=gui_backend,
@@ -537,37 +576,35 @@ def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
                 private_mode=False,
                 storage_path=storage_dir,
             )
-        except Exception as exc:
-            engine_name = (
-                "Edge WebView2"
-                if os.name == "nt"
-                else "Qt WebEngine"
-            )
-            guidance = (
-                " En Linux se requiere el motor Qt WebEngine: "
-                "python -m pip install 'pywebview[qt]>=6.2.1'"
-                if os.name != "nt" else ""
-            )
-            _child_send(
-                conn,
-                {
+            # Si Qt termina sin excepcion ni ventana, sigue siendo un fallo.
+            if not started:
+                _child_send(conn, {
                     "type": "error",
-                    "message": (
-                        f"No se pudo iniciar {engine_name}. "
-                        + str(exc) + guidance
-                    ),
-                },
-            )
+                    "message": "El motor web termino sin crear una ventana. "
+                               "Comprueba que Qt WebEngine y las bibliotecas "
+                               "X11/xcb esten instaladas.",
+                })
+        except (Exception, SystemExit) as exc:
+            traceback.print_exc()
+            engine_name = "Edge WebView2" if os.name == "nt" else (
+                "GTK WebKit2" if gui_backend == "gtk" else "Qt WebEngine")
+            _child_send(conn, {
+                "type": "error",
+                "message": "No se pudo iniciar " + engine_name + ": " + str(exc),
+                "missing_engine": os.name != "nt" and isinstance(
+                    exc, (ImportError, ModuleNotFoundError)),
+            })
 
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
+        traceback.print_exc()
         if conn is not None:
-            _child_send(
-                conn,
-                {
-                    "type": "error",
-                    "message": str(exc),
-                },
-            )
+            _child_send(conn, {
+                "type": "error",
+                "message": str(exc),
+                "missing_engine": (
+                    os.name != "nt" and (
+                        "Falta" in str(exc) or "motor grafico" in str(exc))),
+            })
     finally:
         try:
             if conn is not None:
@@ -598,6 +635,12 @@ class WebViewerTool(ttk.Frame):
         self._ipc_dir = None
         self._conn = None
         self._process = None
+        self._child_exit_pending = None
+        self._ipc_closed = False
+        self._last_engine_error = ""
+        self._engine_log_path = self._get_base_dir() / "webengine-stderr.log"
+        self._installer_running = False
+        self._engine_install_required = False
         self._ipc_queue = queue.Queue()
         self._send_lock = threading.Lock()
 
@@ -872,10 +915,9 @@ class WebViewerTool(ttk.Frame):
             anchor="w",
         ).grid(row=0, column=0, sticky="ew")
 
-        ttk.Label(
-            status,
-            text=ENGINE_NAME + " · proceso aislado",
-        ).grid(row=0, column=1, padx=(8, 0))
+        self.backend_label = ttk.Label(
+            status, text=ENGINE_NAME + " · proceso aislado")
+        self.backend_label.grid(row=0, column=1, padx=(8, 0))
 
         self.address_var.trace_add(
             "write",
@@ -915,7 +957,12 @@ class WebViewerTool(ttk.Frame):
         self.placeholder_status.configure(
             text=f"Iniciando {engine_name}..."
         )
+        self.retry_btn.configure(text="Reintentar", command=self._restart_browser)
         self.retry_btn.pack_forget()
+        self._last_engine_error = ""
+        self._engine_install_required = False
+        self._child_exit_pending = None
+        self._ipc_closed = False
         self.placeholder.place(
             relx=0,
             rely=0,
@@ -960,15 +1007,26 @@ class WebViewerTool(ttk.Frame):
                 env = os.environ.copy()
                 if env.get("DISPLAY"):
                     env["QT_QPA_PLATFORM"] = "xcb"
+                # Dependencias instaladas voluntariamente para este visor.
+                local_packages = self._get_base_dir() / "python_packages"
+                if local_packages.is_dir():
+                    prior = env.get("PYTHONPATH", "")
+                    env["PYTHONPATH"] = (str(local_packages) +
+                                         (os.pathsep + prior if prior else ""))
                 kwargs["env"] = env
 
-            self._process = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                **kwargs,
-            )
+            # Conservar errores del motor Qt/GTK; descartar la salida ocultaba
+            # la causa y se acababa mostrando el inexplicable "codigo 0".
+            log_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            descriptor = os.open(str(self._engine_log_path), log_flags, 0o600)
+            with os.fdopen(descriptor, "wb") as output:
+                self._process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    **kwargs,
+                )
 
             threading.Thread(
                 target=self._accept_child,
@@ -1036,6 +1094,7 @@ class WebViewerTool(ttk.Frame):
                 listener.close()
             except Exception:
                 pass
+            self._ipc_queue.put({"type": "ipc_closed"})
 
     def _send(self, payload):
         conn = self._conn
@@ -1049,10 +1108,23 @@ class WebViewerTool(ttk.Frame):
         except Exception:
             return False
 
+    def _engine_log_tail(self):
+        """Últimas líneas del stderr real del motor Linux."""
+        try:
+            content = self._engine_log_path.read_text(
+                encoding="utf-8", errors="replace")[-4500:]
+            lines = [line.strip() for line in content.splitlines()
+                     if line.strip()]
+            return " | ".join(lines[-3:])[:650]
+        except OSError:
+            return ""
+
     def _poll_ipc(self):
         if not self._alive:
             return
 
+        # Las notificaciones del hijo siempre tienen prioridad sobre exit_code.
+        # Un proceso que reporta Error puede terminar con 0 tras el finally.
         try:
             while True:
                 message = self._ipc_queue.get_nowait()
@@ -1060,36 +1132,43 @@ class WebViewerTool(ttk.Frame):
         except queue.Empty:
             pass
 
-        if (
-            self._process is not None
-            and self._process.poll() is not None
-            and self._alive
-        ):
-            exit_code = self._process.poll()
+        if self._process is not None and self._process.poll() is not None:
+            code = self._process.poll()
             self._process = None
             was_embedded = self._embedded
             self._embedded = False
             self._child_hwnd = 0
             self._webview_hwnd = 0
+            self._child_exit_pending = (code, time.monotonic(), was_embedded)
 
-            # Si ya recibimos un error explicito, conservar ese mensaje.
-            current = self.status_var.get()
-            if (
-                "No se pudo" not in current
-                and "requiere" not in current
-                and "cerró" not in current
-            ):
-                if was_embedded:
-                    message = (
-                        "El proceso del navegador se cerró. "
-                        "PTM continúa funcionando."
-                    )
-                else:
-                    message = (
-                        "El motor web no pudo iniciar "
-                        f"(código {exit_code}). PTM continúa funcionando."
-                    )
-                self._show_browser_error(message)
+            # Si nunca conectó, no esperar indefinidamente al listener.
+            if self._conn is None and self._listener is not None:
+                try:
+                    self._listener.close()
+                except OSError:
+                    pass
+                self._listener = None
+
+        pending = self._child_exit_pending
+        if pending is not None:
+            code, timestamp, was_embedded = pending
+            if self._ipc_closed or time.monotonic() - timestamp >= 0.8:
+                self._child_exit_pending = None
+                if not self._last_engine_error:
+                    diagnostic = self._engine_log_tail()
+                    if was_embedded:
+                        message = ("El motor web se cerró. "
+                                   "La pestaña continúa disponible.")
+                    else:
+                        message = ("No se pudo iniciar el navegador de Linux "
+                                   "(código %s)." % code)
+                    if diagnostic:
+                        message += " Detalle: " + diagnostic
+                    elif os.name != "nt":
+                        message += (
+                            " Comprueba pywebview[qt], Qt WebEngine, xcb "
+                            "y los permisos del proceso gráfico.")
+                    self._show_browser_error(message)
 
         try:
             self.after(90, self._poll_ipc)
@@ -1099,6 +1178,29 @@ class WebViewerTool(ttk.Frame):
     def _handle_child_message(self, message):
         kind = str(message.get("type", ""))
 
+        if kind == "installer_done":
+            self._installer_running = False
+            if not self._alive:
+                return
+            try:
+                self.retry_btn.configure(state="normal", text="Reintentar")
+            except tk.TclError:
+                return
+            if message.get("error"):
+                self._show_browser_error(
+                    "No se pudo instalar el motor web. " + str(message["error"]))
+            else:
+                self._restart_browser()
+            return
+        if kind == "ipc_closed":
+            self._ipc_closed = True
+            return
+        if kind == "engine":
+            backend = str(message.get("backend", "qt"))
+            label = "GTK WebKit2" if backend == "gtk" else "Qt WebEngine"
+            self.status_var.set("Cargando motor " + label + "...")
+            self.backend_label.configure(text=label + " · proceso aislado")
+            return
         if kind == "starting":
             engine_name = (
                 "Edge WebView2"
@@ -1118,12 +1220,10 @@ class WebViewerTool(ttk.Frame):
                 self._webview_hwnd = 0
 
             renderer = str(message.get("renderer", "") or "")
-            engine_name = (
-                "Edge WebView2"
-                if renderer == "edgechromium"
-                else "Qt WebEngine"
-            )
-            self.status_var.set(f"Integrando {engine_name} en PTM...")
+            engine_name = ("Edge WebView2" if renderer == "edgechromium"
+                           else "GTK WebKit2" if renderer == "gtk"
+                           else "Qt WebEngine")
+            self.status_var.set(f"Integrando {engine_name} en Visor Web...")
             self._embed_attempts = 0
             self.after(20, self._attempt_embed)
 
@@ -1169,14 +1269,11 @@ class WebViewerTool(ttk.Frame):
                 )
 
         elif kind == "error":
+            detail = str(message.get("message", "No se pudo iniciar el motor web."))
+            self._last_engine_error = detail
+            self._engine_install_required = bool(message.get("missing_engine"))
             self._show_browser_error(
-                str(
-                    message.get(
-                        "message",
-                        "No se pudo iniciar el motor web.",
-                    )
-                )
-            )
+                detail, can_install=self._engine_install_required)
 
     # ---------- Integración Win32 ----------
     def _win_api(self):
@@ -2001,27 +2098,62 @@ class WebViewerTool(ttk.Frame):
         )
 
     # ---------- Errores / reinicio ----------
-    def _show_browser_error(self, message):
+    def _show_browser_error(self, message, can_install=False):
         self._embedded = False
         self._child_hwnd = 0
-        self.status_var.set(message)
-
+        self.status_var.set(str(message))
         try:
             self.placeholder_status.configure(
-                text=message,
+                text=str(message),
                 wraplength=560,
                 justify="center",
             )
             self.placeholder.place(
-                relx=0,
-                rely=0,
-                relwidth=1,
-                relheight=1,
+                relx=0, rely=0, relwidth=1, relheight=1,
             )
+            if can_install and os.name != "nt":
+                self.retry_btn.configure(
+                    text="Instalar motor Qt",
+                    command=self._install_engine_dependencies)
+            else:
+                self.retry_btn.configure(
+                    text="Reintentar", command=self._restart_browser)
             if not self.retry_btn.winfo_manager():
                 self.retry_btn.pack(pady=(12, 0))
-        except Exception:
+        except tk.TclError:
             pass
+
+    def _install_engine_dependencies(self):
+        """Instalación local opt-in, sin tocar los paquetes del sistema Linux."""
+        if os.name == "nt" or self._installer_running or not self._alive:
+            return
+        self._installer_running = True
+        self.retry_btn.configure(state="disabled", text="Instalando...")
+        self.placeholder_status.configure(
+            text="Instalando pywebview y Qt WebEngine en el entorno de Visor Web. "
+                 "Se necesita conexión a Internet; la pestaña permanece abierta.")
+        target = self._get_base_dir() / "python_packages"
+        def worker():
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                command = [
+                    self._windowless_python(), "-m", "pip", "install",
+                    "--disable-pip-version-check", "--target", str(target),
+                    "pywebview[qt]>=6.2.1",
+                ]
+                env = os.environ.copy()
+                env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+                result = subprocess.run(
+                    command, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, text=True,
+                    env=env, timeout=300, check=False)
+                error = "" if result.returncode == 0 else (
+                    result.stdout or "")[-850:].strip()
+            except Exception as exc:
+                error = str(exc)
+            # Tk solo se actualiza desde el hilo principal.
+            self._ipc_queue.put({"type": "installer_done", "error": error})
+        threading.Thread(target=worker, daemon=True).start()
 
     def _restart_browser(self):
         self._stop_browser()
