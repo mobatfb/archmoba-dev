@@ -7,7 +7,7 @@ este mismo archivo como PNG en base64; no requiere assets externos.
 import os
 import tkinter as tk
 
-VERSION = "1.0.11"
+VERSION = "1.0.12"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 HERO_BOTTOM = 222  # El contenido empieza mas arriba, sin la barra de estado simulada
@@ -217,6 +217,29 @@ class TVSports(tk.Frame):
         self.logo_requested = set()
         self.pending_logos = 0
         self.video_frame = None
+        # Barra superpuesta sobre el visor, independiente del Canvas.
+        # El frame nativo de VLC ocupa exactamente el area del banner.
+        self.video_controls = tk.Frame(self, bg="#111924", height=31)
+        self.video_controls.pack_propagate(False)
+        self.video_title = tk.Label(
+            self.video_controls, bg="#111924", fg="#f5f5f7",
+            font=("Segoe UI", 9, "bold"), anchor="w",
+        )
+        self.video_title.pack(side="left", fill="x", expand=True, padx=(8, 2))
+        for symbol, method, tip_width in (
+            ("⏯", self._toggle_playback, 3),
+            ("♫", self._toggle_mute, 2),
+            ("VLC", self._open_external, 4),
+            ("×", self._close_player, 2),
+        ):
+            button = tk.Button(
+                self.video_controls, text=symbol, command=method,
+                bg="#202d39", fg="#e9f3f5", activebackground="#275568",
+                activeforeground="white", borderwidth=0, relief="flat",
+                highlightthickness=0, cursor="hand2", font=("Segoe UI", 9),
+                width=tip_width, padx=0, pady=0,
+            )
+            button.pack(side="left", padx=(0, 3), pady=3)
         self.selected = None
         self.player_state = ""
         self.vlc_player = None
@@ -484,7 +507,15 @@ class TVSports(tk.Frame):
             self.search_field.place_forget()
 
     def _draw_hero(self, w):
+        """El banner se convierte en visor de video al elegir un canal."""
         c = self.canvas
+        if self.selected is not None:
+            c.create_rectangle(0, 80, w, HERO_BOTTOM, fill="#050607", outline="")
+            if self.vlc_player is None:
+                state = self.player_state or "Preparando reproducción..."
+                self._text(w/2, 128, state, 10, WHITE, anchor="center",
+                           width=max(200, w-38))
+            return
         c.create_rectangle(0, 80, w, HERO_BOTTOM, fill="#12141a", outline="")
         if self.banner:
             c.create_image(w/2, 80, image=self.banner, anchor="n")
@@ -712,46 +743,64 @@ class TVSports(tk.Frame):
         threading.Thread(target=self._ensure_vlc_in_worker,args=(token,),daemon=True).start()
 
     def _start_embedded_vlc(self, vlc):
+        """VLC reproduce en el mismo rectangulo donde estaba la fotografia."""
         if self.selected is None:
             return
         try:
-            self.video_frame = tk.Frame(self, bg="black", highlightthickness=1,
-                                        highlightbackground="#333d4a")
+            self.video_frame = tk.Frame(self, bg="black", bd=0, highlightthickness=0)
             self._position_video()
-            self.update_idletasks()
-            instance=vlc.Instance("--quiet", "--network-caching=1200", "--no-video-title-show")
+            self.video_frame.update_idletasks()
+            instance = vlc.Instance(
+                "--quiet", "--network-caching=1200", "--no-video-title-show",
+                "--no-video-deco",
+            )
             if instance is None:
                 raise RuntimeError("No se pudo inicializar libVLC.")
-            player=instance.media_player_new()
-            media=instance.media_new(self.selected["url"])
-            for key,value in self.selected.get("headers",{}).items():
-                if key=="http-user-agent":
-                    media.add_option(":http-user-agent="+value)
-                elif key=="http-referrer":
-                    media.add_option(":http-referrer="+value)
+            player = instance.media_player_new()
+            media = instance.media_new(self.selected["url"])
+            for key, value in self.selected.get("headers", {}).items():
+                if key == "http-user-agent":
+                    media.add_option(":http-user-agent=" + value)
+                elif key == "http-referrer":
+                    media.add_option(":http-referrer=" + value)
             player.set_media(media)
             if sys.platform.startswith("win"):
                 player.set_hwnd(self.video_frame.winfo_id())
-            elif sys.platform=="darwin":
+            elif sys.platform == "darwin":
                 player.set_nsobject(self.video_frame.winfo_id())
             else:
                 player.set_xwindow(self.video_frame.winfo_id())
-            self.vlc_instance=instance
-            self.vlc_player=player
-            result=player.play()
-            self.player_state="Conectando transmisión..." if result != -1 else "No se pudo iniciar la transmisión."
+            self.vlc_instance = instance
+            self.vlc_player = player
+            result = player.play()
+            self.player_state = (
+                "Conectando transmisión..." if result != -1
+                else "No se pudo iniciar la transmisión."
+            )
+            if result == -1:
+                self._release_player()
         except Exception as exc:
-            self.player_state="Reproductor no disponible: "+str(exc)[:110]
-            if self.video_frame:
-                self.video_frame.destroy()
-                self.video_frame=None
+            self.player_state = "Reproductor no disponible: " + str(exc)[:110]
+            self._release_player()
         self.redraw()
 
     def _position_video(self):
+        """Solo cubre el visor superior: y=80 hasta HERO_BOTTOM."""
+        if self.selected is None:
+            self.video_controls.place_forget()
+            return
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, HERO_BOTTOM - 80)
         if self.video_frame and self.video_frame.winfo_exists():
-            width=max(120,self.canvas.winfo_width()-24)
-            height=min(174,max(110,self.canvas.winfo_height()-HERO_BOTTOM-155))
-            self.video_frame.place(x=12,y=HERO_BOTTOM+47,width=width,height=height)
+            self.video_frame.place(x=0, y=80, width=width, height=height)
+            self.video_frame.lift()
+        title = self.selected.get("name", "En vivo")
+        if len(title) > 29:
+            title = title[:28] + "…"
+        self.video_title.configure(text=title)
+        # Controles encima del video, sin tapar las tarjetas ni el menu inferior.
+        self.video_controls.place(x=0, y=HERO_BOTTOM-31, width=width, height=31)
+        self.video_controls.lift()
 
     def _release_player(self):
         self.player_token+=1
@@ -770,6 +819,7 @@ class TVSports(tk.Frame):
             try:self.video_frame.destroy()
             except tk.TclError:pass
         self.video_frame=None
+        self.video_controls.place_forget()
 
     def _close_player(self):
         self._release_player()
@@ -804,35 +854,6 @@ class TVSports(tk.Frame):
             self.player_state="Sin VLC. El navegador podría no reproducir HLS."
         self.redraw()
 
-    def _draw_player(self,w,h):
-        c=self.canvas
-        c.create_rectangle(0,HERO_BOTTOM,w,h,fill=SIDE,outline="")
-        name=self.selected["name"]
-        label=name if len(name)<42 else name[:40]+"…"
-        self._text(15,HERO_BOTTOM+18,label,13,WHITE,bold=True,width=w-62)
-        self._round(w-42,HERO_BOTTOM+6,w-12,HERO_BOTTOM+34,12,"#444754",tags=("close_play",))
-        self._text(w-27,HERO_BOTTOM+20,"×",18,WHITE,anchor="center",tags=("close_play",))
-        self._click("close_play",self._close_player)
-        video_top=HERO_BOTTOM+47
-        video_height=min(174,max(110,h-HERO_BOTTOM-155))
-        self._round(12,video_top,w-12,video_top+video_height,10,"#050607",outline="#3c4653")
-        if not self.vlc_player:
-            self._text(w/2,video_top+video_height/2,
-                       "Cargando reproductor..." if self.player_state.startswith("Preparando") else self.player_state,
-                       10,MUTED,anchor="center",width=w-42)
-        bottom=video_top+video_height+14
-        self._round(13,bottom,w/3-5,bottom+34,10,"#304a56",tags=("toggle_play",))
-        self._text((w/3+8)/2,bottom+17,"⏯ Pausa",10,WHITE,anchor="center",tags=("toggle_play",))
-        self._click("toggle_play",self._toggle_playback)
-        self._round(w/3+3,bottom,2*w/3-5,bottom+34,10,"#304a56",tags=("toggle_mute",))
-        self._text(w/2,bottom+17,"Silenciar",10,WHITE,anchor="center",tags=("toggle_mute",))
-        self._click("toggle_mute",self._toggle_mute)
-        self._round(2*w/3+3,bottom,w-13,bottom+34,10,"#304a56",tags=("external",))
-        self._text(5*w/6,bottom+17,"Abrir VLC",10,WHITE,anchor="center",tags=("external",))
-        self._click("external",self._open_external)
-        self._text(14,bottom+54,self.player_state,9,MUTED,width=w-25)
-        self._position_video()
-
     def redraw(self):
         c=self.canvas
         if not c.winfo_exists():return
@@ -842,15 +863,15 @@ class TVSports(tk.Frame):
         c.create_rectangle(0,0,w,h,fill=BG,outline="")
         self._draw_header(w)
         self._draw_hero(w)
-        if self.selected:
-            self.group_picker.place_forget()
-            self._draw_player(w,h)
-        elif self.active_tab in ("Vivo","VOD","Partidos"):
+        if self.active_tab in ("Vivo","VOD","Partidos"):
             self._draw_live(w,h)
         else:
             self.group_picker.place_forget()
             self._draw_other(w,h)
         self._draw_nav(w,h)
+        # No se reemplaza la lista de canales al elegir uno:
+        # el visor superior muestra VLC y la lista permanece visible.
+        self._position_video()
 
 
 def render(parent):
