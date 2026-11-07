@@ -27,11 +27,11 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.11-actualizacion-rapida"
+APP_VERSION = "0.2.12-icono-mejorado"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
 LOGO_URL = SERVER + "pyrion-logo.png"
-ICON_URL = SERVER + "pyrion-icono.png"
+ICON_URL = SERVER + "pyrion-icono-v2.png"
 
 U = C.c_ulong
 P = C.c_void_p
