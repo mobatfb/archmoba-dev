@@ -6,6 +6,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "errors"
     "fmt"
     "io"
@@ -22,6 +23,7 @@ import (
 
 const (
     appURL       = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/TVAPP/app.py"
+    appCommitsURL = "https://api.github.com/repos/mobatfb/archmoba-dev/commits?path=TVAPP%2Fapp.py&per_page=1"
     title        = "ARCHMOBA | TVAPP"
     windowClass  = "ARCHMOBA_TVAPP_Launcher_Window"
     wmDestroy    = 0x0002
@@ -184,14 +186,45 @@ func localDir() (string, error) {
     return dest, nil
 }
 
+func resolvedAppURL(client *http.Client, ctx context.Context) (string, string) {
+    requestURL := fmt.Sprintf("%s&cache_bust=%d", appCommitsURL, time.Now().UnixNano())
+    req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
+    if err != nil { return appURL, "" }
+    req.Header.Set("User-Agent", "ARCHMOBA-TVAPP-Launcher/1.1")
+    req.Header.Set("Accept", "application/vnd.github+json")
+    req.Header.Set("Cache-Control", "no-cache, no-store, max-age=0")
+    resp, err := client.Do(req)
+    if err != nil { return appURL, "" }
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK { return appURL, "" }
+    body, err := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+    if err != nil { return appURL, "" }
+    var commits []struct { SHA string `json:"sha"` }
+    if json.Unmarshal(body, &commits) != nil || len(commits) == 0 { return appURL, "" }
+    sha := commits[0].SHA
+    if len(sha) != 40 { return appURL, "" }
+    for _, ch := range sha {
+        if !strings.ContainsRune("0123456789abcdef", ch) { return appURL, "" }
+    }
+    return fmt.Sprintf("https://raw.githubusercontent.com/mobatfb/archmoba-dev/%s/TVAPP/app.py", sha), sha
+}
+
 func downloadApp(target string) error {
     ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
     defer cancel()
-    req, err := http.NewRequestWithContext(ctx, "GET", appURL, nil)
+    client := &http.Client{Timeout: 35*time.Second}
+    setStatus("Comprobando ultimo commit de app.py...")
+    downloadURL, sha := resolvedAppURL(client, ctx)
+    if sha != "" {
+        setStatus("Descargando app.py del commit " + sha[:8] + "...")
+    } else {
+        setStatus("Descargando app.py directamente (sin cache)...")
+        downloadURL = fmt.Sprintf("%s?cache_bust=%d", appURL, time.Now().UnixNano())
+    }
+    req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
     if err != nil { return err }
     req.Header.Set("User-Agent", "ARCHMOBA-TVAPP-Launcher/1.0")
     req.Header.Set("Cache-Control", "no-cache")
-    client := &http.Client{Timeout: 35*time.Second}
     resp, err := client.Do(req)
     if err != nil { return err }
     defer resp.Body.Close()
