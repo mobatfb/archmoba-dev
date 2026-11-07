@@ -2,7 +2,7 @@
 
 import tkinter as tk
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 800
 
