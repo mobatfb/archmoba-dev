@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS - Escritorio X11 minimalista: solo fondo PNG a pantalla completa.
+"""PYRION OS - Escritorio X11 con buscador y categorias sobre fondo PNG.
 
-Sin barra, textos, iconos, pestañas ni botones. La descarga del fondo y la
-actualizacion automatica en caliente mediante app.py se mantienen activas.
+Conserva la descarga del fondo y la actualizacion en caliente mediante app.py.
 Python estandar + ctypes + libX11. Interfaz publica: PyrionDesktop y main().
 """
 from __future__ import annotations
@@ -21,7 +20,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.15-fondo-renovado"
+APP_VERSION = "0.2.16-buscador"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo-v2.png"
 
@@ -71,9 +70,16 @@ class XButtonEvent(C.Structure):
     ]
 
 
+class XKeyEvent(C.Structure):
+    _fields_ = [("type", I), ("serial", U), ("send_event", I), ("display", P),
+                ("window", U), ("root", U), ("subwindow", U), ("time", U),
+                ("x", I), ("y", I), ("x_root", I), ("y_root", I),
+                ("state", UI), ("keycode", UI), ("same_screen", I)]
+
+
 class XEvent(C.Union):
     _fields_ = [("type", I), ("xbutton", XButtonEvent),
-                ("pad", C.c_long * 24)]
+                ("xkey", XKeyEvent), ("pad", C.c_long * 24)]
 
 
 class XSetWindowAttributes(C.Structure):
@@ -221,7 +227,7 @@ def decode_png(raw):
 
 
 class PyrionDesktop:
-    """Ventana de escritorio X11 que muestra exclusivamente el fondo."""
+    """Ventana de escritorio X11 con el buscador principal de PYRIONOS."""
 
     def __init__(self):
         self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
@@ -263,6 +269,7 @@ class PyrionDesktop:
         self.put_image = bind(x, "XPutImage", I, P, U, P, P, I, I, I, I, UI, UI)
         self.destroy_image = bind(x, "XDestroyImage", I, P)
         self.drawstring = bind(x, "XDrawString", I, P, U, P, I, I, C.c_char_p, I)
+        self.lookup = bind(x, "XLookupString", I, C.POINTER(XKeyEvent), C.c_char_p, I, C.POINTER(U), P)
         self.flush = bind(x, "XFlush", I, P)
         self.pending = bind(x, "XPending", I, P)
         self.next_event = bind(x, "XNextEvent", I, P, C.POINTER(XEvent))
@@ -282,6 +289,9 @@ class PyrionDesktop:
         self.colors = {}
         self.running = True
         self.background = None
+        self.search_text = ""
+        self.search_focus = False
+        self.active_tab = "Recientes"
         self._load_assets()
 
     def _load_assets(self):
@@ -364,8 +374,110 @@ class PyrionDesktop:
         img.data = None  # XDestroyImage must not free the Python-owned bytearray.
         self.destroy_image(raw)
 
+
+    def text(self, x, y, value, color="#111111"):
+        encoded = value.encode("latin-1", "replace")
+        self.pen(color)
+        self.drawstring(self.dpy, self.pixmap, self.gc, int(x), int(y),
+                        encoded, len(encoded))
+
+    def _search_bounds(self):
+        w, _ = self.size
+        return 34, 62, max(260, min(500, w - 68)), 44
+
+    def draw_search(self):
+        """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
+        x, y, bw, bh = self._search_bounds()
+        # Zona superior blanca para mantener legibilidad sobre cualquier fondo.
+        self.rect(0, 0, self.size[0], 143, "#FFFFFF")
+        self.text(x, 31, "PYRIONOS", "#111111")
+
+        # Caja de busqueda con marco fino y esquinas ligeramente redondeadas.
+        self.rect(x + 6, y, bw - 12, 1, "#111111")
+        self.rect(x + 6, y + bh - 1, bw - 12, 1, "#111111")
+        self.rect(x, y + 6, 1, bh - 12, "#111111")
+        self.rect(x + bw - 1, y + 6, 1, bh - 12, "#111111")
+        for cx in (x + 6, x + bw - 7):
+            for cy in (y + 6, y + bh - 7):
+                self.drawarc(self.dpy, self.pixmap, self.gc, cx - 6, cy - 6,
+                             12, 12, 0, 360 * 64)
+
+        value = self.search_text or "Buscar"
+        if self.search_focus:
+            value += "|"
+        self.text(x + 18, y + 27, value[:max(1, (bw - 110) // 7)], "#111111")
+
+        # Boton circular rojo.
+        self.pen("#F01818")
+        self.fillarc(self.dpy, self.pixmap, self.gc, x + bw - 79, y + 11,
+                     23, 23, 0, 360 * 64)
+        self.pen("#111111")
+        self.drawarc(self.dpy, self.pixmap, self.gc, x + bw - 79, y + 11,
+                     23, 23, 0, 360 * 64)
+
+        # Icono de subir: bandeja y flecha dibujadas con primitivas X11.
+        ix = x + bw - 34
+        self.pen("#111111")
+        self.drawline(self.dpy, self.pixmap, self.gc, ix, y + 13, ix, y + 29)
+        self.drawline(self.dpy, self.pixmap, self.gc, ix, y + 13, ix - 5, y + 18)
+        self.drawline(self.dpy, self.pixmap, self.gc, ix, y + 13, ix + 5, y + 18)
+        self.drawline(self.dpy, self.pixmap, self.gc, ix - 9, y + 26, ix - 9, y + 32)
+        self.drawline(self.dpy, self.pixmap, self.gc, ix - 9, y + 32, ix + 9, y + 32)
+        self.drawline(self.dpy, self.pixmap, self.gc, ix + 9, y + 32, ix + 9, y + 26)
+
+        cursor = x + 2
+        for tab in ("Recientes", "Favoritos", "Más usados", "Recomendados"):
+            self.text(cursor, 128, tab, "#111111")
+            tw = len(tab) * 6 + 6
+            self.pen("#111111" if tab == self.active_tab else "#777777")
+            self.drawline(self.dpy, self.pixmap, self.gc,
+                          cursor, 131, cursor + tw - 7, 131)
+            cursor += tw + 15
+
+    def click_ui(self, x, y):
+        bx, by, bw, bh = self._search_bounds()
+        if bx <= x < bx + bw and by <= y < by + bh:
+            if x >= bx + bw - 84 and x < bx + bw - 50:
+                self.search_text = ""
+                self.search_focus = True
+            elif x >= bx + bw - 47:
+                # El icono de subir se conecta al gestor de archivos mas adelante.
+                self.search_focus = False
+            else:
+                self.search_focus = True
+            self.paint()
+            return
+        cursor = bx + 2
+        if 111 <= y <= 137:
+            for tab in ("Recientes", "Favoritos", "Más usados", "Recomendados"):
+                tw = len(tab) * 6 + 6
+                if cursor <= x <= cursor + tw:
+                    self.active_tab = tab
+                    self.search_focus = False
+                    self.paint()
+                    return
+                cursor += tw + 15
+        self.search_focus = False
+        self.paint()
+
+    def key_ui(self, event):
+        if not self.search_focus:
+            return
+        buffer = C.create_string_buffer(32)
+        keysym = U()
+        count = self.lookup(C.byref(event), buffer, 31, C.byref(keysym), None)
+        if keysym.value == 0xFF08:  # Backspace
+            self.search_text = self.search_text[:-1]
+        elif keysym.value in (0xFF0D, 0xFF8D):  # Enter
+            self.search_focus = False
+        elif 0 < count <= 31:
+            value = buffer.raw[:count].decode("utf-8", "ignore")
+            if value.isprintable() and len(self.search_text) + len(value) <= 120:
+                self.search_text += value
+        self.paint()
+
     def paint(self):
-        """Solo dibuja el PNG original del fondo, sin ninguna superposicion."""
+        """Dibuja el fondo y la cabecera interactiva del escritorio."""
         w, h = self.size
         if self.pixmap:
             self.pixmap_free(self.dpy, self.pixmap)
@@ -373,6 +485,7 @@ class PyrionDesktop:
         self.rect(0, 0, w, h, "#FFFFFF")
         if self.background:
             self._image(self.background, 0, 0, w, h)
+        self.draw_search()
         self.copy(self.dpy, self.pixmap, self.window, self.gc,
                   0, 0, w, h, 0, 0)
         self.flush(self.dpy)
@@ -392,7 +505,7 @@ class PyrionDesktop:
             self.change_prop(self.dpy,self.window,atom,4,32,0,
                              C.cast(C.byref(value),C.POINTER(C.c_ubyte)),1)
         self.name(self.dpy,self.window,b"PYRION OS")
-        self.select(self.dpy,self.window,(1<<15)|(1<<17)|(1<<2))
+        self.select(self.dpy,self.window,(1<<15)|(1<<17)|(1<<2)|(1<<0))
         self.gc=self.gc_create(self.dpy,self.window,0,None)
         self.map(self.dpy,self.window)
         self.lower(self.dpy,self.window)
@@ -406,7 +519,7 @@ class PyrionDesktop:
             except OSError as error:
                 print("PYRION: no se pudo indicar que el escritorio esta listo: " +
                       str(error), file=sys.stderr, flush=True)
-        print("PYRION: escritorio iniciado; solo fondo.", flush=True)
+        print("PYRION: escritorio con buscador iniciado.", flush=True)
 
     def run(self):
         self.create()
@@ -424,7 +537,11 @@ class PyrionDesktop:
             if self.pending(self.dpy):
                 ev=XEvent()
                 self.next_event(self.dpy,C.byref(ev))
-                if ev.type==12:  # Expose
+                if ev.type == 4:  # ButtonPress
+                    self.click_ui(ev.xbutton.x, ev.xbutton.y)
+                elif ev.type == 2:  # KeyPress
+                    self.key_ui(ev.xkey)
+                elif ev.type==12:  # Expose
                     self.copy(self.dpy,self.pixmap,self.window,self.gc,
                               0,0,*self.size,0,0)
                     self.flush(self.dpy)
