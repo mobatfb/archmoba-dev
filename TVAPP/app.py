@@ -137,6 +137,7 @@ class TVAppManager:
         pos_x = max(0, (self.root.winfo_screenwidth() - 400) // 2)
         pos_y = max(0, (self.root.winfo_screenheight() - 800) // 2)
         self.root.geometry(f"400x800+{pos_x}+{pos_y}")
+        self.root.resizable(False, False)
         self.root.configure(bg="#f3f6fa")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
