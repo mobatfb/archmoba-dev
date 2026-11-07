@@ -20,7 +20,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.18-esquinas-limpias"
+APP_VERSION = "0.2.19-sin-panel-blanco"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo-v2.png"
 
@@ -393,8 +393,7 @@ class PyrionDesktop:
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
-        # Panel blanco centrado sobre el fondo existente.
-        self.rect(x - 16, y - 43, bw + 32, 132, "#FFFFFF")
+        # Elementos dibujados directamente sobre el fondo remoto.
         title = "PYRIONOS"
         self.text(x + (bw - len(title) * 6) // 2, y - 15,
                   title, "#111111")
