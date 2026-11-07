@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS - Paso 2: maqueta visual tipo navegador (X11 nativo).
+"""PYRION OS - Escritorio X11 minimalista: solo fondo PNG a pantalla completa.
 
-Interfaz de boceto: pestañas, búsqueda y aplicaciones no realizan acciones.
-Solo el botón Cerrar responde al ratón y finaliza el escritorio.
-El fondo se descarga como PNG desde GitHub y se usa solo en RAM.
-Los espacios del icono superior y del logotipo central quedan vacios.
-Si una imagen no se descarga, se informa del error: no se imita con dibujos.
-
-Python estandar + ctypes + libX11; libXft es opcional para texto UTF-8.
-Conserva el contrato que exige app.py: PyrionDesktop y main().
+Sin barra, textos, iconos, pestañas ni botones. La descarga del fondo y la
+actualizacion automatica en caliente mediante app.py se mantienen activas.
+Python estandar + ctypes + libX11. Interfaz publica: PyrionDesktop y main().
 """
 from __future__ import annotations
 
@@ -17,7 +12,6 @@ import ctypes as C
 import ctypes.util
 import hashlib
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 import os
 import signal
 import struct
@@ -27,7 +21,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.13-sin-iconos"
+APP_VERSION = "0.2.14-solo-fondo"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
 
@@ -227,7 +221,7 @@ def decode_png(raw):
 
 
 class PyrionDesktop:
-    """Layered white desktop with a static, browser-inspired mockup."""
+    """Ventana de escritorio X11 que muestra exclusivamente el fondo."""
 
     def __init__(self):
         self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
@@ -286,63 +280,18 @@ class PyrionDesktop:
         self.pixmap = 0
         self.gc = None
         self.colors = {}
-        self.xft = None
-        self.ftdraw = None
-        self.fonts = {}
-        self.ftcolors = {}
         self.running = True
-        self.close_bounds = None  # x, y, ancho, alto del único botón activo.
         self.background = None
         self._load_assets()
-        self._init_fonts()
 
     def _load_assets(self):
-        assets = (("background", BACKGROUND_URL),)
-        # Solo descargamos el fondo; no se cargan iconos ni logotipos.
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            futures = [pool.submit(fetch_png, url) for _, url in assets]
-            for (name, url), future in zip(assets, futures):
-                try:
-                    item = future.result()
-                    setattr(self, name, item)
-                    print("PYRION: imagen lista (GitHub o RAM):", url, flush=True)
-                except (OSError, ValueError, UnicodeError) as error:
-                    print("PYRION: ERROR al cargar %s desde %s: %s" %
-                          (name, url, error), file=sys.stderr, flush=True)
-
-    def _init_fonts(self):
+        # El unico recurso grafico del escritorio es el fondo remoto.
         try:
-            ft = C.CDLL(ctypes.util.find_library("Xft") or "libXft.so.2")
-            self.xft_open = bind(ft, "XftFontOpenName", P, P, I, C.c_char_p)
-            self.xft_close = bind(ft, "XftFontClose", None, P, P)
-            self.xft_draw_create = bind(ft, "XftDrawCreate", P, P, U, P, U)
-            self.xft_draw_destroy = bind(ft, "XftDrawDestroy", None, P)
-            self.xft_draw_text = bind(ft, "XftDrawStringUtf8", None, P,
-                                      C.POINTER(XftColor), P, I, I, P, I)
-            self.xft_extents = bind(ft, "XftTextExtentsUtf8", None, P, P, P, I,
-                                    C.POINTER(XGlyphInfo))
-            self.xft_alloc = bind(ft, "XftColorAllocValue", I, P, P, U,
-                                  C.POINTER(XRenderColor), C.POINTER(XftColor))
-            self.xft_free = bind(ft, "XftColorFree", None, P, P, U,
-                                 C.POINTER(XftColor))
-            names = {
-                "small": b"DejaVu Sans:size=10",
-                "body": b"DejaVu Sans:size=12",
-                "medium": b"DejaVu Sans:style=Bold:size=12",
-                "brand": b"DejaVu Sans:style=Bold:size=16",
-                "title": b"DejaVu Sans:style=Bold:size=32",
-                "tagline": b"DejaVu Sans:size=18",
-                "tab": b"DejaVu Sans:size=12",
-            }
-            for key, fontname in names.items():
-                font = self.xft_open(self.dpy, self.screen, fontname)
-                if font:
-                    self.fonts[key] = font
-            if not self.fonts:
-                return
-            self.xft = ft
-        except (OSError, AttributeError):
-            self.xft = None
+            self.background = fetch_png(BACKGROUND_URL)
+            print("PYRION: fondo cargado (GitHub o RAM).", flush=True)
+        except (OSError, ValueError, UnicodeError) as error:
+            print("PYRION: no se pudo cargar el fondo: " + str(error),
+                  file=sys.stderr, flush=True)
 
     def _allocate(self, color):
         if color not in self.colors:
@@ -362,67 +311,6 @@ class PyrionDesktop:
         self.fillrect(self.dpy, self.pixmap, self.gc,
                       int(x), int(y), int(w), int(h))
 
-    def _rounded_shape(self, x, y, w, h, r):
-        r = min(int(r), int(w//2), int(h//2))
-        if r <= 0:
-            self.fillrect(self.dpy, self.pixmap, self.gc, int(x), int(y), int(w), int(h))
-            return
-        self.fillrect(self.dpy, self.pixmap, self.gc,
-                      int(x+r), int(y), int(w-2*r), int(h))
-        self.fillrect(self.dpy, self.pixmap, self.gc,
-                      int(x), int(y+r), int(w), int(h-2*r))
-        for xx, yy, angle in ((x, y, 90), (x+w-2*r, y, 0),
-                              (x, y+h-2*r, 180), (x+w-2*r, y+h-2*r, 270)):
-            self.fillarc(self.dpy, self.pixmap, self.gc, int(xx), int(yy),
-                         UI(2*r), UI(2*r), int(angle*64), 90*64)
-
-    def round(self, x, y, w, h, r, fill, border=None):
-        if w <= 0 or h <= 0: return
-        if border:
-            self.pen(border)
-            self._rounded_shape(x, y, w, h, r)
-            self.pen(fill)
-            self._rounded_shape(x+1, y+1, w-2, h-2, max(0, r-1))
-        else:
-            self.pen(fill)
-            self._rounded_shape(x, y, w, h, r)
-
-    def line(self, x1, y1, x2, y2, color):
-        self.pen(color)
-        self.drawline(self.dpy, self.pixmap, self.gc, int(x1), int(y1), int(x2), int(y2))
-
-    def text_width(self, value, style="body"):
-        if self.xft and self.fonts:
-            font = self.fonts.get(style) or next(iter(self.fonts.values()))
-            b = value.encode("utf-8")
-            out = XGlyphInfo()
-            self.xft_extents(self.dpy, font, b, len(b), C.byref(out))
-            return int(out.xOff)
-        return len(value) * (9 if style == "title" else 8)
-
-    def text(self, value, x, baseline, color="#27313E", style="body"):
-        if self.xft and self.ftdraw:
-            f = self.fonts.get(style) or next(iter(self.fonts.values()), None)
-            if f:
-                if color not in self.ftcolors:
-                    r, g, b = (int(color[i:i+2], 16) for i in (1, 3, 5))
-                    raw = XRenderColor(r*257, g*257, b*257, 65535)
-                    out = XftColor()
-                    if self.xft_alloc(self.dpy, self.visual, self.colormap,
-                                      C.byref(raw), C.byref(out)):
-                        self.ftcolors[color] = out
-                col = self.ftcolors.get(color)
-                if col:
-                    buf = value.encode("utf-8")
-                    self.xft_draw_text(self.ftdraw, C.byref(col), f,
-                                       int(x), int(baseline), buf, len(buf))
-                    return
-        # Fallback for minimal installations without libXft.
-        text = value.encode("latin-1", "replace")
-        self.pen(color)
-        self.drawstring(self.dpy, self.pixmap, self.gc,
-                        int(x), int(baseline), text, len(text))
-
     def _image(self, image, dx, dy, dw, dh):
         if not image or dw <= 0 or dh <= 0:
             return
@@ -436,7 +324,7 @@ class PyrionDesktop:
         line_bytes = img.bytes_per_line
         nbytes = line_bytes * int(dh)
         if (not (24 <= img.bits_per_pixel <= 32) or nbytes <= 0
-                or nbytes > 14_000_000):
+                or nbytes > 40_000_000):
             self.destroy_image(raw)
             return
         row = (C.c_ubyte * nbytes)()
@@ -476,129 +364,17 @@ class PyrionDesktop:
         img.data = None  # XDestroyImage must not free the Python-owned bytearray.
         self.destroy_image(raw)
 
-    def _magnifier(self, x, y, color):
-        self.pen(color)
-        self.drawarc(self.dpy, self.pixmap, self.gc,
-                     x, y, 18, 18, 0, 360*64)
-        self.line(x+15, y+15, x+24, y+24, color)
-
-    def _home_icon(self, x, y, color):
-        self.line(x, y+9, x+10, y, color)
-        self.line(x+10, y, x+20, y+9, color)
-        self.line(x+3, y+7, x+3, y+20, color)
-        self.line(x+17, y+7, x+17, y+20, color)
-        self.line(x+3, y+20, x+17, y+20, color)
-
-    def _folder_icon(self, x, y, color):
-        self.round(x, y+5, 25, 17, 3, "#FFFFFF", color)
-        self.line(x+2, y+5, x+2, y+2, color)
-        self.line(x+2, y+2, x+10, y+2, color)
-        self.line(x+10, y+2, x+13, y+5, color)
-
-    def _calc_icon(self, x, y, color):
-        self.round(x, y, 18, 23, 3, "#FFFFFF", color)
-        self.line(x+4, y+8, x+14, y+8, color)
-        for dx in (5, 12):
-            for dy in (13, 19):
-                self.round(x+dx, y+dy, 2, 2, 1, color)
-
     def paint(self):
+        """Solo dibuja el PNG original del fondo, sin ninguna superposicion."""
         w, h = self.size
-        if self.ftdraw:
-            self.xft_draw_destroy(self.ftdraw)
-            self.ftdraw = None
         if self.pixmap:
             self.pixmap_free(self.dpy, self.pixmap)
         self.pixmap = self.pixmap_create(self.dpy, self.window, w, h, self.depth)
-        self.ftdraw = self.xft_draw_create(self.dpy, self.pixmap, self.visual, self.colormap) if self.xft else None
         self.rect(0, 0, w, h, "#FFFFFF")
         if self.background:
             self._image(self.background, 0, 0, w, h)
-        # Boceto tipo navegador. Solo Cerrar recibe clics.
-        margin = 9
-        bar_y, bar_h = 9, 83 if w >= 980 else 114
-        self.round(margin+1, bar_y+3, w-2*margin, bar_h, 23, "#F3F6F9")
-        self.round(margin, bar_y, w-2*margin, bar_h, 23, "#FFFFFF", "#DCE5EE")
-        brand_y = bar_y+23
-        # Espacio del icono superior libre, sin imagen ni sustituto.
-        self.text("PYRION", margin+79, brand_y+22, "#283342", "brand")
-        os_x = margin + 79 + self.text_width("PYRION", "brand")+7
-        self.text("OS", os_x, brand_y+22, "#25BEF0", "brand")
-        right_brand = os_x+self.text_width("OS", "brand")+20
-        self.line(right_brand, bar_y+23, right_brand, bar_y+60, "#E6EBF2")
-        is_wide = w>=980
-        tabs_y = bar_y+16 if is_wide else bar_y+65
-        tabs_x = right_brand+16 if is_wide else margin+25
-        tabs = [("Inicio", 120, "home"), ("Calculadora", 153, "calc"), ("Archivos", 130, "folder")]
-        available = max(160, (w*0.44)-tabs_x) if is_wide else (w - margin*2-110)
-        natural = sum(x[1]+7 for x in tabs)
-        scale = min(1.0, available/natural)
-        for j,(label, natural_width, symbol) in enumerate(tabs):
-            tw = max(64,int(natural_width*scale))
-            active = j==0
-            self.round(tabs_x, tabs_y, tw, 52 if is_wide else 38, 22,
-                       "#E9F9FF" if active else "#FFFFFF",
-                       "#30C5FF" if active else "#E2E7EF")
-            icon_x = tabs_x+13
-            icon_y = tabs_y+(14 if is_wide else 7)
-            if symbol=="home": self._home_icon(icon_x,icon_y,"#33495E")
-            elif symbol=="calc": self._calc_icon(icon_x+1,icon_y-1,"#516275")
-            else: self._folder_icon(icon_x,icon_y,"#516275")
-            if tw > 90:
-                self.text(label, tabs_x+39, tabs_y+(33 if is_wide else 26),
-                          "#253444" if active else "#536072", "medium" if active else "tab")
-            tabs_x += tw+7
-        if is_wide:
-            sx = max(int(w*0.48), tabs_x+15)
-            sy = bar_y+16
-        else:
-            sx = right_brand+18
-            sy = bar_y+15
-        # Reservar espacio para [+] y [Cerrar] en el extremo derecho.
-        search_w = max(95, w - sx - 186)
-        self.round(sx,sy,search_w,51 if is_wide else 41,24,"#F5FCFF","#25BDF0")
-        self._magnifier(int(sx+20),int(sy+(14 if is_wide else 10)),"#4D5E70")
-        hint = "Buscar aplicaciones, archivos o comandos..."
-        if search_w < 350: hint = "Buscar aplicaciones..."
-        if search_w < 240: hint = "Buscar..."
-        self.text(hint,sx+62,sy+(33 if is_wide else 27),"#647181","body")
-        button_h = 51 if is_wide else 41
-        plus_x = w - 171
-        self.round(plus_x, sy, 51, button_h, 21, "#FFFFFF", "#CDD7E1")
-        plus_mid = sy + button_h // 2
-        self.line(plus_x+25, plus_mid-11, plus_x+25, plus_mid+11, "#4F5D6E")
-        self.line(plus_x+14, plus_mid, plus_x+36, plus_mid, "#4F5D6E")
-
-        # Botón Cerrar: es el único control con una acción en esta fase.
-        cx, cy, cw, ch = w-108, sy, 82, button_h
-        self.close_bounds = (cx, cy, cw, ch)
-        self.round(cx, cy, cw, ch, 19, "#FFF6F7", "#E3A0AB")
-        cross_x, cross_y = cx + 14, cy + ch//2
-        self.line(cross_x-5, cross_y-5, cross_x+5, cross_y+5, "#AE4357")
-        self.line(cross_x+5, cross_y-5, cross_x-5, cross_y+5, "#AE4357")
-        self.text("Cerrar", cx + 25, cy + ch//2 + 5, "#95384C", "small")
-        # Area del logotipo central libre: solo queda visible el fondo.
-        c = w//2
-        logo_side = min(118, max(75, w//11))
-        logo_top = int(h*.335)
-        title_y=logo_top+logo_side+47
-        a,b="PYRION"," OS"
-        total=self.text_width(a,"title")+self.text_width(b,"title")
-        x=c-total//2
-        self.text(a,x,title_y,"#293441","title")
-        self.text(b,x+self.text_width(a,"title"),title_y,"#21BDF1","title")
-        self.line(c-87,title_y+37,c-33,title_y+37,"#E6EDF2")
-        self.line(c-33,title_y+37,c+31,title_y+37,"#12C0ED")
-        self.line(c+31,title_y+37,c+87,title_y+37,"#E6EDF2")
-        caption="Tu espacio de trabajo"
-        self.text(caption,c-self.text_width(caption,"tagline")//2,
-                  title_y+98,"#758396","tagline")
-        # Numero visible del desktop en el borde inferior derecho.
-        # Es informativo: no tiene acciones ni modifica otras capas.
-        version_label = "Desktop v" + APP_VERSION.split("-", 1)[0]
-        version_x = max(10, w - self.text_width(version_label, "tab") - 22)
-        self.text(version_label, version_x, h-22, "#697D93", "tab")
-        self.copy(self.dpy,self.pixmap,self.window,self.gc,0,0,w,h,0,0)
+        self.copy(self.dpy, self.pixmap, self.window, self.gc,
+                  0, 0, w, h, 0, 0)
         self.flush(self.dpy)
 
     def create(self):
@@ -615,7 +391,7 @@ class PyrionDesktop:
             value=U(kind)
             self.change_prop(self.dpy,self.window,atom,4,32,0,
                              C.cast(C.byref(value),C.POINTER(C.c_ubyte)),1)
-        self.name(self.dpy,self.window,b"PYRION OS - Boceto sin logica")
+        self.name(self.dpy,self.window,b"PYRION OS")
         self.select(self.dpy,self.window,(1<<15)|(1<<17)|(1<<2))
         self.gc=self.gc_create(self.dpy,self.window,0,None)
         self.map(self.dpy,self.window)
@@ -630,7 +406,7 @@ class PyrionDesktop:
             except OSError as error:
                 print("PYRION: no se pudo indicar que el escritorio esta listo: " +
                       str(error), file=sys.stderr, flush=True)
-        print("PYRION: boceto visual; Cerrar disponible; imagenes remotas.",flush=True)
+        print("PYRION: escritorio iniciado; solo fondo.", flush=True)
 
     def run(self):
         self.create()
@@ -652,13 +428,6 @@ class PyrionDesktop:
                     self.copy(self.dpy,self.pixmap,self.window,self.gc,
                               0,0,*self.size,0,0)
                     self.flush(self.dpy)
-                elif ev.type == 4 and ev.xbutton.button == 1:  # Click izquierdo
-                    if self.close_bounds:
-                        x, y, width, height = self.close_bounds
-                        if (x <= ev.xbutton.x < x+width and
-                                y <= ev.xbutton.y < y+height):
-                            print("PYRION: cerrado desde el boton superior.", flush=True)
-                            self.stop()
             else:
                 time.sleep(.05)
 
@@ -667,10 +436,6 @@ class PyrionDesktop:
 
     def close(self):
         if self.dpy:
-            if self.ftdraw:self.xft_draw_destroy(self.ftdraw)
-            for font in self.fonts.values():self.xft_close(self.dpy,font)
-            for item in self.ftcolors.values():
-                self.xft_free(self.dpy,self.visual,self.colormap,C.byref(item))
             if self.pixmap:self.pixmap_free(self.dpy,self.pixmap)
             if self.gc:self.gc_free(self.dpy,self.gc)
             if self.window:self.destroy_window(self.dpy,self.window)
