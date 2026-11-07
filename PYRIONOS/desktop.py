@@ -16,7 +16,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.26-input-30"
+APP_VERSION = "0.2.27-pestanas-superiores"
 MAX_SEARCH_CHARS = 30
 
 U = C.c_ulong
@@ -154,6 +154,9 @@ class PyrionDesktop:
         self.search_text = ""
         self.search_focus = False
         self.active_tab = "Recientes"
+        # Boceto inicial de pestañas; se pueden registrar otras posteriormente.
+        self.top_tabs = ["PYRIONOS", "PTM", "Convertidor PDF"]
+        self.selected_top_tab = "PYRIONOS"
         self.xft_lib = None
         self.logo_xft_font = None
         self.logo_core_font = None
@@ -385,6 +388,62 @@ class PyrionDesktop:
             cursor += width + gap
         return result
 
+    def add_top_tab(self, title):
+        """Permite a futuras aplicaciones registrar su pestaña."""
+        title = str(title).strip()[:80]
+        if not title:
+            return
+        if title not in self.top_tabs:
+            self.top_tabs.append(title)
+        self.selected_top_tab = title
+        if self.window and self.gc:
+            self.paint()
+
+    def _top_tabs_layout(self):
+        """Geometría compartida por dibujo y detección de clics."""
+        width = self.size[0]
+        x, y, height, gap = 13, 16, 25, 7
+        boxes = []
+        for title in self.top_tabs:
+            remaining = width - x - 13
+            if remaining < 52:
+                break
+            natural = self.text_width(title, "tab") + 22
+            tab_width = min(max(58, natural), 170, remaining)
+            boxes.append((title, x, y, tab_width, height))
+            x += tab_width + gap
+        return boxes
+
+    def draw_top_tabs(self):
+        """Pestañas horizontales azul/rojo, con activa blanca y subrayada."""
+        for title, x, y, width, height in self._top_tabs_layout():
+            active = title == self.selected_top_tab
+            fill = "#FFFFFF" if active else "#1D6684"
+            fg = "#155773" if active else "#FFFFFF"
+            self.rect(x, y, width, height, fill)
+            if active:
+                # Pestaña activa como la del ejemplo: borde azul y base roja.
+                self.rect(x, y, width, 1, "#155773")
+                self.rect(x, y, 1, height - 4, "#155773")
+                self.rect(x + width - 1, y, 1, height - 4, "#155773")
+                self.rect(x, y + height - 5, width, 5, "#FF1B1B")
+            else:
+                self.rect(x, y + height - 1, width, 1, "#164D64")
+
+            # Corte rojo en diagonal en la esquina superior derecha.
+            corner = 15
+            for i in range(corner):
+                self.rect(x + width - corner + i, y + i,
+                          corner - i, 1, "#FF1B1B")
+
+            label = title
+            # Acortar títulos que exceden el ancho de la pestaña.
+            while label and self.text_width(label, "tab") > width - 18:
+                label = label[:-1]
+            if label != title and len(label) > 1:
+                label = label[:-1] + "…"
+            self.text(x + 9, y + 17, label, fg, "tab")
+
     def rounded_outline(self, x, y, w, h, radius=14, color="#111111"):
         """Borde fino de esquinas amplias y antialias sin dependencias extra.
 
@@ -485,6 +544,12 @@ class PyrionDesktop:
                               tx_tab + tab_width, y + bh + 28)
 
     def click_ui(self, x, y):
+        for title, tx, ty, tw, th in self._top_tabs_layout():
+            if tx <= x < tx + tw and ty <= y < ty + th:
+                self.selected_top_tab = title
+                self.search_focus = False
+                self.paint()
+                return
         bx, by, bw, bh = self._search_bounds()
         if bx <= x < bx + bw and by <= y < by + bh:
             _, _, clear_x = self._search_input_layout()
@@ -537,6 +602,7 @@ class PyrionDesktop:
             self.pixmap_free(self.dpy, self.pixmap)
         self.pixmap = self.pixmap_create(self.dpy, self.window, w, h, self.depth)
         self.rect(0, 0, w, h, "#FFFFFF")
+        self.draw_top_tabs()
         self.draw_search()
         self.copy(self.dpy, self.pixmap, self.window, self.gc,
                   0, 0, w, h, 0, 0)
