@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import ctypes as C
 import ctypes.util
+import hashlib
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import os
 import signal
 import struct
@@ -24,7 +27,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.7-boceto-remoto"
+APP_VERSION = "0.2.8-actualizacion-rapida"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
 LOGO_URL = SERVER + "pyrion-logo.png"
@@ -98,15 +101,68 @@ def bind(lib, name, result, *args):
     return fn
 
 
+ASSET_CACHE_TTL = 90.0  # Solo RAM; se renueva en actualizaciones posteriores.
+
+
+def _read_asset_cache(path):
+    """Lee pixeles decodificados de RAM, sin volver a descomprimir PNG."""
+    with path.open("rb") as cache:
+        header = cache.read(12)
+        if len(header) != 12:
+            raise ValueError("cache RAM incompleta")
+        width, height, channels = struct.unpack(">III", header)
+        size = width * height * channels
+        if not (0 < width <= 8192 and 0 < height <= 8192 and
+                channels in (3, 4) and size <= 32 * 1024 * 1024):
+            raise ValueError("cache RAM invalida")
+        pixels = cache.read(size + 1)
+        if len(pixels) != size:
+            raise ValueError("pixeles de cache incompletos")
+        return width, height, channels, pixels
+
+
 def fetch_png(url):
-    """Download one bounded image without writing it to persistent storage."""
-    req = urllib.request.Request(url, headers={"User-Agent": "PYRIONOS-X11/" + APP_VERSION,
-                                          "Cache-Control": "no-cache"})
-    with urllib.request.urlopen(req, timeout=7) as response:
-        raw = response.read(2_000_001)
-    if len(raw) > 2_000_000:
-        raise ValueError("imagen demasiado grande")
-    return decode_png(raw)
+    """Descarga PNG o reutiliza pixeles decodificados en tmpfs/ramfs."""
+    cache_dir = os.environ.get("PYRION_RAM_ASSETS_DIR")
+    cached = (Path(cache_dir) / (hashlib.sha256(url.encode("utf-8")).hexdigest() + ".pixels")
+              if cache_dir else None)
+    if cached is not None:
+        try:
+            if time.time() - cached.stat().st_mtime < ASSET_CACHE_TTL:
+                return _read_asset_cache(cached)
+        except (OSError, ValueError):
+            pass
+
+    req = urllib.request.Request(url + "?pyrion_asset=" + str(time.time_ns()),
+                                 headers={"User-Agent": "PYRIONOS-X11/" + APP_VERSION,
+                                          "Cache-Control": "no-cache, no-store"})
+    try:
+        with urllib.request.urlopen(req, timeout=7) as response:
+            raw = response.read(2_000_001)
+        if not raw or len(raw) > 2_000_000:
+            raise ValueError("imagen vacia o demasiado grande")
+        result = decode_png(raw)
+    except (OSError, ValueError, UnicodeError):
+        if cached is not None:
+            try:
+                return _read_asset_cache(cached)
+            except (OSError, ValueError):
+                pass
+        raise
+
+    if cached is not None:
+        temporary = cached.with_name(cached.name + "." + str(os.getpid()) + ".tmp")
+        try:
+            temporary.write_bytes(struct.pack(">III", *result[:3]) + result[3])
+            os.replace(temporary, cached)
+        except OSError:
+            pass  # El cache es opcional: la imagen descargada sigue funcionando.
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return result
 
 
 def decode_png(raw):
@@ -245,15 +301,19 @@ class PyrionDesktop:
         self._init_fonts()
 
     def _load_assets(self):
-        for name, url in (("background", BACKGROUND_URL),
-                          ("logo", LOGO_URL), ("icono", ICON_URL)):
-            try:
-                item = fetch_png(url)
-                setattr(self, name, item)
-                print("PYRION: imagen de servidor cargada:", url, flush=True)
-            except (OSError, ValueError, UnicodeError) as error:
-                print("PYRION: ERROR al descargar %s desde %s: %s" %
-                      (name, url, error), file=sys.stderr, flush=True)
+        assets = (("background", BACKGROUND_URL),
+                  ("logo", LOGO_URL), ("icono", ICON_URL))
+        # Las tres descargas se realizan en paralelo; no se toca X11 en los hilos.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = [pool.submit(fetch_png, url) for _, url in assets]
+            for (name, url), future in zip(assets, futures):
+                try:
+                    item = future.result()
+                    setattr(self, name, item)
+                    print("PYRION: imagen lista (GitHub o RAM):", url, flush=True)
+                except (OSError, ValueError, UnicodeError) as error:
+                    print("PYRION: ERROR al cargar %s desde %s: %s" %
+                          (name, url, error), file=sys.stderr, flush=True)
 
     def _init_fonts(self):
         try:
@@ -592,6 +652,15 @@ class PyrionDesktop:
         self.map(self.dpy,self.window)
         self.lower(self.dpy,self.window)
         self.paint()
+        # Confirma que la nueva ventana X11 ya se ha pintado.
+        # app.py espera esta senal antes de cerrar la ventana anterior.
+        ready_file = os.environ.get("PYRION_DESKTOP_READY_FILE")
+        if ready_file:
+            try:
+                Path(ready_file).write_text(str(os.getpid()), encoding="ascii")
+            except OSError as error:
+                print("PYRION: no se pudo indicar que el escritorio esta listo: " +
+                      str(error), file=sys.stderr, flush=True)
         print("PYRION: boceto visual; Cerrar disponible; imagenes remotas.",flush=True)
 
     def run(self):
