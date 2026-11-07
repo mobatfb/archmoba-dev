@@ -20,7 +20,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.16-buscador"
+APP_VERSION = "0.2.17-centrado"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo-v2.png"
 
@@ -382,15 +382,22 @@ class PyrionDesktop:
                         encoded, len(encoded))
 
     def _search_bounds(self):
-        w, _ = self.size
-        return 34, 62, max(260, min(500, w - 68)), 44
+        w, h = self.size
+        bw = max(260, min(500, w - 40))
+        bh = 44
+        x = (w - bw) // 2
+        # Centrar el bloque completo (titulo, buscador y categorias).
+        y = max(52, (h - 40) // 2)
+        return x, y, bw, bh
 
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
-        # Zona superior blanca para mantener legibilidad sobre cualquier fondo.
-        self.rect(0, 0, self.size[0], 143, "#FFFFFF")
-        self.text(x, 31, "PYRIONOS", "#111111")
+        # Panel blanco centrado sobre el fondo existente.
+        self.rect(x - 16, y - 43, bw + 32, 132, "#FFFFFF")
+        title = "PYRIONOS"
+        self.text(x + (bw - len(title) * 6) // 2, y - 15,
+                  title, "#111111")
 
         # Caja de busqueda con marco fino y esquinas ligeramente redondeadas.
         self.rect(x + 6, y, bw - 12, 1, "#111111")
@@ -425,13 +432,16 @@ class PyrionDesktop:
         self.drawline(self.dpy, self.pixmap, self.gc, ix - 9, y + 32, ix + 9, y + 32)
         self.drawline(self.dpy, self.pixmap, self.gc, ix + 9, y + 32, ix + 9, y + 26)
 
-        cursor = x + 2
-        for tab in ("Recientes", "Favoritos", "Más usados", "Recomendados"):
-            self.text(cursor, 128, tab, "#111111")
+        tabs = ("Recientes", "Favoritos", "Más usados", "Recomendados")
+        total_tabs = sum(len(tab) * 6 + 6 for tab in tabs) + 15 * (len(tabs) - 1)
+        cursor = x + (bw - total_tabs) // 2
+        for tab in tabs:
+            self.text(cursor, y + bh + 20, tab, "#111111")
             tw = len(tab) * 6 + 6
             self.pen("#111111" if tab == self.active_tab else "#777777")
             self.drawline(self.dpy, self.pixmap, self.gc,
-                          cursor, 131, cursor + tw - 7, 131)
+                          cursor, y + bh + 23, cursor + tw - 7,
+                          y + bh + 23)
             cursor += tw + 15
 
     def click_ui(self, x, y):
@@ -447,8 +457,10 @@ class PyrionDesktop:
                 self.search_focus = True
             self.paint()
             return
-        cursor = bx + 2
-        if 111 <= y <= 137:
+        tabs = ("Recientes", "Favoritos", "Más usados", "Recomendados")
+        total_tabs = sum(len(tab) * 6 + 6 for tab in tabs) + 15 * (len(tabs) - 1)
+        cursor = bx + (bw - total_tabs) // 2
+        if by + bh + 5 <= y <= by + bh + 30:
             for tab in ("Recientes", "Favoritos", "Más usados", "Recomendados"):
                 tw = len(tab) * 6 + 6
                 if cursor <= x <= cursor + tw:
