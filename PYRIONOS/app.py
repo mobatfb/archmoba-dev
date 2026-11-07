@@ -3,7 +3,7 @@
 """PYRION OS - lanzador de escritorio GitHub, con actualizacion en vivo.
 
 * Descarga siempre PYRIONOS/desktop.py de GitHub (rama main).
-* Revisa cambios periodicamente y reinicia solo el escritorio.
+* Revisa cambios cada 2 segundos en un hilo y reinicia solo el escritorio.
 * Guarda el codigo y la configuracion temporal en RAM, nunca en un disco.
 * NO usa desktop_offline.py, cachés persistentes ni copias de respaldo.
 * Cuando el usuario cierra el escritorio, termina el lanzador.
@@ -12,13 +12,15 @@ Dependencias: solamente Python estandar (Linux + servidor X11 para desktop.py).
 
 Uso:
     python3 app.py
-    python3 app.py --intervalo 5
+    python3 app.py --intervalo 2
     python3 app.py --diagnostico
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import queue
+import threading
 import os
 from pathlib import Path
 import shutil
@@ -32,15 +34,15 @@ import urllib.error
 import urllib.request
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.4.5-github-live"
+APP_VERSION = "0.4.6-github-fast"
 DESKTOP_NAME = "desktop.py"
 GITHUB_URL = (
     "https://raw.githubusercontent.com/"
     "mobatfb/archmoba-dev/main/PYRIONOS/desktop.py"
 )
 MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
-HTTP_TIMEOUT = 5
-DEFAULT_INTERVAL = 5.0
+HTTP_TIMEOUT = 3.5
+DEFAULT_INTERVAL = 2.0
 MEMORY_FILESYSTEMS = {"tmpfs", "ramfs", "rootfs"}
 _STOP = False
 
@@ -143,8 +145,8 @@ def _environment(ram_root: Path) -> dict[str, str]:
 
 def _download_desktop() -> bytes:
     """Obtiene GitHub sin usar copias locales, aun si la red falla."""
-    # Valor diferente en cada solicitud para evitar copias atrasadas del CDN.
-    url = GITHUB_URL + "?pyrion_live=" + str(time.time_ns())
+    # Evitar que una respuesta cacheada de CDN o proxy oculte un commit reciente.
+    url = GITHUB_URL + "?pyrion_live=" + str(time.monotonic_ns())
     request = urllib.request.Request(url, headers={
         "User-Agent": "PYRION-OS/" + APP_VERSION,
         "Accept": "text/plain",
@@ -230,48 +232,68 @@ def _session(root: Path, interval: float) -> int:
         _notice("No se pudo ejecutar desktop.py: " + str(exc))
         return 6
 
+    # Descarga en segundo plano: un DNS/HTTP lento no congela la deteccion
+    # de Cerrar ni los controles de escritorio. Solo una solicitud simultanea.
+    results = queue.Queue(maxsize=1)
+    pending = False
     last_notice = 0.0
     next_check = time.monotonic() + interval
+
+    def fetch_worker():
+        try:
+            result = (True, _download_desktop())
+        except (OSError, ValueError, SyntaxError, UnicodeError,
+                urllib.error.URLError) as exc:
+            result = (False, str(exc))
+        try:
+            results.put_nowait(result)
+        except queue.Full:
+            pass
+
     try:
         while not _STOP:
+            # El cierre manual tiene preferencia incluso durante una consulta HTTP.
             code = child.poll()
             if code is not None:
                 print("desktop.py cerrado; codigo=" + str(code), flush=True)
                 return code
             now = time.monotonic()
-            if now < next_check:
-                time.sleep(min(0.25, next_check - now))
-                continue
-            next_check = now + interval
-            try:
-                candidate = _download_desktop()
-                # Puede haberse pulsado Cerrar mientras llegaba la respuesta HTTP.
-                # En ese caso no relanzar la ventana aunque haya una version nueva.
-                if _STOP:
-                    break
-                code = child.poll()
-                if code is not None:
-                    print("desktop.py cerrado durante la consulta; codigo=" + str(code),
-                          flush=True)
-                    return code
-                candidate_hash = hashlib.sha256(candidate).hexdigest()
-                if candidate_hash == digest:
-                    continue
-                print("Cambio detectado en GitHub. Actualizando desktop.py...", flush=True)
-                _save_desktop(destination, candidate)
-                _stop_child(child)
-                if _STOP:
-                    break
-                child = _launch(destination, root, environment)
-                digest = candidate_hash
-                print("Nueva version activa: SHA-256=" + digest[:16], flush=True)
-            except (OSError, ValueError, SyntaxError, UnicodeError,
-                    urllib.error.URLError) as exc:
-                # No borrar ni cerrar el escritorio que YA esta funcionando.
-                if time.monotonic() - last_notice > 30:
-                    print("GitHub temporalmente inaccesible: " + str(exc),
-                          file=sys.stderr, flush=True)
-                    last_notice = time.monotonic()
+            if not pending and now >= next_check:
+                pending = True
+                next_check = now + interval
+                threading.Thread(target=fetch_worker, daemon=True,
+                                 name="pyrion-github-check").start()
+            if pending:
+                try:
+                    ok, data = results.get_nowait()
+                except queue.Empty:
+                    pass
+                else:
+                    pending = False
+                    if not ok:
+                        # No desinstala ni reemplaza un escritorio que funciona.
+                        if time.monotonic() - last_notice > 20:
+                            print("PYRION: GitHub sin respuesta: " + str(data),
+                                  file=sys.stderr, flush=True)
+                            last_notice = time.monotonic()
+                        next_check = max(next_check, time.monotonic() + interval)
+                    else:
+                        candidate = data
+                        candidate_hash = hashlib.sha256(candidate).hexdigest()
+                        if candidate_hash != digest and not _STOP and child.poll() is None:
+                            print("PYRION: cambio detectado en GitHub. Activando desktop...",
+                                  flush=True)
+                            _save_desktop(destination, candidate)
+                            _stop_child(child)
+                            if _STOP:
+                                break
+                            child = _launch(destination, root, environment)
+                            digest = candidate_hash
+                            print("PYRION: version nueva activa: SHA-256=" +
+                                  digest[:16], flush=True)
+            # Comprobar Cerrar diez veces por segundo. El intervalo de GitHub
+            # es independiente de la rapidez de la interfaz.
+            time.sleep(0.1)
     except KeyboardInterrupt:
         pass
     finally:
@@ -282,12 +304,12 @@ def _session(root: Path, interval: float) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--intervalo", type=float, default=DEFAULT_INTERVAL,
-                        help="segundos entre consultas (predeterminado: 5)")
+                        help="segundos entre consultas (predeterminado: 2)")
     parser.add_argument("--diagnostico", action="store_true",
                         help="mostrar carpeta RAM y enlace de descarga")
     options = parser.parse_args(argv)
-    if not 2.0 <= options.intervalo <= 300.0:
-        parser.error("--intervalo debe estar entre 2 y 300 segundos")
+    if not 1.0 <= options.intervalo <= 300.0:
+        parser.error("--intervalo debe estar entre 1 y 300 segundos")
     locations = _ram_locations()
     if options.diagnostico:
         print("PYRION %s | GitHub: %s" % (APP_VERSION, GITHUB_URL))
