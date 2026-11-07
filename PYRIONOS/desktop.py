@@ -27,7 +27,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.30-enter-estilo-ptm"
+APP_VERSION = "0.2.31-zoom-auto-ptm"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -454,40 +454,68 @@ class PyrionDesktop:
 
     @staticmethod
     def _tk_launcher_source():
-        """Inicia una herramienta Tk oculta hasta integrarla en la pestaña X11."""
+        """Proceso Tk embebido: autoajuste y zoom manual por cada pestaña."""
         return r'''#!/usr/bin/env python3
 import ctypes as C
 import ctypes.util
 import importlib.util
 import inspect
+import json
 import sys
 import traceback
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, font as tkfont
 
 tool_path = Path(sys.argv[1]).resolve()
 xid_path = Path(sys.argv[2])
 ready_path = Path(sys.argv[3])
+control_path = Path(sys.argv[4])
+status_path = Path(sys.argv[5])
+initial_width = max(120, int(sys.argv[6]))
+initial_height = max(100, int(sys.argv[7]))
+
 root = tk.Tk()
-root.withdraw()                       # Nunca mostrar una ventana externa.
-root.overrideredirect(True)            # Sin decoraciones del gestor de ventanas.
+root.withdraw()
+root.overrideredirect(True)
 root.configure(bg="#FFFFFF")
-root.geometry("900x650")
+root.geometry("%dx%d" % (initial_width, initial_height))
+
+viewport = {}
+tool_widget = None
+
+def ensure_viewport():
+    if viewport:
+        return viewport["host"]
+    shell = tk.Frame(root, bg="#FFFFFF", bd=0)
+    shell.pack(fill="both", expand=True)
+    shell.columnconfigure(0, weight=1)
+    shell.rowconfigure(0, weight=1)
+    canvas = tk.Canvas(shell, bg="#FFFFFF", bd=0, highlightthickness=0)
+    vbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+    hbar = ttk.Scrollbar(shell, orient="horizontal", command=canvas.xview)
+    canvas.configure(xscrollcommand=hbar.set, yscrollcommand=vbar.set)
+    canvas.grid(row=0, column=0, sticky="nsew")
+    host = tk.Frame(canvas, bg="#FFFFFF", bd=0)
+    window_id = canvas.create_window(0, 0, window=host, anchor="nw")
+    viewport.update(shell=shell, canvas=canvas, vbar=vbar, hbar=hbar,
+                    host=host, window=window_id)
+    canvas.bind("<Button-4>", lambda _e: canvas.yview_scroll(-3, "units"))
+    canvas.bind("<Button-5>", lambda _e: canvas.yview_scroll(3, "units"))
+    canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(
+        -3 if e.delta > 0 else 3, "units"))
+    return host
 
 class Bridge:
     def __init__(self):
         self.root = root
-
     def show_dialog(self, title, message, kind="info", **kwargs):
         show = (messagebox.showerror if kind == "error" else
                 messagebox.showwarning if kind == "warning" else
                 messagebox.showinfo)
         return show(title, message, parent=root)
-
     def set_tool_processing(self, active=True, key=None):
         return None
-
     def tool_processing(self, key=None):
         class Context:
             def __enter__(self): return self
@@ -505,8 +533,8 @@ def run_tool():
     exec(compile(tool_path.read_bytes(), str(tool_path), "exec"), module.__dict__)
 
     entry = None
-    for name in ("App", "Application", "create_tool", "create_app",
-                 "build_app", "build_ui"):
+    for name in ("App", "Application", "create_tool",
+                 "create_app", "build_app", "build_ui"):
         candidate = getattr(module, name, None)
         if callable(candidate):
             entry = candidate
@@ -525,47 +553,313 @@ def run_tool():
                 continue
 
     if entry is not None:
-        signature = inspect.signature(entry)
-        params = tuple(signature.parameters.values())
+        parent = ensure_viewport()
+        params = tuple(inspect.signature(entry).parameters.values())
         positional = [p for p in params if p.kind in (
             inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.POSITIONAL_OR_KEYWORD)]
         varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL
                       for p in params)
         if varargs or len(positional) >= 2:
-            widget = entry(root, Bridge())
+            widget = entry(parent, Bridge())
         elif len(positional) == 1:
-            widget = entry(root)
+            widget = entry(parent)
         else:
             widget = entry()
         if isinstance(widget, (tuple, list)):
             widget = widget[0] if widget else None
         if not isinstance(widget, tk.Widget):
-            raise RuntimeError("La herramienta no devolvio un widget Tk.")
+            raise RuntimeError("La herramienta no devolvio un widget Tk")
         if not widget.winfo_manager():
             widget.pack(fill="both", expand=True)
         return widget
 
-    # Programas sencillos que solo exponen main() tambien se ejecutan dentro.
     main = getattr(module, "main", None)
     if not callable(main):
-        raise RuntimeError("Esta herramienta requiere interfaz Tk o adaptador.")
-    real_tk = tk.Tk
-    real_mainloop = tk.mainloop
-    original_loop = root.mainloop
+        raise RuntimeError("La herramienta necesita App, create_tool o main")
+    real_tk, real_mainloop, loop = tk.Tk, tk.mainloop, root.mainloop
     try:
         tk.Tk = lambda *args, **kwargs: root
         tk.mainloop = lambda *args, **kwargs: None
         root.mainloop = lambda *args, **kwargs: None
         main()
     finally:
-        tk.Tk = real_tk
-        tk.mainloop = real_mainloop
-        root.mainloop = original_loop
+        tk.Tk, tk.mainloop, root.mainloop = real_tk, real_mainloop, loop
     return root
 
+class ZoomController:
+    """Ajuste 50-100%; manual 50-125%, conserva estado en este proceso."""
+    def __init__(self, widget, width, height):
+        self.widget = widget
+        self.width = int(width)
+        self.height = int(height)
+        self.mode = "fit"
+        self.factor = 1.0
+        self.last_seq = -1
+        self.state = []
+        self.fonts = []
+        self.styles = []
+        self.last_size = (self.width, self.height)
+        self.refresh_job = None
+        root.update_idletasks()
+        area = viewport.get("host") or widget
+        self.natural_w = max(1, int(area.winfo_reqwidth()),
+                             int(widget.winfo_reqwidth()))
+        self.natural_h = max(1, int(area.winfo_reqheight()),
+                             int(widget.winfo_reqheight()))
+        self.capture(widget)
+        self.update("fit", width, height)
+
+        if viewport:
+            viewport["canvas"].bind("<Configure>", self.on_viewport_size, add="+")
+
+    def capture(self, parent):
+        stack = [parent]
+        seen = set()
+        while stack:
+            w = stack.pop()
+            if w in seen:
+                continue
+            seen.add(w)
+            try:
+                stack.extend(w.winfo_children())
+                keys = set(w.keys())
+            except Exception:
+                continue
+            data = {"widget": w, "font": None, "options": {},
+                    "manager": "", "pad": {}, "style": None}
+            if "font" in keys:
+                try:
+                    font = tkfont.Font(root=root, font=w.cget("font"))
+                    data["font"] = font.actual()
+                except Exception:
+                    pass
+            for option in ("width", "height", "padx", "pady", "padding",
+                           "wraplength"):
+                if option in keys:
+                    try:
+                        data["options"][option] = w.cget(option)
+                    except Exception:
+                        pass
+            try:
+                data["manager"] = w.winfo_manager()
+                if data["manager"] == "grid":
+                    info = w.grid_info()
+                elif data["manager"] == "pack":
+                    info = w.pack_info()
+                elif data["manager"] == "place":
+                    info = w.place_info()
+                else:
+                    info = {}
+                data["pad"] = {k: info[k] for k in
+                               ("padx", "pady", "ipadx", "ipady",
+                                "x", "y", "width", "height") if k in info}
+            except Exception:
+                pass
+            if isinstance(w, ttk.Widget):
+                try:
+                    style = ttk.Style(root)
+                    base = str(w.cget("style") or "").strip() or w.winfo_class()
+                    custom = "PYZoom%d.%s" % (len(self.state), w.winfo_class())
+                    config = dict(style.configure(base) or {})
+                    if config:
+                        style.configure(custom, **config)
+                    mapped = dict(style.map(base) or {})
+                    if mapped:
+                        style.map(custom, **mapped)
+                    layout = style.layout(base)
+                    if layout:
+                        style.layout(custom, layout)
+                    font_value = style.lookup(base, "font")
+                    data["style"] = {
+                        "custom": custom,
+                        "font": (tkfont.Font(root=root, font=font_value).actual()
+                                 if font_value else None),
+                        "padding": style.lookup(base, "padding"),
+                        "rowheight": style.lookup(base, "rowheight"),
+                    }
+                except Exception:
+                    pass
+            self.state.append(data)
+
+    @staticmethod
+    def scalar(value, factor, min_value=0):
+        try:
+            return max(min_value, int(round(float(value) * factor)))
+        except (ValueError, TypeError):
+            return value
+
+    @staticmethod
+    def padding(value, factor):
+        try:
+            parts = root.tk.splitlist(value)
+            output = [str(max(0, round(float(p) * factor))) for p in parts]
+            return " ".join(output) if output else value
+        except (ValueError, TypeError, tk.TclError):
+            return value
+
+    def font_value(self, info, factor):
+        size = int(info.get("size", 10) or 10)
+        sign = -1 if size < 0 else 1
+        size = sign * max(5, round(abs(size) * factor))
+        return (info.get("family", "DejaVu Sans"), size,
+                info.get("weight", "normal"), info.get("slant", "roman"))
+
+    def scale(self, factor):
+        self.fonts.clear()
+        style = ttk.Style(root)
+        for info in self.state:
+            w = info["widget"]
+            try:
+                if not w.winfo_exists():
+                    continue
+            except Exception:
+                continue
+            if info["font"]:
+                try:
+                    font = tkfont.Font(root=root, font=self.font_value(info["font"], factor))
+                    self.fonts.append(font)
+                    w.configure(font=font)
+                except Exception:
+                    pass
+            for option, value in info["options"].items():
+                try:
+                    if option in ("padx", "pady", "padding"):
+                        scaled = self.padding(value, factor)
+                    elif option in ("width", "height") and str(value).strip() in ("", "0"):
+                        continue
+                    else:
+                        scaled = self.scalar(value, factor, 1 if option in ("width", "height") else 0)
+                    w.configure(**{option: scaled})
+                except Exception:
+                    pass
+            styling = info["style"]
+            if styling:
+                changes = {}
+                if styling.get("font"):
+                    changes["font"] = self.font_value(styling["font"], factor)
+                if styling.get("padding"):
+                    changes["padding"] = self.padding(styling["padding"], factor)
+                if styling.get("rowheight"):
+                    changes["rowheight"] = self.scalar(styling["rowheight"], factor, 1)
+                try:
+                    if changes:
+                        style.configure(styling["custom"], **changes)
+                    w.configure(style=styling["custom"])
+                except Exception:
+                    pass
+            mgr = info["manager"]
+            changes = {}
+            for attr, value in info["pad"].items():
+                if attr in ("padx", "pady", "ipadx", "ipady"):
+                    changes[attr] = self.padding(value, factor)
+                elif mgr == "place":
+                    changes[attr] = self.scalar(value, factor)
+            try:
+                if mgr == "pack" and changes:
+                    w.pack_configure(**changes)
+                elif mgr == "grid" and changes:
+                    w.grid_configure(**changes)
+                elif mgr == "place" and changes:
+                    w.place_configure(**changes)
+            except Exception:
+                pass
+        self.factor = factor
+        root.update_idletasks()
+
+    def manage_scroll(self):
+        if not viewport:
+            return
+        canvas = viewport["canvas"]
+        host = viewport["host"]
+        hbar, vbar = viewport["hbar"], viewport["vbar"]
+        width = max(1, self.width - 3)
+        height = max(1, self.height - 3)
+        try:
+            host.update_idletasks()
+            need_w = max(width, int(host.winfo_reqwidth()))
+            need_h = max(height, int(host.winfo_reqheight()))
+            overflow_x = need_w > width + 5
+            overflow_y = need_h > height + 5
+            if overflow_x:
+                hbar.grid(row=1, column=0, sticky="ew")
+            else:
+                hbar.grid_remove()
+                need_w = width
+            if overflow_y:
+                vbar.grid(row=0, column=1, sticky="ns")
+            else:
+                vbar.grid_remove()
+                need_h = height
+            canvas.itemconfigure(viewport["window"],
+                                 width=need_w, height=need_h)
+            canvas.configure(scrollregion=(0, 0, need_w, need_h))
+        except tk.TclError:
+            pass
+
+    def write_status(self):
+        info = {"zoom": round(self.factor, 4), "mode": self.mode,
+                "ready": True, "natural": [self.natural_w, self.natural_h],
+                "viewport": [self.width, self.height]}
+        try:
+            tmp = status_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(info), encoding="utf-8")
+            tmp.replace(status_path)
+        except OSError:
+            pass
+
+    def update(self, action, width=None, height=None, value=None):
+        if width is not None:
+            self.width = max(120, int(width))
+        if height is not None:
+            self.height = max(100, int(height))
+        self.last_size = (self.width, self.height)
+        if action == "fit":
+            self.mode = "fit"
+        elif action == "zoom":
+            self.mode = "manual"
+        if self.mode == "fit":
+            factor = min(1.0, self.width / self.natural_w,
+                         self.height / self.natural_h)
+            if factor < 0.995:
+                factor *= 0.97
+            factor = max(0.50, min(1.0, factor))
+        elif action == "zoom" and value is not None:
+            factor = max(0.50, min(1.25, float(value)))
+        else:
+            factor = self.factor
+        if abs(factor - self.factor) > 0.002:
+            self.scale(factor)
+        self.factor = factor
+        self.manage_scroll()
+        self.write_status()
+
+    def on_viewport_size(self, event):
+        size = (max(1, int(event.width)), max(1, int(event.height)))
+        if abs(size[0] - self.width) < 6 and abs(size[1] - self.height) < 6:
+            return
+        if self.refresh_job:
+            try:
+                root.after_cancel(self.refresh_job)
+            except tk.TclError:
+                pass
+        self.refresh_job = root.after(
+            110, lambda: self.update("resize", size[0], size[1]))
+
+    def poll_commands(self):
+        try:
+            event = json.loads(control_path.read_text(encoding="utf-8"))
+            seq = int(event.get("seq", -1))
+            if seq > self.last_seq:
+                self.last_seq = seq
+                self.update(event.get("action", "resize"),
+                            event.get("width"), event.get("height"),
+                            event.get("value"))
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+        root.after(150, self.poll_commands)
+
 def get_outer_xid():
-    """Obtener la ventana Tk superior real, no el hijo de contenido."""
     lib = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
     lib.XOpenDisplay.argtypes = [C.c_char_p]
     lib.XOpenDisplay.restype = C.c_void_p
@@ -605,31 +899,40 @@ def get_outer_xid():
         lib.XCloseDisplay(dpy)
 
 try:
-    run_tool()
+    tool_widget = run_tool()
 except Exception as error:
     traceback.print_exc()
+    if viewport:
+        viewport["shell"].destroy()
+        viewport.clear()
     for child in root.winfo_children():
         child.destroy()
     tk.Label(root, text="No se pudo cargar la herramienta",
              fg="#BD2020", font=("DejaVu Sans", 14, "bold")).pack(pady=24)
     tk.Label(root, text=str(error), fg="#374151", wraplength=650,
              justify="left").pack(padx=20)
+    tool_widget = root
 
 root.update_idletasks()
+zoom = ZoomController(tool_widget, initial_width, initial_height)
+root.geometry("%dx%d" % (initial_width, initial_height))
+root.update_idletasks()
 root.update()
-xid = get_outer_xid()
-xid_path.write_text(str(xid), encoding="ascii")
+xid_path.write_text(str(get_outer_xid()), encoding="ascii")
 
 def wait_for_host():
     if ready_path.exists():
-        root.deiconify()   # Ahora su padre es la pestaña, no la pantalla.
+        root.deiconify()
         root.update_idletasks()
+        zoom.write_status()
+        zoom.poll_commands()
         return
     root.after(50, wait_for_host)
 
 root.after(50, wait_for_host)
 root.mainloop()
 '''
+
     def _download_tool_async(self, tool, key, force_remote=False):
         meta = self.open_tabs.get(key)
         if not meta:
@@ -680,7 +983,7 @@ root.mainloop()
     def _tool_view_rect(self):
         """Área útil: bajo las pestañas; nunca cubre la barra superior."""
         w, h = self.size
-        return 6, 51, max(120, w - 12), max(100, h - 58)
+        return 6, 51, max(120, w - 12), max(100, h - 99)
 
     def _new_tool_host(self):
         """Cada pestaña posee su propia ventana contenedora hija de X11."""
@@ -698,6 +1001,119 @@ root.mainloop()
                 self.cache_dir / ("window_" + label + ".ready"),
                 self.cache_dir / ("tool_" + label + ".log"))
 
+    def _zoom_files(self, key):
+        label = self._tool_safe_id(key)
+        return (self.cache_dir / ("zoom_" + label + ".control.json"),
+                self.cache_dir / ("zoom_" + label + ".status.json"))
+
+    def _send_zoom_action(self, key, action, value=None):
+        meta = self.open_tabs.get(key)
+        if not meta or not meta.get("process") or not meta.get("zoom_control"):
+            return
+        control = meta["zoom_control"]
+        _, _, width, height = self._tool_view_rect()
+        seq = int(meta.get("zoom_seq", 0)) + 1
+        cmd = {"seq": seq, "action": action,
+               "width": width, "height": height}
+        if value is not None:
+            cmd["value"] = round(max(.5, min(1.25, float(value))), 4)
+        try:
+            tmp = control.with_suffix(".tmp")
+            tmp.write_text(json.dumps(cmd), encoding="utf-8")
+            tmp.replace(control)
+        except OSError as error:
+            print("PYRION: zoom:", error, file=sys.stderr)
+            return
+        meta["zoom_seq"] = seq
+
+    def _change_tool_zoom(self, key, delta=None, fit=False):
+        meta = self.open_tabs.get(key)
+        if not meta or not meta.get("zoom_ready"):
+            return
+        if fit:
+            meta["zoom_mode"] = "fit"
+            self._send_zoom_action(key, "fit")
+        else:
+            factor = max(.5, min(1.25, float(meta.get("zoom", 1.0)) + delta))
+            meta["zoom"] = factor
+            meta["zoom_mode"] = "manual"
+            self._send_zoom_action(key, "zoom", factor)
+        self.paint()
+        # Devolver el foco a la herramienta después de usar el zoom.
+        if meta.get("embedded") and meta.get("xid") and key == self.selected_top_tab:
+            self.sync(self.dpy, 0)
+            self.set_input_focus(self.dpy, meta["xid"], 1, 0)
+
+    def _zoom_footer_controls(self):
+        """Posiciones compartidas: - porcentaje + Ajustar."""
+        w, h = self.size
+        y = h - 35
+        buttons = (("minus", 25), ("percent", 79),
+                   ("plus", 25), ("fit", 67))
+        used = sum(width for _, width in buttons) + 6 * (len(buttons) - 1)
+        x = max(8, w - used - 12)
+        boxes = {}
+        for name, width in buttons:
+            boxes[name] = (x, y, width, 26)
+            x += width + 6
+        return boxes
+
+    def draw_zoom_footer(self):
+        """Footer de zoom estilo PTM, visible solo en pestañas de herramientas."""
+        if self.selected_top_tab == "PYRIONOS":
+            return
+        meta = self.open_tabs.get(self.selected_top_tab)
+        if not meta:
+            return
+        w, h = self.size
+        top = h - 42
+        self.rect(0, top, w, 42, "#F8FAFC")
+        self.rect(0, top, w, 1, "#CFDCE5")
+        controls = self._zoom_footer_controls()
+        limit = min(item[0] for item in controls.values())
+        version = str(meta.get("tool", {}).get("version", "")).strip()
+        caption = meta["name"] + ((" · v" + version) if version else "")
+        if limit > 95:
+            self.text(13, h - 16,
+                      self._ellipsize(caption, limit - 24, "caption"),
+                      "#556B7B", "caption")
+        ready = meta.get("zoom_ready", False)
+        percent = int(round(float(meta.get("zoom", 1.0)) * 100))
+        auto = meta.get("zoom_mode", "fit") == "fit"
+        for name, (x, y, bw, bh) in controls.items():
+            selected = name == "fit" and auto and ready
+            background = "#DDEEF4" if selected else "#FFFFFF"
+            ink = "#64748B" if not ready else "#17536F"
+            self.rect(x, y, bw, bh, background)
+            self.rect(x, y, bw, 1, "#C4D0DA")
+            self.rect(x, y + bh - 1, bw, 1, "#C4D0DA")
+            self.rect(x, y, 1, bh, "#C4D0DA")
+            self.rect(x + bw - 1, y, 1, bh, "#C4D0DA")
+            label = {
+                "minus": "-", "plus": "+", "fit": "Ajustar",
+                "percent": "%d%%%s" % (percent, " Auto" if auto else ""),
+            }[name]
+            style = "tab" if name != "percent" else "caption"
+            tx = x + (bw - self.text_width(label, style)) // 2
+            self.text(tx, y + 18, label, ink, style)
+
+    def _click_zoom_footer(self, x, y, button):
+        if button != 1 or self.selected_top_tab == "PYRIONOS":
+            return False
+        if y < self.size[1] - 42:
+            return False
+        for name, (bx, by, bw, bh) in self._zoom_footer_controls().items():
+            if bx <= x < bx + bw and by <= y < by + bh:
+                key = self.selected_top_tab
+                if name == "minus":
+                    self._change_tool_zoom(key, delta=-0.10)
+                elif name == "plus":
+                    self._change_tool_zoom(key, delta=0.10)
+                else:
+                    self._change_tool_zoom(key, fit=True)
+                return True
+        return True
+
     def _open_tool(self, tool):
         """Abrir una herramienta de guide.csv dentro de su pestaña."""
         key = tool["key"]
@@ -711,6 +1127,9 @@ root.mainloop()
             "xid": None, "embedded": False,
             "xid_file": None, "ready_file": None,
             "host": self._new_tool_host(), "log_file": None,
+            "zoom": 1.0, "zoom_mode": "fit", "zoom_ready": False,
+            "zoom_control": None, "zoom_status": None,
+            "zoom_mtime": 0, "zoom_seq": 0,
         }
         self.open_tabs[key] = meta
         self.top_tabs.append(key)
@@ -731,7 +1150,8 @@ root.mainloop()
         if destroy_host and host and self.dpy:
             self.destroy_window(self.dpy, host)
             meta["host"] = None
-        for file_key in ("xid_file", "ready_file"):
+        for file_key in ("xid_file", "ready_file",
+                         "zoom_control", "zoom_status"):
             path = meta.get(file_key)
             if path:
                 try:
@@ -743,6 +1163,13 @@ root.mainloop()
         meta["embedded"] = False
         meta["xid_file"] = None
         meta["ready_file"] = None
+        meta["zoom_control"] = None
+        meta["zoom_status"] = None
+        meta["zoom_mtime"] = 0
+        meta["zoom_ready"] = False
+        meta["zoom_seq"] = 0
+        meta["zoom"] = 1.0
+        meta["zoom_mode"] = "fit"
 
     def _start_tool_process(self, key, local_file):
         meta = self.open_tabs.get(key)
@@ -756,20 +1183,27 @@ root.mainloop()
                 meta["host"] = self._new_tool_host()
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             xid_file, ready_file, logfile = self._tool_files(key)
-            for marker in (xid_file, ready_file):
+            zoom_ctrl, zoom_status = self._zoom_files(key)
+            for marker in (xid_file, ready_file, zoom_ctrl, zoom_status):
                 marker.unlink(missing_ok=True)
             meta.update({
                 "xid_file": xid_file, "ready_file": ready_file,
                 "log_file": logfile, "state": "starting",
-                "message": "Iniciando Python dentro de la pestaña...",
+                "message": "Cargando y autoajustando la interfaz...",
+                "zoom_control": zoom_ctrl, "zoom_status": zoom_status,
+                "zoom_ready": False, "zoom_mtime": 0, "zoom_seq": 0,
+                "zoom": 1.0, "zoom_mode": "fit",
                 "xid": None, "embedded": False,
             })
             wrapper = self.cache_dir / "tk_launcher.py"
             wrapper.write_text(self._tk_launcher_source(), encoding="utf-8")
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
+            _, _, width, height = self._tool_view_rect()
             command = [sys.executable, str(wrapper), str(path),
-                       str(xid_file), str(ready_file)]
+                       str(xid_file), str(ready_file),
+                       str(zoom_ctrl), str(zoom_status),
+                       str(width), str(height)]
             # Tambien las tools marcadas "Externo" usan su pestaña PYRIONOS.
             with logfile.open("ab") as output:
                 meta["process"] = subprocess.Popen(
@@ -836,6 +1270,22 @@ root.mainloop()
                         self._attach_tool_window(key, xid)
                         dirty = True
                 except (OSError, ValueError):
+                    pass
+            status_file = meta.get("zoom_status")
+            if status_file:
+                try:
+                    st = status_file.stat()
+                    if st.st_mtime_ns != meta.get("zoom_mtime"):
+                        status = json.loads(status_file.read_text(encoding="utf-8"))
+                        if status.get("ready"):
+                            meta["zoom"] = max(.50, min(1.25,
+                                float(status.get("zoom", 1.0))))
+                            meta["zoom_mode"] = (
+                                "manual" if status.get("mode") == "manual" else "fit")
+                            meta["zoom_ready"] = True
+                            meta["zoom_mtime"] = st.st_mtime_ns
+                            dirty = True
+                except (OSError, ValueError, TypeError):
                     pass
             if process.poll() is not None and meta.get("state") not in ("error", "ended"):
                 meta["state"] = "ended"
@@ -926,6 +1376,8 @@ root.mainloop()
                 self.resize(self.dpy, host, x, y, width, height)
             if meta.get("embedded") and meta.get("xid"):
                 self.resize(self.dpy, meta["xid"], 0, 0, width, height)
+            if meta.get("process") and meta["process"].poll() is None:
+                self._send_zoom_action(meta["tool"]["key"], "resize")
 
     def _load_user_state(self):
         try:
@@ -1551,6 +2003,8 @@ root.mainloop()
                     self._activate_tool_tab(title)
                 return
         if self.selected_top_tab != "PYRIONOS":
+            if self._click_zoom_footer(x, y, button):
+                return
             self._click_tool_panel(x, y, button)
             return
         # La barra lateral del listado PTM también permite saltar de posición.
@@ -1638,6 +2092,7 @@ root.mainloop()
         else:
             self.draw_tool_panel()
         self.draw_tab_context_menu()
+        self.draw_zoom_footer()
         self.copy(self.dpy, self.pixmap, self.window, self.gc,
                   0, 0, w, h, 0, 0)
         self.flush(self.dpy)
