@@ -29,9 +29,9 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_TITLE = "PTM - Buscador y lanzador de herramientas"
-APP_VERSION = "1.0.81"
+APP_VERSION = "1.0.82"
 APP_UPDATE_DATE = "07/11/2026"
-APP_UPDATE_TIME = "04:50"
+APP_UPDATE_TIME = "05:05"
 SEARCH_MAX_LENGTH = 40
 
 REPO_OWNER = "mobatfb"
@@ -3135,6 +3135,14 @@ class PTMApp(tk.Tk):
         path = Path(tool["path"])
         declared = str(tool.get("dependencies", "") or "").strip()
 
+        # Audio Cutter en Linux puede reproducir con pygame y usar el ffmpeg
+        # instalado por la distribución. Su rueda imageio-ffmpeg (~68 MB)
+        # es una alternativa opcional: no debe bloquear la apertura de la tool.
+        optional_ffmpeg = (
+            os.name != "nt"
+            and str(tool.get("slug", "")).strip() == "audio_cutter"
+        )
+
         packages = []
         seen = set()
 
@@ -3145,6 +3153,8 @@ class PTMApp(tk.Tk):
                 if not spec:
                     continue
                 key = spec.lower()
+                if optional_ffmpeg and self._normalize_distribution_name(spec).lower() == "imageio-ffmpeg":
+                    continue
                 if key not in seen and not self._dependency_satisfied(spec):
                     packages.append(spec)
                     seen.add(key)
@@ -3160,6 +3170,8 @@ class PTMApp(tk.Tk):
         })
 
         for module_name in sorted(self._extract_imports(path)):
+            if optional_ffmpeg and module_name == "imageio_ffmpeg":
+                continue
             if module_name in stdlib:
                 continue
             if self._is_local_module(module_name, path):
