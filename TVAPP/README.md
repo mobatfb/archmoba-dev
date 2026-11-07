@@ -48,3 +48,14 @@ go build -trimpath -ldflags="-s -w -H=windowsgui" -o TVAPP_Launcher.exe launcher
 ```
 
 El ejecutable es una aplicacion de escritorio (sin consola). Para la instalacion automatica de Python, Windows debe tener winget. No incluye firma digital.
+
+## Actualizacion por commit (v1.1 del iniciador)
+
+- `app.py` consulta la API de GitHub para conocer el commit mas reciente que modifico `TVAPP/tvapp.py`.
+- Descarga el archivo asociado exactamente a ese SHA (URL inmutable); no depende del cache de la rama `main` ni de que cambie `VERSION`.
+- Guarda la ultima revision aplicada en `.tvapp_update.json` y compara el hash SHA-256 del archivo local antes de decidir si debe descargar otra copia.
+- Al abrir la aplicacion muestra la copia local, si existe, y comprueba los commits en segundo plano; al presionar **Actualizar** realiza la misma comprobacion.
+- Si la API falla, utiliza una descarga directa con parametro anticache. Si tampoco hay conexion, conserva la ultima interfaz local funcional.
+- El iniciador Windows actualizado (`TVAPP_Launcher_v1.1.exe`) tambien consulta el commit mas reciente de `app.py` antes de descargarlo y abrirlo. El ejecutable compilado se distribuye por separado; el fuente permanece en `launcher.go`.
+
+**Importante:** despues de modificar `app.py` en GitHub, cierra la aplicacion y vuelve a abrir el ejecutable para recibir el nuevo mecanismo de actualizacion. Luego los cambios de `tvapp.py` se mostraran desde el propio boton sin recompilar el EXE.
