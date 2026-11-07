@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import threading
+import tempfile
 import wave
 import tkinter as tk
 from pathlib import Path
@@ -162,6 +163,9 @@ class AudioCutter(tk.Frame):
         self.worker_running = False
         self.cancel = threading.Event()
         self.preview_process = None
+        self.preview_temp = None
+        self.preview_generation = 0
+        self.preview_cancel = threading.Event()
         self.start_var = tk.StringVar(value="00:00.00")
         self.end_var = tk.StringVar(value="00:00.00")
         self.format_var = tk.StringVar(value="mp3")
@@ -331,33 +335,130 @@ class AudioCutter(tk.Frame):
         else:
             self.start_var.set(current)
 
-    def stop_preview(self):
+    def stop_preview(self, update_status=True):
+        """Detiene reproducción y conversión sin tocar el archivo original."""
+        self.preview_generation += 1
+        self.preview_cancel.set()
         process = self.preview_process
         self.preview_process = None
-        if process and process.poll() is None:
-            process.terminate()
-        self.status_var.set("Vista previa detenida.")
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+        try:
+            import pygame
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        if self.preview_temp is not None:
+            try:
+                self.preview_temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self.preview_temp = None
+        if update_status:
+            self.status_var.set("Vista previa detenida.")
+
+    def _monitor_preview(self, generation):
+        if generation != self.preview_generation:
+            return
+        try:
+            import pygame
+            playing = bool(pygame.mixer.get_init() and pygame.mixer.music.get_busy())
+        except Exception:
+            playing = False
+        if playing:
+            self.after(200, lambda: self._monitor_preview(generation))
+        else:
+            self.stop_preview(update_status=False)
+            self.status_var.set("Vista previa finalizada.")
 
     def preview(self):
+        if self.worker_running:
+            return
         try:
             start, end = self._selection()
         except ValueError as exc:
             messagebox.showwarning("Intervalo", str(exc), parent=self)
             return
-        player = shutil.which("ffplay")
-        if not player:
-            messagebox.showinfo("Vista previa", "Para reproducir instala FFmpeg con ffplay.", parent=self)
+        ffmpeg = get_ffmpeg()
+        if not ffmpeg:
+            messagebox.showerror(
+                "Vista previa", "No se encontró FFmpeg portable. Vuelve a abrir la herramienta "
+                "para preparar las dependencias.", parent=self
+            )
             return
-        self.stop_preview()
-        try:
-            command = [player, "-autoexit", "-nodisp", "-loglevel", "error",
-                       "-ss", str(start), "-t", str(end - start), str(self.source)]
-            self.preview_process = subprocess.Popen(command, stdin=subprocess.DEVNULL,
-                                                    stdout=subprocess.DEVNULL,
-                                                    stderr=subprocess.DEVNULL, **hidden_kwargs())
-            self.status_var.set(f"Reproduciendo {format_time(start)} - {format_time(end)}")
-        except OSError as exc:
-            messagebox.showerror("Vista previa", str(exc), parent=self)
+        self.stop_preview(update_status=False)
+        self.preview_cancel.clear()
+        generation = self.preview_generation
+        source = self.source
+        self.status_var.set("Preparando fragmento para escuchar...")
+        self.preview_btn.config(state="disabled")
+
+        def prepare():
+            descriptor, filename = tempfile.mkstemp(prefix="ptm_audio_preview_", suffix=".mp3")
+            os.close(descriptor)
+            temporary = Path(filename)
+            try:
+                command = [
+                    ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-y", "-ss", str(start), "-i", str(source),
+                    "-t", str(end - start), "-vn",
+                    "-c:a", "libmp3lame", "-q:a", "5", str(temporary)
+                ]
+                process = subprocess.Popen(
+                    command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE, **hidden_kwargs()
+                )
+                self.preview_process = process
+                _stdout, errors = process.communicate()
+                self.preview_process = None
+                if generation != self.preview_generation or self.preview_cancel.is_set():
+                    temporary.unlink(missing_ok=True)
+                    return
+                if process.returncode != 0 or temporary.stat().st_size == 0:
+                    raise RuntimeError(
+                        errors.decode("utf-8", errors="replace")[-400:]
+                        or "No se pudo preparar la vista previa."
+                    )
+
+                def play():
+                    if generation != self.preview_generation:
+                        temporary.unlink(missing_ok=True)
+                        return
+                    try:
+                        import pygame
+                        if not pygame.mixer.get_init():
+                            pygame.mixer.init()
+                        pygame.mixer.music.load(str(temporary))
+                        self.preview_temp = temporary
+                        pygame.mixer.music.play()
+                        self.status_var.set(
+                            f"Reproduciendo {format_time(start)} - {format_time(end)}"
+                        )
+                        self._monitor_preview(generation)
+                    except Exception as exc:
+                        temporary.unlink(missing_ok=True)
+                        messagebox.showerror("Vista previa", str(exc), parent=self)
+                        self.status_var.set("No se pudo reproducir el fragmento.")
+                    finally:
+                        self.preview_btn.config(state="normal")
+                self._ui(play)
+            except Exception as exc:
+                temporary.unlink(missing_ok=True)
+                def failed(error=str(exc)):
+                    if generation == self.preview_generation:
+                        self.preview_btn.config(state="normal")
+                        self.status_var.set("Error al preparar la vista previa.")
+                        messagebox.showerror("Vista previa", error, parent=self)
+                self._ui(failed)
+
+        threading.Thread(target=prepare, daemon=True).start()
 
     def export(self):
         if self.worker_running:
