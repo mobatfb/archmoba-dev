@@ -16,7 +16,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.23-busqueda-con-limpiar"
+APP_VERSION = "0.2.24-fuentes-modernas"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -157,10 +157,11 @@ class PyrionDesktop:
         self.logo_xft_font = None
         self.logo_core_font = None
         self.logo_gc = None
+        self.ui_fonts = {}
         self._prepare_logo_font()
 
     def _prepare_logo_font(self):
-        """Carga fuente sans serif negrita de Xft o una alternativa X11."""
+        """Tipografia antialias Xft para toda la interfaz; fallback X11."""
         try:
             ft = C.CDLL(ctypes.util.find_library("Xft") or "libXft.so.2")
             self.xft_font_open = bind(ft, "XftFontOpenName", P, P, I, C.c_char_p)
@@ -181,27 +182,40 @@ class PyrionDesktop:
             for face in (
                 b"DejaVu Sans:style=Bold:pixelsize=32",
                 b"Liberation Sans:style=Bold:pixelsize=32",
-                b"sans:style=Bold:pixelsize=30",
+                b"sans:style=Bold:pixelsize=32",
             ):
                 font = self.xft_font_open(self.dpy, self.screen, face)
                 if font:
                     self.xft_lib = ft
                     self.logo_xft_font = font
-                    return
+                    break
+            if self.xft_lib:
+                families = {
+                    "body": b"DejaVu Sans:pixelsize=14",
+                    "label": b"DejaVu Sans:style=Bold:pixelsize=14",
+                    "tab": b"DejaVu Sans:pixelsize=13",
+                    "tab_active": b"DejaVu Sans:style=Bold:pixelsize=13",
+                    "caption": b"DejaVu Sans:pixelsize=11",
+                }
+                for style, face in families.items():
+                    font = self.xft_font_open(self.dpy, self.screen, face)
+                    if font:
+                        self.ui_fonts[style] = font
         except (OSError, AttributeError) as error:
             print("PYRION: Xft no disponible: " + str(error),
                   file=sys.stderr, flush=True)
 
-        # La alternativa X11 utiliza fuentes reales, sin bitmap manual.
-        for face in (
-            b"-*-helvetica-bold-r-normal--34-*-*-*-*-*-iso8859-1",
-            b"9x15bold",
-            b"fixed",
-        ):
-            font = self.load_query_font(self.dpy, face)
-            if font:
-                self.logo_core_font = font
-                break
+        # Alternativa X11 para el logotipo si Xft no esta disponible.
+        if not self.logo_xft_font:
+            for face in (
+                b"-*-helvetica-bold-r-normal--34-*-*-*-*-*-iso8859-1",
+                b"9x15bold",
+                b"fixed",
+            ):
+                font = self.load_query_font(self.dpy, face)
+                if font:
+                    self.logo_core_font = font
+                    break
 
     def draw_logo_title(self, x, y, width):
         """Dibuja PYRIONOS centrado con letras blancas negritas."""
@@ -263,11 +277,48 @@ class PyrionDesktop:
         self.fillrect(self.dpy, self.pixmap, self.gc,
                       int(x), int(y), int(w), int(h))
 
-    def text(self, x, y, value, color="#111111"):
-        encoded = value.encode("latin-1", "replace")
+    def text_width(self, value, style="body"):
+        """Ancho real del texto; necesario para el cursor y los clics."""
+        value = str(value)
+        font = self.ui_fonts.get(style)
+        if self.xft_lib and font:
+            data = value.encode("utf-8")
+            metrics = XGlyphInfo()
+            self.xft_extents(self.dpy, font, data, len(data),
+                             C.byref(metrics))
+            return int(metrics.xOff)
+        return len(value) * 6
+
+    def text(self, x, y, value, color="#111111", style="body"):
+        """Texto suavizado UTF-8 con Xft; respaldo basico de X11."""
+        value = str(value)
+        font = self.ui_fonts.get(style)
+        if self.xft_lib and font:
+            draw = self.xft_draw_create(self.dpy, self.pixmap,
+                                        self.visual, self.colormap)
+            if draw:
+                rgba = [int(color[i:i+2], 16) * 257 for i in (1, 3, 5)]
+                tint = XRenderColor(rgba[0], rgba[1], rgba[2], 65535)
+                ink = XftColor()
+                allocated = self.xft_color_alloc(
+                    self.dpy, self.visual, self.colormap,
+                    C.byref(tint), C.byref(ink))
+                try:
+                    if allocated:
+                        data = value.encode("utf-8")
+                        self.xft_draw_string(draw, C.byref(ink), font,
+                                             int(x), int(y), data, len(data))
+                        return
+                finally:
+                    if allocated:
+                        self.xft_color_free(self.dpy, self.visual,
+                                            self.colormap, C.byref(ink))
+                    self.xft_draw_destroy(draw)
+        # Mantener funcionamiento incluso sin libreria Xft.
+        data = value.encode("latin-1", "replace")
         self.pen(color)
-        self.drawstring(self.dpy, self.pixmap, self.gc, int(x), int(y),
-                        encoded, len(encoded))
+        self.drawstring(self.dpy, self.pixmap, self.gc,
+                        int(x), int(y), data, len(data))
 
     def _search_bounds(self):
         w, h = self.size
@@ -299,18 +350,39 @@ class PyrionDesktop:
 
         # Franja inferior roja y leyenda, como el icono de referencia.
         self.rect(x, y + main_h, lw, footer_h, "#FF1B1B")
-        self.text(x + 8, y + main_h + 13,
-                  "Buscador y lanzador de herramientas", "#FFFFFF")
+        subtitle = "Buscador y lanzador de herramientas"
+        subtitle_x = x + (lw - self.text_width(subtitle, "caption")) // 2
+        self.text(subtitle_x, y + main_h + 13, subtitle,
+                  "#FFFFFF", "caption")
 
     def _search_input_layout(self):
-        """Posiciones del texto y la X; comparte calculo con el hit-test."""
-        x, y, bw, bh = self._search_bounds()
-        tx = x + 81
-        # Reservar espacio al boton rojo y a la X de limpieza.
-        max_chars = max(1, (bw - 190) // 6)
-        visible = self.search_text[-max_chars:]
-        clear_x = tx + len(visible) * 6 + 12 if self.search_text else None
+        """Texto visible y boton de borrar usando anchuras de fuente reales."""
+        x, _, bw, _ = self._search_bounds()
+        label_right = x + 18 + self.text_width("Buscar", "label")
+        tx = label_right + 24
+        text_limit = x + bw - 107
+        # Mostrar el final de la consulta sin invadir controles derechos.
+        visible = self.search_text
+        allowance = max(0, text_limit - tx - (18 if visible else 0))
+        while visible and self.text_width(visible, "body") > allowance:
+            visible = visible[1:]
+        clear_x = tx + self.text_width(visible, "body") + 13 if self.search_text else None
         return tx, visible, clear_x
+
+    def _tab_layout(self):
+        """Posiciones estables para pintar y seleccionar las categorias."""
+        x, _, bw, _ = self._search_bounds()
+        tabs = ("Recientes", "Favoritos", "Más usados", "Recomendados")
+        widths = [max(self.text_width(tab, "tab"),
+                      self.text_width(tab, "tab_active")) for tab in tabs]
+        gap = 18
+        total = sum(widths) + gap * (len(tabs) - 1)
+        cursor = x + (bw - total) // 2
+        result = []
+        for tab, width in zip(tabs, widths):
+            result.append((tab, cursor, width))
+            cursor += width + gap
+        return result
 
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
@@ -334,17 +406,18 @@ class PyrionDesktop:
             self.drawarc(self.dpy, self.pixmap, self.gc, ax, ay,
                          12, 12, start * 64, 90 * 64)
 
-        # "Buscar" es una etiqueta fija, no un texto que desaparece.
-        self.text(x + 18, y + 27, "Buscar", "#111111")
-        self.pen("#777777")
+        # Etiqueta fija en negrita y separador alineado con su ancho real.
+        self.text(x + 18, y + 27, "Buscar", "#111111", "label")
+        separator_x = x + 18 + self.text_width("Buscar", "label") + 10
+        self.pen("#9A9A9A")
         self.drawline(self.dpy, self.pixmap, self.gc,
-                      x + 67, y + 12, x + 67, y + 32)
+                      separator_x, y + 11, separator_x, y + 33)
 
         # Entrada editable y boton X junto a la consulta (solo si hay texto).
         tx, visible, clear_x = self._search_input_layout()
         if visible:
-            self.text(tx, y + 27, visible, "#111111")
-        caret_x = tx + len(visible) * 6
+            self.text(tx, y + 27, visible, "#111111", "body")
+        caret_x = tx + self.text_width(visible, "body")
         if self.search_focus:
             self.pen("#111111")
             self.drawline(self.dpy, self.pixmap, self.gc,
@@ -374,17 +447,17 @@ class PyrionDesktop:
         self.drawline(self.dpy, self.pixmap, self.gc, ix - 9, y + 32, ix + 9, y + 32)
         self.drawline(self.dpy, self.pixmap, self.gc, ix + 9, y + 32, ix + 9, y + 26)
 
-        tabs = ("Recientes", "Favoritos", "Más usados", "Recomendados")
-        total_tabs = sum(len(tab) * 6 + 6 for tab in tabs) + 15 * (len(tabs) - 1)
-        cursor = x + (bw - total_tabs) // 2
-        for tab in tabs:
-            self.text(cursor, y + bh + 20, tab, "#111111")
-            tw = len(tab) * 6 + 6
-            self.pen("#111111" if tab == self.active_tab else "#777777")
-            self.drawline(self.dpy, self.pixmap, self.gc,
-                          cursor, y + bh + 23, cursor + tw - 7,
-                          y + bh + 23)
-            cursor += tw + 15
+        for tab, tx_tab, tab_width in self._tab_layout():
+            active = tab == self.active_tab
+            style = "tab_active" if active else "tab"
+            self.text(tx_tab, y + bh + 23, tab,
+                      "#172B40" if active else "#424B54", style)
+            # Subrayado sutil; solo resalta la pestaña seleccionada.
+            if active:
+                self.pen("#1D6684")
+                self.drawline(self.dpy, self.pixmap, self.gc,
+                              tx_tab, y + bh + 28,
+                              tx_tab + tab_width, y + bh + 28)
 
     def click_ui(self, x, y):
         bx, by, bw, bh = self._search_bounds()
@@ -404,18 +477,13 @@ class PyrionDesktop:
                 self.search_focus = True
             self.paint()
             return
-        tabs = ("Recientes", "Favoritos", "Más usados", "Recomendados")
-        total_tabs = sum(len(tab) * 6 + 6 for tab in tabs) + 15 * (len(tabs) - 1)
-        cursor = bx + (bw - total_tabs) // 2
-        if by + bh + 5 <= y <= by + bh + 30:
-            for tab in ("Recientes", "Favoritos", "Más usados", "Recomendados"):
-                tw = len(tab) * 6 + 6
-                if cursor <= x <= cursor + tw:
+        if by + bh + 6 <= y <= by + bh + 34:
+            for tab, cursor, tab_width in self._tab_layout():
+                if cursor <= x <= cursor + tab_width:
                     self.active_tab = tab
                     self.search_focus = False
                     self.paint()
                     return
-                cursor += tw + 15
         self.search_focus = False
         self.paint()
 
@@ -513,6 +581,8 @@ class PyrionDesktop:
         if self.dpy:
             if self.pixmap:self.pixmap_free(self.dpy,self.pixmap)
             if self.logo_gc:self.gc_free(self.dpy,self.logo_gc)
+            for font in self.ui_fonts.values():
+                self.xft_font_close(self.dpy, font)
             if self.logo_xft_font:self.xft_font_close(self.dpy,self.logo_xft_font)
             if self.logo_core_font:self.free_font(self.dpy,self.logo_core_font)
             if self.gc:self.gc_free(self.dpy,self.gc)
