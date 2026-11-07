@@ -3,8 +3,9 @@
 """PYRION OS - Paso 2: maqueta visual tipo navegador (X11 nativo).
 
 Interfaz ESTATICA, sin acciones de busqueda, pestanas o aplicaciones.
-El icono y el fondo son imagenes PNG que se descargan desde GitHub
-al iniciar. Se usan solo en memoria RAM; no hay cache en disco.
+El fondo, el logotipo central y el icono superior son tres imagenes PNG
+descargadas desde GitHub. Se usan solo en RAM; no hay cache en disco.
+Si una imagen no se descarga, se informa del error: no se imita con dibujos.
 
 Python estandar + ctypes + libX11; libXft es opcional para texto UTF-8.
 Conserva el contrato que exige app.py: PyrionDesktop y main().
@@ -22,10 +23,11 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.0-boceto"
+APP_VERSION = "0.2.1-boceto-remoto"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
-ICON_URL = SERVER + "pyrion-logo.png"
+LOGO_URL = SERVER + "pyrion-logo.png"
+ICON_URL = SERVER + "pyrion-icono.png"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -225,18 +227,20 @@ class PyrionDesktop:
         self.running = True
         self.background = None
         self.logo = None
+        self.icono = None
         self._load_assets()
         self._init_fonts()
 
     def _load_assets(self):
-        for name, url in (("background", BACKGROUND_URL), ("logo", ICON_URL)):
+        for name, url in (("background", BACKGROUND_URL),
+                          ("logo", LOGO_URL), ("icono", ICON_URL)):
             try:
                 item = fetch_png(url)
                 setattr(self, name, item)
                 print("PYRION: imagen de servidor cargada:", url, flush=True)
             except (OSError, ValueError, UnicodeError) as error:
-                print("PYRION: imagen remota no disponible (%s): %s" % (name, error),
-                      file=sys.stderr, flush=True)
+                print("PYRION: ERROR al descargar %s desde %s: %s" %
+                      (name, url, error), file=sys.stderr, flush=True)
 
     def _init_fonts(self):
         try:
@@ -448,10 +452,9 @@ class PyrionDesktop:
         self.round(margin+1, bar_y+3, w-2*margin, bar_h, 23, "#F3F6F9")
         self.round(margin, bar_y, w-2*margin, bar_h, 23, "#FFFFFF", "#DCE5EE")
         brand_y = bar_y+23
-        if self.logo:
-            self._image(self.logo, margin+31, bar_y+22, 40, 40)
-        else:
-            self.text("⌃", margin+43, bar_y+58, "#26B9F2", "title")
+        # Icono superior: imagen independiente obtenida del repositorio.
+        if self.icono:
+            self._image(self.icono, margin+31, bar_y+22, 40, 40)
         self.text("PYRION", margin+79, brand_y+22, "#283342", "brand")
         os_x = margin + 79 + self.text_width("PYRION", "brand")+7
         self.text("OS", os_x, brand_y+22, "#25BEF0", "brand")
@@ -498,15 +501,12 @@ class PyrionDesktop:
         self.line(plus_x+26,sy+13,plus_x+26,sy+38 if is_wide else sy+29,"#4F5D6E")
         self.line(plus_x+14,sy+25 if is_wide else sy+20,plus_x+38,
                   sy+25 if is_wide else sy+20,"#4F5D6E")
-        # Center logo is a REMOTE IMAGE, independent of the background image.
+        # Logotipo central: recurso de GitHub, independiente del icono y fondo.
         c = w//2
         logo_side = min(118, max(75, w//11))
         logo_top = int(h*.335)
         if self.logo:
             self._image(self.logo,c-logo_side//2,logo_top,logo_side,logo_side)
-        else:
-            self.text("PYRION",c-self.text_width("PYRION","title")//2,
-                      logo_top+77,"#248CF1","title")
         title_y=logo_top+logo_side+47
         a,b="PYRION"," OS"
         total=self.text_width(a,"title")+self.text_width(b,"title")
@@ -521,6 +521,27 @@ class PyrionDesktop:
                   title_y+98,"#758396","tagline")
         self.copy(self.dpy,self.pixmap,self.window,self.gc,0,0,w,h,0,0)
         self.flush(self.dpy)
+
+    def _set_window_icon(self):
+        """Anunciar al gestor X11 el mismo icono PNG descargado de GitHub."""
+        if not self.icono:
+            return
+        iw, ih, channels, pixels = self.icono
+        if iw * ih > 65536:
+            return
+        icon_atom = self.atom(self.dpy, b"_NET_WM_ICON", 0)
+        cardinal = self.atom(self.dpy, b"CARDINAL", 0)
+        if not icon_atom or not cardinal:
+            return
+        values = (U * (iw * ih + 2))()
+        values[0], values[1] = iw, ih
+        for index in range(iw * ih):
+            offset = index * channels
+            r, g, b = pixels[offset:offset + 3]
+            a = pixels[offset + 3] if channels == 4 else 255
+            values[index + 2] = (a << 24) | (r << 16) | (g << 8) | b
+        self.change_prop(self.dpy, self.window, icon_atom, cardinal, 32, 0,
+                         C.cast(values, C.POINTER(C.c_ubyte)), len(values))
 
     def create(self):
         w,h=self.screen_w(self.dpy,self.screen),self.screen_h(self.dpy,self.screen)
@@ -537,12 +558,13 @@ class PyrionDesktop:
             self.change_prop(self.dpy,self.window,atom,4,32,0,
                              C.cast(C.byref(value),C.POINTER(C.c_ubyte)),1)
         self.name(self.dpy,self.window,b"PYRION OS - Boceto sin logica")
+        self._set_window_icon()
         self.select(self.dpy,self.window,(1<<15)|(1<<17))
         self.gc=self.gc_create(self.dpy,self.window,0,None)
         self.map(self.dpy,self.window)
         self.lower(self.dpy,self.window)
         self.paint()
-        print("PYRION: maqueta visual cargada. Fondo/icono desde GitHub; sin acciones.",flush=True)
+        print("PYRION: maqueta sin acciones; fondo, logo e icono remotos.",flush=True)
 
     def run(self):
         self.create()
@@ -587,7 +609,8 @@ def main():
     if "--check" in sys.argv[1:]:
         try:
             C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
-            print("OK: PYRION X11 disponible. Icono:",ICON_URL,"Fondo:",BACKGROUND_URL)
+            print("OK: PYRION X11 disponible. Fondo:", BACKGROUND_URL,
+                  "Logo:", LOGO_URL, "Icono:", ICON_URL)
             return 0
         except OSError as error:
             print("ERROR:",error,file=sys.stderr)
