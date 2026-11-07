@@ -32,7 +32,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.37-proxy-tools-linux"
+APP_VERSION = "0.2.38-imports-opcionales"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -1209,16 +1209,45 @@ root.mainloop()
 
     @staticmethod
     def _extract_python_imports(path):
-        """AST: analiza imports, incluidos los usados dentro de funciones."""
+        """Detecta imports requeridos sin confundir backends opcionales.
+
+        Un import protegido por try/except ImportError puede ser una alternativa
+        (por ejemplo GTK/gi si Qt no funciona); no debe detener la apertura
+        instalando un nombre que no existe en PyPI.
+        """
         source = path.read_text(encoding="utf-8-sig")
         tree = ast.parse(source, filename=str(path))
         names = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
+
+        def catches_missing_import(handler):
+            target = handler.type
+            if target is None:
+                return True
+            candidates = target.elts if isinstance(target, ast.Tuple) else [target]
+            for item in candidates:
+                if isinstance(item, ast.Name) and item.id in (
+                        "ImportError", "ModuleNotFoundError", "Exception"):
+                    return True
+            return False
+
+        class RequiredImports(ast.NodeVisitor):
+            def visit_Import(self, node):
                 names.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
+
+            def visit_ImportFrom(self, node):
                 if node.level == 0 and node.module:
                     names.add(node.module.split(".")[0])
+
+            def visit_Try(self, node):
+                # El código con fallback para imports ausentes es opcional.
+                if not any(catches_missing_import(h) for h in node.handlers):
+                    for item in node.body:
+                        self.visit(item)
+                for part in (node.handlers, node.orelse, node.finalbody):
+                    for item in part:
+                        self.visit(item)
+
+        RequiredImports().visit(tree)
         return names
 
     @staticmethod
@@ -1289,6 +1318,10 @@ root.mainloop()
                        "subprocess", "datetime", "asyncio", "importlib"})
         linux_only_skip = {"msvcrt", "winreg", "winsound", "win32api",
                            "win32com", "pythoncom", "win32gui", "win32con"}
+        # 'gi' es PyGObject/GTK y no se instala con 'pip install gi'.
+        # Visor Web ya declara el backend Qt a través de pywebview[qt].
+        if tool.get("key") == "visor_web":
+            linux_only_skip.add("gi")
         for module in sorted(self._extract_python_imports(file_path)):
             if module in stdlib:
                 continue
