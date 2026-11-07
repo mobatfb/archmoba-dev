@@ -45,10 +45,11 @@ def parse_time(value):
 
 
 def format_time(seconds):
-    seconds = max(0, float(seconds))
-    hours = int(seconds // 3600)
-    minutes = int(seconds // 60) % 60
-    sec = seconds % 60
+    # Redondear antes de descomponer evita marcas como 01:60.00.
+    centiseconds = max(0, int(round(float(seconds) * 100)))
+    hours, remainder = divmod(centiseconds, 360000)
+    minutes, remainder = divmod(remainder, 6000)
+    sec = remainder / 100
     return (f"{hours:02d}:" if hours else "") + f"{minutes:02d}:{sec:05.2f}"
 
 
@@ -485,7 +486,11 @@ class AudioCutter(tk.Frame):
                 self.duration,
                 self.preview_from + max(0.0, time.monotonic() - self.preview_started_at),
             )
-            self._draw_timeline()
+            try:
+                if self.winfo_exists() and self.timeline.winfo_exists():
+                    self._draw_timeline()
+            except tk.TclError:
+                pass
         self.preview_started_at = 0.0
         self.preview_generation += 1
         self.preview_cancel.set()
@@ -521,10 +526,13 @@ class AudioCutter(tk.Frame):
             except OSError:
                 pass
             self.preview_temp = None
-        if hasattr(self, "preview_btn"):
-            self.preview_btn.configure(state="normal")
-        if update_status:
-            self.status_var.set("Vista previa detenida.")
+        try:
+            if hasattr(self, "preview_btn") and self.preview_btn.winfo_exists():
+                self.preview_btn.configure(state="normal")
+            if update_status and self.winfo_exists():
+                self.status_var.set("Vista previa detenida.")
+        except tk.TclError:
+            pass
 
     def _monitor_preview(self, generation):
         if generation != self.preview_generation:
