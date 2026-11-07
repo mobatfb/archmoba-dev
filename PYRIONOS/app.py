@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """PYRION OS - lanzador de escritorio GitHub, con actualizacion en vivo.
 
-* Descarga siempre PYRIONOS/desktop.py de GitHub (rama main).
-* Revisa cambios cada 2 segundos en un hilo y reinicia solo el escritorio.
+* Consulta cada 5 segundos el ultimo commit que modifica desktop.py.
+* Descarga versiones por SHA inmutable y solo reinicia si cambia el contenido.
+* Si el feed no esta disponible, comprueba el archivo principal como alternativa.
 * Guarda el codigo y la configuracion temporal en RAM, nunca en un disco.
 * NO usa desktop_offline.py, cachés persistentes ni copias de respaldo.
 * Cuando el usuario cierra el escritorio, termina el lanzador.
@@ -12,7 +13,7 @@ Dependencias: solamente Python estandar (Linux + servidor X11 para desktop.py).
 
 Uso:
     python3 app.py
-    python3 app.py --intervalo 2
+    python3 app.py --intervalo 5
     python3 app.py --diagnostico
 """
 from __future__ import annotations
@@ -21,6 +22,8 @@ import argparse
 import hashlib
 import queue
 import threading
+import re
+import xml.etree.ElementTree as ET
 import os
 from pathlib import Path
 import shutil
@@ -34,15 +37,21 @@ import urllib.error
 import urllib.request
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.4.6-github-fast"
+APP_VERSION = "0.4.7-commit-check"
 DESKTOP_NAME = "desktop.py"
-GITHUB_URL = (
-    "https://raw.githubusercontent.com/"
-    "mobatfb/archmoba-dev/main/PYRIONOS/desktop.py"
+REPOSITORY = "mobatfb/archmoba-dev"
+DESKTOP_PATH = "PYRIONOS/desktop.py"
+RAW_BASE = "https://raw.githubusercontent.com/" + REPOSITORY + "/"
+GITHUB_URL = RAW_BASE + "main/" + DESKTOP_PATH
+COMMIT_FEED_URL = (
+    "https://github.com/" + REPOSITORY + "/commits/main/" + DESKTOP_PATH + ".atom"
 )
 MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
-HTTP_TIMEOUT = 3.5
-DEFAULT_INTERVAL = 2.0
+MAX_FEED_BYTES = 512 * 1024
+HTTP_TIMEOUT = 4.0
+DEFAULT_INTERVAL = 5.0
+# El feed de GitHub no es una API oficial: comprobacion adicional contra main.
+RAW_VERIFY_INTERVAL = 30.0
 MEMORY_FILESYSTEMS = {"tmpfs", "ramfs", "rootfs"}
 _STOP = False
 
@@ -143,25 +152,84 @@ def _environment(ram_root: Path) -> dict[str, str]:
     return env
 
 
-def _download_desktop() -> bytes:
-    """Obtiene GitHub sin usar copias locales, aun si la red falla."""
-    # Evitar que una respuesta cacheada de CDN o proxy oculte un commit reciente.
-    url = GITHUB_URL + "?pyrion_live=" + str(time.monotonic_ns())
+def _get_bytes(url: str, max_size: int, accept: str) -> bytes:
+    """HTTP sin caches persistentes; limite estricto para cada respuesta."""
     request = urllib.request.Request(url, headers={
         "User-Agent": "PYRION-OS/" + APP_VERSION,
-        "Accept": "text/plain",
+        "Accept": accept,
         "Cache-Control": "no-cache, no-store, max-age=0",
         "Pragma": "no-cache",
     })
     with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-        payload = response.read(MAX_DOWNLOAD_BYTES + 1)
-    if not payload or len(payload) > MAX_DOWNLOAD_BYTES:
-        raise ValueError("GitHub devolvio un desktop.py vacio o demasiado grande")
+        payload = response.read(max_size + 1)
+    if not payload or len(payload) > max_size:
+        raise ValueError("GitHub devolvio una respuesta vacia o demasiado grande")
+    return payload
+
+
+def _latest_desktop_commit() -> str:
+    """Lee el ultimo commit de desktop.py desde el feed Atom de GitHub.
+
+    No usa api.github.com: 5 s por consulta agotarian rapidamente la cuota
+    anonima de su API REST. El feed es publico pero no oficial.
+    """
+    url = COMMIT_FEED_URL + "?pyrion_check=" + str(time.time_ns())
+    data = _get_bytes(url, MAX_FEED_BYTES, "application/atom+xml, application/xml")
+    root = ET.fromstring(data)
+    atom = "{http://www.w3.org/2005/Atom}"
+    if root.tag != atom + "feed":
+        raise ValueError("La respuesta de GitHub no es un feed Atom")
+    item = root.find(atom + "entry")
+    if item is None:
+        raise ValueError("El feed Atom no contiene commits")
+    identifier = item.findtext(atom + "id") or ""
+    match = re.search(r"/([0-9a-fA-F]{40})$", identifier.strip())
+    if match is None:
+        # Compatibilidad con un formato alternativo del feed.
+        link = item.find(atom + "link")
+        href = link.get("href", "") if link is not None else ""
+        match = re.search(r"/commit/([0-9a-fA-F]{40})(?:$|[?#])", href)
+    if match is None:
+        raise ValueError("No fue posible identificar el SHA del ultimo commit")
+    return match.group(1).lower()
+
+
+def _download_desktop(commit: str | None = None) -> bytes:
+    """Descarga un commit inmutable; usa main solo para recuperacion."""
+    if commit is None:
+        # La rama main solo se consulta cuando el feed falla o para verificarlo.
+        url = GITHUB_URL + "?pyrion_live=" + str(time.time_ns())
+    else:
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise ValueError("SHA de commit no valido")
+        url = RAW_BASE + commit + "/" + DESKTOP_PATH
+    payload = _get_bytes(url, MAX_DOWNLOAD_BYTES, "text/plain")
     source = payload.decode("utf-8-sig")
     compile(source, "PYRIONOS/desktop.py", "exec")
     if "class PyrionDesktop" not in source or "def main()" not in source:
         raise ValueError("El archivo descargado no parece ser desktop.py de PYRION")
     return source.encode("utf-8")
+
+
+def _check_latest(known_commit: str | None,
+                  raw_verification: bool = False) -> tuple[str | None, bytes | None, str]:
+    """Devuelve SHA, contenido opcional y origen de la comprobacion.
+
+    Si el commit sigue igual, no vuelve a descargar desktop.py. Cada 30 s
+    verifica tambien main por si el feed publico esta atrasado o falla.
+    """
+    try:
+        latest = _latest_desktop_commit()
+        if latest != known_commit:
+            return latest, _download_desktop(latest), "commit"
+        if raw_verification:
+            return known_commit, _download_desktop(), "raw"
+        return known_commit, None, "sin_cambios"
+    except (OSError, UnicodeError, ValueError, SyntaxError,
+            ET.ParseError, urllib.error.URLError):
+        if raw_verification:
+            return known_commit, _download_desktop(), "raw_rescate"
+        raise
 
 
 def _save_desktop(target: Path, contents: bytes) -> None:
@@ -213,16 +281,26 @@ def _notice(message: str) -> None:
 
 
 def _session(root: Path, interval: float) -> int:
-    """Inicia el desktop y busca versiones nuevas sin cerrar Mini Linux."""
+    """Inicia el desktop y consulta el commit cada 5 s sin bloquear la interfaz."""
     environment = _environment(root)
     destination = root / DESKTOP_NAME
     print("%s %s | modo RAM, solo GitHub" % (APP_NAME, APP_VERSION), flush=True)
-    print("Buscando desktop.py desde GitHub...", flush=True)
+    print("Buscando ultimo commit de desktop.py...", flush=True)
+    commit_sha = None
     try:
-        source = _download_desktop()
+        try:
+            commit_sha = _latest_desktop_commit()
+            source = _download_desktop(commit_sha)
+        except (OSError, UnicodeError, ValueError, SyntaxError,
+                ET.ParseError, urllib.error.URLError) as exc:
+            print("PYRION: feed no disponible; iniciando desde main: " + str(exc),
+                  flush=True)
+            source = _download_desktop()
+            commit_sha = None
         _save_desktop(destination, source)
-    except (OSError, UnicodeError, ValueError, SyntaxError, urllib.error.URLError) as exc:
-        _notice("No se pudo iniciar: GitHub no responde o desktop.py no es valido. " + str(exc))
+    except (OSError, UnicodeError, ValueError, SyntaxError,
+            ET.ParseError, urllib.error.URLError) as exc:
+        _notice("No se pudo iniciar desde GitHub: " + str(exc))
         return 5
     digest = hashlib.sha256(source).hexdigest()
     print("desktop.py iniciado: SHA-256=" + digest[:16], flush=True)
@@ -232,18 +310,19 @@ def _session(root: Path, interval: float) -> int:
         _notice("No se pudo ejecutar desktop.py: " + str(exc))
         return 6
 
-    # Descarga en segundo plano: un DNS/HTTP lento no congela la deteccion
-    # de Cerrar ni los controles de escritorio. Solo una solicitud simultanea.
+    # Una sola consulta simultanea, ejecutada en segundo plano.
     results = queue.Queue(maxsize=1)
     pending = False
+    failures = 0
     last_notice = 0.0
+    last_raw_verification = time.monotonic()
     next_check = time.monotonic() + interval
 
-    def fetch_worker():
+    def fetch_worker(previous_commit: str | None, verify_raw: bool):
         try:
-            result = (True, _download_desktop())
-        except (OSError, ValueError, SyntaxError, UnicodeError,
-                urllib.error.URLError) as exc:
+            result = (True, _check_latest(previous_commit, verify_raw))
+        except (OSError, UnicodeError, ValueError, SyntaxError,
+                ET.ParseError, urllib.error.URLError) as exc:
             result = (False, str(exc))
         try:
             results.put_nowait(result)
@@ -252,7 +331,6 @@ def _session(root: Path, interval: float) -> int:
 
     try:
         while not _STOP:
-            # El cierre manual tiene preferencia incluso durante una consulta HTTP.
             code = child.poll()
             if code is not None:
                 print("desktop.py cerrado; codigo=" + str(code), flush=True)
@@ -260,9 +338,12 @@ def _session(root: Path, interval: float) -> int:
             now = time.monotonic()
             if not pending and now >= next_check:
                 pending = True
+                verify_raw = now - last_raw_verification >= RAW_VERIFY_INTERVAL
+                if verify_raw:
+                    last_raw_verification = now
                 next_check = now + interval
-                threading.Thread(target=fetch_worker, daemon=True,
-                                 name="pyrion-github-check").start()
+                threading.Thread(target=fetch_worker, args=(commit_sha, verify_raw),
+                                 daemon=True, name="pyrion-commit-check").start()
             if pending:
                 try:
                     ok, data = results.get_nowait()
@@ -271,28 +352,35 @@ def _session(root: Path, interval: float) -> int:
                 else:
                     pending = False
                     if not ok:
-                        # No desinstala ni reemplaza un escritorio que funciona.
+                        failures += 1
+                        # Retroceso limitado ante fallos para no saturar GitHub.
+                        delay = min(60.0, interval * (2 ** min(failures, 4)))
+                        next_check = time.monotonic() + delay
                         if time.monotonic() - last_notice > 20:
-                            print("PYRION: GitHub sin respuesta: " + str(data),
+                            print("PYRION: GitHub temporalmente inaccesible: " + str(data),
                                   file=sys.stderr, flush=True)
                             last_notice = time.monotonic()
-                        next_check = max(next_check, time.monotonic() + interval)
                     else:
-                        candidate = data
-                        candidate_hash = hashlib.sha256(candidate).hexdigest()
-                        if candidate_hash != digest and not _STOP and child.poll() is None:
-                            print("PYRION: cambio detectado en GitHub. Activando desktop...",
-                                  flush=True)
-                            _save_desktop(destination, candidate)
-                            _stop_child(child)
-                            if _STOP:
-                                break
-                            child = _launch(destination, root, environment)
-                            digest = candidate_hash
-                            print("PYRION: version nueva activa: SHA-256=" +
-                                  digest[:16], flush=True)
-            # Comprobar Cerrar diez veces por segundo. El intervalo de GitHub
-            # es independiente de la rapidez de la interfaz.
+                        failures = 0
+                        new_commit, candidate, origin = data
+                        # En un fallback raw la marca del ultimo commit no cambia:
+                        # evita volver a un commit anterior si el feed se retrasa.
+                        if origin == "commit":
+                            commit_sha = new_commit
+                        if candidate is not None:
+                            candidate_hash = hashlib.sha256(candidate).hexdigest()
+                            if candidate_hash != digest and not _STOP and child.poll() is None:
+                                print("PYRION: nueva version detectada (%s)." % origin,
+                                      flush=True)
+                                _save_desktop(destination, candidate)
+                                _stop_child(child)
+                                if _STOP:
+                                    break
+                                child = _launch(destination, root, environment)
+                                digest = candidate_hash
+                                print("PYRION: desktop actualizado, SHA-256=" +
+                                      digest[:16], flush=True)
+            # Responder a Cerrar aunque la red este lenta.
             time.sleep(0.1)
     except KeyboardInterrupt:
         pass
@@ -304,7 +392,7 @@ def _session(root: Path, interval: float) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--intervalo", type=float, default=DEFAULT_INTERVAL,
-                        help="segundos entre consultas (predeterminado: 2)")
+                        help="segundos entre consultas (predeterminado: 5)")
     parser.add_argument("--diagnostico", action="store_true",
                         help="mostrar carpeta RAM y enlace de descarga")
     options = parser.parse_args(argv)
@@ -313,6 +401,8 @@ def main(argv: list[str] | None = None) -> int:
     locations = _ram_locations()
     if options.diagnostico:
         print("PYRION %s | GitHub: %s" % (APP_VERSION, GITHUB_URL))
+        print("Feed de commits:", COMMIT_FEED_URL)
+        print("Intervalo predeterminado: %.0f segundos" % DEFAULT_INTERVAL)
         for directory, free, kind in locations:
             print("RAM: %s (%s, %.1f MiB libres)" %
                   (directory, kind, free / (1024 * 1024)))
