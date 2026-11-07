@@ -1,28 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS - Escritorio X11 con buscador y categorias sobre fondo PNG.
+"""PYRION OS - Escritorio X11 con buscador sobre fondo blanco.
 
-Conserva la descarga del fondo y la actualizacion en caliente mediante app.py.
+La actualizacion en caliente mediante app.py sigue siendo compatible.
 Python estandar + ctypes + libX11. Interfaz publica: PyrionDesktop y main().
 """
 from __future__ import annotations
 
 import ctypes as C
 import ctypes.util
-import hashlib
 from pathlib import Path
 import os
 import signal
-import struct
 import sys
 import time
-import urllib.request
-import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.19-sin-panel-blanco"
-SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
-BACKGROUND_URL = SERVER + "pyrion-fondo-v2.png"
+APP_VERSION = "0.2.20-fondo-blanco"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -48,16 +42,6 @@ class XGlyphInfo(C.Structure):
     _fields_ = [("width", C.c_ushort), ("height", C.c_ushort),
                 ("x", C.c_short), ("y", C.c_short),
                 ("xOff", C.c_short), ("yOff", C.c_short)]
-
-
-class XImage(C.Structure):
-    # XImage layout from X11/Xlib.h. Only the public fields needed by XPutImage.
-    _fields_ = [("width", I), ("height", I), ("xoffset", I), ("format", I),
-                ("data", P), ("byte_order", I), ("bitmap_unit", I),
-                ("bitmap_bit_order", I), ("bitmap_pad", I), ("depth", I),
-                ("bytes_per_line", I), ("bits_per_pixel", I),
-                ("red_mask", U), ("green_mask", U), ("blue_mask", U),
-                ("obdata", P)]
 
 
 class XButtonEvent(C.Structure):
@@ -99,133 +83,6 @@ def bind(lib, name, result, *args):
     return fn
 
 
-ASSET_CACHE_TTL = 90.0  # Solo RAM; se renueva en actualizaciones posteriores.
-
-
-def _read_asset_cache(path):
-    """Lee pixeles decodificados de RAM, sin volver a descomprimir PNG."""
-    with path.open("rb") as cache:
-        header = cache.read(12)
-        if len(header) != 12:
-            raise ValueError("cache RAM incompleta")
-        width, height, channels = struct.unpack(">III", header)
-        size = width * height * channels
-        if not (0 < width <= 8192 and 0 < height <= 8192 and
-                channels in (3, 4) and size <= 32 * 1024 * 1024):
-            raise ValueError("cache RAM invalida")
-        pixels = cache.read(size + 1)
-        if len(pixels) != size:
-            raise ValueError("pixeles de cache incompletos")
-        return width, height, channels, pixels
-
-
-def fetch_png(url):
-    """Descarga PNG o reutiliza pixeles decodificados en tmpfs/ramfs."""
-    cache_dir = os.environ.get("PYRION_RAM_ASSETS_DIR")
-    cached = (Path(cache_dir) / (hashlib.sha256(url.encode("utf-8")).hexdigest() + ".pixels")
-              if cache_dir else None)
-    if cached is not None:
-        try:
-            if time.time() - cached.stat().st_mtime < ASSET_CACHE_TTL:
-                return _read_asset_cache(cached)
-        except (OSError, ValueError):
-            pass
-
-    req = urllib.request.Request(url + "?pyrion_asset=" + str(time.time_ns()),
-                                 headers={"User-Agent": "PYRIONOS-X11/" + APP_VERSION,
-                                          "Cache-Control": "no-cache, no-store"})
-    try:
-        with urllib.request.urlopen(req, timeout=7) as response:
-            raw = response.read(2_000_001)
-        if not raw or len(raw) > 2_000_000:
-            raise ValueError("imagen vacia o demasiado grande")
-        result = decode_png(raw)
-    except (OSError, ValueError, UnicodeError):
-        if cached is not None:
-            try:
-                return _read_asset_cache(cached)
-            except (OSError, ValueError):
-                pass
-        raise
-
-    if cached is not None:
-        temporary = cached.with_name(cached.name + "." + str(os.getpid()) + ".tmp")
-        try:
-            temporary.write_bytes(struct.pack(">III", *result[:3]) + result[3])
-            os.replace(temporary, cached)
-        except OSError:
-            pass  # El cache es opcional: la imagen descargada sigue funcionando.
-        finally:
-            try:
-                temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
-    return result
-
-
-def decode_png(raw):
-    """Small pure-Python PNG decoder: 8-bit RGB or RGBA, non-interlaced."""
-    if raw[:8] != b"\x89PNG\r\n\x1a\n":
-        raise ValueError("archivo remoto no es PNG")
-    offset, image_data, width, height, channels = 8, bytearray(), 0, 0, 0
-    while offset + 12 <= len(raw):
-        size = struct.unpack_from(">I", raw, offset)[0]
-        kind = raw[offset + 4:offset + 8]
-        end = offset + 12 + size
-        if size > 2_000_000 or end > len(raw):
-            raise ValueError("PNG incompleto o demasiado grande")
-        data = raw[offset + 8:offset + 8 + size]
-        if kind == b"IHDR":
-            width, height, depth, color, comp, flt, interlace = struct.unpack(">IIBBBBB", data)
-            if not (0 < width <= 2048 and 0 < height <= 1536 and depth == 8
-                    and color in (2, 6) and comp == flt == interlace == 0):
-                raise ValueError("PNG debe ser RGB/RGBA 8-bit sin entrelazado")
-            channels = 3 if color == 2 else 4
-        elif kind == b"IDAT":
-            image_data.extend(data)
-            if len(image_data) > 2_000_000:
-                raise ValueError("PNG comprimido excede el limite")
-        elif kind == b"IEND":
-            break
-        offset = end
-    if not channels or not image_data:
-        raise ValueError("PNG sin pixeles")
-    stride = width * channels
-    expected = (stride + 1) * height
-    if expected > 12_000_000:
-        raise ValueError("PNG excede la memoria permitida")
-    inflater = zlib.decompressobj()
-    filtered = inflater.decompress(bytes(image_data), expected + 1)
-    if len(filtered) != expected or inflater.unconsumed_tail:
-        raise ValueError("PNG contiene datos incompatibles")
-    previous = bytearray(stride)
-    pixels = bytearray(width * height * channels)
-    ip = 0
-    for y in range(height):
-        start = y * (stride + 1)
-        filt = filtered[start]
-        row = bytearray(filtered[start + 1:start + stride + 1])
-        if filt > 4:
-            raise ValueError("filtro PNG no compatible")
-        for x in range(stride):
-            a = row[x - channels] if x >= channels else 0
-            b = previous[x]
-            c = previous[x - channels] if x >= channels else 0
-            if filt == 1: v = a
-            elif filt == 2: v = b
-            elif filt == 3: v = (a + b) // 2
-            elif filt == 4:
-                p = a + b - c
-                da, db, dc = abs(p-a), abs(p-b), abs(p-c)
-                v = a if da <= db and da <= dc else b if db <= dc else c
-            else: v = 0
-            row[x] = (row[x] + v) & 255
-        pixels[ip:ip + stride] = row
-        ip += stride
-        previous = row
-    return width, height, channels, bytes(pixels)
-
-
 class PyrionDesktop:
     """Ventana de escritorio X11 con el buscador principal de PYRIONOS."""
 
@@ -264,10 +121,6 @@ class PyrionDesktop:
         self.drawline = bind(x, "XDrawLine", I, P, U, P, I, I, I, I)
         self.drawarc = bind(x, "XDrawArc", I, P, U, P, I, I, UI, UI, I, I)
         self.copy = bind(x, "XCopyArea", I, P, U, U, P, I, I, UI, UI, I, I)
-        self.create_image = bind(x, "XCreateImage", P, P, P, UI, I, I, P,
-                                 UI, UI, I, I)
-        self.put_image = bind(x, "XPutImage", I, P, U, P, P, I, I, I, I, UI, UI)
-        self.destroy_image = bind(x, "XDestroyImage", I, P)
         self.drawstring = bind(x, "XDrawString", I, P, U, P, I, I, C.c_char_p, I)
         self.lookup = bind(x, "XLookupString", I, C.POINTER(XKeyEvent), C.c_char_p, I, C.POINTER(U), P)
         self.flush = bind(x, "XFlush", I, P)
@@ -288,20 +141,9 @@ class PyrionDesktop:
         self.gc = None
         self.colors = {}
         self.running = True
-        self.background = None
         self.search_text = ""
         self.search_focus = False
         self.active_tab = "Recientes"
-        self._load_assets()
-
-    def _load_assets(self):
-        # El unico recurso grafico del escritorio es el fondo remoto.
-        try:
-            self.background = fetch_png(BACKGROUND_URL)
-            print("PYRION: fondo cargado (GitHub o RAM).", flush=True)
-        except (OSError, ValueError, UnicodeError) as error:
-            print("PYRION: no se pudo cargar el fondo: " + str(error),
-                  file=sys.stderr, flush=True)
 
     def _allocate(self, color):
         if color not in self.colors:
@@ -320,60 +162,6 @@ class PyrionDesktop:
         self.pen(color)
         self.fillrect(self.dpy, self.pixmap, self.gc,
                       int(x), int(y), int(w), int(h))
-
-    def _image(self, image, dx, dy, dw, dh):
-        if not image or dw <= 0 or dh <= 0:
-            return
-        iw, ih, channels, pixels = image
-        # Avoid large intermediate images: scale directly into XImage memory.
-        raw = self.create_image(self.dpy, self.visual, self.depth, 2, 0, None,
-                                int(dw), int(dh), 32, 0)
-        if not raw:
-            return
-        img = C.cast(raw, C.POINTER(XImage)).contents
-        line_bytes = img.bytes_per_line
-        nbytes = line_bytes * int(dh)
-        if (not (24 <= img.bits_per_pixel <= 32) or nbytes <= 0
-                or nbytes > 40_000_000):
-            self.destroy_image(raw)
-            return
-        row = (C.c_ubyte * nbytes)()
-        img.data = C.cast(row, P)
-        pixel_bytes = img.bits_per_pixel // 8
-        # X11 commonly uses red_mask=0x00ff0000 etc; respect server pixel format.
-        masks = (img.red_mask, img.green_mask, img.blue_mask)
-        components = []
-        for mask in masks:
-            shift = (int(mask) & -int(mask)).bit_length()-1 if mask else 0
-            bits = int(mask >> shift).bit_count() if mask else 0
-            components.append((mask, shift, bits))
-        alpha_blend = channels == 4
-        for y in range(int(dh)):
-            sy = min(ih-1, y*ih//int(dh))
-            row_start = y*line_bytes
-            src_y = sy*iw*channels
-            for x in range(int(dw)):
-                sx = min(iw-1, x*iw//int(dw))
-                source = src_y + sx*channels
-                r, g, b = pixels[source], pixels[source+1], pixels[source+2]
-                if alpha_blend:
-                    a = pixels[source+3]
-                    r = (r*a + 255*(255-a))//255
-                    g = (g*a + 255*(255-a))//255
-                    b = (b*a + 255*(255-a))//255
-                pix = 0
-                for v, (mask, shift, bits) in zip((r,g,b), components):
-                    if mask:
-                        q = v if bits == 8 else v*((1 << bits)-1)//255
-                        pix |= (q << shift) & mask
-                at = row_start + x*pixel_bytes
-                row[at:at+pixel_bytes] = pix.to_bytes(pixel_bytes,
-                                                      "little" if img.byte_order == 0 else "big")
-        self.put_image(self.dpy, self.pixmap, self.gc, raw, 0, 0,
-                       int(dx), int(dy), int(dw), int(dh))
-        img.data = None  # XDestroyImage must not free the Python-owned bytearray.
-        self.destroy_image(raw)
-
 
     def text(self, x, y, value, color="#111111"):
         encoded = value.encode("latin-1", "replace")
@@ -493,14 +281,12 @@ class PyrionDesktop:
         self.paint()
 
     def paint(self):
-        """Dibuja el fondo y la cabecera interactiva del escritorio."""
+        """Dibuja fondo blanco y buscador centrado del escritorio."""
         w, h = self.size
         if self.pixmap:
             self.pixmap_free(self.dpy, self.pixmap)
         self.pixmap = self.pixmap_create(self.dpy, self.window, w, h, self.depth)
         self.rect(0, 0, w, h, "#FFFFFF")
-        if self.background:
-            self._image(self.background, 0, 0, w, h)
         self.draw_search()
         self.copy(self.dpy, self.pixmap, self.window, self.gc,
                   0, 0, w, h, 0, 0)
@@ -580,7 +366,7 @@ def main():
     if "--check" in sys.argv[1:]:
         try:
             C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
-            print("OK: PYRION X11 disponible. Fondo:", BACKGROUND_URL)
+            print("OK: PYRION X11 disponible. Fondo blanco local.")
             return 0
         except OSError as error:
             print("ERROR:",error,file=sys.stderr)
