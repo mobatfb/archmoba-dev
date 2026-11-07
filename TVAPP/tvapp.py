@@ -7,7 +7,7 @@ este mismo archivo como PNG en base64; no requiere assets externos.
 import os
 import tkinter as tk
 
-VERSION = "1.0.10"
+VERSION = "1.0.11"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 HERO_BOTTOM = 222  # El contenido empieza mas arriba, sin la barra de estado simulada
@@ -85,11 +85,100 @@ def lock_mobile_window(window):
         window.after_idle(disable_maximize)
 
 
+# Catalogo IPTV-org: cada seccion se descarga bajo demanda, sin bloquear Tk.
+import base64
+import hashlib
+import importlib
+import io
+import json
+from pathlib import Path
+import queue
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from urllib.request import Request, urlopen
+import webbrowser
+
+PLAYLIST_ROOT = "https://iptv-org.github.io/iptv/"
+SOURCES = {
+    "Todos": "index.m3u",
+    "Categorías": "index.category.m3u",
+    "Noticias": "categories/news.m3u",
+    "Deportes": "categories/sports.m3u",
+    "Películas": "categories/movies.m3u",
+    "Música": "categories/music.m3u",
+    "Países": "index.country.m3u",
+    "Idiomas": "index.language.m3u",
+    "Ecuador": "countries/ec.m3u",
+    "Español": "languages/spa.m3u",
+    "Infantil": "categories/kids.m3u",
+    "Cultura": "categories/culture.m3u",
+    "Documentales": "categories/documentary.m3u",
+}
+GROUPED_SOURCES = {"Categorías", "Países", "Idiomas"}
+CACHE_LIFETIME = 60 * 60  # 1 hora
+MAX_PLAYLIST_BYTES = 35 * 1024 * 1024
+
+
+def parse_m3u(text):
+    """Convierte #EXTINF de IPTV-org a canales; no abre transmisiones."""
+    if not text.lstrip("\ufeff \r\n\t").startswith("#EXTM3U"):
+        raise ValueError("La direccion no devolvio una lista M3U valida.")
+    entries, current, extras = [], None, {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("#EXTINF:"):
+            # Primera coma fuera de comillas: admite comas en los atributos.
+            quoted, marker = False, -1
+            for index, character in enumerate(line):
+                if character == '"':
+                    quoted = not quoted
+                elif character == ',' and not quoted:
+                    marker = index
+                    break
+            if marker < 0:
+                current, extras = None, {}
+                continue
+            attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', line[:marker]))
+            title = line[marker+1:].strip() or attrs.get("tvg-name", "Canal")
+            current = {
+                "name": title[:240],
+                "id": attrs.get("tvg-id", "")[:160],
+                "logo": attrs.get("tvg-logo", "")[:800],
+                "group": attrs.get("group-title", "Sin categoría")[:120],
+            }
+            extras = {}
+        elif line.startswith("#EXTVLCOPT:") and current:
+            opt = line.partition(":")[2]
+            key, _, value = opt.partition("=")
+            if key in ("http-referrer", "http-user-agent"):
+                extras[key] = value[:300]
+        elif current is not None and (line.startswith("https://") or line.startswith("http://")):
+            entry = dict(current)
+            entry["url"] = line[:4096]
+            entry["headers"] = dict(extras)
+            if not entry["id"]:
+                entry["id"] = hashlib.sha1(entry["url"].encode("utf-8")).hexdigest()[:16]
+            entries.append(entry)
+            current, extras = None, {}
+            if len(entries) >= 25000:
+                break
+    return entries
+
+
+def tvapp_data_dir():
+    base = os.getenv("LOCALAPPDATA")
+    root = Path(base) if base else Path.home() / ".local" / "share"
+    directory = root / "ARCHMOBA" / "TVAPP"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 class TVSports(tk.Frame):
-    CATEGORIES = [
-        "Todos", "Favoritos", "Eventos Dic", "Eventos C", "Eventos PPV",
-        "NHL", "Infinity Play", "Cinema - Se", "Cultura", "Kids",
-    ]
+    CATEGORIES = list(SOURCES.keys())
     NAV = ["Inicio", "Vivo", "VOD", "Partidos", "Cuenta"]
 
     def __init__(self, parent):
@@ -97,26 +186,45 @@ class TVSports(tk.Frame):
         self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0, relief="flat")
         self.canvas.pack(fill="both", expand=True)
         self.active_tab = "Vivo"
-        self.category = "Favoritos"
+        self.category = "Deportes"
         self.category_offset = 0
+        self.channel_offset = 0
         self.search_open = False
-        self.details = None
         self.query = tk.StringVar()
-        self.query.trace_add("write", lambda *_: self.redraw())
+        self.query.trace_add("write", lambda *_: self._on_filter_changed())
         self.search_field = tk.Entry(
             self, textvariable=self.query, bg="#292c38", fg="white",
-            insertbackground="white", relief="flat", font=("Segoe UI", 11),
+            insertbackground="white", relief="flat", font=("Segoe UI", 10),
             highlightthickness=0,
         )
         self.search_field.bind("<Escape>", lambda _: self._toggle_search(False))
-        self.channels = [
-            {"id": 1, "name": "Liga PRO (FHDe)", "group": "Eventos Dic", "fav": True},
-            {"id": 2, "name": "Zapping Sports (HDe) - EN VIVO", "group": "Eventos C", "fav": True},
-            {"id": 3, "name": "Eventos deportivos", "group": "Eventos PPV", "fav": False},
-            {"id": 4, "name": "NHL TV", "group": "NHL", "fav": False},
-            {"id": 5, "name": "Infinity Play", "group": "Infinity Play", "fav": False},
-            {"id": 6, "name": "Cinema - Series", "group": "Cinema - Se", "fav": False},
-        ]
+
+        from tkinter import ttk
+        self.group_choice = tk.StringVar(value="Todos")
+        self.group_picker = ttk.Combobox(self, textvariable=self.group_choice,
+                                         state="readonly", font=("Segoe UI", 9))
+        self.group_picker.bind("<<ComboboxSelected>>", lambda _: self._on_filter_changed())
+        self.group_values = ["Todos"]
+
+        self.storage = tvapp_data_dir()
+        self.catalogs = {}
+        self.favorites = self._read_favorites()
+        self.events = queue.Queue()
+        self.request_id = 0
+        self.loading = False
+        self.hint = "Conectando con IPTV-org..."
+        self.logo_cache = {}
+        self.logo_requested = set()
+        self.pending_logos = 0
+        self.video_frame = None
+        self.selected = None
+        self.player_state = ""
+        self.vlc_player = None
+        self.vlc_instance = None
+        self.vlc_dll_handles = []
+        self.player_token = 0
+        self.player_muted = False
+
         try:
             self.banner = tk.PhotoImage(data=_BANNER_PNG, format="png")
         except tk.TclError:
@@ -125,42 +233,172 @@ class TVSports(tk.Frame):
             self.logo = tk.PhotoImage(data=_LOGO_PNG, format="png")
         except tk.TclError:
             self.logo = None
+
         self.canvas.bind("<Configure>", lambda _: self.redraw())
         self.canvas.bind("<MouseWheel>", self._wheel)
-        self.canvas.bind("<Button-4>", lambda _: self._scroll(-1))
-        self.canvas.bind("<Button-5>", lambda _: self._scroll(1))
+        self.canvas.bind("<Button-4>", lambda _: self._wheel_linux(-1))
+        self.canvas.bind("<Button-5>", lambda _: self._wheel_linux(1))
+        self.bind("<Destroy>", self._on_destroy, add="+")
+        self.after(100, self._check_events)
+        self._select_category("Deportes")
 
-    def _wheel(self, event):
-        if self.active_tab == "Vivo" and event.x < 118:
-            self._scroll(-1 if event.delta > 0 else 1)
+    def _on_destroy(self, event):
+        if event.widget is self:
+            self._release_player()
 
-    def _scroll(self, step):
-        self.category_offset = min(5, max(0, self.category_offset + step))
+    def _read_favorites(self):
+        try:
+            raw = json.loads((self.storage / "favorites.json").read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                return {k: v for k, v in raw.items()
+                        if isinstance(k, str) and isinstance(v, dict)
+                        and isinstance(v.get("url"), str)}
+        except (OSError, ValueError):
+            pass
+        return {}
+
+    def _save_favorites(self):
+        path = self.storage / "favorites.json"
+        tmp = path.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps(self.favorites, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as exc:
+            self.hint = f"No se guardaron los favoritos: {exc}"
+
+    def _download_playlist(self, category, token):
+        cache_path = self.storage / ("iptv_" + category.encode("utf-8").hex() + ".m3u")
+        data, from_cache = None, False
+        try:
+            if cache_path.exists() and (time.time() - cache_path.stat().st_mtime < CACHE_LIFETIME):
+                data = cache_path.read_text(encoding="utf-8-sig")
+                from_cache = True
+        except OSError:
+            pass
+        if data is None:
+            try:
+                request = Request(PLAYLIST_ROOT + SOURCES[category], headers={
+                    "User-Agent": "ARCHMOBA-TVAPP/1.1", "Accept": "text/plain, */*",
+                    "Cache-Control": "no-cache",
+                })
+                with urlopen(request, timeout=16) as response:
+                    raw = response.read(MAX_PLAYLIST_BYTES + 1)
+                if len(raw) > MAX_PLAYLIST_BYTES:
+                    raise ValueError("La lista excede el tamaño permitido.")
+                data = raw.decode("utf-8-sig", errors="replace")
+                if not data.lstrip().startswith("#EXTM3U"):
+                    raise ValueError("El servidor no devolvió una lista M3U.")
+                try:
+                    tmp = cache_path.with_suffix(".tmp")
+                    tmp.write_text(data, encoding="utf-8")
+                    os.replace(tmp, cache_path)
+                except OSError:
+                    pass
+            except Exception as exc:
+                if cache_path.exists():
+                    try:
+                        data = cache_path.read_text(encoding="utf-8-sig")
+                        from_cache = True
+                    except OSError:
+                        pass
+                if data is None:
+                    self.events.put(("load_error", (token, category, str(exc))))
+                    return
+        try:
+            channels = parse_m3u(data)
+            self.events.put(("loaded", (token, category, channels, from_cache)))
+        except Exception as exc:
+            self.events.put(("load_error", (token, category, str(exc))))
+
+    def _check_events(self):
+        if not self.winfo_exists():
+            return
+        try:
+            while True:
+                kind, payload = self.events.get_nowait()
+                if kind == "loaded":
+                    token, category, channels, from_cache = payload
+                    self.catalogs[category] = channels
+                    if token == self.request_id and self.category == category:
+                        self.loading = False
+                        self.hint = f"{len(channels):,} canales" + (" (copia local)" if from_cache else "")
+                        groups = sorted({c["group"] for c in channels if c["group"]}, key=str.casefold)
+                        self.group_values = ["Todos"] + groups
+                        self.group_picker["values"] = self.group_values
+                        if self.group_choice.get() not in self.group_values:
+                            self.group_choice.set("Todos")
+                        self.redraw()
+                elif kind == "load_error":
+                    token, category, message = payload
+                    if token == self.request_id and category == self.category:
+                        self.loading = False
+                        self.hint = "No se pudo descargar: " + message[:110]
+                        self.redraw()
+                elif kind == "logo":
+                    url, raw = payload
+                    self.pending_logos = max(0, self.pending_logos - 1)
+                    if raw and len(self.logo_cache) < 140:
+                        img = self._create_logo(raw)
+                        if img:
+                            self.logo_cache[url] = img
+                    self.redraw()
+                elif kind == "vlc_ready":
+                    token, module, error = payload
+                    if token == self.player_token and self.selected:
+                        if module is None:
+                            self.player_state = error or "VLC no está disponible"
+                            self.redraw()
+                        else:
+                            self._start_embedded_vlc(module)
+        except queue.Empty:
+            pass
+        self.after(110, self._check_events)
+
+    def _select_category(self, category):
+        self._release_player()
+        self.selected = None
+        self.category = category
+        self.channel_offset = 0
+        self.group_choice.set("Todos")
+        self.group_picker.place_forget()
+        self.request_id += 1
+        token = self.request_id
+        if category == "Favoritos":
+            self.loading = False
+            self.hint = f"{len(self.favorites)} favoritos guardados"
+        elif category in self.catalogs:
+            self.loading = False
+            self.hint = f"{len(self.catalogs[category]):,} canales"
+            self._set_group_values(self.catalogs[category])
+        else:
+            self.loading = True
+            self.hint = "Descargando lista M3U..."
+            threading.Thread(target=self._download_playlist, args=(category, token),
+                             daemon=True).start()
         self.redraw()
 
-    def _round(self, x1, y1, x2, y2, radius, fill, outline="", width=1, tags=()):
-        r = min(radius, (x2-x1)/2, (y2-y1)/2)
-        p = [x1+r,y1, x2-r,y1, x2,y1, x2,y1+r,
-             x2,y2-r, x2,y2, x2-r,y2, x1+r,y2,
-             x1,y2, x1,y2-r, x1,y1+r, x1,y1]
-        return self.canvas.create_polygon(
-            p, smooth=True, splinesteps=12, fill=fill, outline=outline,
-            width=width, tags=tags,
-        )
+    def _set_group_values(self, channels):
+        self.group_values = ["Todos"] + sorted(
+            {c["group"] for c in channels if c["group"]}, key=str.casefold)
+        self.group_picker["values"] = self.group_values
 
-    def _text(self, x, y, text, size=12, color=WHITE, bold=False,
-              anchor="w", tags=(), italic=False, width=0):
-        style = ("Segoe UI", size, ("bold italic" if bold and italic else
-                "bold" if bold else "italic" if italic else "normal"))
-        args = {"text": text, "fill": color, "font": style, "anchor": anchor, "tags": tags}
-        if width:
-            args["width"] = width
-        return self.canvas.create_text(x, y, **args)
+    def _visible_channels(self):
+        if self.category == "Favoritos":
+            channels = list(self.favorites.values())
+        else:
+            channels = self.catalogs.get(self.category, [])
+        group = self.group_choice.get()
+        if self.category in GROUPED_SOURCES and group != "Todos":
+            channels = [c for c in channels if c["group"] == group]
+        q = self.query.get().strip().casefold()
+        if q:
+            channels = [c for c in channels if q in c["name"].casefold()]
+        return channels
 
-    def _click(self, tag, callback):
-        self.canvas.tag_bind(tag, "<Button-1>", lambda _event: callback())
-        self.canvas.tag_bind(tag, "<Enter>", lambda _: self.canvas.configure(cursor="hand2"))
-        self.canvas.tag_bind(tag, "<Leave>", lambda _: self.canvas.configure(cursor=""))
+    def _on_filter_changed(self):
+        self.channel_offset = 0
+        self.redraw()
 
     def _toggle_search(self, enable=None):
         self.search_open = not self.search_open if enable is None else bool(enable)
@@ -173,24 +411,61 @@ class TVSports(tk.Frame):
 
     def _select_tab(self, tab):
         self.active_tab = tab
-        self.details = None
+        if tab in ("VOD", "Partidos"):
+            self._select_category("Películas" if tab == "VOD" else "Deportes")
+        else:
+            self._release_player()
+            self.selected = None
+            self.redraw()
+
+    def _toggle_favorite(self, channel):
+        key = channel["url"]
+        if key in self.favorites:
+            del self.favorites[key]
+        else:
+            self.favorites[key] = dict(channel)
+        self._save_favorites()
         self.redraw()
 
-    def _select_category(self, name):
-        self.category = name
-        self.details = None
+    def _wheel(self, event):
+        self._wheel_linux(-1 if event.delta > 0 else 1, event.x)
+
+    def _wheel_linux(self, direction, x=None):
+        if self.active_tab not in ("Vivo", "VOD", "Partidos"):
+            return
+        if x is None or x < 112:
+            self.category_offset = max(0, min(len(self.CATEGORIES) - 5, self.category_offset + direction))
+        else:
+            self._page_channels(direction)
         self.redraw()
 
-    def _toggle_fav(self, channel_id):
-        for channel in self.channels:
-            if channel["id"] == channel_id:
-                channel["fav"] = not channel["fav"]
-                break
+    def _page_channels(self, direction):
+        total = len(self._visible_channels())
+        self.channel_offset = max(0, min(max(0, total-1), self.channel_offset + direction * 2))
         self.redraw()
 
-    def _select_channel(self, channel):
-        self.details = channel
-        self.redraw()
+    def _round(self, x1, y1, x2, y2, radius, fill, outline="", width=1, tags=()):
+        r = min(radius, max(0, (x2-x1)/2), max(0, (y2-y1)/2))
+        p = [x1+r,y1, x2-r,y1, x2,y1, x2,y1+r,
+             x2,y2-r, x2,y2, x2-r,y2, x1+r,y2,
+             x1,y2, x1,y2-r, x1,y1+r, x1,y1]
+        return self.canvas.create_polygon(p, smooth=True, splinesteps=10,
+                                          fill=fill, outline=outline, width=width, tags=tags)
+
+    def _text(self, x, y, text, size=12, color=WHITE, bold=False,
+              anchor="w", tags=(), italic=False, width=0):
+        style = ("Segoe UI", size, ("bold italic" if bold and italic else
+                 "bold" if bold else "italic" if italic else "normal"))
+        args = {"text": text, "fill": color, "font": style,
+                "anchor": anchor, "tags": tags}
+        if width:
+            args["width"] = width
+        return self.canvas.create_text(x, y, **args)
+
+    def _click(self, tag, callback):
+        self.canvas.tag_bind(tag, "<Button-1>", lambda _e: callback())
+        self.canvas.tag_bind(tag, "<Enter>", lambda _e: self.canvas.config(cursor="hand2"))
+        self.canvas.tag_bind(tag, "<Leave>", lambda _e: self.canvas.config(cursor=""))
 
     def _draw_header(self, w):
         c = self.canvas
@@ -198,213 +473,384 @@ class TVSports(tk.Frame):
         if self.logo:
             c.create_image(14, 17, image=self.logo, anchor="nw")
         else:
-            self._text(18, 42, "GDX", 32, "#f14b87", bold=True)
-        self._round(w-54, 16, w-14, 56, 20, "#30313d", outline="#484955")
-        # Lupa: circulo y mango de busqueda.
+            self._text(18, 42, "GDX", 31, "#ed458c", bold=True)
+        self._round(w-54, 16, w-14, 56, 20, "#30313d", outline="#484955", tags=("search",))
         c.create_oval(w-41, 28, w-30, 39, outline="white", width=1.8, tags=("search",))
         c.create_line(w-31, 38, w-26, 44, fill="white", width=2, tags=("search",))
-        c.create_oval(w-54, 16, w-14, 56, outline="", fill="", tags=("search",))
         self._click("search", self._toggle_search)
         if self.search_open:
-            self.search_field.place(x=12, y=24, width=max(130, w-78), height=26)
+            self.search_field.place(x=10, y=23, width=max(135, w-80), height=28)
         else:
             self.search_field.place_forget()
 
     def _draw_hero(self, w):
         c = self.canvas
-        c.create_rectangle(0, 80, w, HERO_BOTTOM, fill="#11151c", outline="")
+        c.create_rectangle(0, 80, w, HERO_BOTTOM, fill="#12141a", outline="")
         if self.banner:
             c.create_image(w/2, 80, image=self.banner, anchor="n")
         else:
-            self._text(w/2, 140, "TVAPP  •  DEPORTES EN VIVO", 16, WHITE, bold=True, anchor="center")
-        # Es un banner decorativo: la captura de referencia no trae enlaces de streaming.
+            self._text(w/2, 140, "TVAPP · CANALES EN VIVO", 15, WHITE,
+                       bold=True, anchor="center")
 
-    def _visible_channels(self):
-        if self.category == "Favoritos":
-            visible = [ch for ch in self.channels if ch["fav"]]
-        elif self.category == "Todos":
-            visible = list(self.channels)
-        else:
-            visible = [ch for ch in self.channels if ch["group"] == self.category]
-        if self.query.get().strip():
-            q = self.query.get().strip().casefold()
-            visible = [ch for ch in visible if q in ch["name"].casefold()]
-        return visible
+    def _create_logo(self, raw):
+        try:
+            image_module = importlib.import_module("PIL.Image")
+            image_tk = importlib.import_module("PIL.ImageTk")
+            im = image_module.open(io.BytesIO(raw)).convert("RGBA")
+            im.thumbnail((35, 35), image_module.Resampling.LANCZOS)
+            return image_tk.PhotoImage(im, master=self)
+        except (ImportError, OSError, ValueError, tk.TclError):
+            try:
+                image = tk.PhotoImage(data=base64.b64encode(raw).decode("ascii"), master=self)
+                return image.subsample(max(1, image.width() // 35), max(1, image.height() // 35))
+            except tk.TclError:
+                return None
 
-    def _draw_team_icon(self, x, y, size=38):
+    def _download_logo(self, url):
+        raw = None
+        try:
+            req = Request(url, headers={"User-Agent": "ARCHMOBA-TVAPP/1.1"})
+            with urlopen(req, timeout=6) as response:
+                if (response.headers.get("Content-Type") or "").startswith("image/"):
+                    data = response.read(300 * 1024 + 1)
+                    if len(data) <= 300 * 1024:
+                        raw = data
+        except (OSError, ValueError):
+            pass
+        self.events.put(("logo", (url, raw)))
+
+    def _schedule_logo(self, url):
+        if not url.startswith(("http://", "https://")) or url in self.logo_requested:
+            return
+        if len(self.logo_requested) > 120 or self.pending_logos >= 3:
+            return
+        self.logo_requested.add(url)
+        self.pending_logos += 1
+        threading.Thread(target=self._download_logo, args=(url,), daemon=True).start()
+
+    def _draw_channel_icon(self, channel, x, y, tags=()):
         c = self.canvas
-        self._round(x-size/2-4, y-size/2-4, x+size/2+4, y+size/2+4, 11, "#30323e")
-        c.create_oval(x-size/2, y-size/2, x+size/2, y+size/2,
-                     fill="#101013", outline="#434552", width=1)
-        c.create_arc(x-size/2+2, y-size/2+2, x+size/2-2, y+size/2-2,
-                     start=25, extent=115, style="arc", outline="#ebc044", width=5)
-        c.create_arc(x-size/2+2, y-size/2+2, x+size/2-2, y+size/2-2,
-                     start=155, extent=120, style="arc", outline="#d43d43", width=5)
-        self._text(x, y-4, "Liga", 8, WHITE, bold=True, anchor="center", italic=True)
-        self._text(x, y+6, "PRO", 7, WHITE, bold=True, anchor="center")
+        url = channel.get("logo", "")
+        self._round(x-19,y-19,x+19,y+19,10,"#383b4b",tags=tags)
+        if url in self.logo_cache:
+            c.create_image(x, y, image=self.logo_cache[url], anchor="center", tags=tags)
+        else:
+            c.create_oval(x-16,y-16,x+16,y+16,fill="#1a2831",outline="#5caebe",tags=tags)
+            initial = channel["name"].strip()[:2].upper() or "TV"
+            self._text(x, y, initial, 11, CYAN, bold=True, anchor="center", tags=tags)
+            if url:
+                self._schedule_logo(url)
 
     def _draw_live(self, w, h):
         c = self.canvas
-        left = 114
-        content_end = h-12
-        c.create_rectangle(0, HERO_BOTTOM, left, content_end, fill=SIDE, outline="")
-        c.create_rectangle(left, HERO_BOTTOM, w, content_end, fill=PANEL, outline="")
-        # Selector lateral de categorias.
-        for idx, name in enumerate(self.CATEGORIES[self.category_offset:]):
-            y = 254 + idx*48
-            if y > h-100:
+        left = 112
+        c.create_rectangle(0, HERO_BOTTOM, left, h, fill=SIDE, outline="")
+        c.create_rectangle(left, HERO_BOTTOM, w, h, fill=PANEL, outline="")
+
+        for i, category in enumerate(self.CATEGORIES[self.category_offset:]):
+            y = HERO_BOTTOM + 32 + i * 44
+            if y + 18 > h-88:
                 break
-            tag = f"cat_{idx}"
-            if name == self.category:
-                self._round(6, y-20, left-7, y+22, 12, "#24505e", tags=(tag,))
-                text_color = CYAN
-                if name == "Favoritos":
-                    self._text(23, y+1, "★", 17, CYAN, tags=(tag,))
-                    self._text(42, y+1, name, 12, CYAN, bold=True, italic=True, tags=(tag,))
-                else:
-                    self._text(left/2, y+1, name, 12, text_color, bold=True,
-                               italic=True, anchor="center", tags=(tag,))
+            tag = f"category_{i}"
+            if category == self.category:
+                self._round(5,y-19,left-6,y+19,10,"#24505e",tags=(tag,))
+                self._text(left/2, y, "★" if category=="Favoritos" else category[:13],
+                           10,CYAN,True,"center",tags=(tag,))
             else:
-                short = name if len(name) <= 13 else name[:12] + "…"
-                self._text(left/2, y+1, short, 12, WHITE, italic=True,
-                           anchor="center", tags=(tag,))
-            self._click(tag, lambda n=name: self._select_category(n))
+                label = category if len(category)<13 else category[:11]+"…"
+                self._text(left/2,y,label,10,WHITE,False,"center",tags=(tag,))
+            self._click(tag, lambda item=category: self._select_category(item))
 
-        # Titular y tarjetas en columna derecha.
-        self._text(left+14, 247, "★", 24, WHITE)
-        self._text(left+44, 246, self.category, 18, WHITE, bold=True, italic=True)
+        self._text(left+8,HERO_BOTTOM+21,self.category,15,WHITE,bold=True,
+                   width=w-left-25)
+        if self.category in GROUPED_SOURCES and self.catalogs.get(self.category):
+            self.group_picker.place(x=left+6,y=HERO_BOTTOM+33,
+                                    width=w-left-15,height=26)
+        else:
+            self.group_picker.place_forget()
+        cards_top = HERO_BOTTOM + (74 if self.category in GROUPED_SOURCES else 47)
         available = self._visible_channels()
-        if not available:
-            self._text(left+16, 297, "Sin canales disponibles", 11, MUTED,
-                       width=w-left-22)
-            return
-
-        for i, ch in enumerate(available[:6]):
-            y = 272 + i*70
-            if y+64 > h-83:
-                break
-            x1, x2 = left+9, w-9
-            active = (i % 2 == 1)
-            fill = CARD_ACTIVE if active else CARD
-            tag = f"channel_{ch['id']}"
-            self._round(x1, y, x2, y+64, 15, fill, tags=(tag,))
-            if active:
-                self._round(x1+1, y+6, x1+5, y+58, 2, CYAN, tags=(tag,))
-            self._draw_team_icon(x1+28, y+32, 34)
-            title = ch["name"]
-            if len(title) > 17:
-                title = title[:16] + "…"
-            self._text(x1+58, y+21, title, 11, CYAN if active else WHITE,
-                       bold=True, italic=True, tags=(tag,))
-            self._text(x1+58, y+45, "▶  Sin información" if active else "Sin información",
-                       10, MUTED, italic=True, tags=(tag,))
-            star_tag = f"fav_{ch['id']}"
-            self._text(x2-18, y+32, "★" if ch["fav"] else "☆", 22,
-                       GOLD if ch["fav"] else MUTED, anchor="center", tags=(star_tag,))
-            self._click(tag, lambda item=ch: self._select_channel(item))
-            self._click(star_tag, lambda item=ch: self._toggle_fav(item["id"]))
+        self._text(left+8,cards_top-6,
+                   "Cargando canales..." if self.loading else self.hint,
+                   8,MUTED,width=w-left-20)
+        cards_top += 8
+        limit_bottom = h-84
+        card_h, gap = 59, 7
+        max_rows = max(0, int((limit_bottom-cards_top+gap)/(card_h+gap)))
+        for row, channel in enumerate(available[self.channel_offset:self.channel_offset+max_rows]):
+            y = cards_top + row*(card_h+gap)
+            x1, x2 = left+6, w-7
+            tag = f"channel_{row}"
+            self._round(x1,y,x2,y+card_h,11,CARD_ACTIVE if row%2 else CARD,tags=(tag,))
+            self._draw_channel_icon(channel,x1+25,y+30,tags=(tag,))
+            short = channel["name"]
+            if len(short)>25:
+                short=short[:24]+"…"
+            self._text(x1+51,y+18,short,10,CYAN if row%2 else WHITE,
+                       bold=True,italic=True,tags=(tag,))
+            sub = (channel.get("group") or "Canal en vivo")[:29]
+            self._text(x1+51,y+40,sub,9,MUTED,italic=True,tags=(tag,))
+            star_tag=f"favorite_{row}"
+            marked = channel["url"] in self.favorites
+            self._text(x2-14,y+29,"★" if marked else "☆",18,
+                       GOLD if marked else MUTED,anchor="center",tags=(star_tag,))
+            self._click(tag,lambda ch=channel:self._open_channel(ch))
+            self._click(star_tag,lambda ch=channel:self._toggle_favorite(ch))
+        if not available and not self.loading:
+            self._text(left+8,cards_top+38,
+                       "Sin resultados. Cambia categoría o busca otro canal.",
+                       10,MUTED,width=w-left-20)
+        if len(available)>max_rows and max_rows>0:
+            # Paginador con controles alcanzables sin desplazar la barra inferior.
+            self._round(w-79,h-113,w-46,h-88,8,"#2e3443",tags=("prev_channels",))
+            self._round(w-42,h-113,w-9,h-88,8,"#2e3443",tags=("next_channels",))
+            self._text(w-62,h-101,"‹",16,WHITE,anchor="center",tags=("prev_channels",))
+            self._text(w-26,h-101,"›",16,WHITE,anchor="center",tags=("next_channels",))
+            self._click("prev_channels",lambda:self._page_channels(-1))
+            self._click("next_channels",lambda:self._page_channels(1))
+            self._text(left+8,h-100,f"{self.channel_offset+1}-{min(len(available),self.channel_offset+max_rows)} de {len(available)}",8,MUTED)
+        if self.loading and not available:
+            self._text(left+10,HERO_BOTTOM+112,"Obteniendo lista M3U...",10,CYAN,width=w-left-20)
 
     def _draw_other(self, w, h):
-        c = self.canvas
-        c.create_rectangle(0, HERO_BOTTOM, w, h, fill=PANEL, outline="")
-        headings = {
-            "Inicio": ("Bienvenido a TVAPP", "Explora tus canales y favoritos."),
-            "VOD": ("Video bajo demanda", "Películas y series, próximamente."),
-            "Partidos": ("Partidos", "Consulta de eventos deportivos, próximamente."),
-            "Cuenta": ("Mi cuenta", "Personaliza tu experiencia de TVAPP."),
-        }
-        heading, desc = headings.get(self.active_tab, ("TVAPP", ""))
-        self._text(22, 257, heading, 18, WHITE, bold=True)
-        self._text(22, 287, desc, 12, MUTED, width=w-44)
-        self._round(14, 332, w-14, 400, 16, CARD)
-        self._text(28, 352, "★  Favoritos", 15, CYAN, bold=True)
-        self._text(28, 375, "Abre Vivo para explorar tus canales", 11, MUTED)
-        c.create_rectangle(14, 332, w-14, 400, fill="", outline="", tags=("open_live",))
-        self._click("open_live", lambda: self._select_tab("Vivo"))
+        c=self.canvas
+        c.create_rectangle(0,HERO_BOTTOM,w,h,fill=PANEL,outline="")
+        if self.active_tab=="Inicio":
+            heading,desc="TVAPP · IPTV-org","Miles de canales públicos organizados por tema."
+        elif self.active_tab=="Cuenta":
+            heading,desc="Tu cuenta","Favoritos guardados en este dispositivo."
+        else:
+            heading,desc=self.active_tab,"Explora listas IPTV disponibles."
+        self._text(18,HERO_BOTTOM+40,heading,17,WHITE,bold=True)
+        self._text(18,HERO_BOTTOM+76,desc,11,MUTED,width=w-36)
+        self._round(15,HERO_BOTTOM+108,w-15,HERO_BOTTOM+176,14,CARD,tags=("to_live",))
+        self._text(26,HERO_BOTTOM+132,"▶  Explorar canales",15,CYAN,bold=True,tags=("to_live",))
+        self._text(26,HERO_BOTTOM+157,"Noticias · Deportes · Películas · Música",10,MUTED,tags=("to_live",))
+        self._click("to_live",lambda:self._select_tab("Vivo"))
+        self._text(19,HERO_BOTTOM+210,f"Favoritos: {len(self.favorites)}",11,MUTED)
 
-    def _icon(self, name, x, y, color):
-        c = self.canvas
-        s = 1.0
-        if name == "Inicio":
-            c.create_line(x-10,y,x,y-8,x+10,y, fill=color, width=1.7, tags=("nav_icons",))
-            c.create_rectangle(x-7,y,x+7,y+12, outline=color,width=1.5)
-            c.create_rectangle(x-2,y+5,x+3,y+12,outline=color,width=1.1)
-        elif name == "Vivo":
-            c.create_rectangle(x-10,y-4,x+10,y+11,outline=color,width=1.6)
-            c.create_polygon(x-3,y-1,x+5,y+3,x-3,y+7,fill=color)
-            c.create_line(x-3,y-9,x,y-5,x+4,y-10,fill=color,width=1.3)
-        elif name == "VOD":
-            c.create_rectangle(x-10,y-3,x+10,y+11,outline=color,width=1.6)
-            c.create_line(x-11,y-5,x+11,y-5,fill=color,width=2)
-            for j in [-6,0,6]:
-                c.create_line(x+j,y-5,x+j+3,y-10,fill=color,width=1.3)
-        elif name == "Partidos":
-            c.create_arc(x-9,y-7,x+9,y+9,start=180,extent=180,style="arc",outline=color,width=1.6)
-            c.create_line(x-9,y-2,x-9,y+4,x-5,y+7,fill=color,width=1.7)
-            c.create_line(x+9,y-2,x+9,y+4,x+5,y+7,fill=color,width=1.7)
-            c.create_line(x,y+9,x,y+15,fill=color,width=1.5)
-        elif name == "Cuenta":
-            c.create_oval(x-5,y-9,x+5,y+1,outline=color,width=1.6)
-            c.create_arc(x-10,y+2,x+10,y+22,start=0,extent=180,style="arc",outline=color,width=1.6)
+    def _icon(self, name, x, y, color, tags=()):
+        c=self.canvas
+        if name=="Inicio":
+            c.create_line(x-9,y,x,y-8,x+9,y,fill=color,width=2,tags=tags)
+            c.create_rectangle(x-7,y,x+7,y+10,outline=color,width=1.5,tags=tags)
+        elif name=="Vivo":
+            c.create_rectangle(x-10,y-5,x+10,y+11,outline=color,width=1.5,tags=tags)
+            c.create_polygon(x-3,y-2,x+5,y+3,x-3,y+8,fill=color,tags=tags)
+        elif name=="VOD":
+            c.create_rectangle(x-10,y-5,x+10,y+11,outline=color,width=1.5,tags=tags)
+            c.create_line(x-10,y-8,x+10,y-8,fill=color,width=1.6,tags=tags)
+        elif name=="Partidos":
+            c.create_arc(x-9,y-7,x+9,y+9,start=180,extent=180,style="arc",outline=color,width=1.6,tags=tags)
+            c.create_line(x,y+9,x,y+16,fill=color,width=1.5,tags=tags)
+        else:
+            c.create_oval(x-5,y-9,x+5,y+1,outline=color,width=1.6,tags=tags)
+            c.create_arc(x-10,y+3,x+10,y+23,start=0,extent=180,style="arc",outline=color,width=1.6,tags=tags)
 
-    def _draw_nav(self, w, h):
-        c = self.canvas
-        x1, x2 = 12, w-12
-        y1, y2 = h-76, h-9
-        self._round(x1, y1, x2, y2, 28, "#2c2e40", outline="#565a74", width=1)
-        space = (x2-x1)/5
-        for i, name in enumerate(self.NAV):
-            x = x1+space*(i+.5)
-            tag = f"nav_{i}"
-            active = name == self.active_tab
+    def _draw_nav(self,w,h):
+        x1,x2=11,w-11
+        y1,y2=h-75,h-8
+        self._round(x1,y1,x2,y2,25,"#2c2e40",outline="#565a74")
+        segment=(x2-x1)/5
+        for i,tab in enumerate(self.NAV):
+            x=x1+segment*(i+.5)
+            tag=f"nav_{i}"
+            active=tab==self.active_tab
             if active:
-                self._round(x-space*.45, y1+2, x+space*.45, y2-2,
-                            20, "#2b5464", tags=(tag,))
-            col = CYAN if active else "#c1c6d1"
-            self._icon(name, x, y1+18, col)
-            self._text(x, y2-16, name, 9, col, bold=active,
-                       italic=True, anchor="center", tags=(tag,))
-            # Una capa invisible convierte toda la celda en un boton.
-            c.create_rectangle(x-space/2, y1, x+space/2, y2,
-                               fill="", outline="", tags=(tag,))
-            self._click(tag, lambda t=name: self._select_tab(t))
+                self._round(x-segment*.46,y1+2,x+segment*.46,y2-2,18,"#2b5464",tags=(tag,))
+            col=CYAN if active else "#c1c6d1"
+            self._icon(tab,x,y1+18,col,tags=(tag,))
+            self._text(x,y2-15,tab,9,col,active,"center",tags=(tag,),italic=True)
+            self._click(tag,lambda t=tab:self._select_tab(t))
 
-    def _draw_detail(self, w, h):
-        if self.details is None:
+    def _find_vlc(self):
+        paths=[]
+        for var in ("ProgramFiles", "ProgramFiles(x86)"):
+            if os.environ.get(var):
+                paths.append(Path(os.environ[var])/"VideoLAN"/"VLC")
+        for folder in paths:
+            if (folder/"libvlc.dll").is_file():
+                if hasattr(os,"add_dll_directory"):
+                    try:
+                        self.vlc_dll_handles.append(os.add_dll_directory(str(folder)))
+                    except OSError:
+                        pass
+                os.environ.setdefault("PYTHON_VLC_LIB_PATH",str(folder/"libvlc.dll"))
+                os.environ.setdefault("PYTHON_VLC_MODULE_PATH",str(folder/"plugins"))
+                return folder/"vlc.exe"
+        return shutil.which("vlc")
+
+    def _ensure_vlc_in_worker(self, token):
+        error=None
+        try:
+            importlib.invalidate_caches()
+            try:
+                module=importlib.import_module("vlc")
+            except ModuleNotFoundError:
+                process=subprocess.run([sys.executable,"-m","pip","install","--disable-pip-version-check",
+                                        "--no-input","python-vlc"],stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT,text=True,timeout=120,
+                                       creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+                if process.returncode:
+                    raise RuntimeError("No se pudo instalar python-vlc. Instala VLC en Windows.")
+                importlib.invalidate_caches()
+                module=importlib.import_module("vlc")
+            self.events.put(("vlc_ready",(token,module,None)))
             return
-        c = self.canvas
-        c.create_rectangle(0, 0, w, h, fill="#111217", stipple="gray50", outline="", tags=("dim",))
-        y1, y2 = h/2-95, h/2+90
-        self._round(20,y1,w-20,y2,20,CARD,outline="#596070")
-        self._text(w/2,y1+39,self.details["name"],16,WHITE,bold=True,anchor="center",width=w-68)
-        self._text(w/2,y1+84,"Vista de demostración",12,CYAN,anchor="center")
-        self._text(w/2,y1+111,"No hay un enlace de reproducción configurado.",
-                   11,MUTED,anchor="center",width=w-72)
-        self._round(108,y2-47,w-108,y2-12,12,"#2b5260",tags=("close_detail",))
-        self._text(w/2,y2-29,"Cerrar",12,WHITE,bold=True,anchor="center",tags=("close_detail",))
-        self._click("close_detail", self._close_detail)
+        except Exception as exc:
+            error=f"VLC no disponible: {str(exc)[:100]}"
+        self.events.put(("vlc_ready",(token,None,error)))
 
-    def _close_detail(self):
-        self.details = None
+    def _open_channel(self, channel):
+        self._release_player()
+        self.selected=channel
+        self.player_state="Preparando reproducción..."
+        self.player_token+=1
+        token=self.player_token
+        self.redraw()
+        self._find_vlc()
+        threading.Thread(target=self._ensure_vlc_in_worker,args=(token,),daemon=True).start()
+
+    def _start_embedded_vlc(self, vlc):
+        if self.selected is None:
+            return
+        try:
+            self.video_frame = tk.Frame(self, bg="black", highlightthickness=1,
+                                        highlightbackground="#333d4a")
+            self._position_video()
+            self.update_idletasks()
+            instance=vlc.Instance("--quiet", "--network-caching=1200", "--no-video-title-show")
+            if instance is None:
+                raise RuntimeError("No se pudo inicializar libVLC.")
+            player=instance.media_player_new()
+            media=instance.media_new(self.selected["url"])
+            for key,value in self.selected.get("headers",{}).items():
+                if key=="http-user-agent":
+                    media.add_option(":http-user-agent="+value)
+                elif key=="http-referrer":
+                    media.add_option(":http-referrer="+value)
+            player.set_media(media)
+            if sys.platform.startswith("win"):
+                player.set_hwnd(self.video_frame.winfo_id())
+            elif sys.platform=="darwin":
+                player.set_nsobject(self.video_frame.winfo_id())
+            else:
+                player.set_xwindow(self.video_frame.winfo_id())
+            self.vlc_instance=instance
+            self.vlc_player=player
+            result=player.play()
+            self.player_state="Conectando transmisión..." if result != -1 else "No se pudo iniciar la transmisión."
+        except Exception as exc:
+            self.player_state="Reproductor no disponible: "+str(exc)[:110]
+            if self.video_frame:
+                self.video_frame.destroy()
+                self.video_frame=None
         self.redraw()
 
+    def _position_video(self):
+        if self.video_frame and self.video_frame.winfo_exists():
+            width=max(120,self.canvas.winfo_width()-24)
+            height=min(174,max(110,self.canvas.winfo_height()-HERO_BOTTOM-155))
+            self.video_frame.place(x=12,y=HERO_BOTTOM+47,width=width,height=height)
+
+    def _release_player(self):
+        self.player_token+=1
+        if self.vlc_player:
+            try:
+                self.vlc_player.stop()
+                self.vlc_player.release()
+            except Exception:
+                pass
+        self.vlc_player=None
+        if self.vlc_instance:
+            try:self.vlc_instance.release()
+            except Exception:pass
+        self.vlc_instance=None
+        if self.video_frame:
+            try:self.video_frame.destroy()
+            except tk.TclError:pass
+        self.video_frame=None
+
+    def _close_player(self):
+        self._release_player()
+        self.selected=None
+        self.redraw()
+
+    def _toggle_playback(self):
+        if self.vlc_player:
+            try:self.vlc_player.pause()
+            except Exception:pass
+        self.redraw()
+
+    def _toggle_mute(self):
+        if self.vlc_player:
+            self.player_muted=not self.player_muted
+            try:self.vlc_player.audio_set_mute(self.player_muted)
+            except Exception:pass
+        self.redraw()
+
+    def _open_external(self):
+        if not self.selected:return
+        url=self.selected["url"]
+        path=self._find_vlc()
+        if path:
+            try:
+                subprocess.Popen([str(path),url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                self.player_state="Abriendo VLC externo..."
+            except OSError as exc:
+                self.player_state="No se pudo abrir VLC: "+str(exc)[:70]
+        else:
+            webbrowser.open(url)
+            self.player_state="Sin VLC. El navegador podría no reproducir HLS."
+        self.redraw()
+
+    def _draw_player(self,w,h):
+        c=self.canvas
+        c.create_rectangle(0,HERO_BOTTOM,w,h,fill=SIDE,outline="")
+        name=self.selected["name"]
+        label=name if len(name)<42 else name[:40]+"…"
+        self._text(15,HERO_BOTTOM+18,label,13,WHITE,bold=True,width=w-62)
+        self._round(w-42,HERO_BOTTOM+6,w-12,HERO_BOTTOM+34,12,"#444754",tags=("close_play",))
+        self._text(w-27,HERO_BOTTOM+20,"×",18,WHITE,anchor="center",tags=("close_play",))
+        self._click("close_play",self._close_player)
+        video_top=HERO_BOTTOM+47
+        video_height=min(174,max(110,h-HERO_BOTTOM-155))
+        self._round(12,video_top,w-12,video_top+video_height,10,"#050607",outline="#3c4653")
+        if not self.vlc_player:
+            self._text(w/2,video_top+video_height/2,
+                       "Cargando reproductor..." if self.player_state.startswith("Preparando") else self.player_state,
+                       10,MUTED,anchor="center",width=w-42)
+        bottom=video_top+video_height+14
+        self._round(13,bottom,w/3-5,bottom+34,10,"#304a56",tags=("toggle_play",))
+        self._text((w/3+8)/2,bottom+17,"⏯ Pausa",10,WHITE,anchor="center",tags=("toggle_play",))
+        self._click("toggle_play",self._toggle_playback)
+        self._round(w/3+3,bottom,2*w/3-5,bottom+34,10,"#304a56",tags=("toggle_mute",))
+        self._text(w/2,bottom+17,"Silenciar",10,WHITE,anchor="center",tags=("toggle_mute",))
+        self._click("toggle_mute",self._toggle_mute)
+        self._round(2*w/3+3,bottom,w-13,bottom+34,10,"#304a56",tags=("external",))
+        self._text(5*w/6,bottom+17,"Abrir VLC",10,WHITE,anchor="center",tags=("external",))
+        self._click("external",self._open_external)
+        self._text(14,bottom+54,self.player_state,9,MUTED,width=w-25)
+        self._position_video()
+
     def redraw(self):
-        c = self.canvas
-        if not c.winfo_exists():
-            return
-        w, h = c.winfo_width(), c.winfo_height()
-        if w < 10 or h < 10:
-            return
+        c=self.canvas
+        if not c.winfo_exists():return
+        w,h=c.winfo_width(),c.winfo_height()
+        if w<10 or h<10:return
         c.delete("all")
         c.create_rectangle(0,0,w,h,fill=BG,outline="")
         self._draw_header(w)
         self._draw_hero(w)
-        if self.active_tab == "Vivo":
+        if self.selected:
+            self.group_picker.place_forget()
+            self._draw_player(w,h)
+        elif self.active_tab in ("Vivo","VOD","Partidos"):
             self._draw_live(w,h)
         else:
+            self.group_picker.place_forget()
             self._draw_other(w,h)
         self._draw_nav(w,h)
-        self._draw_detail(w,h)
 
 
 def render(parent):
