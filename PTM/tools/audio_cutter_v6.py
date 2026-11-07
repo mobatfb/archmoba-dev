@@ -472,11 +472,10 @@ class AudioCutter(tk.Frame):
         # mientras se construye o ajusta una pestaña integrada.
         if self.app is not None and getattr(self.app, "current_key", None) == "home":
             return None
-        # Los campos de edición conservan Espacio. Los botones usan este atajo
-        # antes de sus acciones estándar para no activar "Seleccionar audio".
-        if isinstance(event.widget, (tk.Entry, ttk.Entry, tk.Text,
-                                     tk.Spinbox, ttk.Combobox)):
-            return None
+        # Espacio funciona también después de editar Desde/Hasta o pulsar un
+        # botón: la herramienta recibe la tecla antes que la clase Tkinter.
+        # Los cuadros de diálogo externos no contienen este bindtag.
+
         self.toggle_preview_pause()
         return "break"
 
