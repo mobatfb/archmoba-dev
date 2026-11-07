@@ -1,1807 +1,1121 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION Desktop - prueba independiente en Python (Windows / Linux).
+"""PYRION OS Desktop - interfaz nativa X11 con Python y ctypes.
 
-Abre la interfaz grafica con PySide6 sin app.py, sin ISO, sin automodificar el
-sistema operativo y sin operaciones de deteccion, montaje o formateo de discos.
-Guarda pruebas e historial en ~/pyrionos_desktop_prueba.
-No instala ni descarga librerias al iniciar; requiere PySide6 instalado.
+No depende de PySide6, Tkinter, FLTK, Python-Xlib ni pip. Utiliza libX11
+(ya incluida en Mini Linux) y, cuando existe, libXft para texto UTF-8.
+Los paneles y botones redondeados se dibujan directamente mediante X11.
+La extensión opcional XShape recorta realmente las esquinas exteriores.
+
+Compatible con app.py RAM/GitHub: contiene PyrionDesktop y main().
+Ejecucion: python3 desktop.py
+Diagnostico: python3 desktop.py --check
+
+El programa no particiona, formatea, monta ni escribe en discos por si solo.
 """
-
 from __future__ import annotations
 
 import ast
+import ctypes as C
+import ctypes.util
 import csv
-from datetime import datetime, timezone
-import json
+import datetime as dt
+import math
 import os
-import queue
 from pathlib import Path
 import re
+import shlex
+import subprocess
+import sys
 import time
-import zipfile
-import shutil
-import subprocess
-import threading
-import sys
-import tempfile
-import unicodedata
-import uuid
-from typing import Any
-
-# Motor de herramientas y dependencias integrado para que app.py sea autónomo.
-import ast
-import base64
-import csv
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import hashlib
-import importlib.metadata
-import io
-import json
-import os
-from pathlib import Path
-import re
-import subprocess
-import sys
-import threading
-import unicodedata
-import urllib.request
-from typing import Callable
 
-REPOSITORY = "mobatfb/archmoba-dev"
-BASE_URL = f"https://api.github.com/repos/{REPOSITORY}/contents/PYRIONOS"
-GUIDE_URL = f"https://raw.githubusercontent.com/{REPOSITORY}/main/PTM/guide.csv"
-MAX_SOURCE_BYTES = 12 * 1024 * 1024
-MAX_CATALOG_BYTES = 1024 * 1024
-ALIASES = {
-    "PIL": "Pillow", "cv2": "opencv-python", "docx": "python-docx",
-    "pptx": "python-pptx", "fitz": "PyMuPDF", "yaml": "PyYAML",
-    "bs4": "beautifulsoup4", "sklearn": "scikit-learn", "serial": "pyserial",
-    "dateutil": "python-dateutil", "dotenv": "python-dotenv",
-    "Crypto": "pycryptodome", "pygame": "pygame", "vlc": "python-vlc",
-    "pdf2docx": "pdf2docx", "mutagen": "mutagen", "psutil": "psutil",
-}
-STOP = set("yo quiero necesito un una unos unas el la los las de del en para por al que se me mi con sin hacer crear usar abrir ver tengo favor puedes necesito convertir a archivo archivos me gustaria quisiera".split())
-PKG_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*(?:\[[A-Za-z0-9_.,-]+\])?(?:\s*(?:==|!=|<=|>=|~=|<|>)\s*[A-Za-z0-9.*+!_-]+)?$")
-_slug_pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,90}$")
+APP_NAME = "PYRION OS"
+APP_VERSION = "0.5.0-x11"
 
+# ===== X11 ABI, para maquinas Linux de 32 o 64 bits =====
+ulong = C.c_ulong
+uint = C.c_uint
+voidp = C.c_void_p
+int32 = C.c_int
 
-def normalize(text: str) -> str:
-    text = unicodedata.normalize("NFKD", str(text).lower())
-    text = "".join(c for c in text if not unicodedata.combining(c))
-    return " ".join(re.findall(r"[a-z0-9]+", text))
+class XColor(C.Structure):
+    _fields_ = [("pixel", ulong), ("red", C.c_ushort), ("green", C.c_ushort),
+                ("blue", C.c_ushort), ("flags", C.c_byte), ("pad", C.c_byte)]
 
+class XRenderColor(C.Structure):
+    _fields_ = [("red", C.c_ushort), ("green", C.c_ushort),
+                ("blue", C.c_ushort), ("alpha", C.c_ushort)]
 
-def safe_slug(value: str) -> str:
-    if not _slug_pattern.fullmatch(value):
-        raise ValueError("Identificador de herramienta invalido")
-    return value
+class XftColor(C.Structure):
+    _fields_ = [("pixel", ulong), ("color", XRenderColor)]
 
+class XGlyphInfo(C.Structure):
+    _fields_ = [("width", C.c_ushort), ("height", C.c_ushort),
+                ("x", C.c_short), ("y", C.c_short),
+                ("xOff", C.c_short), ("yOff", C.c_short)]
 
-def atomic_bytes(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".pyriontmp")
-    try:
-        with tmp.open("wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
+class XPoint(C.Structure):
+    _fields_ = [("x", C.c_short), ("y", C.c_short)]
 
+class XKeyEvent(C.Structure):
+    _fields_ = [("type", int32), ("serial", ulong), ("send_event", int32),
+                ("display", voidp), ("window", ulong), ("root", ulong),
+                ("subwindow", ulong), ("time", ulong), ("x", int32),
+                ("y", int32), ("x_root", int32), ("y_root", int32),
+                ("state", uint), ("keycode", uint), ("same_screen", int32)]
 
-def safe_requirement(spec: str) -> str:
-    spec = spec.strip()
-    if not PKG_PATTERN.fullmatch(spec):
-        raise ValueError(f"Dependencia no admitida sin revision: {spec[:100]}")
-    return spec
+class XButtonEvent(C.Structure):
+    _fields_ = [("type", int32), ("serial", ulong), ("send_event", int32),
+                ("display", voidp), ("window", ulong), ("root", ulong),
+                ("subwindow", ulong), ("time", ulong), ("x", int32),
+                ("y", int32), ("x_root", int32), ("y_root", int32),
+                ("state", uint), ("button", uint), ("same_screen", int32)]
 
+class XMotionEvent(C.Structure):
+    _fields_ = [("type", int32), ("serial", ulong), ("send_event", int32),
+                ("display", voidp), ("window", ulong), ("root", ulong),
+                ("subwindow", ulong), ("time", ulong), ("x", int32),
+                ("y", int32), ("x_root", int32), ("y_root", int32),
+                ("state", uint), ("is_hint", C.c_byte), ("same_screen", int32)]
 
-def git_sha(data: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\x00" + data).hexdigest()
+class XConfigureEvent(C.Structure):
+    _fields_ = [("type", int32), ("serial", ulong), ("send_event", int32),
+                ("display", voidp), ("event", ulong), ("window", ulong),
+                ("x", int32), ("y", int32), ("width", int32), ("height", int32),
+                ("border_width", int32), ("above", ulong), ("override_redirect", int32)]
 
+class XClientMessageData(C.Union):
+    _fields_ = [("b", C.c_char*20), ("s", C.c_short*10), ("l", C.c_long*5)]
 
-@dataclass(frozen=True)
-class Tool:
-    slug: str
-    name: str
-    description: str
-    keywords: str
-    category: str
-    repo_file: str
-    file_type: str
-    declared: tuple[str, ...] = ()
-    main: str = "app.py"
+class XClientMessageEvent(C.Structure):
+    _fields_ = [("type", int32), ("serial", ulong), ("send_event", int32),
+                ("display", voidp), ("window", ulong), ("message_type", ulong),
+                ("format", int32), ("data", XClientMessageData)]
+
+class XEvent(C.Union):
+    _fields_ = [("type", int32), ("xkey", XKeyEvent),
+                ("xbutton", XButtonEvent), ("xmotion", XMotionEvent),
+                ("xconfigure", XConfigureEvent), ("xclient", XClientMessageEvent),
+                ("pad", C.c_long*24)]
+
+class X11Error(RuntimeError):
+    pass
 
 
-class ToolCatalog:
-    def __init__(self, root: Path, source_dir: Path):
-        self.root = Path(root)
-        self.source_dir = Path(source_dir)
-        self.guide_cache = self.root / "data" / "guide.csv"
-        self.tools: dict[str, Tool] = {}
-        self.reload()
-
-    @staticmethod
-    def _download(url: str, limit: int) -> bytes:
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "PYRION-OS/0.3.0", "Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=22) as response:
-            data = response.read(limit + 1)
-        if len(data) > limit:
-            raise ValueError("Descarga excede el limite permitido")
-        return data
-
-    @staticmethod
-    def _rows(raw: bytes) -> list[dict]:
-        reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";")
-        return list(reader)
-
-    def reload(self) -> None:
-        choices = [self.source_dir / "guide.csv", self.guide_cache]
-        result: dict[str, Tool] = {}
-        for file in choices:
-            if not file.is_file():
-                continue
-            try:
-                rows = self._rows(file.read_bytes())
-            except (OSError, ValueError, UnicodeError):
-                continue
-            for row in rows:
-                if str(row.get("activo", "1")).strip().lower() not in ("1", "true", "si", "yes"):
-                    continue
-                relative = str(row.get("ruta", "")).replace("\\", "/").strip().lstrip("/")
-                parts = Path(relative).parts
-                if len(parts) != 2 or parts[0] != "tools" or not parts[1].lower().endswith((".py", ".zip")):
-                    continue
-                slug = str(row.get("slug", "")).strip()
-                try:
-                    safe_slug(slug)
-                except ValueError:
-                    continue
-                declared = tuple(p.strip() for p in re.split(r"[,;\n]+", row.get("dependencias") or "") if p.strip())
-                result[slug] = Tool(
-                    slug, str(row.get("titulo") or slug), str(row.get("descripcion") or ""),
-                    str(row.get("keywords") or ""), str(row.get("categoria") or ""),
-                    relative, parts[1].rsplit(".", 1)[-1].lower(), declared,
-                    str(row.get("archivo_principal") or "app.py"),
-                )
-            if result:
-                break
-        # Cabezal ARGUMENTOS: para herramientas aun no incluidas en el CSV.
-        tool_dir = self.source_dir / "tools"
-        if tool_dir.is_dir():
-            for file in tool_dir.glob("*.py"):
-                slug = file.stem.lower()
-                if not _slug_pattern.fullmatch(slug) or slug in result:
-                    continue
-                try:
-                    header = file.open("r", encoding="utf-8-sig").read(800)
-                    match = re.search(r"(?m)^# ARGUMENTOS:\s*(.*)$", header)
-                except OSError:
-                    match = None
-                result[slug] = Tool(slug, file.stem.replace("_", " ").title(), "", match.group(1) if match else "", "Local", "tools/" + file.name, "py")
-        self.tools = result
-
-    def sync(self) -> int:
-        """Update cache from the official repo. Can be called from worker only."""
-        raw = self._download(GUIDE_URL, MAX_CATALOG_BYTES)
-        rows = self._rows(raw)
-        if not rows or "slug" not in rows[0] or "ruta" not in rows[0]:
-            raise ValueError("Catalogo remoto invalido")
-        atomic_bytes(self.guide_cache, raw)
-        self.reload()
-        return len(self.tools)
-
-    def search(self, phrase: str, limit: int = 6) -> list[tuple[int, Tool]]:
-        query = normalize(phrase)
-        terms = [w for w in query.split() if w not in STOP and len(w) > 1]
-        if not terms:
-            return []
-        scored = []
-        for tool in self.tools.values():
-            title, kw, desc = (normalize(tool.name), normalize(tool.keywords), normalize(tool.description))
-            filename = normalize(Path(tool.repo_file).stem)
-            fields = ((title, 45), (filename, 35), (kw, 28), (desc, 13), (normalize(tool.category), 7))
-            score = 0
-            matched = 0
-            for term in terms:
-                best = 0
-                for haystack, weight in fields:
-                    words = haystack.split()
-                    if term in words:
-                        best = max(best, weight)
-                    elif len(term) >= 4 and any(w.startswith(term) for w in words):
-                        best = max(best, int(weight * 0.72))
-                if best:
-                    matched += 1
-                    score += best
-            if query == title or query == filename:
-                score += 110
-            if matched:
-                score += int(35 * matched / len(terms))
-                # A conversion "pdf word" favors the specific tool over generic converter.
-                if "pdf" in terms and any(t in terms for t in ("word", "docx")):
-                    if tool.slug == "convertidor_pdf_word":
-                        score += 65
-                    elif tool.slug == "conversor_multiple":
-                        score -= 10
-                if matched >= max(1, (len(terms) + 1) // 2):
-                    scored.append((max(1, score), tool))
-        return sorted(scored, key=lambda t: (-t[0], t[1].name))[:limit]
-
-    def source(self, tool: Tool, notify: Callable[[str], None] = lambda _: None) -> Path:
-        safe_slug(tool.slug)
-        relative = Path(tool.repo_file)
-        if len(relative.parts) != 2 or relative.parts[0] != "tools":
-            raise ValueError("Ruta de herramienta fuera del catalogo")
-        local = self.source_dir / relative
-        if local.is_file():
-            return local
-        output = self.root / "apps" / tool.slug / relative.name
-        if output.is_file() and output.stat().st_size:
-            return output
-        notify("Descargando fuente de la herramienta desde ARCHMOBA...")
-        remote_path = "/".join(relative.parts)
-        raw = self._download(f"{BASE_URL}/{remote_path}?ref=main", MAX_SOURCE_BYTES * 2)
-        payload = json.loads(raw.decode("utf-8"))
-        if payload.get("encoding") != "base64":
-            raise ValueError("GitHub no entrego contenido verificable")
-        data = base64.b64decode(payload["content"], validate=False)
-        if len(data) > MAX_SOURCE_BYTES or git_sha(data) != payload.get("sha"):
-            raise ValueError("Integridad de descarga incorrecta")
-        atomic_bytes(output, data)
-        notify("Fuente descargada y SHA verificado.")
-        return output
+def bind(library, name, result, *args, required=True):
+    function = getattr(library, name, None)
+    if function is None:
+        if required:
+            raise X11Error("No existe %s en la biblioteca X11" % name)
+        return None
+    function.restype = result
+    function.argtypes = list(args)
+    return function
 
 
-class DependencyManager:
-    """Install Python wheels only in the persistent data volume, never globally."""
+def rgb(hex_value):
+    n = hex_value.strip().lstrip("#")
+    return tuple(int(n[i:i+2], 16) for i in (0, 2, 4))
 
-    def __init__(self, root: Path, python: str | None = None):
-        self.root = Path(root)
-        self.python = str(python or sys.executable)
-        self.env_root = self.root / "envs"
-        self.pip_runtime = self.root / "runtime" / "pip"
-        self.cache_dir = self.root / "cache" / "pip"
-        self.lock = threading.RLock()
-        for folder in (self.env_root, self.pip_runtime, self.cache_dir):
-            folder.mkdir(parents=True, exist_ok=True)
 
-    def site(self, tool: Tool) -> Path:
-        return self.env_root / safe_slug(tool.slug) / "site-packages"
-
-    def manifest(self, tool: Tool) -> Path:
-        return self.env_root / safe_slug(tool.slug) / "manifest.json"
-
-    def subprocess_env(self, tool: Tool) -> dict[str, str]:
-        env = os.environ.copy()
-        current = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = os.pathsep.join([str(self.site(tool))] + ([current] if current else []))
-        env["PYTHONNOUSERSITE"] = "1"
-        env["PIP_CACHE_DIR"] = str(self.cache_dir)
-        return env
-
-    @staticmethod
-    def _module_imports(source: Path) -> set[str]:
-        if source.suffix.lower() != ".py":
-            return set()
-        tree = ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source))
-        names: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names.update(alias.name.split(".", 1)[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                names.add(node.module.split(".", 1)[0])
-        return names
-
-    def requirements(self, tool: Tool, source: Path) -> list[str]:
-        packages = []
-        seen = set()
-        stdlib = set(getattr(sys, "stdlib_module_names", set())) | set(sys.builtin_module_names)
-        for item in tool.declared:
-            clean = safe_requirement(item)
-            key = re.split(r"[<>=!~\[]", clean, 1)[0].lower().replace("_", "-")
-            if key not in seen:
-                packages.append(clean)
-                seen.add(key)
-        for module in sorted(self._module_imports(source)):
-            if module in stdlib or (source.parent / (module + ".py")).exists() or (source.parent / module).exists():
-                continue
-            package = ALIASES.get(module, module)
-            key = package.lower().replace("_", "-")
-            if key not in seen:
-                packages.append(safe_requirement(package))
-                seen.add(key)
-        return packages
-
-    def already_installed(self, tool: Tool, reqs: list[str]) -> bool:
-        path = self.manifest(tool)
-        if not reqs:
-            return path.is_file()
-        if not path.is_file():
-            return False
+class X11Canvas:
+    def __init__(self):
+        if not sys.platform.startswith("linux"):
+            raise X11Error("PYRION X11 requiere Linux (DISPLAY/Xorg).")
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if data.get("requirements") != reqs or data.get("python") != f"{sys.version_info.major}.{sys.version_info.minor}":
-                return False
-            installed_names = {
-                str(dist.metadata["Name"]).lower().replace("_", "-")
-                for dist in importlib.metadata.distributions(path=[str(self.site(tool))])
-            }
-            return all(re.split(r"[<>=!~\[]", r, 1)[0].lower().replace("_", "-") in installed_names for r in reqs)
-        except (OSError, ValueError, KeyError):
-            return False
-
-    @staticmethod
-    def _run_monitored(command: list[str], env: dict[str, str],
-                       notify: Callable[[str], None], label: str,
-                       timeout: int = 180) -> tuple[int, str]:
-        """Show subprocess output without blocking the GUI's progress monitor.
-
-        A reader thread prevents pip output from filling the OS pipe; the main
-        thread emits a heartbeat even when pip is waiting on HTTPS responses.
-        """
-        pending: queue.Queue[str | None] = queue.Queue()
-        last_lines: list[str] = []
-        started = time.monotonic()
-        last_heartbeat = started
-        try:
-            with subprocess.Popen(
-                command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, errors="replace", bufsize=1,
-                stdin=subprocess.DEVNULL,
-            ) as process:
-                assert process.stdout is not None
-
-                def receive() -> None:
-                    try:
-                        for line in process.stdout:
-                            pending.put(line)
-                    finally:
-                        pending.put(None)
-
-                threading.Thread(target=receive, daemon=True).start()
-                reader_finished = False
-                while not reader_finished or process.poll() is None:
-                    try:
-                        item = pending.get(timeout=0.35)
-                        if item is None:
-                            reader_finished = True
-                        elif item.strip():
-                            line = item.strip()[-500:]
-                            last_lines.append(line)
-                            del last_lines[:-25]
-                            notify(label + ": " + line)
-                    except queue.Empty:
-                        pass
-                    elapsed = time.monotonic() - started
-                    if elapsed >= timeout and process.poll() is None:
-                        process.kill()
-                        process.wait(timeout=8)
-                        raise TimeoutError(
-                            label + " no respondio en " + str(timeout)
-                            + " segundos. Revisa la conexion o compatibilidad de Python."
-                        )
-                    if elapsed - (last_heartbeat - started) >= 12 and process.poll() is None:
-                        notify(label + ": esperando respuesta (" + str(int(elapsed)) + " s)...")
-                        last_heartbeat = time.monotonic()
-                # Drain buffered lines after the subprocess exits.
-                while not pending.empty():
-                    item = pending.get_nowait()
-                    if item and item.strip():
-                        line = item.strip()[-500:]
-                        last_lines.append(line)
-                        del last_lines[:-25]
-                        notify(label + ": " + line)
-                return process.wait(), "\n".join(last_lines[-15:])
-        except TimeoutError:
-            # TimeoutError hereda de OSError: nunca ocultar el diagnostico.
-            raise
+            self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
         except OSError as exc:
-            raise RuntimeError(label + ": no se pudo iniciar el proceso: " + str(exc)) from exc
+            raise X11Error("Falta libX11: %s" % exc) from exc
+        x = self.x
+        self.open_display = bind(x, "XOpenDisplay", voidp, C.c_char_p)
+        self.close_display = bind(x, "XCloseDisplay", int32, voidp)
+        self.default_screen = bind(x, "XDefaultScreen", int32, voidp)
+        self.default_visual = bind(x, "XDefaultVisual", voidp, voidp, int32)
+        self.default_colormap = bind(x, "XDefaultColormap", ulong, voidp, int32)
+        self.default_depth = bind(x, "XDefaultDepth", int32, voidp, int32)
+        self.root_window = bind(x, "XRootWindow", ulong, voidp, int32)
+        self.screen_width = bind(x, "XDisplayWidth", int32, voidp, int32)
+        self.screen_height = bind(x, "XDisplayHeight", int32, voidp, int32)
+        self.create_window = bind(x, "XCreateSimpleWindow", ulong, voidp, ulong,
+                                  int32, int32, uint, uint, uint, ulong, ulong)
+        self.store_name = bind(x, "XStoreName", int32, voidp, ulong, C.c_char_p)
+        self.select_input = bind(x, "XSelectInput", int32, voidp, ulong, C.c_long)
+        self.intern_atom = bind(x, "XInternAtom", ulong, voidp, C.c_char_p, int32)
+        self.set_wm_protocols = bind(x, "XSetWMProtocols", int32, voidp, ulong, C.POINTER(ulong), int32)
+        self.map_window = bind(x, "XMapWindow", int32, voidp, ulong)
+        self.create_gc = bind(x, "XCreateGC", voidp, voidp, ulong, ulong, voidp)
+        self.free_gc = bind(x, "XFreeGC", int32, voidp, voidp)
+        self.create_pixmap = bind(x, "XCreatePixmap", ulong, voidp, ulong, uint, uint, uint)
+        self.free_pixmap = bind(x, "XFreePixmap", int32, voidp, ulong)
+        self.copy_area = bind(x, "XCopyArea", int32, voidp, ulong, ulong, voidp,
+                              int32, int32, uint, uint, int32, int32)
+        self.alloc_color = bind(x, "XAllocColor", int32, voidp, ulong, C.POINTER(XColor))
+        self.set_foreground = bind(x, "XSetForeground", int32, voidp, voidp, ulong)
+        self.set_line_attributes = bind(x, "XSetLineAttributes", int32, voidp, voidp,
+                                        uint, int32, int32, int32)
+        self.fill_rectangle = bind(x, "XFillRectangle", int32, voidp, ulong, voidp,
+                                   int32, int32, uint, uint)
+        self.fill_arc = bind(x, "XFillArc", int32, voidp, ulong, voidp,
+                             int32, int32, uint, uint, int32, int32)
+        self.draw_arc = bind(x, "XDrawArc", int32, voidp, ulong, voidp,
+                             int32, int32, uint, uint, int32, int32)
+        self.draw_line = bind(x, "XDrawLine", int32, voidp, ulong, voidp,
+                              int32, int32, int32, int32)
+        self.draw_rectangle = bind(x, "XDrawRectangle", int32, voidp, ulong, voidp,
+                                   int32, int32, uint, uint)
+        self.fill_polygon = bind(x, "XFillPolygon", int32, voidp, ulong, voidp,
+                                 C.POINTER(XPoint), int32, int32, int32)
+        self.next_event = bind(x, "XNextEvent", int32, voidp, C.POINTER(XEvent))
+        self.pending = bind(x, "XPending", int32, voidp)
+        self.flush = bind(x, "XFlush", int32, voidp)
+        self.lookup_string = bind(x, "XLookupString", int32, C.POINTER(XKeyEvent),
+                                  voidp, int32, C.POINTER(ulong), voidp)
+        self.connection_number = bind(x, "XConnectionNumber", int32, voidp)
+        self.load_query_font = bind(x, "XLoadQueryFont", voidp, voidp, C.c_char_p)
+        self.set_font = bind(x, "XSetFont", int32, voidp, voidp, ulong)
+        self.draw_string = bind(x, "XDrawString", int32, voidp, ulong, voidp,
+                                int32, int32, C.c_char_p, int32)
+        self.free_font = bind(x, "XFreeFont", int32, voidp, voidp)
+        self.create_font_cursor = bind(x, "XCreateFontCursor", ulong, voidp, uint)
+        self.define_cursor = bind(x, "XDefineCursor", int32, voidp, ulong, ulong)
+        self.undefine_cursor = bind(x, "XUndefineCursor", int32, voidp, ulong)
+        self.destroy_window = bind(x, "XDestroyWindow", int32, voidp, ulong)
+        self.dpy = self.open_display(None)
+        if not self.dpy:
+            raise X11Error("No se pudo conectar a X11. DISPLAY=%r. Inicia Xorg primero." % os.getenv("DISPLAY"))
+        self.screen = self.default_screen(self.dpy)
+        self.root = self.root_window(self.dpy, self.screen)
+        self.visual = self.default_visual(self.dpy, self.screen)
+        self.colormap = self.default_colormap(self.dpy, self.screen)
+        sw = self.screen_width(self.dpy, self.screen)
+        sh = self.screen_height(self.dpy, self.screen)
+        self.width = min(1260, max(520, sw - 55))
+        self.height = min(820, max(460, sh - 65))
+        self.window = self.create_window(self.dpy, self.root,
+                                          max(0, (sw-self.width)//2),
+                                          max(0, (sh-self.height)//2),
+                                          self.width, self.height, 0, 0, 0)
+        if not self.window:
+            raise X11Error("XCreateSimpleWindow no devolvio una ventana.")
+        self.store_name(self.dpy, self.window, b"PYRION OS - Native X11 Desktop")
+        # KeyPress / ButtonPress / Motion / Expose / StructureNotify.
+        self.select_input(self.dpy, self.window,
+                          (1 << 0) | (1 << 2) | (1 << 6) | (1 << 15) | (1 << 17))
+        self.delete_atom = self.intern_atom(self.dpy, b"WM_DELETE_WINDOW", 0)
+        protocol = (ulong*1)(self.delete_atom)
+        self.set_wm_protocols(self.dpy, self.window, protocol, 1)
+        self.colors = {}
+        self.ftcolors = {}
+        self.core_font = self.load_query_font(self.dpy, b"fixed")
+        self.offscreen = 0
+        self.gc = self.create_gc(self.dpy, self.window, 0, None)
+        self.shapes_enabled = False
+        self.shape = None
+        self._init_shape()
+        self.xft = None
+        self.ftdraw = None
+        self.fonts = {}
+        self._init_xft()
+        self.hand = self.create_font_cursor(self.dpy, 60)  # XC_hand2
+        self.has_pointer = False
+        self._new_backbuffer()
+        self._apply_shape()
+        self.map_window(self.dpy, self.window)
+        self.flush(self.dpy)
 
-    @staticmethod
-    def _download_bootstrap(url: str, limit: int,
-                            notify: Callable[[str], None], label: str) -> bytes:
-        """Download incrementally, displaying progress and limiting file size."""
-        request = urllib.request.Request(url, headers={
-            "User-Agent": "PYRION-OS/0.3.6", "Accept": "application/octet-stream",
-        })
-        data = bytearray()
-        last_report = 0
-        notify(label + ": conectando por HTTPS...")
-        with urllib.request.urlopen(request, timeout=25) as response:
-            expected = response.headers.get("Content-Length", "")
-            if expected.isdigit() and int(expected) > limit:
-                raise RuntimeError(label + ": descarga demasiado grande")
-            while True:
-                chunk = response.read(256 * 1024)
-                if not chunk:
-                    break
-                data.extend(chunk)
-                if len(data) > limit:
-                    raise RuntimeError(label + ": descarga excede el limite")
-                if len(data) - last_report >= 1024 * 1024:
-                    notify(label + ": " + str(len(data) // 1024) + " KiB recibidos")
-                    last_report = len(data)
-        if not data:
-            raise RuntimeError(label + ": respuesta vacia")
-        notify(label + ": descarga completa (" + str(len(data) // 1024) + " KiB)")
-        return bytes(data)
-
-    def _pip_cmd(self, notify: Callable[[str], None], *,
-                 temp_dir: Path | None = None, no_cache: bool = False
-                 ) -> tuple[list[str], dict[str, str]]:
-        """Select persistent pip, bootstrap it, or use a cached standalone zip.
-
-        The system interpreter is never modified and every package install
-        still requires an explicit --target in pyrionos/.
-        """
-        env = os.environ.copy()
-        env["PYTHONNOUSERSITE"] = "1"
-        env["PIP_CACHE_DIR"] = str(self.cache_dir)
-        env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
-        env["PIP_NO_INPUT"] = "1"
-        if temp_dir is not None:
-            temp_dir = Path(temp_dir)
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            for key in ("TMPDIR", "TMP", "TEMP"):
-                env[key] = str(temp_dir)
-        if no_cache:
-            env["PIP_NO_CACHE_DIR"] = "1"
-        normal_cmd = [self.python, "-m", "pip"]
-        env["PYTHONPATH"] = os.pathsep.join([
-            str(self.pip_runtime), env.get("PYTHONPATH", "")
-        ]).strip(os.pathsep)
-
-        def working(cmd: list[str]) -> bool:
-            try:
-                proc = subprocess.run(
-                    cmd + ["--version"], env=env, capture_output=True,
-                    text=True, errors="replace", timeout=14, check=False,
-                )
-                if proc.returncode == 0:
-                    notify("pip disponible: " + (proc.stdout or "").strip()[:160])
-                    return True
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-            return False
-
-        if working(normal_cmd):
-            return normal_cmd, env
-
-        zipapp = self.root / "runtime" / "pip.pyz"
-        zip_cmd = [self.python, str(zipapp)]
-        if zipapp.is_file() and zipfile.is_zipfile(zipapp) and working(zip_cmd):
-            notify("Reutilizando pip.pyz guardado en el disco persistente.")
-            return zip_cmd, env
-
-        notify("Python no incluye pip; intentando preparar el instalador persistente...")
-        reasons: list[str] = []
-        bootstrap = self.root / "runtime" / "get-pip.py"
-        bootstrap.parent.mkdir(parents=True, exist_ok=True)
+    def _init_shape(self):
         try:
-            data = self._download_bootstrap(
-                "https://bootstrap.pypa.io/get-pip.py", 4 * 1024 * 1024,
-                notify, "Descarga get-pip.py",
-            )
-            atomic_bytes(bootstrap, data)
-            command = [
-                self.python, str(bootstrap), "--no-warn-script-location",
-                "--disable-pip-version-check", "--no-input", "--timeout", "18",
-                "--retries", "1", "--target", str(self.pip_runtime),
-            ]
-            notify("Preparando pip en " + str(self.pip_runtime))
-            rc, output = self._run_monitored(
-                command, env, notify, "Instalando pip local", timeout=150,
-            )
-            if rc != 0:
-                raise RuntimeError("get-pip termino con codigo " + str(rc) + ": " + output[-1200:])
-            if working(normal_cmd):
-                notify("pip preparado en el almacenamiento persistente.")
-                return normal_cmd, env
-            raise RuntimeError("get-pip termino pero el modulo pip aun no se puede usar")
-        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-            reasons.append("get-pip: " + str(exc)[-1100:])
-            notify("get-pip no pudo completarse: " + str(exc)[-250:])
-        finally:
-            bootstrap.unlink(missing_ok=True)
-
-        # Experimental upstream zipapp, only a fallback when the standard
-        # get-pip bootstrap fails. It is kept in the persistent runtime.
-        try:
-            if not (zipapp.is_file() and zipfile.is_zipfile(zipapp)):
-                notify("Probando metodo alternativo de pip sin instalacion global...")
-                payload = self._download_bootstrap(
-                    "https://bootstrap.pypa.io/pip/pip.pyz", 30 * 1024 * 1024,
-                    notify, "Descarga pip.pyz",
-                )
-                atomic_bytes(zipapp, payload)
-            if not zipfile.is_zipfile(zipapp):
-                raise RuntimeError("pip.pyz no es un archivo ZIP valido")
-            with zipfile.ZipFile(zipapp) as package:
-                if "__main__.py" not in package.namelist():
-                    raise RuntimeError("pip.pyz no tiene punto de entrada")
-            if not working(zip_cmd):
-                raise RuntimeError("pip.pyz no es compatible con este Python")
-            notify("pip.pyz disponible en el disco persistente.")
-            return zip_cmd, env
-        except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
-            reasons.append("pip.pyz: " + str(exc)[-800:])
-            notify("Metodo alternativo de pip no disponible: " + str(exc)[-200:])
-
-        raise RuntimeError(
-            "No se pudo preparar pip sin modificar Linux.\n" + "\n".join(reasons)
-            + "\nRevisa el acceso HTTPS a bootstrap.pypa.io, DNS y la version de Python."
-        )
-
-    def install(self, tool: Tool, packages: list[str], notify: Callable[[str], None] = lambda _: None) -> bool:
-        """Called on a worker thread, after explicit user approval of new packages."""
-        if self.already_installed(tool, packages):
-            notify("Librerias persistentes verificadas. No es necesario reinstalar.")
-            return False
-        if not packages:
-            if not self.manifest(tool).is_file():
-                report = {
-                    "tool": tool.slug, "requirements": [],
-                    "python": f"{sys.version_info.major}.{sys.version_info.minor}",
-                    "installed_at": datetime.now(timezone.utc).isoformat(),
-                    "site_packages": str(self.site(tool)),
-                }
-                atomic_bytes(self.manifest(tool), (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode())
-            notify("Esta herramienta no requiere librerias adicionales.")
-            return False
-        with self.lock:
-            if self.already_installed(tool, packages):
-                return False
-            for spec in packages:
-                safe_requirement(spec)
-            target = self.site(tool)
-            target.mkdir(parents=True, exist_ok=True)
-            cmd, env = self._pip_cmd(notify)
-            command = cmd + ["--isolated", "install", "--disable-pip-version-check", "--no-input", "--index-url", "https://pypi.org/simple", "--prefer-binary", "--only-binary=:all:", "--upgrade", "--target", str(target), "--cache-dir", str(self.cache_dir)] + packages
-            notify("Instalando librerias exclusivamente en " + str(target))
-            lines = []
-            with subprocess.Popen(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1) as p:
-                assert p.stdout is not None
-                for line in p.stdout:
-                    stripped = line.strip()
-                    if stripped:
-                        notify(stripped[:200])
-                        lines.append(stripped[:300])
-                        if len(lines) > 20:
-                            lines.pop(0)
-                ret = p.wait()
-            if ret != 0:
-                raise RuntimeError("Error de pip (codigo " + str(ret) + "):\n" + "\n".join(lines[-8:]))
-            report = {
-                "tool": tool.slug, "requirements": packages,
-                "python": f"{sys.version_info.major}.{sys.version_info.minor}",
-                "installed_at": datetime.now(timezone.utc).isoformat(),
-                "site_packages": str(target),
-            }
-            atomic_bytes(self.manifest(tool), (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode())
-            notify("Instalacion terminada y manifest persistente guardado.")
-            return True
-
-
-APP_NAME = "PYRION Desktop"
-APP_VERSION = "0.4.0-prueba"
-DIR_NAME = "pyrionos"
-SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
-
-
-class StorageError(RuntimeError):
-    """El almacenamiento persistente no esta disponible o es inseguro."""
-
-
-def write_json_atomic(path: Path, obj: Any) -> None:
-    """Guardar un JSON sin reemplazar el archivo previo a medio escribir."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=str(path.parent),
-            prefix=".pyrion-", suffix=".tmp", delete=False
-        ) as handle:
-            temporary = Path(handle.name)
-            json.dump(obj, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(str(temporary), str(path))
-    finally:
-        if temporary and temporary.exists():
-            temporary.unlink(missing_ok=True)
-
-
-def read_json_strict(path: Path, default: Any) -> Any:
-    if not path.exists():
-        return default
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise StorageError(f"No se pudo leer {path}: {exc}") from exc
-
-
-class PersistentStore:
-    """Almacenamiento local de PRUEBA: no examina ni modifica discos."""
-
-    def __init__(self, preferred_parent: Path | None = None):
-        selected = (
-            str(preferred_parent) if preferred_parent is not None
-            else os.environ.get("PYRION_TEST_DATA_DIR", "").strip()
-        )
-        self.root = (
-            Path(selected).expanduser().resolve()
-            if selected else Path.home() / "pyrionos_desktop_prueba"
-        )
-        self._prepare()
-
-    @staticmethod
-    def _is_installation(path: Path) -> bool:
-        marker = path / "config" / "instalacion.json"
-        if not marker.is_file():
-            return False
-        try:
-            data = read_json_strict(marker, {})
-            return isinstance(data, dict) and data.get("producto") == "pyrionos_prueba"
-        except (OSError, StorageError):
-            return False
-
-    def _prepare(self) -> None:
-        try:
-            self.root.mkdir(parents=True, exist_ok=True)
-            for subfolder in SUBFOLDERS:
-                (self.root / subfolder).mkdir(parents=True, exist_ok=True)
-            marker = self.root / "config" / "instalacion.json"
-            existing = read_json_strict(marker, {})
-            if existing and existing.get("producto") != "pyrionos_prueba":
-                raise StorageError("La carpeta elegida pertenece a otra instalacion.")
-            if not existing:
-                existing = {
-                    "producto": "pyrionos_prueba",
-                    "id": str(uuid.uuid4()),
-                    "creado": datetime.now(timezone.utc).isoformat(),
-                    "version_inicial": APP_VERSION,
-                }
-                write_json_atomic(marker, existing)
-            self.installation_id = existing["id"]
-            for name in ("historial", "solicitudes"):
-                path = self.root / "data" / f"{name}.json"
-                if not path.is_file():
-                    write_json_atomic(path, [])
-            preferences = self.root / "config" / "preferencias.json"
-            if not preferences.is_file():
-                write_json_atomic(preferences, {"tema": "oscuro"})
-        except (OSError, KeyError, ValueError) as exc:
-            raise StorageError("No se pudo crear la carpeta de pruebas: " + str(exc)) from exc
-
-    def load_list(self, name: str) -> list:
-        if name not in ("historial", "solicitudes"):
-            raise ValueError("Coleccion desconocida")
-        data = read_json_strict(self.root / "data" / f"{name}.json", [])
-        if not isinstance(data, list):
-            raise StorageError("Historial o solicitudes con formato invalido")
-        return data
-
-    def append(self, name: str, entry: dict) -> None:
-        entries = self.load_list(name)
-        entries.insert(0, entry)
-        write_json_atomic(self.root / "data" / f"{name}.json", entries[:2000])
-
-    def record(self, title: str, status: str) -> None:
-        self.append("historial", {
-            "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "accion": title,
-            "estado": status,
-        })
-
-    def check(self) -> tuple[bool, str]:
-        try:
-            if not self._is_installation(self.root):
-                return False, "Carpeta de pruebas no valida."
-            for name in ("historial", "solicitudes"):
-                self.load_list(name)
-            probe = self.root / "cache" / (".prueba-" + uuid.uuid4().hex)
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink()
-            return True, "Datos locales de prueba accesibles y escribibles."
-        except (OSError, StorageError) as exc:
-            return False, str(exc)
-
-
-def normalized(text: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
-
-
-def identify_tool(request: str) -> str | None:
-    query = normalized(request)
-    if "pdf" in query and ("word" in query or "docx" in query):
-        return "pdf_word"
-    if "pdf" in query and any(t in query for t in ("imagen", "foto", "jpg", "png")):
-        return "image_pdf"
-    if "csv" in query or "hoja de datos" in query:
-        return "csv"
-    if any(t in query for t in ("calculadora", "calcular", "operacion matematica")):
-        return "calc"
-    return None
-
-
-# Desktop normal: PySide6 es una dependencia externa, sin instalaciones
-# ni procesos privilegiados al iniciar este archivo de prueba.
-DESKTOP_QT_FAILURE = ""
-DESKTOP_QT_LOG = ""
-
-
-# Solo el escritorio necesita PySide6. El almacenamiento anterior usa Python puro.
-try:
-    from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QUrl, QSize, QRectF
-    from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QPdfWriter, QPageSize, QImage
-    from PySide6.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QDialog, QFrame, QVBoxLayout, QHBoxLayout,
-        QLabel, QPushButton, QLineEdit, QTextEdit, QStackedWidget, QFileDialog,
-        QMessageBox, QScrollArea, QGridLayout, QTableWidget, QTableWidgetItem,
-        QHeaderView, QSizePolicy, QAbstractItemView, QTabWidget, QPlainTextEdit,
-    )
-    QT_READY = True
-except (ImportError, OSError) as exc:
-    QT_READY = False
-    DESKTOP_QT_FAILURE = f"{type(exc).__name__}: {exc}"
-
-
-if QT_READY:
-    PALETTE = """
-    QWidget { background-color: #0D1423; color: #EAF1FB; font-family: 'Segoe UI', 'Noto Sans', sans-serif; font-size: 13px; }
-    QLabel { background-color: transparent; border: none; } /* Evita las bandas oscuras en textos */
-    QMainWindow, QWidget#DesktopRoot { background-color: #0B1220; }
-    QFrame#TopBar { background-color: #101B2C; border-bottom: 1px solid #263B55; }
-    QFrame#Sidebar { background-color: #0D182A; border-right: 1px solid #24344C; }
-    QFrame#Panel, QFrame#ToolCard { background-color: #142238; border: 1px solid #2C4563; border-radius: 15px; }
-    QFrame#Hero { background-color: #10243B; border: 1px solid #284F6C; border-radius: 20px; }
-    QLabel#Brand { font-size: 19px; font-weight: 800; color: #66D8FA; letter-spacing: 2px; }
-    QLabel#Title { font-size: 29px; font-weight: 750; color: #F0F7FF; }
-    QLabel#SectionTitle { font-size: 21px; font-weight: 700; color: #F0F7FF; }
-    QLabel#SmallTitle { font-size: 15px; font-weight: 700; color: #E9F4FF; }
-    QLabel#Muted { color: #91A9C1; font-size: 12px; }
-    QLabel#Tiny { color: #7892AE; font-size: 11px; }
-    QLabel#Orb { background-color: #1D6096; color: #F4FCFF; border: 2px solid #4DCAFC; border-radius: 35px; font-size: 32px; font-weight: bold; }
-    QLineEdit, QTextEdit { background-color: #192B43; border: 1px solid #405E80; border-radius: 10px; padding: 10px 12px; selection-background-color: #329EEA; }
-    QLineEdit:focus, QTextEdit:focus { border: 1px solid #63C9F8; }
-    QPushButton { color: #C8DDF1; background-color: #243A54; border: 1px solid #38526E; border-radius: 9px; padding: 9px 12px; }
-    QPushButton:hover { background-color: #314F72; border-color: #6DBDFA; }
-    QPushButton:pressed { background-color: #18314C; }
-    QPushButton:disabled { color: #74849C; background-color: #152539; }
-    QPushButton[role="primary"] { background-color: #3DADF5; color: #071A2B; border: none; font-weight: 750; }
-    QPushButton[role="primary"]:hover { background-color: #77CEFF; }
-    QPushButton[role="nav"] { background-color: transparent; border: none; text-align: left; padding: 12px 15px; color: #A5BDD6; }
-    QPushButton[role="nav"]:hover { background-color: #1B304B; }
-    QPushButton[role="selected"] { background-color: #244464; border: 1px solid #365E82; text-align: left; padding: 12px 15px; color: #E7F7FF; font-weight: bold; }
-    QScrollArea { border: none; background: transparent; }
-    QScrollBar:vertical { background: #101C2D; width: 9px; }
-    QScrollBar::handle:vertical { background: #35516F; border-radius: 4px; }
-    QTabWidget::pane { border: none; background: #0B1220; }
-    QTabBar::tab { background: #17293F; color: #AEC5DB; padding: 10px 19px; border-right: 1px solid #34485D; }
-    QTabBar::tab:selected { background: #264866; color: #F1F9FF; }
-    QPlainTextEdit { background: #0B1728; color: #AACAD9; border: 1px solid #29425C; border-radius: 8px; }
-    QTableWidget { background-color: #132238; gridline-color: #38506B; alternate-background-color: #1B3046; }
-    QHeaderView::section { background-color: #284465; border: 1px solid #3B5773; padding: 6px; font-weight: bold; }
-    """
-
-    TOOLS = [
-        ("pdf_word", "PDF a Word", "Convierte PDF en un documento DOCX.", "▤"),
-        ("image_pdf", "Imágenes a PDF", "Combina imágenes en un PDF multipágina.", "▧"),
-        ("csv", "Editor CSV", "Abre, modifica y guarda archivos CSV.", "▦"),
-        ("calc", "Calculadora", "Operaciones matemáticas básicas.", "＋"),
-    ]
-
-    def label(text: str, style: str = "Muted", wrap: bool = False) -> QLabel:
-        widget = QLabel(text)
-        widget.setObjectName(style)
-        widget.setWordWrap(wrap)
-        return widget
-
-    def button(text: str, callback=None, role: str | None = None) -> QPushButton:
-        widget = QPushButton(text)
-        if role:
-            widget.setProperty("role", role)
-        if callback:
-            widget.clicked.connect(callback)
-        widget.setCursor(Qt.CursorShape.PointingHandCursor)
-        return widget
-
-    def row(*widgets, spacing: int = 10) -> QHBoxLayout:
-        layout = QHBoxLayout()
-        layout.setSpacing(spacing)
-        for child in widgets:
-            if isinstance(child, (QHBoxLayout, QVBoxLayout)):
-                layout.addLayout(child)
-            else:
-                layout.addWidget(child)
-        return layout
-
-    def clear_layout(layout):
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-            elif item.layout():
-                clear_layout(item.layout())
-
-    class PdfWorker(QObject):
-        finished = Signal(bool, str)
-
-        def __init__(self, source: str, destination: str, env: dict | None = None):
-            super().__init__()
-            self.source = source
-            self.destination = destination
-            self.env = env or os.environ.copy()
-
-        @Slot()
-        def run(self):
-            destination = Path(self.destination)
-            temporary = destination.with_name(".pyrion-" + uuid.uuid4().hex + ".docx")
-            script = (
-                "import sys\n"
-                "from pdf2docx import Converter\n"
-                "c = Converter(sys.argv[1])\n"
-                "try: c.convert(sys.argv[2])\n"
-                "finally: c.close()\n"
-            )
-            try:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                finished = subprocess.run(
-                    [sys.executable, "-c", script, self.source, str(temporary)],
-                    env=self.env, capture_output=True, text=True, timeout=900,
-                )
-                if finished.returncode or not temporary.exists():
-                    detail = (finished.stderr or finished.stdout or "Conversion fallida")[-1500:]
-                    raise RuntimeError(detail)
-                os.replace(temporary, destination)
-                self.finished.emit(True, f"Documento creado: {self.destination}")
-            except Exception as exc:
-                self.finished.emit(False, f"Error de conversión: {exc}")
-            finally:
-                temporary.unlink(missing_ok=True)
-
-    class PdfToWordDialog(QDialog):
-        def __init__(self, store: PersistentStore, parent=None, deps_env=None):
-            super().__init__(parent)
-            self.store = store
-            self.deps_env = deps_env
-            self.setWindowTitle("PYRION · PDF a Word")
-            self.resize(610, 275)
-            self.worker_thread = None
-            root = QVBoxLayout(self)
-            root.setContentsMargins(22, 22, 22, 22)
-            root.setSpacing(14)
-            root.addWidget(label("Convertir PDF a Word", "SectionTitle"))
-            root.addWidget(label("Selecciona un PDF y el destino DOCX. La conversión requiere pdf2docx.", wrap=True))
-            self.source = QLineEdit()
-            self.source.setPlaceholderText("Archivo PDF de origen")
-            root.addLayout(row(self.source, button("Examinar", self.choose_source)))
-            self.destination = QLineEdit()
-            self.destination.setPlaceholderText("Archivo DOCX de destino")
-            root.addLayout(row(self.destination, button("Guardar como", self.choose_destination)))
-            self.message = label("Preparado para convertir.")
-            root.addWidget(self.message)
-            self.convert_btn = button("Convertir", self.convert, "primary")
-            root.addWidget(self.convert_btn)
-
-        def choose_source(self):
-            file, _ = QFileDialog.getOpenFileName(self, "Seleccionar PDF", str(Path.home()), "PDF (*.pdf)")
-            if file:
-                self.source.setText(file)
-                self.destination.setText(str(Path(file).with_suffix(".docx")))
-
-        def choose_destination(self):
-            suggestion = self.destination.text() or str(self.store.root / "downloads" / "convertido.docx")
-            file, _ = QFileDialog.getSaveFileName(self, "Guardar DOCX", suggestion, "Word (*.docx)")
-            if file:
-                if not file.lower().endswith(".docx"):
-                    file += ".docx"
-                self.destination.setText(file)
-
-        def convert(self):
-            source = Path(self.source.text().strip())
-            destination_text = self.destination.text().strip()
-            if not source.is_file() or source.suffix.lower() != ".pdf":
-                QMessageBox.warning(self, "PDF requerido", "Selecciona un archivo PDF válido.")
-                return
-            if not destination_text:
-                QMessageBox.warning(self, "Destino requerido", "Selecciona dónde guardar el DOCX.")
-                return
-            destination = Path(destination_text)
-            if source.resolve() == destination.resolve():
-                QMessageBox.warning(self, "Ruta inválida", "El archivo de salida debe ser diferente.")
-                return
-            if destination.exists() and QMessageBox.question(
-                self, "Sobrescribir archivo", "El DOCX ya existe. ¿Deseas reemplazarlo?"
-            ) != QMessageBox.StandardButton.Yes:
-                return
-            self.convert_btn.setEnabled(False)
-            self.message.setText("Convirtiendo... el tiempo depende del tamaño del PDF.")
-            self.worker_thread = QThread(self)
-            worker = PdfWorker(str(source), str(destination), self.deps_env)
-            self.worker = worker
-            worker.moveToThread(self.worker_thread)
-            self.worker_thread.started.connect(worker.run)
-            worker.finished.connect(self.worker_thread.quit)
-            worker.finished.connect(self.conversion_finished)
-            worker.finished.connect(worker.deleteLater)
-            self.worker_thread.finished.connect(self._worker_cleanup)
-            self.worker_thread.finished.connect(self.worker_thread.deleteLater)
-            self.worker_thread.start()
-
-        def _worker_cleanup(self):
-            self.worker_thread = None
-            self.worker = None
-
-        def conversion_finished(self, success: bool, message: str):
-            self.convert_btn.setEnabled(True)
-            self.message.setText(message)
-            self.store.record("PDF a Word", "completado" if success else "error")
-            if success:
-                QMessageBox.information(self, "Conversión realizada", message)
-            else:
-                QMessageBox.warning(self, "No se pudo convertir", message)
-
-        def reject(self):
-            if self.worker_thread and self.worker_thread.isRunning():
-                QMessageBox.information(self, "Conversión en curso", "Deja finalizar la conversión antes de cerrar.")
-                return
-            super().reject()
-
-    class ImagesToPdfDialog(QDialog):
-        def __init__(self, store: PersistentStore, parent=None):
-            super().__init__(parent)
-            self.store = store
-            self.images: list[str] = []
-            self.setWindowTitle("PYRION · Imágenes a PDF")
-            self.resize(600, 310)
-            root = QVBoxLayout(self)
-            root.setContentsMargins(22, 22, 22, 22)
-            root.setSpacing(13)
-            root.addWidget(label("Imágenes a PDF", "SectionTitle"))
-            root.addWidget(label("Las imágenes se colocan en páginas A4, en el orden seleccionado.", wrap=True))
-            self.selected = label("Ninguna imagen seleccionada.", wrap=True)
-            root.addWidget(self.selected)
-            root.addWidget(button("Seleccionar imágenes", self.choose_images))
-            self.destination = QLineEdit(str(store.root / "downloads" / "imagenes.pdf"))
-            root.addLayout(row(self.destination, button("Guardar como", self.choose_destination)))
-            root.addStretch()
-            root.addWidget(button("Crear PDF", self.convert, "primary"))
-
-        def choose_images(self):
-            items, _ = QFileDialog.getOpenFileNames(
-                self, "Seleccionar imágenes", str(Path.home()),
-                "Imágenes (*.png *.jpg *.jpeg *.bmp *.webp)"
-            )
-            if items:
-                self.images = items
-                self.selected.setText(f"{len(items)} imagen(es): " + ", ".join(Path(x).name for x in items[:4]))
-
-        def choose_destination(self):
-            file, _ = QFileDialog.getSaveFileName(self, "Guardar PDF", self.destination.text(), "PDF (*.pdf)")
-            if file:
-                self.destination.setText(file if file.lower().endswith(".pdf") else file + ".pdf")
-
-        def convert(self):
-            if not self.images:
-                QMessageBox.warning(self, "Sin imágenes", "Selecciona al menos una imagen.")
-                return
-            dest = Path(self.destination.text().strip())
-            if dest.suffix.lower() != ".pdf":
-                QMessageBox.warning(self, "Destino inválido", "El destino debe terminar en .pdf")
-                return
-            pictures = [QImage(f) for f in self.images]
-            if any(im.isNull() for im in pictures):
-                QMessageBox.warning(self, "Imagen inválida", "No se pudo abrir alguna de las imágenes.")
-                return
-            if dest.exists() and QMessageBox.question(
-                self, "Sobrescribir", "El PDF ya existe. ¿Deseas reemplazarlo?"
-            ) != QMessageBox.StandardButton.Yes:
-                return
-            try:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                # Usar un PDF temporal evita sobrescribir el anterior si algo falla.
-                tmp = dest.with_name(".pyrion-" + uuid.uuid4().hex + ".pdf")
-                try:
-                    pdf = QPdfWriter(str(tmp))
-                    pdf.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-                    pdf.setResolution(150)
-                    painter = QPainter(pdf)
-                    if not painter.isActive():
-                        raise OSError("No se pudo crear el PDF.")
-                    try:
-                        for index, picture in enumerate(pictures):
-                            if index:
-                                pdf.newPage()
-                            page = QRectF(painter.viewport())
-                            margin = 40.0
-                            usable_w = page.width() - 2 * margin
-                            usable_h = page.height() - 2 * margin
-                            ratio = min(usable_w / picture.width(), usable_h / picture.height())
-                            w, h = picture.width() * ratio, picture.height() * ratio
-                            target = QRectF((page.width() - w) / 2, (page.height() - h) / 2, w, h)
-                            painter.drawImage(target, picture)
-                    finally:
-                        painter.end()
-                    os.replace(tmp, dest)
-                finally:
-                    tmp.unlink(missing_ok=True)
-                self.store.record("Imágenes a PDF", "completado")
-                QMessageBox.information(self, "PDF creado", f"Archivo creado:\n{dest}")
-            except (OSError, ValueError) as exc:
-                self.store.record("Imágenes a PDF", "error")
-                QMessageBox.critical(self, "Error", str(exc))
-
-    class CsvEditorDialog(QDialog):
-        def __init__(self, store: PersistentStore, parent=None):
-            super().__init__(parent)
-            self.store = store
-            self.current: Path | None = None
-            self.delimiter = ";"
-            self.setWindowTitle("PYRION · Editor CSV")
-            self.resize(800, 550)
-            root = QVBoxLayout(self)
-            root.setContentsMargins(16, 16, 16, 16)
-            root.addWidget(label("Editor de archivos CSV", "SectionTitle"))
-            root.addLayout(row(
-                button("Abrir CSV", self.open_csv),
-                button("Guardar", self.save_csv),
-                button("Guardar como", lambda: self.save_csv(True)),
-                button("+ Fila", self.add_row),
-                button("+ Columna", self.add_column),
-            ))
-            self.table = QTableWidget(0, 3)
-            self.table.setAlternatingRowColors(True)
-            self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-            self.table.setHorizontalHeaderLabels(["Columna 1", "Columna 2", "Columna 3"])
-            root.addWidget(self.table)
-            self.note = label("Separador inicial: ; · Los cambios se guardan solo al pulsar Guardar.")
-            root.addWidget(self.note)
-
-        def add_row(self):
-            self.table.insertRow(self.table.rowCount())
-
-        def add_column(self):
-            col = self.table.columnCount()
-            self.table.insertColumn(col)
-            self.table.setHorizontalHeaderItem(col, QTableWidgetItem(f"Columna {col + 1}"))
-
-        def open_csv(self):
-            file, _ = QFileDialog.getOpenFileName(self, "Abrir CSV", str(Path.home()), "CSV (*.csv);;Todos (*)")
-            if not file:
-                return
-            try:
-                with open(file, "r", encoding="utf-8-sig", newline="") as handle:
-                    sample = handle.read(4096)
-                    handle.seek(0)
-                    try:
-                        dialect = csv.Sniffer().sniff(sample, delimiters=";,\t|")
-                        delimiter = dialect.delimiter
-                    except csv.Error:
-                        delimiter = ";"
-                    records = list(csv.reader(handle, delimiter=delimiter))
-                if len(records) > 5000:
-                    QMessageBox.warning(self, "Archivo grande", "Esta versión admite hasta 5000 filas para evitar bloquear la interfaz.")
-                    return
-                columns = max([len(r) for r in records] + [1])
-                if columns > 100:
-                    QMessageBox.warning(self, "Demasiadas columnas", "Esta versión admite hasta 100 columnas.")
-                    return
-                self.table.setRowCount(len(records))
-                self.table.setColumnCount(columns)
-                self.table.setHorizontalHeaderLabels([f"Columna {i+1}" for i in range(columns)])
-                for r, record in enumerate(records):
-                    for c, value in enumerate(record):
-                        self.table.setItem(r, c, QTableWidgetItem(value))
-                self.current = Path(file)
-                self.delimiter = delimiter
-                self.note.setText(f"Abierto: {file} · {len(records)} filas · separador: {repr(delimiter)}")
-                self.store.record("Abrir CSV", "completado")
-            except (OSError, UnicodeError, csv.Error) as exc:
-                QMessageBox.critical(self, "Error CSV", str(exc))
-
-        def save_csv(self, save_as=False):
-            destination = self.current
-            if destination is None or save_as:
-                default = str(destination or (self.store.root / "downloads" / "tabla.csv"))
-                file, _ = QFileDialog.getSaveFileName(self, "Guardar CSV", default, "CSV (*.csv)")
-                if not file:
-                    return
-                destination = Path(file if file.lower().endswith(".csv") else file + ".csv")
-            if destination.exists() and (save_as or self.current != destination):
-                if QMessageBox.question(self, "Sobrescribir", "El archivo ya existe. ¿Reemplazarlo?") != QMessageBox.StandardButton.Yes:
-                    return
-            try:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                with tempfile.NamedTemporaryFile(
-                    mode="w", encoding="utf-8-sig", newline="", dir=destination.parent,
-                    prefix=".pyrion-csv-", suffix=".tmp", delete=False
-                ) as handle:
-                    tmp = Path(handle.name)
-                    writer = csv.writer(handle, delimiter=self.delimiter)
-                    for r in range(self.table.rowCount()):
-                        writer.writerow([
-                            self.table.item(r, c).text() if self.table.item(r, c) else ""
-                            for c in range(self.table.columnCount())
-                        ])
-                try:
-                    os.replace(tmp, destination)
-                finally:
-                    tmp.unlink(missing_ok=True)
-                self.current = destination
-                self.note.setText(f"Guardado: {destination}")
-                self.store.record("Guardar CSV", "completado")
-            except OSError as exc:
-                QMessageBox.critical(self, "Error al guardar", str(exc))
-
-    def safe_calculate(expression: str) -> float:
-        allowed = {
-            ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
-            ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b,
-            ast.Mod: lambda a, b: a % b, ast.Pow: lambda a, b: a ** b,
-            ast.USub: lambda x: -x, ast.UAdd: lambda x: x,
-        }
-        def evaluate(node, depth=0):
-            if depth > 20:
-                raise ValueError("Operación demasiado compleja")
-            if isinstance(node, ast.Expression):
-                return evaluate(node.body, depth + 1)
-            if isinstance(node, ast.Constant) and type(node.value) in (int, float):
-                if abs(node.value) > 1e12:
-                    raise ValueError("Número demasiado grande")
-                return node.value
-            if isinstance(node, ast.UnaryOp) and type(node.op) in allowed:
-                return allowed[type(node.op)](evaluate(node.operand, depth + 1))
-            if isinstance(node, ast.BinOp) and type(node.op) in allowed:
-                a = evaluate(node.left, depth + 1)
-                b = evaluate(node.right, depth + 1)
-                if isinstance(node.op, ast.Pow) and (abs(b) > 12 or abs(a) > 1e6):
-                    raise ValueError("Potencia demasiado grande")
-                result = allowed[type(node.op)](a, b)
-                if isinstance(result, complex) or abs(result) > 1e15:
-                    raise ValueError("Resultado fuera de rango")
-                return result
-            raise ValueError("Expresión no permitida")
-        if len(expression) > 120:
-            raise ValueError("Expresión demasiado larga")
-        return evaluate(ast.parse(expression, mode="eval"))
-
-    class CalculatorDialog(QDialog):
-        def __init__(self, store: PersistentStore, parent=None):
-            super().__init__(parent)
-            self.store = store
-            self.setWindowTitle("PYRION · Calculadora")
-            self.resize(380, 385)
-            root = QVBoxLayout(self)
-            root.setContentsMargins(20, 20, 20, 20)
-            root.addWidget(label("Calculadora", "SectionTitle"))
-            self.display = QLineEdit()
-            self.display.setPlaceholderText("2 + 2 * 3")
-            self.display.returnPressed.connect(self.solve)
-            root.addWidget(self.display)
-            grid = QGridLayout()
-            matrix = ["7", "8", "9", "/", "4", "5", "6", "*", "1", "2", "3", "-", "C", "0", ".", "+", "(", ")", "**", "="]
-            for i, value in enumerate(matrix):
-                control = button(value, lambda checked=False, key=value: self.press(key), "primary" if value == "=" else None)
-                grid.addWidget(control, i // 4, i % 4)
-            root.addLayout(grid)
-
-        def press(self, key):
-            if key == "C":
-                self.display.clear()
-            elif key == "=":
-                self.solve()
-            else:
-                self.display.insert(key)
-
-        def solve(self):
-            try:
-                result = safe_calculate(self.display.text())
-                self.display.setText(str(result))
-                self.store.record("Calculadora", "completado")
-            except (SyntaxError, ValueError, ZeroDivisionError, OverflowError) as exc:
-                QMessageBox.warning(self, "Operación inválida", str(exc))
-
-    class RuntimeSignals(QObject):
-        progress = Signal(str, str)
-        analyzed = Signal(str, object)
-        done = Signal(str, bool, str)
-        catalog = Signal(str)
-
-    class PyrionDesktop(QMainWindow):
-        def __init__(self, store: PersistentStore):
-            super().__init__()
-            self.store = store
-            self.setWindowTitle(f"{APP_NAME} | Desktop {APP_VERSION}")
-            self.resize(1180, 740)
-            self.setMinimumSize(850, 590)
-            self.setStyleSheet(PALETTE)
-            self.nav = {}
-            self.pages = {}
-            self.tool_tabs = {}
-            self.catalog = ToolCatalog(store.root, Path(__file__).resolve().parent)
-            self.deps = DependencyManager(store.root)
-            self.events = RuntimeSignals(self)
-            self.events.progress.connect(self._tool_progress)
-            self.events.analyzed.connect(self._tool_analyzed)
-            self.events.done.connect(self._tool_finished)
-            self.events.catalog.connect(self._catalog_status)
-            self.main_root = QWidget()
-            self.main_root.setObjectName("DesktopRoot")
-            self.setCentralWidget(self.main_root)
-            shell = QVBoxLayout(self.main_root)
-            shell.setContentsMargins(0, 0, 0, 0)
-            shell.setSpacing(0)
-            self._build_topbar(shell)
-            body = QHBoxLayout()
-            body.setSpacing(0)
-            shell.addLayout(body, 1)
-            self._build_sidebar(body)
-            self.tabs = QTabWidget()
-            self.tabs.setTabsClosable(True)
-            self.tabs.setTabBarAutoHide(True)
-            self.tabs.tabCloseRequested.connect(self._close_tab)
-            body.addWidget(self.tabs, 1)
-            self.stack = QStackedWidget()
-            self.tabs.addTab(self.stack, "⌂  Inicio")
-            self._build_home()
-            self._build_tools()
-            self._build_history()
-            self._build_files()
-            self._build_settings()
-            self.goto("home")
-            self.clock_timer = QTimer(self)
-            self.clock_timer.timeout.connect(self._update_clock)
-            self.clock_timer.start(30_000)
-            self._update_clock()
-            # Busqueda inicial local. No conectar automaticamente a GitHub.
-            QTimer.singleShot(150, self._refresh_installed_list)
-
-        def _build_topbar(self, shell):
-            top = QFrame()
-            top.setObjectName("TopBar")
-            top.setFixedHeight(63)
-            layout = QHBoxLayout(top)
-            layout.setContentsMargins(23, 0, 23, 0)
-            layout.addWidget(label("◈  PYRION", "Brand"))
-            layout.addWidget(label("OS  /  PYTHON DESKTOP", "Tiny"))
-            layout.addStretch()
-            self.disk_indicator = label("● Datos persistentes", "Muted")
-            self.disk_indicator.setStyleSheet("color: #69D9AC")
-            self.disk_indicator.setToolTip(str(self.store.root))
-            layout.addWidget(self.disk_indicator)
-            layout.addSpacing(25)
-            self.clock = label("", "Muted")
-            layout.addWidget(self.clock)
-            shell.addWidget(top)
-
-        def _update_clock(self):
-            self.clock.setText(datetime.now().strftime("%d/%m/%Y   %H:%M"))
-
-        def _build_sidebar(self, body):
-            side = QFrame()
-            side.setObjectName("Sidebar")
-            side.setFixedWidth(228)
-            layout = QVBoxLayout(side)
-            layout.setContentsMargins(15, 23, 15, 18)
-            layout.setSpacing(7)
-            layout.addWidget(label("ESPACIO DE TRABAJO", "Tiny"))
-            items = [
-                ("home", "⌂   Inicio"),
-                ("tools", "▦   Mis herramientas"),
-                ("history", "◷   Historial"),
-                ("files", "▤   Archivos"),
-            ]
-            for key, text in items:
-                b = button(text, lambda checked=False, page=key: self.goto(page), "nav")
-                self.nav[key] = b
-                layout.addWidget(b)
-            layout.addSpacing(12)
-            layout.addWidget(label("SISTEMA", "Tiny"))
-            b = button("⚙   Configuración", lambda: self.goto("settings"), "nav")
-            self.nav["settings"] = b
-            layout.addWidget(b)
-            layout.addStretch()
-            disk_card = QFrame()
-            disk_card.setObjectName("Panel")
-            card_lay = QVBoxLayout(disk_card)
-            card_lay.setContentsMargins(12, 12, 12, 12)
-            card_lay.addWidget(label("●  ALMACENAMIENTO", "Tiny"))
-            location = label(str(self.store.root), "Muted", wrap=True)
-            location.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            card_lay.addWidget(location)
-            card_lay.addWidget(label("Python Engine · v" + APP_VERSION, "Tiny"))
-            layout.addWidget(disk_card)
-            body.addWidget(side)
-
-        def _base_page(self) -> tuple[QWidget, QVBoxLayout]:
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            page = QWidget()
-            outer = QVBoxLayout(page)
-            outer.setContentsMargins(31, 24, 31, 31)
-            outer.setSpacing(18)
-            scroll.setWidget(page)
-            self.stack.addWidget(scroll)
-            return scroll, outer
-
-        def _build_home(self):
-            page, outer = self._base_page()
-            self.pages["home"] = page
-            hero = QFrame()
-            hero.setObjectName("Hero")
-            layout = QVBoxLayout(hero)
-            layout.setSpacing(11)
-            layout.setContentsMargins(26, 30, 26, 27)
-            layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            orb = label("✧", "Orb")
-            orb.setFixedSize(70, 70)
-            orb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(orb, 0, Qt.AlignmentFlag.AlignHCenter)
-            title = label("¿Qué quieres hacer hoy?", "Title")
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(title)
-            subtitle = label(
-                "Describe tu tarea. PYRION buscará una forma de resolverla y guardará las solicitudes que aún no pueda procesar.",
-                "Muted", wrap=True
-            )
-            subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            subtitle.setMaximumWidth(600)
-            layout.addWidget(subtitle)
-            search_row = QHBoxLayout()
-            self.search_box = QLineEdit()
-            self.search_box.setMinimumHeight(47)
-            self.search_box.setPlaceholderText("Escribe lo que necesitas hacer...")
-            self.search_box.returnPressed.connect(self.search)
-            search_row.addWidget(self.search_box, 1)
-            search_row.addWidget(button("Ejecutar  ↗", self.search, "primary"))
-            layout.addLayout(search_row)
-            outer.addWidget(hero)
-            panel = QFrame()
-            panel.setObjectName("Panel")
-            panel_lay = QVBoxLayout(panel)
-            panel_lay.setContentsMargins(21, 18, 21, 18)
-            panel_lay.setSpacing(8)
-            panel_lay.addWidget(label("CENTRO DE EJECUCIÓN", "Tiny"))
-            self.result_title = label("Sistema listo", "SmallTitle")
-            panel_lay.addWidget(self.result_title)
-            self.result_desc = label(
-                "El escritorio está listo. Describe una tarea en el buscador para comenzar. "
-                "La generación automática de nuevas aplicaciones mediante IA todavía no está implementada.",
-                "Muted", wrap=True
-            )
-            panel_lay.addWidget(self.result_desc)
-            self.result_actions = QHBoxLayout()
-            panel_lay.addLayout(self.result_actions)
-            outer.addWidget(panel)
-            outer.addStretch()
-
-        def _build_tools(self):
-            page, outer = self._base_page()
-            self.pages["tools"] = page
-            outer.addWidget(label("Mis herramientas", "SectionTitle"))
-            pane = QFrame()
-            pane.setObjectName("Panel")
-            lay = QVBoxLayout(pane)
-            lay.setContentsMargins(24, 24, 24, 24)
-            lay.addWidget(label("Biblioteca de aplicaciones", "SmallTitle"))
-            lay.addWidget(label(
-                "Las aplicaciones se localizan desde el buscador de Inicio y se preparan "
-                "en pestañas. Esta biblioteca muestra las que ya tienen un entorno persistente.",
-                "Muted", wrap=True
-            ))
-            self.installed_list = QVBoxLayout()
-            lay.addLayout(self.installed_list)
-            self._refresh_installed_list()
-            outer.addWidget(pane)
-            outer.addStretch()
-
-        def _build_history(self):
-            page, outer = self._base_page()
-            self.pages["history"] = page
-            outer.addWidget(label("Historial", "SectionTitle"))
-            outer.addWidget(label("Acciones registradas en el disco persistente.", "Muted"))
-            self.history_list = QVBoxLayout()
-            self.history_list.setSpacing(10)
-            outer.addLayout(self.history_list)
-            outer.addStretch()
-
-        def _build_files(self):
-            page, outer = self._base_page()
-            self.pages["files"] = page
-            outer.addWidget(label("Explorador de archivos", "SectionTitle"))
-            pane = QFrame()
-            pane.setObjectName("Panel")
-            lay = QVBoxLayout(pane)
-            lay.setContentsMargins(24, 28, 24, 28)
-            lay.addWidget(label("▤   Módulo reservado", "SmallTitle"))
-            lay.addWidget(label(
-                "El botón Archivos ya forma parte del escritorio, pero el explorador "
-                "y sus operaciones se desarrollarán en una siguiente versión.",
-                "Muted", wrap=True
-            ))
-            outer.addWidget(pane)
-            outer.addStretch()
-
-        def _build_settings(self):
-            page, outer = self._base_page()
-            self.pages["settings"] = page
-            outer.addWidget(label("Configuración", "SectionTitle"))
-            outer.addWidget(label("Datos persistentes y estado de la instalación.", "Muted"))
-            pane = QFrame()
-            pane.setObjectName("Panel")
-            lay = QVBoxLayout(pane)
-            lay.setContentsMargins(22, 22, 22, 22)
-            lay.setSpacing(13)
-            lay.addWidget(label("Carpeta de datos", "SmallTitle"))
-            self.path_label = label(str(self.store.root), "Muted", wrap=True)
-            self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            lay.addWidget(self.path_label)
-            lay.addWidget(label(f"Identificador: {self.store.installation_id}", "Tiny"))
-            try:
-                space = shutil.disk_usage(self.store.root)
-                lay.addWidget(label(f"Espacio libre del disco: {space.free / 1024**3:.2f} GB", "Muted"))
-            except OSError:
-                lay.addWidget(label("No se pudo consultar el espacio disponible.", "Muted"))
-            lay.addLayout(row(
-                button("Abrir carpeta de datos", self.open_data_folder),
-                button("Verificar almacenamiento", self.test_storage),
-            ))
-            lay.addWidget(label("Entornos Python: " + str(self.store.root / "envs"), "Muted", wrap=True))
-            lay.addWidget(label("Cache de paquetes: " + str(self.store.root / "cache" / "pip"), "Muted", wrap=True))
-            outer.addWidget(pane)
-            note = QFrame()
-            note.setObjectName("Panel")
-            note_lay = QVBoxLayout(note)
-            note_lay.setContentsMargins(22, 18, 22, 18)
-            note_lay.addWidget(label("Modelo de inteligencia artificial", "SmallTitle"))
-            note_lay.addWidget(label(
-                "Aún no conectado. PYRION puede abrir herramientas incorporadas "
-                "y almacenar solicitudes pendientes; no genera ni ejecuta código desconocido.",
-                "Muted", wrap=True
-            ))
-            outer.addWidget(note)
-            outer.addStretch()
-
-        def goto(self, key: str):
-            self.tabs.setCurrentIndex(0)
-            self.stack.setCurrentWidget(self.pages[key])
-            for name, widget in self.nav.items():
-                widget.setProperty("role", "selected" if name == key else "nav")
-                widget.style().unpolish(widget)
-                widget.style().polish(widget)
-            if key == "history":
-                self.refresh_history()
-
-        def select_example(self, text: str):
-            self.search_box.setText(text)
-            self.search()
-
-        def _result(self, title: str, explanation: str, action=None, action_text="Abrir"):
-            self.result_title.setText(title)
-            self.result_desc.setText(explanation)
-            clear_layout(self.result_actions)
-            if action:
-                self.result_actions.addWidget(button(action_text, action, "primary"))
-            self.result_actions.addStretch()
-
-        def _sync_catalog(self):
-            def work():
-                try:
-                    number = self.catalog.sync()
-                    self.events.catalog.emit(f"Catálogo actualizado: {number} herramientas.")
-                except Exception as exc:
-                    self.events.catalog.emit(f"Sin actualización en línea: {exc}")
-            threading.Thread(target=work, daemon=True).start()
-
-        def _catalog_status(self, message):
-            self.disk_indicator.setToolTip(str(self.store.root) + "\n" + message)
-
-        def search(self):
-            query = self.search_box.text().strip()
-            if not query:
-                self._result("Escribe una tarea", "Indica lo que necesitas hacer.")
-                return
-            matches = self.catalog.search(query)
-            if matches:
-                best = matches[0][1]
-                try:
-                    self.store.record(f"Buscar: {query}", "herramienta encontrada")
-                except (OSError, StorageError):
-                    pass
-                self._result("Herramienta encontrada: " + best.name,
-                             best.description or "Aplicación de la biblioteca PYRION.",
-                             lambda t=best: self.open_tool(t), "Preparar y abrir")
-                for score, candidate in matches[1:4]:
-                    self.result_actions.addWidget(button(candidate.name,
-                        lambda checked=False, t=candidate: self.open_tool(t)))
-                return
-            tool_id = identify_tool(query)
-            if tool_id:
-                if tool_id == "pdf_word":
-                    tool = Tool("convertidor_pdf_word", "PDF a Word", "Conversor PDF DOCX",
-                                "pdf word docx convertir", "Documentos",
-                                "tools/convertidor_pdf_word.py", "py", ("pdf2docx",))
-                    self.open_tool(tool)
-                else:
-                    self.launch(tool_id)
-                return
-            try:
-                self.store.append("solicitudes", {
-                    "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
-                    "solicitud": query, "estado": "pendiente_ia",
-                })
-                self.store.record(f"Solicitar: {query}", "pendiente de IA")
-            except (OSError, StorageError) as exc:
-                QMessageBox.critical(self, "No se pudo guardar", str(exc))
-                return
-            self._result("Solicitud guardada", "«" + query + "» se guardó. "
-                         "Todavía no hay IA conectada para generar una herramienta nueva.",
-                         lambda: self.goto("history"), "Ver historial")
-
-        def _add_tool_tab(self, key, name):
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(25, 22, 25, 22)
-            layout.setSpacing(12)
-            layout.addWidget(label(name, "SectionTitle"))
-            status = label("Preparando aplicación...", "Muted", wrap=True)
-            layout.addWidget(status)
-            log = QPlainTextEdit()
-            log.setReadOnly(True)
-            log.setMaximumBlockCount(400)
-            log.setMinimumHeight(100)
-            layout.addWidget(log)
-            self.tabs.addTab(page, name[:25])
-            self.tabs.setCurrentWidget(page)
-            self.tool_tabs[key] = {"page": page, "layout": layout, "status": status,
-                                   "log": log, "busy": False}
-            return self.tool_tabs[key]
-
-        def open_tool(self, tool: Tool):
-            key = "catalog:" + tool.slug
-            if key in self.tool_tabs:
-                self.tabs.setCurrentWidget(self.tool_tabs[key]["page"])
-                return
-            state = self._add_tool_tab(key, tool.name)
-            state["tool"] = tool
-            state["busy"] = True
-            def worker():
-                try:
-                    src = self.catalog.source(tool,
-                        lambda msg: self.events.progress.emit(key, msg))
-                    requirements = self.deps.requirements(tool, src)
-                    self.events.analyzed.emit(key, requirements)
-                except Exception as exc:
-                    self.events.done.emit(key, False, str(exc))
-            threading.Thread(target=worker, daemon=True).start()
-
-        def _tool_progress(self, key, message):
-            state = self.tool_tabs.get(key)
-            if state:
-                state["log"].appendPlainText(message)
-
-        def _tool_analyzed(self, key, packages):
-            state = self.tool_tabs.get(key)
-            if not state:
-                return
-            tool = state["tool"]
-            state["status"].setText("Dependencias detectadas: " + (
-                ", ".join(packages) if packages else "ninguna"))
-            if not self.deps.already_installed(tool, packages) and packages:
-                answer = QMessageBox.question(
-                    self, "PYRION · librerías persistentes",
-                    "Instalar en el disco persistente las librerías de «" + tool.name + "»?\n\n"
-                    + "\n".join("• " + x for x in packages)
-                    + "\n\nUbicación: " + str(self.deps.site(tool))
-                    + "\nOrigen: PyPI (paquetes de terceros).",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.Yes,
-                )
-                if answer != QMessageBox.StandardButton.Yes:
-                    state["busy"] = False
-                    state["status"].setText("Instalación cancelada. No se modificó el Python del sistema.")
-                    state["layout"].addWidget(button("Reintentar", lambda t=tool,k=key: self._retry_tool(k,t)))
-                    return
-            self._install_tool(key, tool, packages)
-
-        def _retry_tool(self, key, tool):
-            state = self.tool_tabs.get(key)
-            if not state or state["busy"]:
-                return
-            state["busy"] = True
-            def worker():
-                try:
-                    src = self.catalog.source(tool, lambda text: self.events.progress.emit(key, text))
-                    self.events.analyzed.emit(key, self.deps.requirements(tool, src))
-                except Exception as exc:
-                    self.events.done.emit(key, False, str(exc))
-            threading.Thread(target=worker, daemon=True).start()
-
-        def _install_tool(self, key, tool, packages):
-            state = self.tool_tabs.get(key)
-            if not state:
-                return
-            state["status"].setText("Verificando e instalando librerías persistentes...")
-            def worker():
-                try:
-                    self.deps.install(tool, packages,
-                        lambda text: self.events.progress.emit(key, text))
-                    self.events.done.emit(key, True, "Entorno listo")
-                except Exception as exc:
-                    self.events.done.emit(key, False, str(exc))
-            threading.Thread(target=worker, daemon=True).start()
-
-        def _tool_finished(self, key, ok, detail):
-            state = self.tool_tabs.get(key)
-            if not state:
-                return
-            state["busy"] = False
-            state["log"].appendPlainText(detail)
-            tool = state["tool"]
-            if not ok:
-                state["status"].setText("No se pudo preparar la herramienta: " + detail)
-                state["layout"].addWidget(button("Reintentar", lambda t=tool,k=key: self._retry_tool(k,t)))
-                return
-            self._refresh_installed_list()
-            try:
-                self.store.record("Preparar: " + tool.name, "dependencias listas")
-            except (OSError, StorageError):
-                pass
-            if tool.slug == "convertidor_pdf_word":
-                state["status"].setText("Herramienta preparada. Conversión dentro de PYRION OS.")
-                state["log"].setMaximumHeight(95)
-                widget = PdfToWordDialog(self.store, state["page"], self.deps.subprocess_env(tool))
-                widget.setWindowFlags(Qt.WindowType.Widget)
-                state["layout"].addWidget(widget, 1)
-                state["widget"] = widget
-            else:
-                state["status"].setText("Dependencias listas y conservadas en " + str(self.deps.site(tool)))
-                state["layout"].addWidget(label(
-                    "Esta herramienta utiliza una interfaz heredada (Tkinter u otra). "
-                    "Se requiere adaptarla a Qt para mostrarla dentro de una pestaña PYRION. "
-                    "No se abrirá una ventana externa ni se ejecutará código no adaptado.",
-                    "Muted", wrap=True))
-            state["layout"].addStretch()
-
-        def launch(self, tool_id: str):
-            if tool_id == "pdf_word":
-                tool = Tool("convertidor_pdf_word", "PDF a Word", "Convertidor DOCX",
-                            "pdf word", "Documentos", "tools/convertidor_pdf_word.py",
-                            "py", ("pdf2docx",))
-                self.open_tool(tool)
-                return
-            types = {"image_pdf": ImagesToPdfDialog,
-                     "csv": CsvEditorDialog, "calc": CalculatorDialog}
-            dialog_type = types.get(tool_id)
-            if dialog_type is None:
-                QMessageBox.warning(self, "Herramienta no disponible", "No existe esta herramienta.")
-                return
-            key = "native:" + tool_id
-            if key in self.tool_tabs:
-                self.tabs.setCurrentWidget(self.tool_tabs[key]["page"])
-                return
-            name = next(n for k,n,d,i in TOOLS if k == tool_id)
-            state = self._add_tool_tab(key, name)
-            state["log"].hide()
-            state["status"].hide()
-            widget = dialog_type(self.store, state["page"])
-            widget.setWindowFlags(Qt.WindowType.Widget)
-            state["layout"].addWidget(widget, 1)
-            state["widget"] = widget
-            try:
-                self.store.record("Abrir: " + name, "iniciado")
-            except (StorageError, OSError):
-                pass
-
-        def _refresh_installed_list(self):
-            if not hasattr(self, "installed_list"):
-                return
-            clear_layout(self.installed_list)
-            installed = 0
-            for tool in sorted(self.catalog.tools.values(), key=lambda t:t.name):
-                if self.deps.manifest(tool).is_file():
-                    self.installed_list.addWidget(button(
-                        "▦  " + tool.name, lambda checked=False,t=tool: self.open_tool(t)))
-                    installed += 1
-            if not installed:
-                self.installed_list.addWidget(label("Todavía no se han instalado herramientas adicionales.", "Muted"))
-
-        def _close_tab(self, index):
-            if index == 0:
-                return
-            page = self.tabs.widget(index)
-            key = next((k for k,v in self.tool_tabs.items() if v["page"] is page), None)
-            if key:
-                if self.tool_tabs[key]["busy"]:
-                    QMessageBox.information(self, "Instalación activa", "Finaliza la preparación de dependencias antes de cerrar esta pestaña.")
-                    return
-                widget = self.tool_tabs[key].get("widget")
-                if widget is not None and getattr(widget, "worker_thread", None) is not None:
-                    if widget.worker_thread.isRunning():
-                        QMessageBox.information(self, "Proceso activo", "Deja finalizar la operación antes de cerrar la pestaña.")
-                        return
-                del self.tool_tabs[key]
-            self.tabs.removeTab(index)
-            page.deleteLater()
-
-        def closeEvent(self, event):
-            if any(state["busy"] for state in self.tool_tabs.values()):
-                QMessageBox.information(self, "Instalación activa", "Deja finalizar la instalación de librerías antes de salir.")
-                event.ignore()
-                return
-            super().closeEvent(event)
-
-        def refresh_history(self):
-            clear_layout(self.history_list)
-            try:
-                entries = self.store.load_list("historial")
-            except StorageError as exc:
-                self.history_list.addWidget(label(f"Error: {exc}", "Muted"))
-                return
-            if not entries:
-                self.history_list.addWidget(label("Todavía no hay actividades registradas.", "Muted"))
-                return
-            for entry in entries[:70]:
-                card = QFrame()
-                card.setObjectName("ToolCard")
-                lay = QHBoxLayout(card)
-                lay.setContentsMargins(15, 12, 15, 12)
-                text = QVBoxLayout()
-                text.addWidget(label(str(entry.get("accion", "Actividad")), "SmallTitle", wrap=True))
-                text.addWidget(label(str(entry.get("fecha", "")), "Tiny"))
-                lay.addLayout(text, 1)
-                lay.addWidget(label(str(entry.get("estado", "")), "Muted"))
-                self.history_list.addWidget(card)
-
-        def open_data_folder(self):
-            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.store.root))):
-                QMessageBox.warning(self, "No se pudo abrir", str(self.store.root))
-
-        def test_storage(self):
-            ok, result = self.store.check()
-            if ok:
-                QMessageBox.information(self, "Almacenamiento correcto", result)
-            else:
-                QMessageBox.critical(self, "Problema de almacenamiento", result)
-
-
-def main() -> int:
-    if not QT_READY:
-        message = (
-            "PYRION Desktop necesita PySide6 para abrir la interfaz.\n"
-            "Paquete: PySide6-Essentials\n\n"
-            + (DESKTOP_QT_FAILURE or "No se encontro PySide6")
-        )
-        try:
-            print(message, file=sys.stderr)
-        except (OSError, ValueError):
+            ext = C.CDLL(ctypes.util.find_library("Xext") or "libXext.so.6")
+            query = bind(ext, "XShapeQueryExtension", int32, voidp,
+                         C.POINTER(int32), C.POINTER(int32))
+            self.shape_combine = bind(ext, "XShapeCombineMask", None,
+                                      voidp, ulong, int32, int32, int32, ulong, int32)
+            event, err = int32(), int32()
+            if query(self.dpy, C.byref(event), C.byref(err)):
+                self.shapes_enabled = True
+                self.shape = ext
+        except (OSError, X11Error):
             pass
-        return 2
 
-    app = QApplication(sys.argv)
-    app.setApplicationName("PYRION Desktop - Prueba")
-    app.setApplicationVersion(APP_VERSION)
+    def _init_xft(self):
+        try:
+            ft = C.CDLL(ctypes.util.find_library("Xft") or "libXft.so.2")
+            self.xft_font_open = bind(ft, "XftFontOpenName", voidp, voidp, int32, C.c_char_p)
+            self.xft_font_close = bind(ft, "XftFontClose", None, voidp, voidp)
+            self.xft_draw_create = bind(ft, "XftDrawCreate", voidp, voidp, ulong, voidp, ulong)
+            self.xft_draw_destroy = bind(ft, "XftDrawDestroy", None, voidp)
+            self.xft_draw_string = bind(ft, "XftDrawStringUtf8", None,
+                                        voidp, C.POINTER(XftColor), voidp, int32, int32,
+                                        C.c_char_p, int32)
+            self.xft_extents = bind(ft, "XftTextExtentsUtf8", None, voidp, voidp,
+                                    C.c_char_p, int32, C.POINTER(XGlyphInfo))
+            self.xft_color_alloc = bind(ft, "XftColorAllocValue", int32, voidp, voidp,
+                                        ulong, C.POINTER(XRenderColor), C.POINTER(XftColor))
+            self.xft_color_free = bind(ft, "XftColorFree", None, voidp, voidp,
+                                       ulong, C.POINTER(XftColor))
+            families = {
+                'small': b'DejaVu Sans:size=9',
+                'body': b'DejaVu Sans:size=11',
+                'medium': b'DejaVu Sans:style=Bold:size=11',
+                'head': b'DejaVu Sans:style=Bold:size=16',
+                'hero': b'DejaVu Sans:style=Bold:size=21',
+                'brand': b'DejaVu Sans:style=Bold:size=21',
+                'mono': b'DejaVu Sans Mono:size=10',
+            }
+            for k, name in families.items():
+                f = self.xft_font_open(self.dpy, self.screen, name)
+                if f:
+                    self.fonts[k] = f
+            if self.fonts:
+                self.xft = ft
+        except (OSError, X11Error):
+            pass
+
+    def _new_backbuffer(self):
+        if self.ftdraw:
+            self.xft_draw_destroy(self.ftdraw)
+            self.ftdraw = None
+        if self.offscreen:
+            self.free_pixmap(self.dpy, self.offscreen)
+        self.offscreen = self.create_pixmap(self.dpy, self.window,
+                                            max(1, self.width), max(1, self.height),
+                                            self.default_depth(self.dpy, self.screen))
+        if not self.offscreen:
+            raise X11Error("No hay memoria X11 para el buffer grafico.")
+        if self.xft:
+            self.ftdraw = self.xft_draw_create(self.dpy, self.offscreen,
+                                               self.visual, self.colormap)
+
+    def _apply_shape(self):
+        if not self.shapes_enabled:
+            return
+        mask = self.create_pixmap(self.dpy, self.window,
+                                  max(1, self.width), max(1, self.height), 1)
+        if not mask:
+            return
+        gc = self.create_gc(self.dpy, mask, 0, None)
+        if not gc:
+            self.free_pixmap(self.dpy, mask)
+            return
+        self.set_foreground(self.dpy, gc, 0)
+        self.fill_rectangle(self.dpy, mask, gc, 0, 0, self.width, self.height)
+        self.set_foreground(self.dpy, gc, 1)
+        self._round_on(mask, gc, 0, 0, self.width, self.height, 19)
+        self.shape_combine(self.dpy, self.window, 0, 0, 0, mask, 0)
+        self.free_gc(self.dpy, gc)
+        self.free_pixmap(self.dpy, mask)
+
+    def resize(self, width, height):
+        width, height = max(480, width), max(430, height)
+        if width != self.width or height != self.height:
+            self.width, self.height = width, height
+            self._new_backbuffer()
+            self._apply_shape()
+            return True
+        return False
+
+    def pixel(self, color):
+        if color in self.colors:
+            return self.colors[color]
+        r,g,b = rgb(color)
+        item = XColor(0, r*257, g*257, b*257, 7, 0)
+        if not self.alloc_color(self.dpy, self.colormap, C.byref(item)):
+            # On truecolor displays this should not fail; use black otherwise.
+            return 0
+        self.colors[color] = item.pixel
+        return item.pixel
+
+    def foreground(self, color, gc=None):
+        self.set_foreground(self.dpy, gc or self.gc, self.pixel(color))
+
+    def rect(self, x, y, w, h, color):
+        if w<=0 or h<=0: return
+        self.foreground(color)
+        self.fill_rectangle(self.dpy, self.offscreen, self.gc,
+                            int(x), int(y), int(w), int(h))
+
+    def _round_on(self, target, gc, x, y, w, h, r):
+        x,y,w,h,r = int(x),int(y),int(w),int(h),int(r)
+        if w<=0 or h<=0: return
+        r=max(0,min(r,w//2,h//2))
+        if not r:
+            self.fill_rectangle(self.dpy,target,gc,x,y,w,h)
+            return
+        d=2*r
+        self.fill_rectangle(self.dpy,target,gc,x+r,y,w-2*r,h)
+        self.fill_rectangle(self.dpy,target,gc,x,y+r,w,h-2*r)
+        for px,py,a in ((x,y,90),(x+w-d,y,0),(x,y+h-d,180),(x+w-d,y+h-d,270)):
+            self.fill_arc(self.dpy,target,gc,px,py,d,d,a*64,90*64)
+
+    def rounded(self, x, y, w, h, r, color, border=None):
+        if w<=0 or h<=0: return
+        if border:
+            self.foreground(border)
+            self._round_on(self.offscreen,self.gc,x,y,w,h,r)
+            if w>=3 and h>=3:
+                self.foreground(color)
+                self._round_on(self.offscreen,self.gc,x+1,y+1,w-2,h-2,max(0,r-1))
+        else:
+            self.foreground(color)
+            self._round_on(self.offscreen,self.gc,x,y,w,h,r)
+
+    def line(self, x1, y1, x2, y2, color, thickness=1):
+        self.foreground(color)
+        self.set_line_attributes(self.dpy,self.gc,max(1,int(thickness)),0,1,0)
+        self.draw_line(self.dpy,self.offscreen,self.gc,
+                       int(x1),int(y1),int(x2),int(y2))
+        if thickness!=1:
+            self.set_line_attributes(self.dpy,self.gc,1,0,1,0)
+
+    def circle(self, x, y, radius, color, border=None):
+        self.rounded(x-radius,y-radius,2*radius,2*radius,radius,color,border)
+
+    def polygon(self, points, color):
+        if len(points)<3:return
+        self.foreground(color)
+        array=(XPoint*len(points))(*(XPoint(int(x),int(y)) for x,y in points))
+        self.fill_polygon(self.dpy,self.offscreen,self.gc,array,len(points),0,0)
+
+    def _font(self, style):
+        return self.fonts.get(style) or self.fonts.get('body') or next(iter(self.fonts.values()),None)
+
+    def text_width(self, text, style='body'):
+        if not text: return 0
+        font = self._font(style)
+        if self.xft and font:
+            data=str(text).encode('utf-8')
+            ext=XGlyphInfo()
+            self.xft_extents(self.dpy,font,data,len(data),C.byref(ext))
+            return int(ext.xOff)
+        return len(str(text))*8
+
+    def _ftcolor(self, hexvalue):
+        if hexvalue in self.ftcolors:
+            return self.ftcolors[hexvalue]
+        r,g,b=rgb(hexvalue)
+        raw=XRenderColor(r*257,g*257,b*257,65535)
+        item=XftColor()
+        if not self.xft_color_alloc(self.dpy,self.visual,self.colormap,C.byref(raw),C.byref(item)):
+            return None
+        self.ftcolors[hexvalue]=item
+        return item
+
+    def text(self, string, x, baseline, color='#e9f5ff', style='body', max_width=None):
+        if string is None:return
+        string=str(string).replace('\n',' ')
+        if max_width is not None and self.text_width(string,style)>max_width:
+            while string and self.text_width(string+'…',style)>max_width:
+                string=string[:-1]
+            string+='…' if string else ''
+        if not string:return
+        if self.xft and self.ftdraw and self._font(style):
+            ftc=self._ftcolor(color)
+            if ftc is not None:
+                data=string.encode('utf-8')
+                self.xft_draw_string(self.ftdraw,C.byref(ftc),self._font(style),
+                                     int(x),int(baseline),data,len(data))
+                return
+        # Sin Xft: usar fuente core de X11, sustituyendo glifos no latin1.
+        self.foreground(color)
+        if self.core_font:
+            # XFontStruct.fid no se lee de forma insegura; se usa la fuente GC por defecto.
+            pass
+        encoded=string.encode('latin-1','replace')
+        self.draw_string(self.dpy,self.offscreen,self.gc,int(x),int(baseline),encoded,len(encoded))
+
+    def flush_buffer(self):
+        self.copy_area(self.dpy,self.offscreen,self.window,self.gc,
+                       0,0,self.width,self.height,0,0)
+        self.flush(self.dpy)
+
+    def pointer(self, enabled):
+        if enabled!=self.has_pointer:
+            self.has_pointer=enabled
+            if enabled:
+                self.define_cursor(self.dpy,self.window,self.hand)
+            else:
+                self.undefine_cursor(self.dpy,self.window)
+
+    def cleanup(self):
+        try:
+            if self.ftdraw:self.xft_draw_destroy(self.ftdraw)
+            for item in self.ftcolors.values():
+                self.xft_color_free(self.dpy,self.visual,self.colormap,C.byref(item))
+            for font in self.fonts.values():self.xft_font_close(self.dpy,font)
+            if self.offscreen:self.free_pixmap(self.dpy,self.offscreen)
+            if self.gc:self.free_gc(self.dpy,self.gc)
+            if self.core_font:self.free_font(self.dpy,self.core_font)
+            if self.window:self.destroy_window(self.dpy,self.window)
+        finally:
+            if self.dpy:self.close_display(self.dpy)
+
+
+@dataclass
+class Hit:
+    x:int; y:int; w:int; h:int; action:object; tooltip:str=''
+    def contains(self,px,py):
+        return self.x<=px<self.x+self.w and self.y<=py<self.y+self.h
+
+
+class PyrionDesktop:
+    """Escritorio X11 autonomo: sin motor Qt, sin montajes ni persistencia."""
+    BG='#091321'; HEADER='#111e30'; SIDEBAR='#101c2e'; SURFACE='#13253b'
+    PANEL='#152a42'; LINE='#294765'; TEXT='#ecf6ff'; MUTED='#a3b7cd'
+    CYAN='#62d7ff'; BLUE='#207fca'; GREEN='#57e2ac'
+
+    def __init__(self):
+        self.x=X11Canvas()
+        self.page='Inicio'
+        self.focus=None
+        self.query=''
+        self.console_cmd=''
+        self.console_log=['PYRION Console  ·  X11 nativo',
+                          'Escribe help para ver los comandos disponibles.']
+        self.history=[]
+        self.notifications='Sistema listo · Sin dependencias Python externas'
+        self.hits=[]
+        self.hover=-1
+        self.tool_tab=None
+        self.calc_expr=''
+        self.csv_path=None
+        self.csv_data=[]
+        self.files_dir=Path.home()
+        self.file_entries=[]
+        self.file_scroll=0
+        self.last_clock=''
+        self.running=True
+        self._refresh_files()
+        self.record('Escritorio X11 iniciado')
+        self.paint()
+
+    def record(self,what):
+        self.history.insert(0,(dt.datetime.now().strftime('%H:%M:%S'),what))
+        self.history=self.history[:80]
+
+    def add_hit(self,x,y,w,h,action,tooltip=''):
+        self.hits.append(Hit(int(x),int(y),int(w),int(h),action,tooltip))
+
+    def text(self,txt,x,y,color=None,style='body',max_width=None):
+        self.x.text(txt,x,y,color or self.TEXT,style,max_width)
+
+    def button(self,text,x,y,w,h,action,selected=False,primary=False,small=False,rounding=12):
+        c=self.x
+        fill=('#1fc1ed' if primary else '#244c72' if selected else '#17283e')
+        border=('#67e1ff' if primary else '#3c78a7' if selected else '#344f6c')
+        c.rounded(x,y,w,h,rounding,fill,border)
+        tc='#09243a' if primary else '#ffffff' if selected else '#d1e0f0'
+        st='medium' if not small else 'small'
+        tw=c.text_width(text,st)
+        self.text(text,x+max(9,(w-tw)//2),y+(h//2)+(4 if not small else 3),tc,st,max(0,w-14))
+        self.add_hit(x,y,w,h,action,text)
+
+    def _nav(self,label,y,icon):
+        c=self.x
+        w=c.width
+        side=208 if w>=830 else 62
+        selected=self.page==label
+        c.rounded(12,y,side-24,47,13,'#176eab' if selected else '#19283d',
+                  '#54cffa' if selected else '#2d455f')
+        self.text(icon,27,y+30,'#c6f5ff' if selected else '#9fd5ec','medium')
+        if side>=160:
+            self.text(label,61,y+30,'#ffffff' if selected else '#d5e5f6','medium',side-80)
+        self.add_hit(12,y,side-24,47,lambda name=label:self.set_page(name))
+
+    def set_page(self,name):
+        self.page=name
+        self.focus=None
+        self.notifications=f'{name} · PYRION UI X11'
+        self.record('Abrir '+name)
+        self.paint()
+
+    def open_tool(self,name):
+        if name=='Visor de archivos':
+            self.set_page('Archivos');return
+        if name=='PYRION Console':
+            self.set_page('Consola');return
+        self.tool_tab=name
+        self.set_page(name)
+
+    def _draw_hero_mountains(self,x,y,w,h):
+        c=self.x
+        # Decoracion de montanas, sin imagen externa ni carga de archivos.
+        if w<460:return
+        right=x+w-14
+        moon=min(86,h//2-12)
+        if moon>15:
+            c.circle(right-95,y+int(h*.51),moon,'#075681')
+            c.circle(right-95,y+int(h*.51),max(1,moon-9),'#086c9c')
+            c.circle(right-92,y+int(h*.51)+5,max(1,moon-14),'#0d436c')
+        bottom=y+h-7
+        for dx,col in ((0,'#0d2842'),(17,'#0a3654'),(32,'#0c2641')):
+            pts=[(right-210-dx,bottom),(right-145-dx,y+h//2+40),
+                 (right-105-dx,y+h//2+52),(right-63-dx,y+h//2+5),
+                 (right-25,bottom-45),(right,bottom),(right-210-dx,bottom)]
+            c.polygon(pts,col)
+        c.line(right-130,y+h//2+58,right-64,y+h//2+6,'#1779ad',2)
+
+    def _header(self):
+        c=self.x;w,h=c.width,c.height
+        c.rounded(0,0,w,78,19,self.HEADER)
+        c.rect(0,60,w,18,self.HEADER)
+        c.line(0,77,w,77,'#2d4766')
+        # Logos geometricos azul cian, vectoriales
+        c.polygon([(29,55),(49,18),(68,55),(53,47),(49,36),(43,47)],'#4acaf4')
+        c.polygon([(40,55),(49,36),(58,55)],'#145282')
+        self.text('PYRION',82,46,'#d3f2ff','brand')
+        if w>=760:
+            c.rounded(232,23,120,33,16,'#153b34','#2f6f65')
+            c.circle(250,40,5,'#31e2a9')
+            self.text('X11 ACTIVO',263,44,'#8cfbd3','small')
+        right=w-165
+        if w>=940:
+            self.text('Linux  •  Python  •  Ligero',right-180,43,'#8eacc7','small')
+        self.text(dt.datetime.now().strftime('%H:%M'),w-94,45,'#d7e9fa','medium')
+        self.button('×',w-44,23,30,29,self.stop,small=False,rounding=10)
+
+    def _sidebar(self):
+        c=self.x;h=c.height;w=c.width
+        side=208 if w>=830 else 62
+        c.rect(0,79,side,h-117,self.SIDEBAR)
+        c.line(side,79,side,h-40,'#27435e')
+        if side>140:
+            self.text('ESCRITORIO',21,116,'#7295b4','small')
+        for i,(p,icon) in enumerate((('Inicio','⌂'),('Aplicaciones','▦'),
+                                     ('Consola','>_'),('Archivos','▱'),
+                                     ('Configuración','⚙'))):
+            self._nav(p,130+i*61,icon)
+        if side>140 and h>=610:
+            by=h-144
+            c.rounded(12,by,side-24,96,13,'#11263c','#315b78')
+            c.polygon([(45,by+39),(62,by+6),(80,by+39),(66,by+31),
+                       (62,by+21),(58,by+31)],'#43c9f4')
+            self.text('PYRION OS',27,by+62,'#bdedff','medium')
+            self.text('Linux · X11 · Ligero',27,by+80,'#90abc6','small')
+
+    def _tabbar(self,left,right):
+        c=self.x
+        titles=['Inicio','Aplicaciones','Archivos','Consola','Configuración']
+        width=right-left
+        if width<650:
+            titles=[self.page if self.page in titles else 'Inicio']
+        x=left
+        for t in titles:
+            tw=min(141,max(100,c.text_width(t,'small')+32))
+            if x+tw>right:break
+            active=(self.page==t)
+            self.button(t,x,91,tw,36,lambda val=t:self.set_page(val),selected=active,
+                        primary=active,small=True,rounding=16)
+            x+=tw+9
+        c.line(left,137,right,137,'#243e5a')
+
+    def _home(self,left,right,top,bottom):
+        c=self.x;w=right-left;avail=bottom-top
+        compact=avail<475
+        hero_h=137 if compact else 171
+        c.rounded(left,top,w,hero_h,18,'#132944','#326489')
+        self._draw_hero_mountains(left,top,w,hero_h)
+        self.text('¿Qué quieres hacer hoy?',left+25,top+42,'#f1f8ff','hero',w-58)
+        self.text('Busca una herramienta, archivo o comando.',left+26,top+67,'#acc3d9','body',w-50)
+        sx=left+25;sy=top+91 if not compact else top+79
+        sh=48 if not compact else 42
+        sbw=min(139,max(97,w//5))
+        iw=max(70,w-77-sbw)
+        c.rounded(sx,sy,iw,sh,sh//2,'#1b314d','#59c7ee' if self.focus=='search' else '#446e92')
+        self.text('⌕',sx+17,sy+sh//2+5,'#75c8eb','medium')
+        search=self.query if self.query else 'Buscar o escribir un comando...'
+        self.text(search,sx+48,sy+sh//2+5,'#ffffff' if self.query else '#a0b6d0','body',iw-65)
+        if self.focus=='search':
+            pos=min(sx+49+c.text_width(self.query),sx+iw-16)
+            c.line(pos,sy+10,pos,sy+sh-11,self.CYAN)
+        self.add_hit(sx,sy,iw,sh,lambda:self.set_focus('search'))
+        self.button('Ejecutar',sx+iw+11,sy,sbw,sh,self.search,primary=True,rounding=sh//2)
+        y=top+hero_h+31
+        self.text('▦  Aplicaciones destacadas',left+5,y,'#eaf4ff','medium')
+        action_w=80
+        self.text('Ver todas >',right-action_w,y,self.CYAN,'small',action_w)
+        self.add_hit(right-action_w,y-18,action_w,24,lambda:self.set_page('Aplicaciones'))
+        card_y=y+17
+        gap=12
+        apps=[('Calculadora','Cálculos rápidos','＋','#4547c1'),
+              ('Editor CSV','Hojas de datos','▦','#13784f'),
+              ('PDF a Word','Documentos PDF','PDF','#a73250'),
+              ('Visor de archivos','Explorar carpetas','▱','#1465a1')]
+        columns=4 if w>=730 else 2
+        card_w=(w-(columns-1)*gap)//columns
+        card_h=88 if columns==4 else 62
+        if compact and columns==2:card_h=57
+        for i,(name,desc,icon,col) in enumerate(apps):
+            ix=i%columns;iy=i//columns
+            cx=left+ix*(card_w+gap);cy=card_y+iy*(card_h+9)
+            c.rounded(cx,cy,card_w,card_h,14,self.PANEL,'#315471')
+            ic=39 if columns==4 else 33
+            c.rounded(cx+11,cy+(card_h-ic)//2,ic,ic,10,col)
+            self.text(icon,cx+19,cy+card_h//2+5,'#ffffff','medium',ic-9)
+            off=11+ic+12
+            self.text(name,cx+off,cy+card_h//2-3,'#eff7ff','medium',card_w-off-8)
+            self.text(desc,cx+off,cy+card_h//2+16,'#aec2d5','small',card_w-off-8)
+            self.add_hit(cx,cy,card_w,card_h,lambda n=name:self.open_tool(n))
+        lower=card_y+((len(apps)+columns-1)//columns)*(card_h+9)+9
+        remaining=bottom-lower
+        if remaining<60:return
+        gap=14
+        half=(w-gap)//2
+        self._console_preview(left,lower,half,remaining)
+        self._recent_preview(left+half+gap,lower,w-half-gap,remaining)
+
+    def _console_preview(self,x,y,w,h):
+        c=self.x
+        c.rounded(x,y,w,h,16,'#13263d','#335676')
+        self.text('>_  Consola (vista previa)',x+18,y+29,'#e9f5ff','medium',w-120)
+        if w>350:
+            self.text('Abrir consola >',x+w-115,y+29,self.CYAN,'small',110)
+            self.add_hit(x+w-125,y+12,120,28,lambda:self.set_page('Consola'))
+        c.rounded(x+10,y+40,w-20,h-49,11,'#081521','#243a56')
+        lines=['pyrion@pyrion:~$ python3 --version',
+               'Python 3 · X11 nativo',
+               'PYRION OS  |  interfaz ligera',
+               'Sin Qt ni Tkinter',
+               'pyrion@pyrion:~$ _']
+        for i,text in enumerate(lines[:max(1,(h-56)//20)]):
+            self.text(text,x+23,y+64+i*20,
+                      '#78e0b0' if i==0 or i==4 else '#a4cbe2',
+                      'mono',w-48)
+        self.add_hit(x,y,w,h,lambda:self.set_page('Consola'))
+
+    def _recent_preview(self,x,y,w,h):
+        c=self.x
+        c.rounded(x,y,w,h,16,'#14273d','#345c7b')
+        self.text('▱  Archivos recientes',x+18,y+29,'#eff8ff','medium',w-140)
+        if w>330:
+            self.text('Abrir archivos >',x+w-118,y+29,self.CYAN,'small',113)
+        lines=[('▦','Reporte de datos','CSV'),('▤','Documentos','TXT'),
+               ('▱','Carpetas de trabajo','DIR')]
+        for i,(icon,name,ext) in enumerate(lines):
+            yy=y+48+i*39
+            if yy+28>y+h:break
+            c.rounded(x+12,yy,w-24,35,7,'#172c44')
+            self.text(icon,x+22,yy+23,'#64d9fa','medium')
+            self.text(name,x+55,yy+23,'#d0e5f7','body',w-127)
+            self.text(ext,x+w-47,yy+22,'#88abc8','small')
+        self.add_hit(x,y,w,h,lambda:self.set_page('Archivos'))
+
+    def _section_heading(self,title,subtitle,left,top,max_width):
+        self.text(title,left,top+20,self.TEXT,'head',max_width)
+        self.text(subtitle,left,top+47,self.MUTED,'body',max_width)
+
+    def _apps(self,left,right,top,bottom):
+        c=self.x;w=right-left
+        self._section_heading('Aplicaciones','Herramientas de PYRION OS disponibles en esta sesión.',left,top,w)
+        apps=[('Calculadora','Cálculos matemáticos básicos','＋','#4d48b5'),
+              ('Editor CSV','Consultar archivos CSV','▦','#13784f'),
+              ('PDF a Word','Integración pendiente de biblioteca','PDF','#a6324b'),
+              ('Visor de archivos','Examinar archivos y directorios','▱','#135f9a'),
+              ('PYRION Console','Terminal básico integrado','>_','#33667c')]
+        cols=3 if w>=710 else 2 if w>=410 else 1
+        gap=14
+        cw=(w-gap*(cols-1))//cols
+        for i,(name,desc,ico,col) in enumerate(apps):
+            x=left+(i%cols)*(cw+gap);y=top+69+(i//cols)*107
+            if y+85>bottom:break
+            c.rounded(x,y,cw,94,15,'#182d46','#345575')
+            c.rounded(x+12,y+16,43,43,11,col)
+            self.text(ico,x+23,y+44,'#ffffff','medium',32)
+            self.text(name,x+69,y+36,'#f1f9ff','medium',cw-80)
+            self.text(desc,x+69,y+58,'#a6c1d8','small',cw-81)
+            self.add_hit(x,y,cw,94,lambda n=name:self.open_tool(n))
+
+    def _console(self,left,right,top,bottom):
+        c=self.x;w=right-left
+        self._section_heading('PYRION Console','Comandos básicos desde una pestaña X11.',left,top,w)
+        y=top+64
+        c.rounded(left,y,w,max(70,bottom-y-65),14,'#07131f','#315370')
+        lines=self.console_log[-max(2,(bottom-y-89)//22):]
+        for i,s in enumerate(lines):
+            col=self.GREEN if s.startswith('pyrion@') else '#b7d2e8'
+            self.text(s,left+19,y+31+i*22,col,'mono',w-42)
+        sy=bottom-53
+        c.rounded(left,sy,w-118,44,12,'#1b304a','#63bddf' if self.focus=='console' else '#395d7d')
+        prompt='> '+self.console_cmd if self.console_cmd else '> Escribe help, ls, pwd, uname...'
+        self.text(prompt,left+14,sy+29,self.TEXT if self.console_cmd else '#9bb3cc','mono',w-153)
+        self.add_hit(left,sy,w-118,44,lambda:self.set_focus('console'))
+        self.button('Ejecutar',right-105,sy,105,44,self.run_console,primary=True)
+
+    def _files(self,left,right,top,bottom):
+        c=self.x;w=right-left
+        self._section_heading('Archivos','Explorador de solo lectura: ninguna operación de disco automática.',left,top,w)
+        nav_y=top+65
+        c.rounded(left,nav_y,w,44,11,'#1a3049','#385979')
+        self.text('▱  '+str(self.files_dir),left+15,nav_y+28,self.CYAN,'small',w-139)
+        self.button('Subir',right-95,nav_y+6,85,32,self.up_directory,small=True)
+        y=nav_y+56
+        for item in self.file_entries[self.file_scroll:self.file_scroll+max(1,(bottom-y)//39)]:
+            if y+34>bottom:break
+            path,isdir,size=item
+            c.rounded(left,y,w,35,8,'#152b43','#2b4865')
+            self.text('▱' if isdir else '▤',left+14,y+24,'#6dc8ef','medium')
+            self.text(path.name,left+52,y+24,'#e1f0ff','body',w-190)
+            self.text('CARPETA' if isdir else self._bytes(size),right-110,y+23,'#96aec6','small',100)
+            self.add_hit(left,y,w,35,lambda p=path,d=isdir:self.open_file(p,d))
+            y+=40
+
+    @staticmethod
+    def _bytes(n):
+        if n<1024:return str(n)+' B'
+        if n<1024*1024:return '%.1f KiB'%(n/1024)
+        return '%.1f MiB'%(n/1024/1024)
+
+    def _refresh_files(self):
+        result=[]
+        try:
+            for idx,p in enumerate(self.files_dir.iterdir()):
+                if idx>800:break
+                try:
+                    stat=p.stat()
+                    result.append((p,p.is_dir(),stat.st_size))
+                except (PermissionError,OSError):continue
+        except (PermissionError,OSError) as exc:
+            self.notifications='No se puede leer directorio: '+str(exc)
+        self.file_entries=sorted(result,key=lambda item:(not item[1],item[0].name.lower()))
+        self.file_scroll=0
+
+    def up_directory(self):
+        self.files_dir=self.files_dir.parent
+        self._refresh_files();self.paint()
+
+    def open_file(self,path,is_directory):
+        if is_directory:
+            self.files_dir=path
+            self._refresh_files();self.paint()
+            return
+        if path.suffix.lower() in ('.csv','.tsv'):
+            self.csv_path=path;self._load_csv();self.open_tool('Editor CSV')
+        elif path.suffix.lower() in ('.txt','.md','.log','.json','.py','.ini','.cfg'):
+            try:
+                data=path.read_text(encoding='utf-8',errors='replace')[:5000]
+                self.console_log=['Archivo: '+str(path)]+data.splitlines()[:90]
+                self.set_page('Consola')
+            except OSError as exc:
+                self.notifications=str(exc);self.paint()
+        else:
+            self.notifications='Archivo seleccionado: '+str(path)
+            self.paint()
+
+    def _load_csv(self):
+        if self.csv_path is None:return
+        try:
+            with self.csv_path.open('r',encoding='utf-8-sig',errors='replace',newline='') as fh:
+                sample=fh.read(2048);fh.seek(0)
+                try:dialect=csv.Sniffer().sniff(sample,delimiters=';,\t|')
+                except csv.Error:dialect=csv.excel
+                self.csv_data=[row[:10] for _,row in zip(range(100),csv.reader(fh,dialect))]
+            self.notifications='CSV cargado: '+self.csv_path.name
+        except OSError as exc:
+            self.notifications='CSV no disponible: '+str(exc)
+
+    def _csv(self,left,right,top,bottom):
+        c=self.x;w=right-left
+        self._section_heading('Editor CSV','Vista de datos ligera, sin bibliotecas externas.',left,top,w)
+        self.button('Abrir CSV desde Archivos',left,top+61,min(w,238),39,
+                    lambda:self.set_page('Archivos'),small=True)
+        if not self.csv_data:
+            c.rounded(left,top+118,w,95,12,self.PANEL,'#355675')
+            self.text('Selecciona un archivo .csv en Archivos para visualizar su contenido.',
+                      left+18,top+162,self.MUTED,'body',w-35)
+            return
+        y=top+116
+        ncols=min(6,max(1,max(len(a) for a in self.csv_data)))
+        cellw=max(45,(w-4)//ncols)
+        for row_idx,row in enumerate(self.csv_data[:max(1,(bottom-y)//33)]):
+            bg='#214361' if row_idx==0 else '#152b43' if row_idx%2==0 else '#10263a'
+            c.rounded(left,y,w,32,4,bg)
+            for ci in range(ncols):
+                value=row[ci] if ci<len(row) else ''
+                self.text(value,left+ci*cellw+8,y+22,self.TEXT,'small',cellw-14)
+            y+=34
+
+    def _calc(self,left,right,top,bottom):
+        c=self.x;w=right-left
+        self._section_heading('Calculadora','Operaciones seguras mediante Python, sin eval().',left,top,w)
+        panelw=min(450,w)
+        x=left+(w-panelw)//2;y=top+60
+        c.rounded(x,y,panelw,63,13,'#11263d','#436a8a')
+        value=self.calc_expr if self.calc_expr else '0'
+        self.text(value,x+17,y+41,self.TEXT,'head',panelw-32)
+        rows=[['7','8','9','/'],['4','5','6','*'],['1','2','3','-'],['C','0','.','+'],['(',')','⌫','=']]
+        gap=9;cell=(panelw-3*gap)//4
+        bh=max(33,min(47,(bottom-(y+83)-4*gap)//5))
+        for ri,row in enumerate(rows):
+            for ci,key in enumerate(row):
+                xx=x+ci*(cell+gap);yy=y+83+ri*(bh+gap)
+                if yy+bh>bottom:continue
+                self.button(key,xx,yy,cell,bh,lambda k=key:self.calc_press(k),
+                            primary=key=='=',selected=key in ('/','*','-','+'),rounding=10)
+
+    @staticmethod
+    def _calculate(expression):
+        ops={ast.Add:lambda a,b:a+b,ast.Sub:lambda a,b:a-b,
+             ast.Mult:lambda a,b:a*b,ast.Div:lambda a,b:a/b,
+             ast.Pow:lambda a,b:a**b,ast.Mod:lambda a,b:a%b}
+        def walk(node,depth=0):
+            if depth>30:raise ValueError('Expresión demasiado larga')
+            if isinstance(node,ast.Expression):return walk(node.body,depth+1)
+            if isinstance(node,ast.Constant) and type(node.value) in (int,float):
+                if abs(node.value)>10**18:raise ValueError('Número demasiado grande')
+                return node.value
+            if isinstance(node,ast.UnaryOp) and isinstance(node.op,(ast.UAdd,ast.USub)):
+                v=walk(node.operand,depth+1)
+                return v if isinstance(node.op,ast.UAdd) else -v
+            if isinstance(node,ast.BinOp) and type(node.op) in ops:
+                a=walk(node.left,depth+1);b=walk(node.right,depth+1)
+                if isinstance(node.op,ast.Pow) and abs(b)>30:
+                    raise ValueError('Exponente demasiado grande')
+                return ops[type(node.op)](a,b)
+            raise ValueError('Operación no permitida')
+        r=walk(ast.parse(expression,mode='eval'))
+        if not math.isfinite(r) or abs(r)>10**30:raise ValueError('Resultado fuera de rango')
+        return ('%g'%r) if isinstance(r,float) else str(r)
+
+    def calc_press(self,key):
+        if key=='C':self.calc_expr=''
+        elif key=='⌫':self.calc_expr=self.calc_expr[:-1]
+        elif key=='=':
+            try:self.calc_expr=self._calculate(self.calc_expr)
+            except (ArithmeticError,ValueError,SyntaxError,OverflowError) as exc:
+                self.notifications='Calculadora: '+str(exc)
+        elif len(self.calc_expr)<90:self.calc_expr+=key
+        self.paint()
+
+    def _pdf(self,left,right,top,bottom):
+        c=self.x;w=right-left
+        self._section_heading('PDF a Word','Convertidor de documentos.',left,top,w)
+        c.rounded(left,top+67,w,145,15,'#172e47','#365d7e')
+        self.text('▤  Conversión PDF → DOCX',left+21,top+112,self.TEXT,'head',w-44)
+        self.text('Esta operación necesita pdf2docx u otro convertidor externo.',
+                  left+23,top+149,self.MUTED,'body',w-44)
+        self.text('No se instala ni descarga ninguna dependencia automáticamente.',
+                  left+23,top+177,self.MUTED,'small',w-44)
+
+    def _history(self,left,right,top,bottom):
+        self._section_heading('Actividad de sesión','El historial se mantiene solo en RAM.',left,top,right-left)
+        y=top+69
+        for when,what in self.history[:max(1,(bottom-y)//38)]:
+            self.x.rounded(left,y,right-left,32,8,'#172c44','#2e4b68')
+            self.text(when,left+13,y+22,self.CYAN,'small')
+            self.text(what,left+88,y+22,self.TEXT,'body',right-left-103)
+            y+=38
+
+    def _settings(self,left,right,top,bottom):
+        self._section_heading('Configuración','Información del motor gráfico nativo.',left,top,right-left)
+        blocks=[('MOTOR GRÁFICO','Python + ctypes + libX11','Sin PySide6, Tkinter, FLTK ni pip.'),
+                ('TIPOGRAFÍA','Xft opcional para UTF-8','Si no está disponible, utiliza fuente X11 básica.'),
+                ('ALMACENAMIENTO','Modo RAM / Sesión','No examina, monta, particiona ni formatea discos.'),
+                ('VENTANAS','Bordes redondeados reales','Se utiliza XShape cuando el servidor lo admite.')]
+        y=top+68
+        for title,value,desc in blocks:
+            if y+90>bottom:break
+            self.x.rounded(left,y,right-left,87,13,'#162a43','#345778')
+            self.text(title,left+18,y+21,'#7fc7e5','small')
+            self.text(value,left+18,y+46,'#f4fbff','medium',right-left-38)
+            self.text(desc,left+18,y+67,self.MUTED,'small',right-left-38)
+            y+=99
+
+    def _statusbar(self):
+        c=self.x;h=c.height;w=c.width
+        c.rect(0,h-39,w,39,'#101f31')
+        c.line(0,h-40,w,h-40,'#315678')
+        self.text('◈  PYRION OS    |    X11 NATIVO',19,h-16,'#d4f1ff','small',min(300,w//2))
+        right='●  RAM TEMPORAL    |    '+APP_VERSION
+        self.text(right,w-c.text_width(right,'small')-16,h-16,self.GREEN,'small',w//2-30)
+
+    def paint(self):
+        c=self.x;w,h=c.width,c.height
+        self.hits=[]
+        c.rounded(0,0,w,h,19,'#07111d')
+        c.rect(0,78,w,h-118,self.BG)
+        self._header();self._sidebar()
+        side=208 if w>=830 else 62
+        left=side+23;right=w-22
+        self._tabbar(left,right)
+        top=153;bottom=h-55
+        if self.page=='Inicio':self._home(left,right,top,bottom)
+        elif self.page=='Aplicaciones':self._apps(left,right,top,bottom)
+        elif self.page=='Consola':self._console(left,right,top,bottom)
+        elif self.page=='Archivos':self._files(left,right,top,bottom)
+        elif self.page=='Configuración':self._settings(left,right,top,bottom)
+        elif self.page=='Calculadora':self._calc(left,right,top,bottom)
+        elif self.page=='Editor CSV':self._csv(left,right,top,bottom)
+        elif self.page=='PDF a Word':self._pdf(left,right,top,bottom)
+        elif self.page=='Historial':self._history(left,right,top,bottom)
+        else:self._apps(left,right,top,bottom)
+        self._statusbar()
+        c.flush_buffer()
+
+    def set_focus(self,field):
+        self.focus=field
+        self.paint()
+
+    def search(self):
+        value=self.query.strip()
+        if not value:return
+        clean=value.lower()
+        self.record('Buscar: '+value)
+        keywords=[(('calcul','matem','cuent'), 'Calculadora'),
+                  (('csv','excel','tabla'), 'Editor CSV'),
+                  (('pdf','word','docx'), 'PDF a Word'),
+                  (('archivo','carpeta','explor'), 'Visor de archivos'),
+                  (('consola','terminal','comando','shell'), 'PYRION Console')]
+        for terms,target in keywords:
+            if any(t in clean for t in terms):
+                self.query='';self.open_tool(target);return
+        self.notifications='No se encontró herramienta: '+value
+        self.console_log=['Solicitud: '+value,'No hay herramienta local para esta solicitud.']
+        self.query=''
+        self.paint()
+
+    def run_console(self):
+        cmd=self.console_cmd.strip()
+        if not cmd:return
+        self.console_log.append('pyrion@os:$ '+cmd)
+        self.record('Consola: '+cmd)
+        self.console_cmd=''
+        try:
+            parts=shlex.split(cmd)
+        except ValueError as exc:
+            self.console_log.append(str(exc));self.paint();return
+        if not parts:self.paint();return
+        op=parts[0]
+        try:
+            if op=='help':out='Comandos: help, pwd, ls, cd, echo, whoami, uname, date, clear, python3 --version'
+            elif op=='clear':self.console_log=[];out=''
+            elif op=='pwd':out=str(self.files_dir)
+            elif op=='ls':
+                p=Path(parts[1]).expanduser() if len(parts)>1 else self.files_dir
+                out='   '.join(a.name for i,a in enumerate(p.iterdir()) if i<40)
+            elif op=='cd':
+                p=(self.files_dir/(parts[1] if len(parts)>1 else str(Path.home()))).expanduser().resolve()
+                if not p.is_dir():raise ValueError('No es un directorio: '+str(p))
+                self.files_dir=p;self._refresh_files();out=str(p)
+            elif op=='echo':out=' '.join(parts[1:])
+            elif op=='whoami':out=os.getenv('USER') or str(os.getuid())
+            elif op=='uname':out=os.uname().sysname+' '+os.uname().release
+            elif op=='date':out=dt.datetime.now().isoformat(sep=' ',timespec='seconds')
+            elif op=='python3' and len(parts)==2 and parts[1]=='--version':out=sys.version.split()[0]
+            else:out='Comando no disponible en la consola básica. Use una terminal del sistema.'
+        except (OSError,ValueError) as exc:out='Error: '+str(exc)
+        for l in out.splitlines()[:40]:self.console_log.append(l[:600])
+        self.console_log=self.console_log[-100:]
+        self.paint()
+
+    def click(self,x,y):
+        for hit in reversed(self.hits):
+            if hit.contains(x,y):
+                try:hit.action()
+                except Exception as exc:
+                    self.notifications='Error interno: '+str(exc)
+                    self.paint()
+                return
+        self.focus=None
+        self.paint()
+
+    def key(self,evt):
+        buf=C.create_string_buffer(128)
+        symbol=ulong()
+        count=self.x.lookup_string(C.byref(evt),buf,127,C.byref(symbol),None)
+        code=int(symbol.value)
+        control=bool(evt.state & (1<<2))
+        if code==0xff1b:
+            if self.focus:self.focus=None
+            else:self.page='Inicio'
+        elif self.focus in ('search','console'):
+            field='query' if self.focus=='search' else 'console_cmd'
+            value=getattr(self,field)
+            if code in (0xff0d,0xff8d):
+                if self.focus=='search':self.search()
+                else:self.run_console()
+                return
+            if code==0xff08:value=value[:-1]
+            elif code==0xffff:value=''
+            elif control and code in (ord('a'),ord('A')):value=''
+            elif count>0 and not control:
+                chars=buf.raw[:count].decode('utf-8','replace')
+                if chars.isprintable() and len(value)<240:value+=chars
+            setattr(self,field,value)
+        elif self.page=='Calculadora':
+            if code in (0xff0d,0xff8d):self.calc_press('=');return
+            if code==0xff08:self.calc_press('⌫');return
+            if count and buf.raw[:count].decode('utf-8','ignore') in '0123456789.+-*/()':
+                self.calc_press(buf.raw[:count].decode('utf-8','ignore'));return
+        elif code in (ord('/'),):self.focus='search'
+        self.paint()
+
+    def stop(self):
+        self.running=False
+
+    def event_loop(self,smoke_seconds=None):
+        import select
+        c=self.x
+        start=time.monotonic()
+        try:
+            while self.running:
+                if smoke_seconds and time.monotonic()-start>smoke_seconds:break
+                if not c.pending(c.dpy):
+                    # Se despierta para refrescar el reloj sin alto consumo CPU.
+                    try:select.select([c.connection_number(c.dpy)],[],[],0.30)
+                    except (OSError,ValueError):time.sleep(.1)
+                while c.pending(c.dpy):
+                    event=XEvent()
+                    c.next_event(c.dpy,C.byref(event))
+                    kind=event.type
+                    if kind==12:self.paint()  # Expose
+                    elif kind==22:
+                        if c.resize(event.xconfigure.width,event.xconfigure.height):self.paint()
+                    elif kind==33:
+                        if event.xclient.data.l[0]==c.delete_atom:self.running=False
+                    elif kind==4 and event.xbutton.button==1:
+                        self.click(event.xbutton.x,event.xbutton.y)
+                    elif kind==4 and event.xbutton.button in (4,5):
+                        if self.page=='Archivos':
+                            self.file_scroll=max(0,min(max(0,len(self.file_entries)-4),
+                                                    self.file_scroll + (-3 if event.xbutton.button==4 else 3)))
+                            self.paint()
+                    elif kind==6:
+                        hover=next((i for i,hit in reversed(list(enumerate(self.hits)))
+                                    if hit.contains(event.xmotion.x,event.xmotion.y)),-1)
+                        if hover!=self.hover:
+                            self.hover=hover;c.pointer(hover>=0)
+                    elif kind==2:self.key(event.xkey)
+                clock=dt.datetime.now().strftime('%H:%M')
+                if clock!=self.last_clock:
+                    self.last_clock=clock
+                    self.paint()
+        finally:
+            c.cleanup()
+        return 0
+
+
+def main():
+    args=list(sys.argv[1:])
+    if '--check' in args:
+        print(APP_NAME,APP_VERSION)
+        print('Python:',sys.version.split()[0])
+        for library in ('X11','Xft','Xext'):
+            print(library+':',ctypes.util.find_library(library) or 'no detectada')
+        print('DISPLAY:',os.getenv('DISPLAY') or '(sin X11)')
+        print('Motor: ctypes + libX11; sin PySide6 ni Tkinter')
+        return 0
+    smoke=None
+    if '--smoke' in args:
+        i=args.index('--smoke')
+        try:smoke=float(args[i+1])
+        except (ValueError,IndexError):smoke=2
     try:
-        storage = PersistentStore()
-    except StorageError as exc:
-        QMessageBox.critical(None, "PYRION Desktop", str(exc))
+        app=PyrionDesktop()
+        return app.event_loop(smoke)
+    except (X11Error,OSError) as exc:
+        print('PYRION X11: '+str(exc),file=sys.stderr)
         return 1
 
-    window = PyrionDesktop(storage)
-    window.setWindowTitle("PYRION Desktop | Prueba independiente")
-    window.show()
-    return app.exec()
 
-
-if __name__ == "__main__":
+if __name__=='__main__':
     raise SystemExit(main())
