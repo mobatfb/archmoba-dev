@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """PYRION OS - Paso 2: maqueta visual tipo navegador (X11 nativo).
 
-Interfaz ESTATICA, sin acciones de busqueda, pestanas o aplicaciones.
+Interfaz de boceto: pestañas, búsqueda y aplicaciones no realizan acciones.
+Solo el botón Cerrar responde al ratón y finaliza el escritorio.
 El fondo, el logotipo central y el icono superior son tres imagenes PNG
 descargadas desde GitHub. Se usan solo en RAM; no hay cache en disco.
 Si una imagen no se descarga, se informa del error: no se imita con dibujos.
@@ -23,7 +24,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.1-boceto-remoto"
+APP_VERSION = "0.2.3-boceto-remoto"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
 LOGO_URL = SERVER + "pyrion-logo.png"
@@ -65,8 +66,19 @@ class XImage(C.Structure):
                 ("obdata", P)]
 
 
+class XButtonEvent(C.Structure):
+    # Diseño ABI de Xlib.h: XButtonEvent (64 bits y 32 bits).
+    _fields_ = [
+        ("type", I), ("serial", U), ("send_event", I), ("display", P),
+        ("window", U), ("root", U), ("subwindow", U), ("time", U),
+        ("x", I), ("y", I), ("x_root", I), ("y_root", I),
+        ("state", UI), ("button", UI), ("same_screen", I),
+    ]
+
+
 class XEvent(C.Union):
-    _fields_ = [("type", I), ("pad", C.c_long * 24)]
+    _fields_ = [("type", I), ("xbutton", XButtonEvent),
+                ("pad", C.c_long * 24)]
 
 
 class XSetWindowAttributes(C.Structure):
@@ -225,6 +237,7 @@ class PyrionDesktop:
         self.fonts = {}
         self.ftcolors = {}
         self.running = True
+        self.close_bounds = None  # x, y, ancho, alto del único botón activo.
         self.background = None
         self.logo = None
         self.icono = None
@@ -446,7 +459,7 @@ class PyrionDesktop:
         self.rect(0, 0, w, h, "#FFFFFF")
         if self.background:
             self._image(self.background, 0, 0, w, h)
-        # Browser-inspired floating navigation; purely visual, no event handlers.
+        # Boceto tipo navegador. Solo Cerrar recibe clics.
         margin = 9
         bar_y, bar_h = 9, 83 if w >= 980 else 114
         self.round(margin+1, bar_y+3, w-2*margin, bar_h, 23, "#F3F6F9")
@@ -485,22 +498,32 @@ class PyrionDesktop:
         if is_wide:
             sx = max(int(w*0.48), tabs_x+15)
             sy = bar_y+16
-            search_w = max(100, w-sx-112)
         else:
             sx = right_brand+18
             sy = bar_y+15
-            search_w = max(100, w-sx-95)
+        # Reservar espacio para [+] y [Cerrar] en el extremo derecho.
+        search_w = max(95, w - sx - 186)
         self.round(sx,sy,search_w,51 if is_wide else 41,24,"#F5FCFF","#25BDF0")
         self._magnifier(int(sx+20),int(sy+(14 if is_wide else 10)),"#4D5E70")
         hint = "Buscar aplicaciones, archivos o comandos..."
         if search_w < 350: hint = "Buscar aplicaciones..."
         if search_w < 240: hint = "Buscar..."
         self.text(hint,sx+62,sy+(33 if is_wide else 27),"#647181","body")
-        plus_x = w-78
-        self.round(plus_x,sy,52,51 if is_wide else 41,21,"#FFFFFF","#CDD7E1")
-        self.line(plus_x+26,sy+13,plus_x+26,sy+38 if is_wide else sy+29,"#4F5D6E")
-        self.line(plus_x+14,sy+25 if is_wide else sy+20,plus_x+38,
-                  sy+25 if is_wide else sy+20,"#4F5D6E")
+        button_h = 51 if is_wide else 41
+        plus_x = w - 171
+        self.round(plus_x, sy, 51, button_h, 21, "#FFFFFF", "#CDD7E1")
+        plus_mid = sy + button_h // 2
+        self.line(plus_x+25, plus_mid-11, plus_x+25, plus_mid+11, "#4F5D6E")
+        self.line(plus_x+14, plus_mid, plus_x+36, plus_mid, "#4F5D6E")
+
+        # Botón Cerrar: es el único control con una acción en esta fase.
+        cx, cy, cw, ch = w-108, sy, 82, button_h
+        self.close_bounds = (cx, cy, cw, ch)
+        self.round(cx, cy, cw, ch, 19, "#FFF6F7", "#E3A0AB")
+        cross_x, cross_y = cx + 14, cy + ch//2
+        self.line(cross_x-5, cross_y-5, cross_x+5, cross_y+5, "#AE4357")
+        self.line(cross_x+5, cross_y-5, cross_x-5, cross_y+5, "#AE4357")
+        self.text("Cerrar", cx + 25, cy + ch//2 + 5, "#95384C", "small")
         # Logotipo central: recurso de GitHub, independiente del icono y fondo.
         c = w//2
         logo_side = min(118, max(75, w//11))
@@ -519,6 +542,11 @@ class PyrionDesktop:
         caption="Tu espacio de trabajo"
         self.text(caption,c-self.text_width(caption,"tagline")//2,
                   title_y+98,"#758396","tagline")
+        # Numero visible del desktop en el borde inferior derecho.
+        # Es informativo: no tiene acciones ni modifica otras capas.
+        version_label = "Desktop v" + APP_VERSION.split("-", 1)[0]
+        version_x = max(10, w - self.text_width(version_label, "tab") - 22)
+        self.text(version_label, version_x, h-22, "#697D93", "tab")
         self.copy(self.dpy,self.pixmap,self.window,self.gc,0,0,w,h,0,0)
         self.flush(self.dpy)
 
@@ -559,12 +587,12 @@ class PyrionDesktop:
                              C.cast(C.byref(value),C.POINTER(C.c_ubyte)),1)
         self.name(self.dpy,self.window,b"PYRION OS - Boceto sin logica")
         self._set_window_icon()
-        self.select(self.dpy,self.window,(1<<15)|(1<<17))
+        self.select(self.dpy,self.window,(1<<15)|(1<<17)|(1<<2))
         self.gc=self.gc_create(self.dpy,self.window,0,None)
         self.map(self.dpy,self.window)
         self.lower(self.dpy,self.window)
         self.paint()
-        print("PYRION: maqueta sin acciones; fondo, logo e icono remotos.",flush=True)
+        print("PYRION: boceto visual; Cerrar disponible; imagenes remotas.",flush=True)
 
     def run(self):
         self.create()
@@ -586,6 +614,13 @@ class PyrionDesktop:
                     self.copy(self.dpy,self.pixmap,self.window,self.gc,
                               0,0,*self.size,0,0)
                     self.flush(self.dpy)
+                elif ev.type == 4 and ev.xbutton.button == 1:  # Click izquierdo
+                    if self.close_bounds:
+                        x, y, width, height = self.close_bounds
+                        if (x <= ev.xbutton.x < x+width and
+                                y <= ev.xbutton.y < y+height):
+                            print("PYRION: cerrado desde el boton superior.", flush=True)
+                            self.stop()
             else:
                 time.sleep(.05)
 
