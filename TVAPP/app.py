@@ -1,0 +1,339 @@
+"""TVAPP: lanzador con actualizaciones desde GitHub y dependencias automaticas."""
+
+from __future__ import annotations
+
+import ast
+import importlib
+import importlib.util
+import os
+from pathlib import Path
+import queue
+import re
+import subprocess
+import sys
+import threading
+from urllib.request import Request, urlopen
+
+if sys.version_info < (3, 10):
+    raise SystemExit("Se requiere Python 3.10 o superior. En Windows ejecuta iniciar.bat.")
+
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+except ImportError as exc:
+    raise SystemExit(
+        "Falta tkinter. En Windows instala Python desde python.org con Tcl/Tk; "
+        "en Debian/Ubuntu instala python3-tk."
+    ) from exc
+
+
+REPOSITORY = "mobatfb/archmoba-dev"
+BRANCH = "main"
+REMOTE_URL = (
+    f"https://raw.githubusercontent.com/{REPOSITORY}/{BRANCH}/TVAPP/tvapp.py"
+)
+BASE_DIR = Path(__file__).resolve().parent
+TVAPP_PATH = BASE_DIR / "tvapp.py"
+
+# Algunos nombres de importacion difieren del nombre del paquete en PyPI.
+PIP_NAMES = {
+    "PIL": "Pillow",
+    "cv2": "opencv-python",
+    "yaml": "PyYAML",
+    "bs4": "beautifulsoup4",
+    "serial": "pyserial",
+    "sklearn": "scikit-learn",
+    "dotenv": "python-dotenv",
+    "fitz": "PyMuPDF",
+    "Crypto": "pycryptodome",
+}
+
+
+def version_from_source(source: str) -> str:
+    """Lee VERSION (o __version__) sin ejecutar codigo remoto."""
+    tree = ast.parse(source, filename="tvapp.py")
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+            value = node.value
+        else:
+            continue
+        if ("VERSION" in names or "__version__" in names) and isinstance(value, ast.Constant):
+            if isinstance(value.value, str) and re.fullmatch(r"\d+(?:\.\d+)*", value.value):
+                return value.value
+    raise ValueError("tvapp.py debe declarar VERSION = '1.0.0' (version numerica).")
+
+
+def version_numbers(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def missing_packages(source: str) -> list[tuple[str, str]]:
+    """Detecta imports externos que no estan instalados, sin importar tvapp.py."""
+    tree = ast.parse(source, filename="tvapp.py")
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            roots.add(node.module.split(".")[0])
+
+    missing: list[tuple[str, str]] = []
+    for name in sorted(roots):
+        if name in sys.stdlib_module_names or name == "__future__":
+            continue
+        if (BASE_DIR / f"{name}.py").exists() or (BASE_DIR / name / "__init__.py").exists():
+            continue
+        try:
+            present = importlib.util.find_spec(name) is not None
+        except (ImportError, AttributeError, ValueError):
+            present = False
+        if not present:
+            missing.append((name, PIP_NAMES.get(name, name)))
+    return missing
+
+
+def run_command(args: list[str]) -> tuple[int, str]:
+    """Ejecuta pip sin abrir una consola adicional en Windows."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    completed = subprocess.run(
+        args,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=flags,
+        timeout=360,
+        check=False,
+    )
+    return completed.returncode, completed.stdout[-3000:]
+
+
+def atomic_write(path: Path, source: str) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        temporary.write_text(source, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+class TVAppManager:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("ARCHMOBA | TVAPP")
+        self.root.geometry("920x580")
+        self.root.minsize(550, 360)
+        self.root.configure(bg="#f3f6fa")
+        self.events: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.busy = False
+
+        header = tk.Frame(root, bg="#15243b", height=66)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        tk.Label(
+            header, text="TVAPP", bg="#15243b", fg="white",
+            font=("Segoe UI", 17, "bold")
+        ).pack(side="left", padx=(22, 18))
+        self.version_label = tk.Label(
+            header, text="Version: --", bg="#15243b", fg="#c8d8ec",
+            font=("Segoe UI", 11)
+        )
+        self.version_label.pack(side="left")
+        self.update_button = tk.Button(
+            header, text="Actualizar", command=self.check_for_updates,
+            bg="#14b8a6", fg="#082f2b", activebackground="#5eead4",
+            font=("Segoe UI", 10, "bold"), relief="flat",
+            cursor="hand2", padx=20, pady=8
+        )
+        self.update_button.pack(side="right", padx=20)
+
+        self.body = tk.Frame(root, bg="white")
+        self.body.pack(fill="both", expand=True, padx=12, pady=(12, 0))
+        tk.Label(
+            self.body, text="Cargando TVAPP...", bg="white",
+            fg="#667085", font=("Segoe UI", 15)
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        self.status_var = tk.StringVar(value="Comprobando dependencias locales...")
+        tk.Label(
+            root, textvariable=self.status_var, anchor="w",
+            bg="#f3f6fa", fg="#475467", font=("Segoe UI", 9),
+            padx=14, pady=9
+        ).pack(fill="x")
+
+        if TVAPP_PATH.exists():
+            try:
+                self.version_label.config(
+                    text=f"Version: {version_from_source(TVAPP_PATH.read_text(encoding='utf-8'))}"
+                )
+            except (OSError, ValueError, SyntaxError):
+                pass
+        self.root.after(100, self._process_events)
+        self._start("startup")
+
+    def _tell(self, kind: str, value: object) -> None:
+        self.events.put((kind, value))
+
+    def _start(self, action: str) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self.update_button.config(state="disabled", text="Procesando...")
+        threading.Thread(target=self._worker, args=(action,), daemon=True).start()
+
+    def check_for_updates(self) -> None:
+        self._start("update")
+
+    def _ensure_dependencies(self, source: str) -> None:
+        packages = missing_packages(source)
+        if not packages:
+            return
+
+        self._tell("status", "Preparando instalacion de dependencias...")
+        code, output = run_command([sys.executable, "-m", "pip", "--version"])
+        if code != 0:
+            code, output = run_command([sys.executable, "-m", "ensurepip", "--upgrade"])
+            if code != 0:
+                raise RuntimeError("No se pudo activar pip: " + output[-400:])
+
+        for module, package in packages:
+            self._tell("status", f"Instalando {package} en segundo plano...")
+            code, output = run_command([
+                sys.executable, "-m", "pip", "install",
+                "--disable-pip-version-check", "--no-input", package
+            ])
+            if code != 0:
+                raise RuntimeError(f"No se pudo instalar {package}: {output[-600:]}")
+            importlib.invalidate_caches()
+            try:
+                installed = importlib.util.find_spec(module) is not None
+            except (ImportError, AttributeError, ValueError):
+                installed = False
+            if not installed:
+                raise RuntimeError(
+                    f"Se instalo {package}, pero no se encontro el import {module}. "
+                    "Comprueba el nombre del paquete."
+                )
+
+    def _fetch_remote(self) -> str:
+        req = Request(
+            REMOTE_URL,
+            headers={"User-Agent": "ARCHMOBA-TVAPP/1.0", "Cache-Control": "no-cache"}
+        )
+        with urlopen(req, timeout=20) as response:
+            raw = response.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise ValueError("tvapp.py remoto supera 1 MB.")
+        return raw.decode("utf-8-sig")
+
+    def _worker(self, action: str) -> None:
+        try:
+            if action == "startup" and TVAPP_PATH.exists():
+                source = TVAPP_PATH.read_text(encoding="utf-8")
+                version_from_source(source)
+                self._ensure_dependencies(source)
+                self._tell("show", "Aplicacion lista.")
+            else:
+                self._tell("status", "Buscando nueva version en GitHub...")
+                remote = self._fetch_remote()
+                remote_version = version_from_source(remote)
+                compile(remote, str(TVAPP_PATH), "exec")
+
+                local_version = "0"
+                if TVAPP_PATH.exists():
+                    try:
+                        local = TVAPP_PATH.read_text(encoding="utf-8")
+                        local_version = version_from_source(local)
+                    except (ValueError, SyntaxError, OSError):
+                        pass
+
+                if version_numbers(remote_version) > version_numbers(local_version):
+                    self._ensure_dependencies(remote)
+                    self._tell("apply", (remote, remote_version))
+                else:
+                    self._tell("status", f"Ya tienes la ultima version ({local_version}).")
+        except Exception as exc:
+            self._tell("error", str(exc))
+        finally:
+            self._tell("done", None)
+
+    def _show_source(self, source: str) -> None:
+        """Carga el codigo actualizado y muestra su widget dentro de la ventana."""
+        namespace: dict[str, object] = {
+            "__name__": "tvapp_embedded",
+            "__file__": str(TVAPP_PATH),
+        }
+        old_widgets = set(self.body.winfo_children())
+        try:
+            exec(compile(source, str(TVAPP_PATH), "exec"), namespace)
+            render = namespace.get("render")
+            if not callable(render):
+                raise ValueError("tvapp.py debe incluir una funcion render(parent).")
+            widget = render(self.body)
+            if not isinstance(widget, tk.Widget) or widget.master is not self.body:
+                raise TypeError("render(parent) debe devolver un widget hijo de parent.")
+        except Exception:
+            for child in self.body.winfo_children():
+                if child not in old_widgets:
+                    child.destroy()
+            raise
+
+        for old in old_widgets:
+            old.destroy()
+        widget.pack(fill="both", expand=True)
+        self.version_label.config(text=f"Version: {version_from_source(source)}")
+
+    def _apply(self, remote: str, version: str) -> None:
+        previous = TVAPP_PATH.read_text(encoding="utf-8") if TVAPP_PATH.exists() else None
+        try:
+            atomic_write(TVAPP_PATH, remote)
+            self._show_source(remote)
+        except Exception:
+            if previous is None:
+                TVAPP_PATH.unlink(missing_ok=True)
+            else:
+                atomic_write(TVAPP_PATH, previous)
+            raise
+        self.status_var.set(f"Actualizado a v{version}. Interfaz recargada.")
+
+    def _process_events(self) -> None:
+        try:
+            while True:
+                kind, value = self.events.get_nowait()
+                try:
+                    if kind == "status":
+                        self.status_var.set(str(value))
+                    elif kind == "show":
+                        source = TVAPP_PATH.read_text(encoding="utf-8")
+                        self._show_source(source)
+                        self.status_var.set(str(value))
+                    elif kind == "apply":
+                        source, version = value
+                        self._apply(source, version)
+                    elif kind == "error":
+                        self.status_var.set("Error: " + str(value))
+                        messagebox.showerror("TVAPP", str(value), parent=self.root)
+                    elif kind == "done":
+                        self.busy = False
+                        self.update_button.config(state="normal", text="Actualizar")
+                except Exception as exc:
+                    self.status_var.set("Error: " + str(exc))
+                    messagebox.showerror("TVAPP", str(exc), parent=self.root)
+        except queue.Empty:
+            pass
+        self.root.after(100, self._process_events)
+
+
+def main() -> None:
+    root = tk.Tk()
+    TVAppManager(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
