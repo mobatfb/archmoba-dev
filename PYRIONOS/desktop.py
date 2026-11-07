@@ -31,7 +31,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.34-dependencias-auto"
+APP_VERSION = "0.2.35-medidor-dependencias"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -1106,6 +1106,8 @@ root.mainloop()
             return
         meta["state"] = "loading"
         meta["message"] = "Descargando herramienta..."
+        meta["deps_progress"] = 0
+        meta["deps_progress_visible"] = True
         local = self.cache_dir / "tools" / self._tool_safe_id(key) / Path(tool["repo_path"]).name
         version_file = local.with_name(local.name + ".version")
         requested_version = str(tool.get("version", "")).strip()
@@ -1307,9 +1309,32 @@ root.mainloop()
         env["PYTHONUNBUFFERED"] = "1"
         return env
 
-    def _deps_status(self, key, token, message):
-        self.tool_events.put(("deps_status", key,
-                              {"token": token, "message": str(message)}))
+    def _deps_status(self, key, token, message, progress=None):
+        """Notificar progreso real por etapas, sin calcular porcentajes por tiempo."""
+        event = {"token": token, "message": str(message)}
+        if progress is not None:
+            event["progress"] = max(0, min(100, int(progress)))
+        self.tool_events.put(("deps_status", key, event))
+
+    @staticmethod
+    def _pip_observed_stage(log_path):
+        """Solo indicios del registro de pip, no una estimacion temporal."""
+        try:
+            output = log_path.read_text(
+                encoding="utf-8", errors="replace")[-16000:].lower()
+        except OSError:
+            return 0.0
+        if "successfully installed" in output:
+            return 0.98
+        if "installing collected packages:" in output:
+            return 0.83
+        if "building wheel" in output or "preparing metadata" in output:
+            return 0.44
+        if "downloading" in output or "using cached" in output:
+            return 0.32
+        if "collecting " in output or "looking in indexes:" in output:
+            return 0.16
+        return 0.0
 
     def _pip_works(self, env):
         try:
@@ -1327,7 +1352,7 @@ root.mainloop()
         if self._pip_works(env):
             return env
         self.deps_root.mkdir(parents=True, exist_ok=True)
-        self._deps_status(key, token, "Python no incluye pip. Preparando instalador...")
+        self._deps_status(key, token, "Python no incluye pip. Preparando instalador...", 6)
         details = []
         try:
             cmd = [sys.executable, "-m", "ensurepip", "--upgrade"]
@@ -1343,7 +1368,7 @@ root.mainloop()
         except (OSError, subprocess.TimeoutExpired) as error:
             details.append("ensurepip: " + str(error))
 
-        self._deps_status(key, token, "Descargando pip para MiniLinux...")
+        self._deps_status(key, token, "Descargando pip para MiniLinux...", 8)
         bootstrap = self.deps_root / "get-pip.py"
         try:
             request = urllib.request.Request(
@@ -1376,14 +1401,17 @@ root.mainloop()
             (" | ".join(details)[-1200:] or "Verifica la conexión a Internet."))
 
     def _install_package(self, key, token, name, index, total, env):
-        """pip en segundo plano: registra progreso y reintenta hasta 5 veces."""
+        """Avanza por etapas confirmadas de pip y paquetes terminados."""
         self.deps_lib.mkdir(parents=True, exist_ok=True)
+        # Del 12% al 92% se reparte entre los paquetes pendientes.
+        base = 12.0 + (index - 1) * 80.0 / max(1, total)
+        span = 80.0 / max(1, total)
         log_path = self.deps_root / ("pip-" + self._tool_safe_id(key) + ".log")
         for attempt in range(1, 6):
             self._deps_status(
                 key, token,
                 "Instalando %s (%d/%d), intento %d/5..." %
-                (name, index, total, attempt))
+                (name, index, total, attempt), base)
             command = [
                 sys.executable, "-m", "pip", "install", "--no-input",
                 "--disable-pip-version-check", "--prefer-binary",
@@ -1402,14 +1430,20 @@ root.mainloop()
                             raise TimeoutError("pip superó 10 minutos")
                         if time.monotonic() >= next_message:
                             elapsed = int(time.monotonic() - start)
+                            observed = self._pip_observed_stage(log_path)
                             self._deps_status(key, token,
                                 "Descargando/instalando %s (%d/%d): %ds" %
-                                (name, index, total, elapsed))
+                                (name, index, total, elapsed),
+                                base + span * observed)
                             next_message = time.monotonic() + 2.0
                         time.sleep(0.2)
                     result = proc.returncode
                 if result == 0:
                     importlib.invalidate_caches()
+                    self._deps_status(
+                        key, token,
+                        "Paquete %d/%d instalado: %s" % (index, total, name),
+                        base + span)
                     return
                 tail = log_path.read_text(
                     encoding="utf-8", errors="replace")[-900:]
@@ -1431,19 +1465,25 @@ root.mainloop()
         meta["deps_token"] = token
         meta["state"] = "preparing"
         meta["message"] = "Comparando imports y dependencias..."
+        meta["deps_progress"] = 0
+        meta["deps_progress_visible"] = True
         def worker():
             try:
                 path = Path(filename).resolve()
                 missing = self._missing_tool_dependencies(tool, path)
+                self._deps_status(
+                    key, token,
+                    ("Faltan: " + ", ".join(missing)) if missing else
+                    "Todos los imports estan disponibles.", 5)
                 if missing:
-                    self._deps_status(
-                        key, token, "Faltan: " + ", ".join(missing))
                     # Pip modifica un entorno compartido: no ejecutar
                     # dos instalaciones simultáneamente.
                     with self.deps_lock:
                         missing = self._missing_tool_dependencies(tool, path)
                         if missing:
                             env = self._ensure_pip(key, token)
+                            self._deps_status(
+                                key, token, "Instalador pip listo.", 12)
                             for index, package in enumerate(missing, 1):
                                 # Otra wheel pudo traer esta dependencia como
                                 # transitiva: evitar instalaciones duplicadas.
@@ -1451,11 +1491,20 @@ root.mainloop()
                                     self._install_package(
                                         key, token, package, index,
                                         len(missing), env)
+                                else:
+                                    self._deps_status(
+                                        key, token,
+                                        "Dependencia disponible: " + package,
+                                        12.0 + index * 80.0 / len(missing))
+                            self._deps_status(
+                                key, token, "Verificando dependencias...", 95)
                             importlib.invalidate_caches()
                             missing = self._missing_tool_dependencies(tool, path)
                             if missing:
                                 raise RuntimeError(
                                     "Tras instalar faltan: " + ", ".join(missing))
+                self._deps_status(
+                    key, token, "Dependencias instaladas y verificadas.", 100)
                 self.tool_events.put(("deps_ready", key,
                     {"token": token, "filename": str(path)}))
             except Exception as error:
@@ -1613,6 +1662,7 @@ root.mainloop()
             "zoom": 1.0, "zoom_mode": "fit", "zoom_ready": False,
             "zoom_control": None, "zoom_status": None,
             "zoom_mtime": 0, "zoom_seq": 0,
+            "deps_progress": 0, "deps_progress_visible": True,
         }
         self.open_tabs[key] = meta
         self.top_tabs.append(key)
@@ -1653,6 +1703,8 @@ root.mainloop()
         meta["zoom_seq"] = 0
         meta["zoom"] = 1.0
         meta["zoom_mode"] = "fit"
+        meta["deps_progress_visible"] = False
+        meta["deps_progress"] = 0
         # Invalida notificaciones antiguas de preparacion.
         meta["deps_token"] = int(meta.get("deps_token", 0)) + 1
 
@@ -1751,10 +1803,18 @@ root.mainloop()
                 if action == "deps_status":
                     meta["state"] = "preparing"
                     meta["message"] = data["message"]
+                    if "progress" in data:
+                        # Nunca retrocede si pip necesita reintentar.
+                        meta["deps_progress"] = max(
+                            int(meta.get("deps_progress", 0)),
+                            min(100, int(data["progress"])))
+                    meta["deps_progress_visible"] = True
                 elif action == "deps_failed":
                     meta["state"] = "error"
                     meta["message"] = "Dependencias: " + data["message"]
                 else:
+                    meta["deps_progress"] = 100
+                    meta["deps_progress_visible"] = True
                     meta["message"] = "Dependencias listas. Iniciando..."
                     self._start_tool_process(key, data["filename"])
             dirty = True
@@ -1845,31 +1905,67 @@ root.mainloop()
         self._activate_tool_tab(key)
 
     def draw_tool_panel(self):
-        """Mostrar estado solo mientras la herramienta no esta integrada."""
+        """Estado de la herramienta y barra de avance real 0% - 100%."""
         meta = self.open_tabs.get(self.selected_top_tab)
         if not meta:
             return
-        w, _ = self.size
         if meta.get("embedded"):
             return
-        self.text(22, 85, self._ellipsize(meta["name"], w - 44, "label"),
+        w, h = self.size
+        compact = h < 255
+        title_y = 66 if compact else 85
+        status_y = 100 if compact else 119
+        self.text(22, title_y,
+                  self._ellipsize(meta["name"], max(80, w - 44), "label"),
                   "#173B50", "label")
         info = str(meta.get("message", ""))
-        line_width = max(100, w - 44)
-        # Mostrar instalacion y errores sin desbordar el ancho de la pestaña.
-        words = info.split()
+        limit = max(90, w - 44)
         rows = [""]
-        for word in words:
+        for word in info.split():
             candidate = (rows[-1] + " " + word).strip()
-            if rows[-1] and self.text_width(candidate, "tab") > line_width:
+            if rows[-1] and self.text_width(candidate, "tab") > limit:
                 rows.append(word)
             else:
                 rows[-1] = candidate
-        for index, row in enumerate(rows[:6]):
-            self.text(22, 119 + index * 21, self._ellipsize(
-                row, line_width, "tab"), "#546673", "tab")
+        # El progreso no puede tapar el footer, incluso en resoluciones bajas.
+        max_rows = 1 if compact else 6
+        shown = rows[:max_rows]
+        for index, row in enumerate(shown):
+            self.text(22, status_y + index * 21,
+                      self._ellipsize(row, limit, "tab"),
+                      "#546673", "tab")
+
+        bottom_of_status = status_y + (len(shown) - 1) * 21
+        next_y = bottom_of_status + 26
+        if meta.get("deps_progress_visible"):
+            progress = max(0, min(100, int(meta.get("deps_progress", 0))))
+            bar_x = 22
+            bar_width = max(90, min(w - 44, 640))
+            bar_height = 13
+            bar_y = max(bottom_of_status + 22, 136)
+            bar_y = min(bar_y, max(108, h - 58))
+            text_y = bar_y - 8
+
+            self.text(bar_x, text_y, "0%", "#576979", "caption")
+            label = "%d%%" % progress
+            self.text(bar_x + (bar_width - self.text_width(label, "label")) // 2,
+                      text_y, label, "#1D6684", "label")
+            label100 = "100%"
+            self.text(bar_x + bar_width - self.text_width(label100, "caption"),
+                      text_y, label100, "#576979", "caption")
+            self.rect(bar_x, bar_y, bar_width, bar_height, "#E7EEF3")
+            self.rect(bar_x, bar_y, bar_width, 1, "#B5C6D1")
+            self.rect(bar_x, bar_y + bar_height - 1, bar_width, 1, "#B5C6D1")
+            self.rect(bar_x, bar_y, 1, bar_height, "#B5C6D1")
+            self.rect(bar_x + bar_width - 1, bar_y, 1, bar_height, "#B5C6D1")
+            filled = int((bar_width - 2) * progress / 100)
+            if filled:
+                color = "#C44E4E" if meta.get("state") == "error" else "#1D6684"
+                self.rect(bar_x + 1, bar_y + 1, filled, bar_height - 2, color)
+            next_y = bar_y + 28
+
         if meta.get("state") in ("error", "ended"):
-            self.text(22, 140 + len(rows[:6]) * 21,
+            self.text(22, min(next_y, h - 53),
                       "Haz clic para reintentar", "#176684", "tab")
 
     def _click_tool_panel(self, x, y, button):
