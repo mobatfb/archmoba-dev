@@ -467,10 +467,11 @@ class AudioCutter(tk.Frame):
     def _on_space_key(self, event):
         if self._closing or not self._shortcut_active:
             return None
-        if self.app is not None:
-            if (getattr(self.app, "current_key", "home") == "home"
-                    or getattr(self.app, "current_tool_widget", None) is not self):
-                return None
+        # El bindtag ya limita este evento a los widgets de Audio Cutter.
+        # Evitar comprobar current_tool_widget: PTM puede exponer su contenedor
+        # mientras se construye o ajusta una pestaña integrada.
+        if self.app is not None and getattr(self.app, "current_key", None) == "home":
+            return None
         # Los campos de edición conservan Espacio. Los botones usan este atajo
         # antes de sus acciones estándar para no activar "Seleccionar audio".
         if isinstance(event.widget, (tk.Entry, ttk.Entry, tk.Text,
