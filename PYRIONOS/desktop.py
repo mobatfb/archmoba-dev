@@ -32,7 +32,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.38-imports-opcionales"
+APP_VERSION = "0.2.39-verificacion-remota-tools"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -1101,6 +1101,33 @@ root.after(50, wait_for_host)
 root.mainloop()
 '''
 
+    @staticmethod
+    def _embedded_tool_version(data):
+        """Comprueba la version escrita dentro del .py descargado."""
+        try:
+            tree = ast.parse(data.decode("utf-8-sig"))
+        except (SyntaxError, UnicodeError) as error:
+            raise ValueError("Python descargado invalido: " + str(error)) from error
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+                if any(isinstance(target, ast.Name) and
+                       target.id == "TOOL_VERSION" for target in node.targets):
+                    if isinstance(node.value.value, str):
+                        return node.value.value.strip()
+        return ""
+
+    @staticmethod
+    def _version_older(version, minimum):
+        """Comparacion simple de versiones con numeros separados por puntos."""
+        def parts(text):
+            match = re.match(r"^\d+(?:\.\d+)*", str(text or ""))
+            return [int(x) for x in match.group(0).split(".")] if match else None
+        left, right = parts(version), parts(minimum)
+        if left is None or right is None:
+            return False
+        count = max(len(left), len(right))
+        return (left + [0] * (count-len(left))) < (right + [0] * (count-len(right)))
+
     def _download_tool_async(self, tool, key, force_remote=False):
         meta = self.open_tabs.get(key)
         if not meta:
@@ -1116,7 +1143,8 @@ root.mainloop()
             try:
                 # Consultar la versión del guide: nunca ejecutar una copia antigua
                 # después de actualizar una herramienta en GitHub.
-                refresh = force_remote or not local.is_file()
+                refresh = (force_remote or tool["file_type"] == "py"
+                           or not local.is_file())
                 if not refresh:
                     try:
                         installed = version_file.read_text(encoding="utf-8").strip()
@@ -1125,20 +1153,37 @@ root.mainloop()
                         refresh = True
                 if refresh:
                     url = TOOLS_URL + tool["repo_path"]
+                    if tool["file_type"] == "py":
+                        url += "?pyrion_refresh=" + str(time.time_ns())
                     req = urllib.request.Request(url, headers={
-                        "User-Agent": "PYRIONOS/" + APP_VERSION})
+                        "User-Agent": "PYRIONOS/" + APP_VERSION,
+                        "Cache-Control": "no-cache, no-store",
+                        "Pragma": "no-cache"})
                     max_size = 15_000_000 if tool["file_type"] == "zip" else 5_000_000
                     with urllib.request.urlopen(req, timeout=18) as response:
                         data = response.read(max_size + 1)
                     if not data or len(data) > max_size:
                         raise ValueError("Tool vacia o demasiado grande")
+                    actual_version = (self._embedded_tool_version(data)
+                                      if tool["file_type"] == "py"
+                                      else requested_version)
+                    if (actual_version and requested_version and
+                            self._version_older(actual_version, requested_version)):
+                        raise RuntimeError(
+                            "GitHub devolvio la version %s de %s; "
+                            "el catalogo requiere %s. No se ejecutara una "
+                            "copia antigua." %
+                            (actual_version, tool["name"], requested_version))
                     local.parent.mkdir(parents=True, exist_ok=True)
                     tmp = local.with_suffix(local.suffix + ".tmp")
                     tmp.write_bytes(data)
                     tmp.replace(local)
                     version_tmp = version_file.with_suffix(version_file.suffix + ".tmp")
-                    version_tmp.write_text(requested_version, encoding="utf-8")
+                    version_tmp.write_text(actual_version or requested_version,
+                                           encoding="utf-8")
                     version_tmp.replace(version_file)
+                else:
+                    actual_version = requested_version
                 main = local
                 if tool["file_type"] == "zip":
                     folder = local.parent / "extracted"
@@ -1159,7 +1204,9 @@ root.mainloop()
                     if not main_name or ".." in Path(main_name).parts or not target.is_file():
                         raise ValueError("Archivo principal no encontrado en ZIP")
                     main = target
-                self.tool_events.put(("downloaded", key, str(main)))
+                self.tool_events.put(("downloaded", key, {
+                    "path": str(main), "version": actual_version or requested_version
+                }))
             except Exception as error:
                 self.tool_events.put(("failed", key, str(error)))
         threading.Thread(target=worker, daemon=True).start()
@@ -1929,8 +1976,10 @@ root.mainloop()
                 continue
             meta = self.open_tabs[key]
             if action == "downloaded":
-                # Primero validar imports + instalar paquetes. NO iniciar el .py.
-                self._prepare_tool_async(meta["tool"], key, data)
+                # Mostrar la version efectiva del archivo (no del guide local).
+                if data.get("version"):
+                    meta["tool"]["version"] = data["version"]
+                self._prepare_tool_async(meta["tool"], key, data["path"])
             elif action == "failed":
                 meta["state"] = "error"
                 meta["message"] = data

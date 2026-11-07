@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 
 TOOL_NAME = "Grabador de Pantalla"
 TOOL_DESCRIPTION = "Graba una region seleccionada de la pantalla y exporta video MP4."
-TOOL_VERSION = "1.0.1"
+TOOL_VERSION = "1.0.2"
 
 
 def _open_capture():
@@ -52,7 +52,7 @@ class ScreenRecorder(tk.Frame):
         self.after(150, self._poll)
 
     def _make_ui(self):
-        tk.Label(self, text="GRABADOR DE PANTALLA", bg="#101827", fg="#eff6ff",
+        tk.Label(self, text="GRABADOR DE PANTALLA  v" + TOOL_VERSION, bg="#101827", fg="#eff6ff",
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(20, 7))
         tk.Label(self, text="Selecciona un marco en pantalla y guardalo como MP4.",
                  bg="#101827", fg="#a9b8d0").pack(anchor="w", padx=20)
