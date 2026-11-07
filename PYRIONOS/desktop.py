@@ -149,6 +149,10 @@ class PyrionDesktop:
         self.flush = bind(x, "XFlush", I, P)
         self.pending = bind(x, "XPending", I, P)
         self.next_event = bind(x, "XNextEvent", I, P, C.POINTER(XEvent))
+        self.reparent_window = bind(x, "XReparentWindow", I, P, U, U, I, I)
+        self.unmap_window = bind(x, "XUnmapWindow", I, P, U)
+        self.map_raised = bind(x, "XMapRaised", I, P, U)
+        self.set_input_focus = bind(x, "XSetInputFocus", I, P, U, I, U)
         self.destroy_window = bind(x, "XDestroyWindow", I, P, U)
         self.dpy = self.open(None)
         if not self.dpy:
@@ -418,6 +422,309 @@ class PyrionDesktop:
             cursor += width + gap
         return result
 
+    @staticmethod
+    def _tk_launcher_source():
+        """Ejecuta una tool Tk en su propio proceso y publica su XID X11."""
+        return r'''#!/usr/bin/env python3
+import importlib.util
+import sys
+import traceback
+from pathlib import Path
+import tkinter as tk
+from tkinter import messagebox
+
+tool_path = Path(sys.argv[1]).resolve()
+xid_path = Path(sys.argv[2])
+root = tk.Tk()
+root.title("PYRIONOS - " + tool_path.stem.replace("_", " ").title())
+root.geometry("900x650")
+root.withdraw()
+
+class Bridge:
+    def __init__(self):
+        self.root = root
+    def show_dialog(self, title, message, kind="info", **kwargs):
+        func = (messagebox.showerror if kind == "error" else
+                messagebox.showwarning if kind == "warning" else
+                messagebox.showinfo)
+        return func(title, message, parent=root)
+    def set_tool_processing(self, active=True, key=None):
+        pass
+    def tool_processing(self, key=None):
+        class Context:
+            def __enter__(self): return self
+            def __exit__(self, *exc): return False
+        return Context()
+
+try:
+    sys.path.insert(0, str(tool_path.parent))
+    spec = importlib.util.spec_from_file_location("pyrion_tool_" + tool_path.stem, tool_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("No se puede cargar la herramienta")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    # Evitar bytecode desactualizado.
+    exec(compile(tool_path.read_bytes(), str(tool_path), "exec"), module.__dict__)
+    entry = None
+    for candidate in ("App", "create_tool", "create_app", "build_app", "build_ui"):
+        callable_entry = getattr(module, candidate, None)
+        if callable(callable_entry):
+            entry = callable_entry
+            break
+    if entry is None:
+        raise RuntimeError("Esta tool no expone App/create_tool; requiere adaptacion de PTM")
+    try:
+        widget = entry(root, Bridge())
+    except TypeError:
+        widget = entry(root)
+    if isinstance(widget, (tuple, list)):
+        widget = widget[0]
+    if isinstance(widget, tk.Widget):
+        if not widget.winfo_manager():
+            widget.pack(fill="both", expand=True)
+    root.deiconify()
+    root.update_idletasks()
+    root.update()
+    try:
+        xid = int(str(root.tk.call("wm", "frame", root._w)), 0)
+    except (ValueError, tk.TclError):
+        xid = int(root.winfo_id())
+    xid_path.write_text(str(xid), encoding="ascii")
+except Exception as error:
+    for child in root.winfo_children():
+        child.destroy()
+    tk.Label(root, text="No se pudo cargar la herramienta", fg="#B91C1C",
+             font=("Sans", 14, "bold")).pack(pady=20)
+    tk.Label(root, text=str(error), wraplength=700).pack(padx=20)
+    traceback.print_exc()
+    root.deiconify()
+    root.update_idletasks()
+    root.update()
+    try:
+        xid = int(str(root.tk.call("wm", "frame", root._w)), 0)
+    except (ValueError, tk.TclError):
+        xid = int(root.winfo_id())
+    xid_path.write_text(str(xid), encoding="ascii")
+root.mainloop()
+'''
+
+    def _download_tool_async(self, tool, key):
+        meta = self.open_tabs.get(key)
+        if not meta:
+            return
+        meta["state"] = "loading"
+        meta["message"] = "Descargando herramienta..."
+        local = self.cache_dir / "tools" / tool["key"] / Path(tool["repo_path"]).name
+        def worker():
+            try:
+                if not local.is_file():
+                    url = TOOLS_URL + tool["repo_path"]
+                    req = urllib.request.Request(url, headers={
+                        "User-Agent": "PYRIONOS/" + APP_VERSION})
+                    max_size = 15_000_000 if tool["file_type"] == "zip" else 5_000_000
+                    with urllib.request.urlopen(req, timeout=18) as response:
+                        data = response.read(max_size + 1)
+                    if not data or len(data) > max_size:
+                        raise ValueError("Tool vacia o demasiado grande")
+                    local.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = local.with_suffix(local.suffix + ".tmp")
+                    tmp.write_bytes(data)
+                    tmp.replace(local)
+                main = local
+                if tool["file_type"] == "zip":
+                    folder = local.parent / "extracted"
+                    folder.mkdir(exist_ok=True)
+                    with zipfile.ZipFile(local) as package:
+                        contents = package.infolist()
+                        if len(contents) > 100 or sum(e.file_size for e in contents) > 40_000_000:
+                            raise ValueError("ZIP demasiado grande")
+                        for entry in contents:
+                            parts = Path(entry.filename).parts
+                            if (not parts or entry.filename.startswith("/")
+                                    or any(p in ("..", "") for p in parts)
+                                    or (entry.external_attr >> 16) & 0o170000 == 0o120000):
+                                raise ValueError("Ruta insegura en ZIP")
+                        package.extractall(folder)
+                    main_name = tool.get("archivo_principal", "").strip()
+                    target = folder / main_name
+                    if not main_name or ".." in Path(main_name).parts or not target.is_file():
+                        raise ValueError("Archivo principal no encontrado en ZIP")
+                    main = target
+                self.tool_events.put(("downloaded", key, str(main)))
+            except Exception as error:
+                self.tool_events.put(("failed", key, str(error)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _open_tool(self, tool):
+        key = tool["key"]
+        self._record_tool_open(tool)
+        if key in self.open_tabs:
+            self._activate_tool_tab(key)
+            return
+        meta = {"name": tool["name"], "tool": tool, "state": "loading",
+                "message": "Preparando herramienta...", "process": None,
+                "xid": None, "embedded": False, "xid_file": None}
+        self.open_tabs[key] = meta
+        self.top_tabs.append(key)
+        self._activate_tool_tab(key)
+        self._download_tool_async(tool, key)
+
+    def _start_tool_process(self, key, local_file):
+        meta = self.open_tabs.get(key)
+        if not meta:
+            return
+        tool = meta["tool"]
+        try:
+            path = Path(local_file).resolve()
+            if not path.is_file() or path.suffix.lower() != ".py":
+                raise ValueError("Tool Python no valida")
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            meta["state"] = "starting"
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            logfile = self.cache_dir / ("tool_" + key + ".log")
+            output = logfile.open("ab")
+            try:
+                if str(tool.get("modo", "Integrado")).lower() == "externo":
+                    command = [sys.executable, str(path)]
+                    meta["message"] = "Herramienta abierta en ventana externa"
+                else:
+                    wrapper = self.cache_dir / "tk_launcher.py"
+                    wrapper.write_text(self._tk_launcher_source(), encoding="utf-8")
+                    xid_file = self.cache_dir / ("window_" + key + ".xid")
+                    xid_file.unlink(missing_ok=True)
+                    meta["xid_file"] = xid_file
+                    command = [sys.executable, str(wrapper), str(path), str(xid_file)]
+                    meta["message"] = "Abriendo herramienta dentro de la pestaña..."
+                meta["process"] = subprocess.Popen(command, cwd=str(path.parent),
+                                                    env=env, stdout=output, stderr=subprocess.STDOUT)
+            finally:
+                output.close()
+            meta["state"] = "running"
+        except (OSError, ValueError) as error:
+            meta["state"] = "error"
+            meta["message"] = str(error)
+        self.paint()
+
+    def _attach_tool_window(self, key, xid):
+        meta = self.open_tabs.get(key)
+        if not meta or meta.get("embedded"):
+            return
+        try:
+            self.reparent_window(self.dpy, xid, self.window, 6, 51)
+            w, h = self.size
+            self.resize(self.dpy, xid, 6, 51, max(120, w-12), max(100, h-59))
+            meta["xid"] = xid
+            meta["embedded"] = True
+            meta["message"] = "Herramienta lista"
+            if self.selected_top_tab == key:
+                self.map_raised(self.dpy, xid)
+                self.set_input_focus(self.dpy, xid, 1, 0)
+            else:
+                self.unmap_window(self.dpy, xid)
+            self.flush(self.dpy)
+        except Exception as error:
+            meta["state"] = "error"
+            meta["message"] = "No se pudo integrar ventana X11: " + str(error)
+
+    def _poll_tools(self):
+        dirty = False
+        while True:
+            try:
+                action, key, data = self.tool_events.get_nowait()
+            except queue.Empty:
+                break
+            if key not in self.open_tabs:
+                continue
+            if action == "downloaded":
+                self._start_tool_process(key, data)
+            elif action == "failed":
+                self.open_tabs[key]["state"] = "error"
+                self.open_tabs[key]["message"] = data
+            dirty = True
+        for key, meta in tuple(self.open_tabs.items()):
+            process = meta.get("process")
+            if not process:
+                continue
+            if meta.get("xid_file") and not meta.get("embedded"):
+                try:
+                    xid = int(meta["xid_file"].read_text(encoding="ascii").strip())
+                    if xid:
+                        self._attach_tool_window(key, xid)
+                        dirty = True
+                except (OSError, ValueError):
+                    pass
+            if process.poll() is not None and meta["state"] != "closed":
+                if meta.get("state") not in ("error", "ended"):
+                    meta["state"] = "ended"
+                    meta["message"] = ("Herramienta finalizada. Puedes cerrar la pestaña "
+                                       "o abrirla de nuevo.")
+                    dirty = True
+        return dirty
+
+    def _activate_tool_tab(self, key):
+        if key != "PYRIONOS" and key not in self.open_tabs:
+            return
+        old = self.open_tabs.get(self.selected_top_tab)
+        if old and old.get("embedded") and old.get("xid"):
+            self.unmap_window(self.dpy, old["xid"])
+        self.selected_top_tab = key
+        self.search_focus = False
+        self.paint()
+        meta = self.open_tabs.get(key)
+        if meta and meta.get("embedded") and meta.get("xid"):
+            self.map_raised(self.dpy, meta["xid"])
+            self.set_input_focus(self.dpy, meta["xid"], 1, 0)
+        elif key == "PYRIONOS":
+            self.set_input_focus(self.dpy, self.window, 1, 0)
+        self.flush(self.dpy)
+
+    def _close_tool_tab(self, key):
+        meta = self.open_tabs.pop(key, None)
+        if not meta:
+            return
+        if key in self.top_tabs:
+            self.top_tabs.remove(key)
+        if meta.get("embedded") and meta.get("xid"):
+            self.unmap_window(self.dpy, meta["xid"])
+        process = meta.get("process")
+        if process and process.poll() is None:
+            process.terminate()
+        if self.selected_top_tab == key:
+            self.selected_top_tab = "PYRIONOS"
+            self.set_input_focus(self.dpy, self.window, 1, 0)
+        self.paint()
+
+    def draw_tool_panel(self):
+        """Estado de la herramienta, visible hasta que su ventana esta lista."""
+        meta = self.open_tabs.get(self.selected_top_tab)
+        if not meta:
+            return
+        w, h = self.size
+        self.text(22, 85, self._ellipsize(meta["name"], w - 44, "label"),
+                  "#173B50", "label")
+        state = meta.get("message", "Preparando...")
+        if not meta.get("embedded"):
+            self.text(22, 119, self._ellipsize(state, w - 44, "body"),
+                      "#546673", "body")
+            if meta.get("state") in ("error", "ended"):
+                self.text(22, 151, "Haz clic aqui para reintentar", "#176684", "tab")
+
+    def _click_tool_panel(self, x, y, button):
+        if button != 1 or not (115 <= y <= 160):
+            return
+        meta = self.open_tabs.get(self.selected_top_tab)
+        if meta and meta.get("state") in ("error", "ended"):
+            self._download_tool_async(meta["tool"], self.selected_top_tab)
+            self.paint()
+
+    def _resize_tool_windows(self):
+        w, h = self.size
+        for meta in self.open_tabs.values():
+            if meta.get("embedded") and meta.get("xid"):
+                self.resize(self.dpy, meta["xid"], 6, 51,
+                            max(120, w - 12), max(100, h - 59))
+
     def _load_user_state(self):
         try:
             state = json.loads(self.state_file.read_text(encoding="utf-8"))
@@ -669,10 +976,11 @@ class PyrionDesktop:
         x, y, height, gap = 13, 16, 25, 7
         boxes = []
         for title in self.top_tabs:
+            label = self.open_tabs[title]["name"] if title in self.open_tabs else title
             remaining = width - x - 13
             if remaining < 52:
                 break
-            natural = self.text_width(title, "tab") + 22
+            natural = self.text_width(label, "tab") + 25
             tab_width = min(max(58, natural), 170, remaining)
             boxes.append((title, x, y, tab_width, height))
             x += tab_width + gap
@@ -700,7 +1008,7 @@ class PyrionDesktop:
                 self.rect(x + width - corner + i, y + i,
                           corner - i, 1, "#FF1B1B")
 
-            label = title
+            label = self.open_tabs[title]["name"] if title in self.open_tabs else title
             # Acortar títulos que exceden el ancho de la pestaña.
             while label and self.text_width(label, "tab") > width - 18:
                 label = label[:-1]
@@ -1032,6 +1340,7 @@ class PyrionDesktop:
                     self.size=new
                     self.resize(self.dpy,self.window,0,0,*new)
                     self.paint()
+                    self._resize_tool_windows()
                 self.lower(self.dpy,self.window)
                 last_check=now
             if self.pending(self.dpy):
@@ -1052,6 +1361,8 @@ class PyrionDesktop:
         self.running=False
 
     def close(self):
+        for key in list(self.open_tabs):
+            self._close_tool_tab(key)
         if self.dpy:
             if self.pixmap:self.pixmap_free(self.dpy,self.pixmap)
             if self.logo_gc:self.gc_free(self.dpy,self.logo_gc)
