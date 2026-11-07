@@ -30,7 +30,7 @@ except ImportError as exc:
     ) from exc
 
 
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.11"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 REPOSITORY = "mobatfb/archmoba-dev"
@@ -209,47 +209,37 @@ class TVAppManager:
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
 
-        header = tk.Frame(root, bg="#ffffff", height=66)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-        tk.Label(
-            header, text="TVAPP", bg="#ffffff", fg="#111827",
-            font=("Segoe UI", 17, "bold")
-        ).pack(side="left", padx=(22, 18))
-        self.version_label = tk.Label(
-            header, text="Version: --", bg="#ffffff", fg="#475467",
-            font=("Segoe UI", 11)
+        # Barra unica superior: estado y refresco. Sin titulo ni pie inferiores.
+        topbar = tk.Frame(root, bg="#ffffff", height=54)
+        topbar.pack(side="top", fill="x")
+        topbar.pack_propagate(False)
+        self.status_var = tk.StringVar(value="Comprobando dependencias...")
+        self.status_label = tk.Label(
+            topbar, textvariable=self.status_var,
+            bg="#ffffff", fg="#475467", anchor="w", justify="left",
+            font=("Segoe UI", 9), wraplength=294,
         )
-        self.version_label.pack(side="left")
-        self.update_button = tk.Button(
-            header, text="Actualizar", command=self.check_for_updates,
-            bg="#14b8a6", fg="#082f2b", activebackground="#5eead4",
-            font=("Segoe UI", 10, "bold"), relief="flat",
-            cursor="hand2", padx=20, pady=8
-        )
-        self.update_button.pack(side="right", padx=20)
+        self.status_label.pack(side="left", fill="both", expand=True,
+                               padx=(9, 1), pady=5)
 
-        self.body = tk.Frame(root, bg="white")
-        self.body.pack(fill="both", expand=True, padx=12, pady=(12, 0))
+        self.update_button = tk.Button(
+            topbar, text="↻", command=self.check_for_updates,
+            bg="#ffffff", fg="#087f91",
+            activebackground="#e9f6f7", activeforeground="#075e6e",
+            font=("Segoe UI Symbol", 20, "bold"),
+            relief="flat", bd=0, highlightthickness=0,
+            cursor="hand2", width=2, padx=3, pady=0,
+        )
+        self.update_button.pack(side="right", padx=(1, 10), pady=4)
+
+        # El contenido de tvapp.py utiliza todo el espacio restante.
+        self.body = tk.Frame(root, bg="#ffffff")
+        self.body.pack(side="top", fill="both", expand=True)
         tk.Label(
-            self.body, text="Cargando TVAPP...", bg="white",
+            self.body, text="Cargando TVAPP...", bg="#ffffff",
             fg="#667085", font=("Segoe UI", 15)
         ).place(relx=0.5, rely=0.5, anchor="center")
 
-        self.status_var = tk.StringVar(value="Comprobando dependencias locales...")
-        tk.Label(
-            root, textvariable=self.status_var, anchor="w",
-            bg="#ffffff", fg="#475467", font=("Segoe UI", 9),
-            padx=14, pady=9
-        ).pack(fill="x")
-
-        if TVAPP_PATH.exists():
-            try:
-                self.version_label.config(
-                    text=f"Version: {version_from_source(TVAPP_PATH.read_text(encoding='utf-8'))}"
-                )
-            except (OSError, ValueError, SyntaxError):
-                pass
         self.root.after(100, self._process_events)
         self._start("startup")
 
@@ -260,7 +250,7 @@ class TVAppManager:
         if self.busy:
             return
         self.busy = True
-        self.update_button.config(state="disabled", text="Procesando...")
+        self.update_button.config(state="disabled", text="⟳")
         threading.Thread(target=self._worker, args=(action,), daemon=True).start()
 
     def check_for_updates(self) -> None:
@@ -446,7 +436,6 @@ class TVAppManager:
         for old in old_widgets:
             old.destroy()
         widget.pack(fill="both", expand=True)
-        self.version_label.config(text=f"Version: {version_from_source(source)}")
 
     def _apply(self, remote: str, version: str, commit: str) -> None:
         previous = TVAPP_PATH.read_text(encoding="utf-8") if TVAPP_PATH.exists() else None
@@ -492,7 +481,7 @@ class TVAppManager:
                         messagebox.showerror("TVAPP", str(value), parent=self.root)
                     elif kind == "done":
                         self.busy = False
-                        self.update_button.config(state="normal", text="Actualizar")
+                        self.update_button.config(state="normal", text="↻")
                 except Exception as exc:
                     self.status_var.set("Error: " + str(exc))
                     messagebox.showerror("TVAPP", str(exc), parent=self.root)
