@@ -137,6 +137,9 @@ jobs:
           assert "Modo servidor externo" in source
           assert "self._draw_mode_choice(w,h)" in source
           assert '"Todos": "index.m3u"' in source
-          assert 'VERSION = "1.0.16"' in source
-          print("TVAPP v1.0.16: modos y menús independientes OK")
+          assert 'VERSION = "1.0.17"' in source
+          assert "xcmas.ddns.net" not in source
+          assert 'self.xc_server = tk.StringVar(value="")' in source
+          assert "Servidor (ej.: http://servidor:puerto)" in source
+          print("TVAPP v1.0.17: acceso externo sin servidor predefinido OK")
           PY

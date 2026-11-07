@@ -7,7 +7,7 @@ Todo funciona con tkinter y recursos integrados sin archivos graficos externos.
 import os
 import tkinter as tk
 
-VERSION = "1.0.16"
+VERSION = "1.0.17"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 HERO_BOTTOM = 222  # El contenido empieza mas arriba, sin la barra de estado simulada
@@ -121,7 +121,6 @@ SOURCES = {
 }
 GROUPED_SOURCES = {"Categorías", "Países", "Idiomas"}
 XTREAM_SECTIONS = ("Xtream TV", "Xtream Cine", "Xtream Series")
-XTREAM_SERVER_DEFAULT = "http://xcmas.ddns.net:80"
 XTREAM_MAX_RESPONSE = 32 * 1024 * 1024
 
 CACHE_LIFETIME = 60 * 60  # 1 hora
@@ -341,8 +340,8 @@ class TVSports(tk.Frame):
         self.xtream_session = None
         self.xtream_auth_token = 0
         self.xtream_connecting = False
-        self.xtream_note = "Introduce usuario y contraseña para conectar."
-        self.xc_server = tk.StringVar(value=XTREAM_SERVER_DEFAULT)
+        self.xtream_note = "Introduce servidor, usuario y contraseña para conectar."
+        self.xc_server = tk.StringVar(value="")
         self.xc_user = tk.StringVar()
         self.xc_password = tk.StringVar()
         self.series_items = None
@@ -416,7 +415,7 @@ class TVSports(tk.Frame):
                  font=("Segoe UI", 14, "bold"), anchor="w").pack(
                      fill="x", padx=9, pady=(4, 0))
         for title, variable, secret in (
-            ("Servidor", self.xc_server, False),
+            ("Servidor (ej.: http://servidor:puerto)", self.xc_server, False),
             ("Usuario", self.xc_user, False),
             ("Contraseña", self.xc_password, True),
         ):
@@ -525,6 +524,10 @@ class TVSports(tk.Frame):
 
     def _connect_xtream(self):
         if self.xtream_connecting:
+            return
+        if not self.xc_server.get().strip():
+            self.xtream_note = "Introduce la URL del servidor (ej.: http://servidor:puerto)."
+            self.redraw()
             return
         try:
             server = normalize_xtream_server(self.xc_server.get())
