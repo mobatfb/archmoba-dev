@@ -16,7 +16,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.20-fondo-blanco"
+APP_VERSION = "0.2.21-logo-pyrionos"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -174,17 +174,61 @@ class PyrionDesktop:
         bw = max(260, min(500, w - 40))
         bh = 44
         x = (w - bw) // 2
-        # Centrar el bloque completo (titulo, buscador y categorias).
-        y = max(52, (h - 40) // 2)
+        # Centrar verticalmente el conjunto: logo (101), espacio (14), buscador (44) y categorias.
+        y = max(115, (h + 40) // 2)
         return x, y, bw, bh
+
+    def draw_pyrionos_logo(self, x, y):
+        """Logo estilo PTM dibujado localmente con primitivas X11."""
+        lw, main_h, footer_h = 226, 82, 19
+        self.rect(x, y, lw, main_h, "#1D6684")
+        # Borde oscuro de la tarjeta.
+        self.rect(x, y, lw, 1, "#161616")
+        self.rect(x, y, 1, main_h, "#161616")
+        self.rect(x + lw - 1, y, 1, main_h, "#161616")
+        self.rect(x, y + main_h - 1, lw, 1, "#161616")
+
+        # Esquina roja diagonal superior derecha.
+        corner = 29
+        for i in range(corner):
+            self.rect(x + lw - corner + i, y + i, corner - i, 1,
+                      "#FF1B1B")
+
+        # Letras grandes de PYRIONOS, sin depender de fuentes externas.
+        glyphs = {
+            "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+            "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
+            "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+            "I": ("11111", "00100", "00100", "00100", "00100", "00100", "11111"),
+            "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+            "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+            "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+        }
+        title = "PYRIONOS"
+        scale, spacing = 4, 4
+        glyph_w = 5 * scale
+        text_w = len(title) * (glyph_w + spacing) - spacing
+        tx = x + (lw - text_w) // 2
+        ty = y + (main_h - 7 * scale) // 2
+        for ch in title:
+            for row, bits in enumerate(glyphs[ch]):
+                for col, bit in enumerate(bits):
+                    if bit == "1":
+                        self.rect(tx + col * scale, ty + row * scale,
+                                  scale, scale, "#FFFFFF")
+            tx += glyph_w + spacing
+
+        # Franja inferior roja y leyenda, como el icono de referencia.
+        self.rect(x, y + main_h, lw, footer_h, "#FF1B1B")
+        self.text(x + 8, y + main_h + 13,
+                  "Buscador y lanzador de herramientas", "#FFFFFF")
 
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
-        # Elementos dibujados directamente sobre el fondo remoto.
-        title = "PYRIONOS"
-        self.text(x + (bw - len(title) * 6) // 2, y - 15,
-                  title, "#111111")
+        # Logo centrado encima del buscador sobre el fondo blanco.
+        logo_w, logo_h, gap = 226, 101, 14
+        self.draw_pyrionos_logo(x + (bw - logo_w) // 2, y - logo_h - gap)
 
         # Borde fino con cuatro esquinas redondeadas, sin circulos.
         self.rect(x + 6, y, bw - 12, 1, "#111111")
