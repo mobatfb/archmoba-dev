@@ -27,7 +27,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.31-zoom-auto-ptm"
+APP_VERSION = "0.2.32-ajuste-ancho"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -601,6 +601,7 @@ class ZoomController:
         self.styles = []
         self.last_size = (self.width, self.height)
         self.refresh_job = None
+        self._adjusting = False
         root.update_idletasks()
         area = viewport.get("host") or widget
         self.natural_w = max(1, int(area.winfo_reqwidth()),
@@ -680,6 +681,18 @@ class ZoomController:
                     }
                 except Exception:
                     pass
+            if isinstance(w, ttk.Treeview):
+                try:
+                    show = str(w.cget("show"))
+                    cols = (["#0"] if "tree" in show else [])
+                    cols += list(w.tk.splitlist(w.cget("columns")))
+                    data["tree_columns"] = {
+                        col: (int(w.column(col, "width")),
+                              int(w.column(col, "minwidth")))
+                        for col in cols
+                    }
+                except (tk.TclError, ValueError, TypeError):
+                    pass
             self.state.append(data)
 
     @staticmethod
@@ -748,6 +761,15 @@ class ZoomController:
                     w.configure(style=styling["custom"])
                 except Exception:
                     pass
+            if info.get("tree_columns"):
+                for col, (base_width, base_minimum) in info["tree_columns"].items():
+                    try:
+                        w.column(col,
+                            width=max(30, int(round(base_width * factor))),
+                            minwidth=max(16, int(round(base_minimum * factor))),
+                            stretch=True)
+                    except tk.TclError:
+                        pass
             mgr = info["manager"]
             changes = {}
             for attr, value in info["pad"].items():
@@ -767,35 +789,137 @@ class ZoomController:
         self.factor = factor
         root.update_idletasks()
 
-    def manage_scroll(self):
-        if not viewport:
-            return
+    def _available_viewport(self):
+        """Tamaño real disponible: no confundir ancho solicitado con ancho visible."""
         canvas = viewport["canvas"]
+        actual_w, actual_h = canvas.winfo_width(), canvas.winfo_height()
+        width = self.width if actual_w < 100 else min(self.width, actual_w)
+        height = self.height if actual_h < 90 else min(self.height, actual_h)
+        return max(90, width - 4), max(80, height - 4)
+
+    def _fit_treeview_columns(self):
+        """Distribuir las columnas Treeview dentro de su ancho real."""
+        for info in self.state:
+            columns = info.get("tree_columns")
+            if not columns:
+                continue
+            widget = info["widget"]
+            try:
+                if not widget.winfo_exists():
+                    continue
+                available = max(70, widget.winfo_width() - 12)
+                sizes = {
+                    col: max(30, int(round(base_w * self.factor)))
+                    for col, (base_w, _minimum) in columns.items()
+                }
+                total = sum(sizes.values())
+                if total <= 0:
+                    continue
+                ratio = min(1.0, available / total)
+                for col, orig in sizes.items():
+                    target = max(28, int(round(orig * ratio)))
+                    widget.column(col, width=target, minwidth=24, stretch=True)
+            except (tk.TclError, ValueError, TypeError):
+                continue
+
+    def _layout_overflow(self, width, height):
+        """Detecta controles realmente fuera del viewport, como hace PTM."""
         host = viewport["host"]
-        hbar, vbar = viewport["hbar"], viewport["vbar"]
-        width = max(1, self.width - 3)
-        height = max(1, self.height - 3)
+        host.update_idletasks()
+        req_w = max(1, int(host.winfo_reqwidth()))
+        req_h = max(1, int(host.winfo_reqheight()))
+        if not root.winfo_ismapped():
+            return req_w > width + 8, req_h > height + 8
         try:
-            host.update_idletasks()
-            need_w = max(width, int(host.winfo_reqwidth()))
-            need_h = max(height, int(host.winfo_reqheight()))
-            overflow_x = need_w > width + 5
-            overflow_y = need_h > height + 5
-            if overflow_x:
-                hbar.grid(row=1, column=0, sticky="ew")
-            else:
-                hbar.grid_remove()
-                need_w = width
-            if overflow_y:
-                vbar.grid(row=0, column=1, sticky="ns")
-            else:
-                vbar.grid_remove()
-                need_h = height
-            canvas.itemconfigure(viewport["window"],
-                                 width=need_w, height=need_h)
-            canvas.configure(scrollregion=(0, 0, need_w, need_h))
+            origin_x = host.winfo_rootx()
+            origin_y = host.winfo_rooty()
         except tk.TclError:
-            pass
+            return req_w > width + 8, req_h > height + 8
+        x_over = False
+        y_over = False
+        # Los lienzos y areas desplazables ya administran su propio contenido.
+        exempt = (tk.Canvas, tk.Text, tk.Listbox, tk.Scrollbar,
+                  ttk.Scrollbar, tk.Scale, ttk.Scale, ttk.Treeview)
+        interactive = (tk.Button, ttk.Button, tk.Entry, ttk.Entry,
+                       tk.Checkbutton, ttk.Checkbutton,
+                       tk.Radiobutton, ttk.Radiobutton, ttk.Combobox)
+        stack = [self.widget]
+        while stack:
+            child = stack.pop()
+            try:
+                stack.extend(child.winfo_children())
+                if isinstance(child, exempt) or not child.winfo_ismapped():
+                    continue
+                cw = int(child.winfo_width())
+                ch = int(child.winfo_height())
+                if cw <= 1 or ch <= 1:
+                    continue
+                dx = int(child.winfo_rootx()) - origin_x
+                dy = int(child.winfo_rooty()) - origin_y
+                if dx + cw > width + 5 or dx < -5:
+                    x_over = True
+                if dy + ch > height + 5:
+                    y_over = True
+                if isinstance(child, interactive):
+                    if int(child.winfo_reqwidth()) > cw + 12:
+                        x_over = True
+                    if int(child.winfo_reqheight()) > ch + 10:
+                        y_over = True
+            except tk.TclError:
+                continue
+            if x_over and y_over:
+                break
+        return x_over, y_over
+
+    def manage_scroll(self, fallback=False):
+        """Primero fuerza el ancho disponible; scroll solo si no hay alternativa."""
+        if not viewport:
+            return False, False
+        canvas, host = viewport["canvas"], viewport["host"]
+        hbar, vbar = viewport["hbar"], viewport["vbar"]
+        try:
+            hbar.grid_remove()
+            vbar.grid_remove()
+            canvas.update_idletasks()
+            width, height = self._available_viewport()
+            # Este es el cambio clave: no imponer host.winfo_reqwidth().
+            canvas.itemconfigure(viewport["window"], width=width, height=height)
+            canvas.configure(scrollregion=(0, 0, width, height))
+            host.update_idletasks()
+            if self.mode == "fit":
+                self._fit_treeview_columns()
+                host.update_idletasks()
+            over_x, over_y = self._layout_overflow(width, height)
+            if not fallback:
+                return over_x, over_y
+
+            # Recalcular al habilitar el scroll vertical, que consume ancho.
+            if over_y:
+                vbar.grid(row=0, column=1, sticky="ns")
+                canvas.update_idletasks()
+                width, height = self._available_viewport()
+                canvas.itemconfigure(viewport["window"], width=width,
+                                     height=height)
+                host.update_idletasks()
+                if self.mode == "fit":
+                    self._fit_treeview_columns()
+                over_x, _ = self._layout_overflow(width, height)
+
+            # Horizontal únicamente para interfaces de tamaño fijo imposible
+            # de ajustar. No habilitarlo por la anchura solicitada de host.
+            if over_x:
+                hbar.grid(row=1, column=0, sticky="ew")
+                canvas.update_idletasks()
+                width, height = self._available_viewport()
+
+            requested_w = max(width, int(host.winfo_reqwidth())) if over_x else width
+            requested_h = max(height, int(host.winfo_reqheight())) if over_y else height
+            canvas.itemconfigure(viewport["window"],
+                                 width=requested_w, height=requested_h)
+            canvas.configure(scrollregion=(0, 0, requested_w, requested_h))
+            return over_x, over_y
+        except (tk.TclError, ValueError, TypeError):
+            return False, False
 
     def write_status(self):
         info = {"zoom": round(self.factor, 4), "mode": self.mode,
@@ -809,33 +933,61 @@ class ZoomController:
             pass
 
     def update(self, action, width=None, height=None, value=None):
-        if width is not None:
-            self.width = max(120, int(width))
-        if height is not None:
-            self.height = max(100, int(height))
-        self.last_size = (self.width, self.height)
-        if action == "fit":
-            self.mode = "fit"
-        elif action == "zoom":
-            self.mode = "manual"
-        if self.mode == "fit":
-            factor = min(1.0, self.width / self.natural_w,
-                         self.height / self.natural_h)
-            if factor < 0.995:
-                factor *= 0.97
-            factor = max(0.50, min(1.0, factor))
-        elif action == "zoom" and value is not None:
-            factor = max(0.50, min(1.25, float(value)))
-        else:
-            factor = self.factor
-        if abs(factor - self.factor) > 0.002:
-            self.scale(factor)
-        self.factor = factor
-        self.manage_scroll()
-        self.write_status()
+        """Comprime el layout al ancho disponible antes de ofrecer scroll."""
+        if self._adjusting:
+            return
+        self._adjusting = True
+        try:
+            if width is not None:
+                self.width = max(120, int(width))
+            if height is not None:
+                self.height = max(100, int(height))
+            self.last_size = (self.width, self.height)
+            if action == "fit":
+                self.mode = "fit"
+            elif action == "zoom":
+                self.mode = "manual"
+
+            if self.mode == "fit":
+                factor = min(1.0, self.width / self.natural_w,
+                             self.height / self.natural_h)
+                if factor < 0.995:
+                    factor *= 0.97
+                factor = max(0.50, min(1.0, factor))
+            elif action == "zoom" and value is not None:
+                factor = max(0.50, min(1.25, float(value)))
+            else:
+                factor = self.factor
+
+            for attempt in range(8):
+                if abs(factor - self.factor) > 0.002:
+                    self.scale(factor)
+                self.factor = factor
+                over_x, over_y = self.manage_scroll(fallback=False)
+
+                # Igual que PTM: reducir varias veces antes de mostrar barras.
+                if (self.mode == "fit" and (over_x or over_y)
+                        and factor > 0.501 and attempt < 7):
+                    reduced = max(0.50, factor * 0.92)
+                    if abs(reduced - factor) > 0.002:
+                        factor = reduced
+                        continue
+                break
+
+            self.manage_scroll(fallback=True)
+            self.write_status()
+        finally:
+            self._adjusting = False
 
     def on_viewport_size(self, event):
-        size = (max(1, int(event.width)), max(1, int(event.height)))
+        """Solo recalcular al cambiar la ventana, no por las scrollbars."""
+        if self._adjusting:
+            return
+        try:
+            size = (max(120, int(root.winfo_width())),
+                    max(100, int(root.winfo_height())))
+        except tk.TclError:
+            return
         if abs(size[0] - self.width) < 6 and abs(size[1] - self.height) < 6:
             return
         if self.refresh_job:
@@ -844,7 +996,7 @@ class ZoomController:
             except tk.TclError:
                 pass
         self.refresh_job = root.after(
-            110, lambda: self.update("resize", size[0], size[1]))
+            100, lambda: self.update("resize", size[0], size[1]))
 
     def poll_commands(self):
         try:
@@ -924,7 +1076,9 @@ def wait_for_host():
     if ready_path.exists():
         root.deiconify()
         root.update_idletasks()
-        zoom.write_status()
+        # La geometria real existe despues del reparent/map: recalcularla.
+        root.after(80, lambda: zoom.update(
+            "resize", root.winfo_width(), root.winfo_height()))
         zoom.poll_commands()
         return
     root.after(50, wait_for_host)
