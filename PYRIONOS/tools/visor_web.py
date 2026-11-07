@@ -6,6 +6,8 @@ import json
 import os
 import queue
 import secrets
+import shutil
+import tempfile
 import subprocess
 import sys
 import threading
@@ -21,11 +23,12 @@ TOOL_DESCRIPTION = (
     "Navegador web real integrado en PTM con Edge WebView2 en Windows y "
     "Qt WebEngine en Linux, JavaScript, CSS, imagenes, historial, favoritos y zoom."
 )
-TOOL_VERSION = "2.0.10"
+TOOL_VERSION = "2.0.11"
 
 HOME_URL = "https://www.google.com/"
 SEARCH_URL = "https://www.google.com/search?q={query}"
 CHILD_FLAG = "--ptm-webview-child"
+ENGINE_NAME = "Edge WebView2" if os.name == "nt" else "Qt WebEngine"
 
 
 # ---------------------------------------------------------------------------
@@ -39,18 +42,32 @@ def _child_send(conn, payload):
         return False
 
 
-def _browser_child(port, auth_hex, window_title, start_url, storage_dir):
+def _browser_child(endpoint, auth_hex, window_title, start_url, storage_dir):
     conn = None
     window = None
 
     try:
-        conn = Client(
-            ("127.0.0.1", int(port)),
-            authkey=bytes.fromhex(auth_hex),
-        )
+        # Linux no necesita loopback IPv4: el control del navegador utiliza
+        # un socket UNIX local privado. Windows conserva TCP localhost.
+        if os.name == "nt":
+            address = ("127.0.0.1", int(endpoint))
+            conn = Client(address, family="AF_INET",
+                          authkey=bytes.fromhex(auth_hex))
+        else:
+            conn = Client(str(endpoint), family="AF_UNIX",
+                          authkey=bytes.fromhex(auth_hex))
         _child_send(conn, {"type": "starting"})
 
-        webview = importlib.import_module("webview")
+        try:
+            webview = importlib.import_module("webview")
+        except ImportError as exc:
+            hint = ("python -m pip install 'pywebview[qt]>=6.2.1'"
+                    if os.name != "nt" else
+                    "python -m pip install 'pywebview>=6.2.1'")
+            raise RuntimeError(
+                "Falta el motor web para " + sys.platform +
+                ". Instálalo en el Python que ejecuta Visor Web: " + hint
+            ) from exc
 
         window = webview.create_window(
             window_title,
@@ -526,13 +543,18 @@ def _browser_child(port, auth_hex, window_title, start_url, storage_dir):
                 if os.name == "nt"
                 else "Qt WebEngine"
             )
+            guidance = (
+                " En Linux se requiere el motor Qt WebEngine: "
+                "python -m pip install 'pywebview[qt]>=6.2.1'"
+                if os.name != "nt" else ""
+            )
             _child_send(
                 conn,
                 {
                     "type": "error",
                     "message": (
                         f"No se pudo iniciar {engine_name}. "
-                        + str(exc)
+                        + str(exc) + guidance
                     ),
                 },
             )
@@ -573,6 +595,7 @@ class WebViewerTool(ttk.Frame):
 
         self._alive = True
         self._listener = None
+        self._ipc_dir = None
         self._conn = None
         self._process = None
         self._ipc_queue = queue.Queue()
@@ -829,7 +852,7 @@ class WebViewerTool(ttk.Frame):
 
         self.placeholder_status = ttk.Label(
             center,
-            text="Iniciando Edge WebView2...",
+            text="Iniciando " + ENGINE_NAME + "...",
         )
         self.placeholder_status.pack()
 
@@ -851,7 +874,7 @@ class WebViewerTool(ttk.Frame):
 
         ttk.Label(
             status,
-            text="Edge WebView2 · proceso aislado",
+            text=ENGINE_NAME + " · proceso aislado",
         ).grid(row=0, column=1, padx=(8, 0))
 
         self.address_var.trace_add(
@@ -901,17 +924,26 @@ class WebViewerTool(ttk.Frame):
         )
 
         try:
-            self._listener = Listener(
-                ("127.0.0.1", 0),
-                authkey=self._authkey,
-            )
-            port = int(self._listener.address[1])
+            if os.name == "nt":
+                self._listener = Listener(
+                    ("127.0.0.1", 0), family="AF_INET",
+                    authkey=self._authkey)
+                endpoint = str(self._listener.address[1])
+            else:
+                # No depende de 127.0.0.1 ni de tener 'lo' configurado.
+                # mkdtemp crea un directorio privado (0700).
+                self._ipc_dir = Path(tempfile.mkdtemp(prefix="pyrion-web-"))
+                endpoint = str(self._ipc_dir / "control.sock")
+                if len(os.fsencode(endpoint)) >= 100:
+                    raise OSError("Ruta del socket UNIX demasiado larga")
+                self._listener = Listener(
+                    endpoint, family="AF_UNIX", authkey=self._authkey)
 
             command = [
                 self._windowless_python(),
                 str(Path(__file__).resolve()),
                 CHILD_FLAG,
-                str(port),
+                endpoint,
                 self._authkey.hex(),
                 self._child_title,
                 self._last_url or HOME_URL,
@@ -923,6 +955,12 @@ class WebViewerTool(ttk.Frame):
                 kwargs["creationflags"] = int(
                     getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 )
+            else:
+                # El navegador se incrusta mediante XReparentWindow: usar X11.
+                env = os.environ.copy()
+                if env.get("DISPLAY"):
+                    env["QT_QPA_PLATFORM"] = "xcb"
+                kwargs["env"] = env
 
             self._process = subprocess.Popen(
                 command,
@@ -938,6 +976,18 @@ class WebViewerTool(ttk.Frame):
             ).start()
 
         except Exception as exc:
+            if self._listener is not None:
+                try:
+                    self._listener.close()
+                except OSError:
+                    pass
+                self._listener = None
+            if self._ipc_dir is not None:
+                try:
+                    shutil.rmtree(self._ipc_dir)
+                except OSError:
+                    pass
+                self._ipc_dir = None
             self._show_browser_error(
                 "No se pudo iniciar el proceso del navegador: " + str(exc)
             )
@@ -976,7 +1026,7 @@ class WebViewerTool(ttk.Frame):
                     {
                         "type": "error",
                         "message": (
-                            "No se pudo conectar con WebView2: "
+                            "No se pudo conectar con " + ENGINE_NAME + ": "
                             + str(exc)
                         ),
                     }
@@ -2022,6 +2072,14 @@ class WebViewerTool(ttk.Frame):
         self._webview_hwnd = 0
         self._render_hwnd = 0
         self._embedded = False
+        # Retirar el socket local al cerrar o reiniciar el navegador.
+        ipc_dir = self._ipc_dir
+        self._ipc_dir = None
+        if ipc_dir is not None:
+            try:
+                shutil.rmtree(ipc_dir)
+            except OSError:
+                pass
 
     # ---------- Ciclo PTM ----------
     def on_show(self):

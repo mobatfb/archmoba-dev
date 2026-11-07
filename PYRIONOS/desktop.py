@@ -27,7 +27,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.32-ajuste-ancho"
+APP_VERSION = "0.2.33-visor-web-linux"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -1094,9 +1094,20 @@ root.mainloop()
         meta["state"] = "loading"
         meta["message"] = "Descargando herramienta..."
         local = self.cache_dir / "tools" / self._tool_safe_id(key) / Path(tool["repo_path"]).name
+        version_file = local.with_name(local.name + ".version")
+        requested_version = str(tool.get("version", "")).strip()
         def worker():
             try:
-                if force_remote or not local.is_file():
+                # Consultar la versión del guide: nunca ejecutar una copia antigua
+                # después de actualizar una herramienta en GitHub.
+                refresh = force_remote or not local.is_file()
+                if not refresh:
+                    try:
+                        installed = version_file.read_text(encoding="utf-8").strip()
+                        refresh = installed != requested_version
+                    except OSError:
+                        refresh = True
+                if refresh:
                     url = TOOLS_URL + tool["repo_path"]
                     req = urllib.request.Request(url, headers={
                         "User-Agent": "PYRIONOS/" + APP_VERSION})
@@ -1109,6 +1120,9 @@ root.mainloop()
                     tmp = local.with_suffix(local.suffix + ".tmp")
                     tmp.write_bytes(data)
                     tmp.replace(local)
+                    version_tmp = version_file.with_suffix(version_file.suffix + ".tmp")
+                    version_tmp.write_text(requested_version, encoding="utf-8")
+                    version_tmp.replace(version_file)
                 main = local
                 if tool["file_type"] == "zip":
                     folder = local.parent / "extracted"
