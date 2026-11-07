@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import ctypes as C
 import ctypes.util
+import hashlib
 import csv
 import io
 import json
 import queue
 import re
 import subprocess
-import tempfile
 import threading
 import unicodedata
 import urllib.request
@@ -27,7 +27,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.28-ptm-buscador-pestanas"
+APP_VERSION = "0.2.29-tools-embebidas"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -147,6 +147,7 @@ class PyrionDesktop:
         self.foreground_gc = bind(x, "XSetForeground", I, P, P, U)
         self.lookup = bind(x, "XLookupString", I, C.POINTER(XKeyEvent), C.c_char_p, I, C.POINTER(U), P)
         self.flush = bind(x, "XFlush", I, P)
+        self.sync = bind(x, "XSync", I, P, I)
         self.pending = bind(x, "XPending", I, P)
         self.next_event = bind(x, "XNextEvent", I, P, C.POINTER(XEvent))
         self.reparent_window = bind(x, "XReparentWindow", I, P, U, U, I, I)
@@ -425,112 +426,189 @@ class PyrionDesktop:
 
     @staticmethod
     def _tk_launcher_source():
-        """Ejecuta una tool Tk en su propio proceso y publica su XID X11."""
+        """Inicia una herramienta Tk oculta hasta integrarla en la pestaña X11."""
         return r'''#!/usr/bin/env python3
+import ctypes as C
+import ctypes.util
 import importlib.util
 import inspect
 import sys
 import traceback
 from pathlib import Path
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
 tool_path = Path(sys.argv[1]).resolve()
 xid_path = Path(sys.argv[2])
+ready_path = Path(sys.argv[3])
 root = tk.Tk()
-root.title("PYRIONOS - " + tool_path.stem.replace("_", " ").title())
+root.withdraw()                       # Nunca mostrar una ventana externa.
+root.overrideredirect(True)            # Sin decoraciones del gestor de ventanas.
+root.configure(bg="#FFFFFF")
 root.geometry("900x650")
-root.withdraw()
 
 class Bridge:
     def __init__(self):
         self.root = root
+
     def show_dialog(self, title, message, kind="info", **kwargs):
-        func = (messagebox.showerror if kind == "error" else
+        show = (messagebox.showerror if kind == "error" else
                 messagebox.showwarning if kind == "warning" else
                 messagebox.showinfo)
-        return func(title, message, parent=root)
+        return show(title, message, parent=root)
+
     def set_tool_processing(self, active=True, key=None):
-        pass
+        return None
+
     def tool_processing(self, key=None):
         class Context:
             def __enter__(self): return self
             def __exit__(self, *exc): return False
         return Context()
 
-try:
+def run_tool():
     sys.path.insert(0, str(tool_path.parent))
-    spec = importlib.util.spec_from_file_location("pyrion_tool_" + tool_path.stem, tool_path)
+    spec = importlib.util.spec_from_file_location(
+        "pyrion_embedded_" + tool_path.stem, tool_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("No se puede cargar la herramienta")
+        raise RuntimeError("No se puede abrir el modulo Python")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    # Evitar bytecode desactualizado.
     exec(compile(tool_path.read_bytes(), str(tool_path), "exec"), module.__dict__)
+
     entry = None
-    for candidate in ("App", "Application", "create_tool",
-                      "create_app", "build_app", "build_ui"):
-        callable_entry = getattr(module, candidate, None)
-        if callable(callable_entry):
-            entry = callable_entry
+    for name in ("App", "Application", "create_tool", "create_app",
+                 "build_app", "build_ui"):
+        candidate = getattr(module, name, None)
+        if callable(candidate):
+            entry = candidate
             break
     if entry is None:
         for candidate in vars(module).values():
-            if (inspect.isclass(candidate)
-                    and candidate.__module__ == module.__name__
-                    and issubclass(candidate, tk.Frame)):
-                entry = candidate
-                break
-    if entry is None:
-        raise RuntimeError("No se detecto una interfaz embebible (App/Application/create_tool)")
-    params = inspect.signature(entry).parameters.values()
-    positional = [p for p in params
-                  if p.kind in (inspect.Parameter.POSITIONAL_ONLY,
-                                inspect.Parameter.POSITIONAL_OR_KEYWORD)]
-    if len(positional) >= 2:
-        widget = entry(root, Bridge())
-    elif len(positional) == 1:
-        widget = entry(root)
-    else:
-        widget = entry()
-    if isinstance(widget, (tuple, list)):
-        widget = widget[0]
-    if isinstance(widget, tk.Widget):
+            if not inspect.isclass(candidate):
+                continue
+            if candidate.__module__ != module.__name__:
+                continue
+            try:
+                if issubclass(candidate, (tk.Frame, ttk.Frame)):
+                    entry = candidate
+                    break
+            except (TypeError, AttributeError):
+                continue
+
+    if entry is not None:
+        signature = inspect.signature(entry)
+        params = tuple(signature.parameters.values())
+        positional = [p for p in params if p.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+        varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL
+                      for p in params)
+        if varargs or len(positional) >= 2:
+            widget = entry(root, Bridge())
+        elif len(positional) == 1:
+            widget = entry(root)
+        else:
+            widget = entry()
+        if isinstance(widget, (tuple, list)):
+            widget = widget[0] if widget else None
+        if not isinstance(widget, tk.Widget):
+            raise RuntimeError("La herramienta no devolvio un widget Tk.")
         if not widget.winfo_manager():
             widget.pack(fill="both", expand=True)
-    root.deiconify()
-    root.update_idletasks()
-    root.update()
+        return widget
+
+    # Programas sencillos que solo exponen main() tambien se ejecutan dentro.
+    main = getattr(module, "main", None)
+    if not callable(main):
+        raise RuntimeError("Esta herramienta requiere interfaz Tk o adaptador.")
+    real_tk = tk.Tk
+    real_mainloop = tk.mainloop
+    original_loop = root.mainloop
     try:
-        xid = int(str(root.tk.call("wm", "frame", root._w)), 0)
-    except (ValueError, tk.TclError):
-        xid = int(root.winfo_id())
-    xid_path.write_text(str(xid), encoding="ascii")
+        tk.Tk = lambda *args, **kwargs: root
+        tk.mainloop = lambda *args, **kwargs: None
+        root.mainloop = lambda *args, **kwargs: None
+        main()
+    finally:
+        tk.Tk = real_tk
+        tk.mainloop = real_mainloop
+        root.mainloop = original_loop
+    return root
+
+def get_outer_xid():
+    """Obtener la ventana Tk superior real, no el hijo de contenido."""
+    lib = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+    lib.XOpenDisplay.argtypes = [C.c_char_p]
+    lib.XOpenDisplay.restype = C.c_void_p
+    lib.XDefaultRootWindow.argtypes = [C.c_void_p]
+    lib.XDefaultRootWindow.restype = C.c_ulong
+    lib.XQueryTree.argtypes = [
+        C.c_void_p, C.c_ulong, C.POINTER(C.c_ulong),
+        C.POINTER(C.c_ulong), C.POINTER(C.POINTER(C.c_ulong)),
+        C.POINTER(C.c_uint)]
+    lib.XQueryTree.restype = C.c_int
+    lib.XFree.argtypes = [C.c_void_p]
+    lib.XFree.restype = C.c_int
+    lib.XCloseDisplay.argtypes = [C.c_void_p]
+    lib.XCloseDisplay.restype = C.c_int
+    dpy = lib.XOpenDisplay(None)
+    if not dpy:
+        raise RuntimeError("DISPLAY X11 no disponible")
+    try:
+        root_id = int(lib.XDefaultRootWindow(dpy))
+        wid = int(root.winfo_id())
+        for _ in range(16):
+            actual_root = C.c_ulong()
+            parent = C.c_ulong()
+            children = C.POINTER(C.c_ulong)()
+            count = C.c_uint()
+            if not lib.XQueryTree(dpy, wid, C.byref(actual_root),
+                                  C.byref(parent), C.byref(children),
+                                  C.byref(count)):
+                break
+            if children:
+                lib.XFree(children)
+            if parent.value == root_id or parent.value == 0:
+                break
+            wid = int(parent.value)
+        return wid
+    finally:
+        lib.XCloseDisplay(dpy)
+
+try:
+    run_tool()
 except Exception as error:
+    traceback.print_exc()
     for child in root.winfo_children():
         child.destroy()
-    tk.Label(root, text="No se pudo cargar la herramienta", fg="#B91C1C",
-             font=("Sans", 14, "bold")).pack(pady=20)
-    tk.Label(root, text=str(error), wraplength=700).pack(padx=20)
-    traceback.print_exc()
-    root.deiconify()
-    root.update_idletasks()
-    root.update()
-    try:
-        xid = int(str(root.tk.call("wm", "frame", root._w)), 0)
-    except (ValueError, tk.TclError):
-        xid = int(root.winfo_id())
-    xid_path.write_text(str(xid), encoding="ascii")
+    tk.Label(root, text="No se pudo cargar la herramienta",
+             fg="#BD2020", font=("DejaVu Sans", 14, "bold")).pack(pady=24)
+    tk.Label(root, text=str(error), fg="#374151", wraplength=650,
+             justify="left").pack(padx=20)
+
+root.update_idletasks()
+root.update()
+xid = get_outer_xid()
+xid_path.write_text(str(xid), encoding="ascii")
+
+def wait_for_host():
+    if ready_path.exists():
+        root.deiconify()   # Ahora su padre es la pestaña, no la pantalla.
+        root.update_idletasks()
+        return
+    root.after(50, wait_for_host)
+
+root.after(50, wait_for_host)
 root.mainloop()
 '''
-
     def _download_tool_async(self, tool, key, force_remote=False):
         meta = self.open_tabs.get(key)
         if not meta:
             return
         meta["state"] = "loading"
         meta["message"] = "Descargando herramienta..."
-        local = self.cache_dir / "tools" / tool["key"] / Path(tool["repo_path"]).name
+        local = self.cache_dir / "tools" / self._tool_safe_id(key) / Path(tool["repo_path"]).name
         def worker():
             try:
                 if force_remote or not local.is_file():
@@ -571,77 +649,138 @@ root.mainloop()
                 self.tool_events.put(("failed", key, str(error)))
         threading.Thread(target=worker, daemon=True).start()
 
+    def _tool_view_rect(self):
+        """Área útil: bajo las pestañas; nunca cubre la barra superior."""
+        w, h = self.size
+        return 6, 51, max(120, w - 12), max(100, h - 58)
+
+    def _new_tool_host(self):
+        """Cada pestaña posee su propia ventana contenedora hija de X11."""
+        px, py, pw, ph = self._tool_view_rect()
+        return self.new_window(self.dpy, self.window, px, py, pw, ph,
+                               0, 0, self._allocate("#FFFFFF"))
+
+    @staticmethod
+    def _tool_safe_id(key):
+        return hashlib.sha256(str(key).encode("utf-8")).hexdigest()[:20]
+
+    def _tool_files(self, key):
+        label = self._tool_safe_id(key)
+        return (self.cache_dir / ("window_" + label + ".xid"),
+                self.cache_dir / ("window_" + label + ".ready"),
+                self.cache_dir / ("tool_" + label + ".log"))
+
     def _open_tool(self, tool):
+        """Abrir una herramienta de guide.csv dentro de su pestaña."""
         key = tool["key"]
         self._record_tool_open(tool)
         if key in self.open_tabs:
             self._activate_tool_tab(key)
             return
-        meta = {"name": tool["name"], "tool": tool, "state": "loading",
-                "message": "Preparando herramienta...", "process": None,
-                "xid": None, "embedded": False, "xid_file": None}
+        meta = {
+            "name": tool["name"], "tool": tool, "state": "loading",
+            "message": "Preparando herramienta...", "process": None,
+            "xid": None, "embedded": False,
+            "xid_file": None, "ready_file": None,
+            "host": self._new_tool_host(), "log_file": None,
+        }
         self.open_tabs[key] = meta
         self.top_tabs.append(key)
         self._activate_tool_tab(key)
         self._download_tool_async(tool, key)
 
+    def _stop_tool_runtime(self, meta, destroy_host=True):
+        """Finalizar solo el proceso de esta pestaña, sin afectar otras."""
+        host = meta.get("host")
+        if host and self.dpy:
+            self.unmap_window(self.dpy, host)
+        process = meta.get("process")
+        if process and process.poll() is None:
+            try:
+                process.terminate()
+            except OSError:
+                pass
+        if destroy_host and host and self.dpy:
+            self.destroy_window(self.dpy, host)
+            meta["host"] = None
+        for file_key in ("xid_file", "ready_file"):
+            path = meta.get(file_key)
+            if path:
+                try:
+                    Path(path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+        meta["process"] = None
+        meta["xid"] = None
+        meta["embedded"] = False
+        meta["xid_file"] = None
+        meta["ready_file"] = None
+
     def _start_tool_process(self, key, local_file):
         meta = self.open_tabs.get(key)
         if not meta:
             return
-        tool = meta["tool"]
         try:
             path = Path(local_file).resolve()
             if not path.is_file() or path.suffix.lower() != ".py":
-                raise ValueError("Tool Python no valida")
+                raise ValueError("No es un archivo Python ejecutable")
+            if not meta.get("host"):
+                meta["host"] = self._new_tool_host()
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            xid_file, ready_file, logfile = self._tool_files(key)
+            for marker in (xid_file, ready_file):
+                marker.unlink(missing_ok=True)
+            meta.update({
+                "xid_file": xid_file, "ready_file": ready_file,
+                "log_file": logfile, "state": "starting",
+                "message": "Iniciando Python dentro de la pestaña...",
+                "xid": None, "embedded": False,
+            })
+            wrapper = self.cache_dir / "tk_launcher.py"
+            wrapper.write_text(self._tk_launcher_source(), encoding="utf-8")
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
-            meta["state"] = "starting"
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            logfile = self.cache_dir / ("tool_" + key + ".log")
-            output = logfile.open("ab")
-            try:
-                if str(tool.get("modo", "Integrado")).lower() == "externo":
-                    command = [sys.executable, str(path)]
-                    meta["message"] = "Herramienta abierta en ventana externa"
-                else:
-                    wrapper = self.cache_dir / "tk_launcher.py"
-                    wrapper.write_text(self._tk_launcher_source(), encoding="utf-8")
-                    xid_file = self.cache_dir / ("window_" + key + ".xid")
-                    xid_file.unlink(missing_ok=True)
-                    meta["xid_file"] = xid_file
-                    command = [sys.executable, str(wrapper), str(path), str(xid_file)]
-                    meta["message"] = "Abriendo herramienta dentro de la pestaña..."
-                meta["process"] = subprocess.Popen(command, cwd=str(path.parent),
-                                                    env=env, stdout=output, stderr=subprocess.STDOUT)
-            finally:
-                output.close()
+            command = [sys.executable, str(wrapper), str(path),
+                       str(xid_file), str(ready_file)]
+            # Tambien las tools marcadas "Externo" usan su pestaña PYRIONOS.
+            with logfile.open("ab") as output:
+                meta["process"] = subprocess.Popen(
+                    command, cwd=str(path.parent), env=env,
+                    stdout=output, stderr=subprocess.STDOUT)
             meta["state"] = "running"
+            meta["started_at"] = time.monotonic()
         except (OSError, ValueError) as error:
             meta["state"] = "error"
             meta["message"] = str(error)
         self.paint()
 
     def _attach_tool_window(self, key, xid):
+        """Reubicar el top-level Tk REAL dentro del host de su pestaña."""
         meta = self.open_tabs.get(key)
-        if not meta or meta.get("embedded"):
+        if not meta or meta.get("embedded") or not meta.get("host"):
             return
+        host = meta["host"]
+        _, _, width, height = self._tool_view_rect()
+        self.reparent_window(self.dpy, xid, host, 0, 0)
+        self.resize(self.dpy, xid, 0, 0, width, height)
+        # La herramienta solo puede verse a traves de su ventana contenedora.
+        self.map(self.dpy, xid)
+        meta["xid"] = xid
+        meta["embedded"] = True
+        meta["state"] = "ready"
+        meta["message"] = "Herramienta integrada en su pestaña"
+        if self.selected_top_tab == key:
+            self.map_raised(self.dpy, host)
+            self.sync(self.dpy, 0)
+            self.set_input_focus(self.dpy, xid, 1, 0)
+        else:
+            self.unmap_window(self.dpy, host)
+        self.flush(self.dpy)
+        # El proceso Tk estaba oculto; puede mostrarse solo tras este aviso.
         try:
-            self.reparent_window(self.dpy, xid, self.window, 6, 51)
-            w, h = self.size
-            self.resize(self.dpy, xid, 6, 51, max(120, w-12), max(100, h-59))
-            meta["xid"] = xid
-            meta["embedded"] = True
-            meta["message"] = "Herramienta lista"
-            if self.selected_top_tab == key:
-                self.map_raised(self.dpy, xid)
-                self.set_input_focus(self.dpy, xid, 1, 0)
-            else:
-                self.unmap_window(self.dpy, xid)
-            self.flush(self.dpy)
-        except Exception as error:
-            meta["state"] = "error"
-            meta["message"] = "No se pudo integrar ventana X11: " + str(error)
+            meta["ready_file"].write_text("ready", encoding="ascii")
+        except OSError:
+            pass
 
     def _poll_tools(self):
         dirty = False
@@ -665,33 +804,40 @@ root.mainloop()
             if meta.get("xid_file") and not meta.get("embedded"):
                 try:
                     xid = int(meta["xid_file"].read_text(encoding="ascii").strip())
-                    if xid:
+                    if xid > 0 and process.poll() is None:
                         self._attach_tool_window(key, xid)
                         dirty = True
                 except (OSError, ValueError):
                     pass
-            if process.poll() is not None and meta["state"] != "closed":
-                if meta.get("state") not in ("error", "ended"):
-                    meta["state"] = "ended"
-                    meta["message"] = ("Herramienta finalizada. Puedes cerrar la pestaña "
-                                       "o abrirla de nuevo.")
-                    dirty = True
+            if process.poll() is not None and meta.get("state") not in ("error", "ended"):
+                meta["state"] = "ended"
+                error_info = ""
+                if not meta.get("embedded") and meta.get("log_file"):
+                    try:
+                        log = meta["log_file"].read_text(
+                            encoding="utf-8", errors="replace")
+                        error_info = log.strip().splitlines()[-1][:140]
+                    except (OSError, IndexError):
+                        pass
+                meta["message"] = error_info or "La herramienta se ha cerrado"
+                dirty = True
         return dirty
 
     def _activate_tool_tab(self, key):
         if key != "PYRIONOS" and key not in self.open_tabs:
             return
         old = self.open_tabs.get(self.selected_top_tab)
-        if old and old.get("embedded") and old.get("xid"):
-            self.unmap_window(self.dpy, old["xid"])
+        if old and old.get("host"):
+            self.unmap_window(self.dpy, old["host"])
         self.selected_top_tab = key
         self.tab_menu = None
         self.search_focus = False
         self.paint()
-        meta = self.open_tabs.get(key)
-        if meta and meta.get("embedded") and meta.get("xid"):
-            self.map_raised(self.dpy, meta["xid"])
-            self.set_input_focus(self.dpy, meta["xid"], 1, 0)
+        current = self.open_tabs.get(key)
+        if current and current.get("embedded") and current.get("host"):
+            self.map_raised(self.dpy, current["host"])
+            self.sync(self.dpy, 0)
+            self.set_input_focus(self.dpy, current["xid"], 1, 0)
         elif key == "PYRIONOS":
             self.set_input_focus(self.dpy, self.window, 1, 0)
         self.flush(self.dpy)
@@ -702,47 +848,56 @@ root.mainloop()
             return
         if key in self.top_tabs:
             self.top_tabs.remove(key)
-        if self.tab_menu and self.tab_menu["key"] == key:
+        if self.tab_menu and self.tab_menu.get("key") == key:
             self.tab_menu = None
-        if meta.get("embedded") and meta.get("xid"):
-            self.unmap_window(self.dpy, meta["xid"])
-        process = meta.get("process")
-        if process and process.poll() is None:
-            process.terminate()
+        self._stop_tool_runtime(meta)
         if self.selected_top_tab == key:
             self.selected_top_tab = "PYRIONOS"
             self.set_input_focus(self.dpy, self.window, 1, 0)
         self.paint()
 
+    def _reload_tool_tab(self, key):
+        meta = self.open_tabs.get(key)
+        if not meta:
+            return
+        self._stop_tool_runtime(meta)
+        meta["host"] = self._new_tool_host()
+        meta["state"] = "loading"
+        meta["message"] = "Recargando desde GitHub..."
+        self._download_tool_async(meta["tool"], key, force_remote=True)
+        self._activate_tool_tab(key)
+
     def draw_tool_panel(self):
-        """Estado de la herramienta, visible hasta que su ventana esta lista."""
+        """Mostrar estado solo mientras la herramienta no esta integrada."""
         meta = self.open_tabs.get(self.selected_top_tab)
         if not meta:
             return
-        w, h = self.size
+        w, _ = self.size
+        if meta.get("embedded"):
+            return
         self.text(22, 85, self._ellipsize(meta["name"], w - 44, "label"),
                   "#173B50", "label")
-        state = meta.get("message", "Preparando...")
-        if not meta.get("embedded"):
-            self.text(22, 119, self._ellipsize(state, w - 44, "body"),
-                      "#546673", "body")
-            if meta.get("state") in ("error", "ended"):
-                self.text(22, 151, "Haz clic aqui para reintentar", "#176684", "tab")
+        self.text(22, 119, self._ellipsize(meta.get("message", ""),
+                  w - 44, "body"), "#546673", "body")
+        if meta.get("state") in ("error", "ended"):
+            self.text(22, 151, "Haz clic aqui para reintentar", "#176684", "tab")
 
     def _click_tool_panel(self, x, y, button):
         if button != 1 or not (115 <= y <= 160):
             return
         meta = self.open_tabs.get(self.selected_top_tab)
         if meta and meta.get("state") in ("error", "ended"):
-            self._download_tool_async(meta["tool"], self.selected_top_tab)
-            self.paint()
+            self._reload_tool_tab(self.selected_top_tab)
 
     def _resize_tool_windows(self):
-        w, h = self.size
+        _, _, width, height = self._tool_view_rect()
+        x, y, _, _ = self._tool_view_rect()
         for meta in self.open_tabs.values():
+            host = meta.get("host")
+            if host:
+                self.resize(self.dpy, host, x, y, width, height)
             if meta.get("embedded") and meta.get("xid"):
-                self.resize(self.dpy, meta["xid"], 6, 51,
-                            max(120, w - 12), max(100, h - 59))
+                self.resize(self.dpy, meta["xid"], 0, 0, width, height)
 
     def _load_user_state(self):
         try:
@@ -1028,11 +1183,12 @@ root.mainloop()
                 self.rect(x + width - corner + i, y + i,
                           corner - i, 1, "#FF1B1B")
 
-            label = self.open_tabs[title]["name"] if title in self.open_tabs else title
-            # Acortar títulos que exceden el ancho de la pestaña.
+            full_label = self.open_tabs[title]["name"] if title in self.open_tabs else title
+            label = full_label
+            # Acortar solo cuando el texto REAL supera el espacio disponible.
             while label and self.text_width(label, "tab") > width - 18:
                 label = label[:-1]
-            if label != title and len(label) > 1:
+            if label != full_label and len(label) > 1:
                 label = label[:-1] + "…"
             self.text(x + 9, y + 17, label, fg, "tab")
 
@@ -1106,7 +1262,7 @@ root.mainloop()
             if choice == 0:
                 self._toggle_favorite(meta["tool"])
             elif choice == 1:
-                self._download_tool_async(meta["tool"], key, force_remote=True)
+                self._reload_tool_tab(key)
             else:
                 self._close_tool_tab(key)
                 return True
@@ -1272,8 +1428,8 @@ root.mainloop()
                 elif title != "PYRIONOS" and button == 3:
                     # Ocultar la ventana embebida para que el menu X11 quede visible.
                     active = self.open_tabs.get(self.selected_top_tab)
-                    if active and active.get("embedded") and active.get("xid"):
-                        self.unmap_window(self.dpy, active["xid"])
+                    if active and active.get("host"):
+                        self.unmap_window(self.dpy, active["host"])
                     self.tab_menu = {"key": title,
                                      "x": max(2, min(x, self.size[0]-182)),
                                      "y": max(42, min(y, self.size[1]-94))}
