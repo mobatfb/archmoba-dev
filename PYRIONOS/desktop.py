@@ -4,8 +4,8 @@
 
 Interfaz de boceto: pestañas, búsqueda y aplicaciones no realizan acciones.
 Solo el botón Cerrar responde al ratón y finaliza el escritorio.
-El fondo, el logotipo central y el icono superior son tres imagenes PNG
-descargadas desde GitHub. Se usan solo en RAM; no hay cache en disco.
+El fondo se descarga como PNG desde GitHub y se usa solo en RAM.
+Los espacios del icono superior y del logotipo central quedan vacios.
 Si una imagen no se descarga, se informa del error: no se imita con dibujos.
 
 Python estandar + ctypes + libX11; libXft es opcional para texto UTF-8.
@@ -27,11 +27,9 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.12-icono-mejorado"
+APP_VERSION = "0.2.13-sin-iconos"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
-LOGO_URL = SERVER + "pyrion-logo.png"
-ICON_URL = SERVER + "pyrion-icono-v2.png"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -295,16 +293,13 @@ class PyrionDesktop:
         self.running = True
         self.close_bounds = None  # x, y, ancho, alto del único botón activo.
         self.background = None
-        self.logo = None
-        self.icono = None
         self._load_assets()
         self._init_fonts()
 
     def _load_assets(self):
-        assets = (("background", BACKGROUND_URL),
-                  ("logo", LOGO_URL), ("icono", ICON_URL))
-        # Las tres descargas se realizan en paralelo; no se toca X11 en los hilos.
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        assets = (("background", BACKGROUND_URL),)
+        # Solo descargamos el fondo; no se cargan iconos ni logotipos.
+        with ThreadPoolExecutor(max_workers=1) as pool:
             futures = [pool.submit(fetch_png, url) for _, url in assets]
             for (name, url), future in zip(assets, futures):
                 try:
@@ -525,9 +520,7 @@ class PyrionDesktop:
         self.round(margin+1, bar_y+3, w-2*margin, bar_h, 23, "#F3F6F9")
         self.round(margin, bar_y, w-2*margin, bar_h, 23, "#FFFFFF", "#DCE5EE")
         brand_y = bar_y+23
-        # Icono superior: imagen independiente obtenida del repositorio.
-        if self.icono:
-            self._image(self.icono, margin+31, bar_y+22, 40, 40)
+        # Espacio del icono superior libre, sin imagen ni sustituto.
         self.text("PYRION", margin+79, brand_y+22, "#283342", "brand")
         os_x = margin + 79 + self.text_width("PYRION", "brand")+7
         self.text("OS", os_x, brand_y+22, "#25BEF0", "brand")
@@ -584,12 +577,10 @@ class PyrionDesktop:
         self.line(cross_x-5, cross_y-5, cross_x+5, cross_y+5, "#AE4357")
         self.line(cross_x+5, cross_y-5, cross_x-5, cross_y+5, "#AE4357")
         self.text("Cerrar", cx + 25, cy + ch//2 + 5, "#95384C", "small")
-        # Logotipo central: recurso de GitHub, independiente del icono y fondo.
+        # Area del logotipo central libre: solo queda visible el fondo.
         c = w//2
         logo_side = min(118, max(75, w//11))
         logo_top = int(h*.335)
-        if self.logo:
-            self._image(self.logo,c-logo_side//2,logo_top,logo_side,logo_side)
         title_y=logo_top+logo_side+47
         a,b="PYRION"," OS"
         total=self.text_width(a,"title")+self.text_width(b,"title")
@@ -610,27 +601,6 @@ class PyrionDesktop:
         self.copy(self.dpy,self.pixmap,self.window,self.gc,0,0,w,h,0,0)
         self.flush(self.dpy)
 
-    def _set_window_icon(self):
-        """Anunciar al gestor X11 el mismo icono PNG descargado de GitHub."""
-        if not self.icono:
-            return
-        iw, ih, channels, pixels = self.icono
-        if iw * ih > 65536:
-            return
-        icon_atom = self.atom(self.dpy, b"_NET_WM_ICON", 0)
-        cardinal = self.atom(self.dpy, b"CARDINAL", 0)
-        if not icon_atom or not cardinal:
-            return
-        values = (U * (iw * ih + 2))()
-        values[0], values[1] = iw, ih
-        for index in range(iw * ih):
-            offset = index * channels
-            r, g, b = pixels[offset:offset + 3]
-            a = pixels[offset + 3] if channels == 4 else 255
-            values[index + 2] = (a << 24) | (r << 16) | (g << 8) | b
-        self.change_prop(self.dpy, self.window, icon_atom, cardinal, 32, 0,
-                         C.cast(values, C.POINTER(C.c_ubyte)), len(values))
-
     def create(self):
         w,h=self.screen_w(self.dpy,self.screen),self.screen_h(self.dpy,self.screen)
         self.size=(w,h)
@@ -646,7 +616,6 @@ class PyrionDesktop:
             self.change_prop(self.dpy,self.window,atom,4,32,0,
                              C.cast(C.byref(value),C.POINTER(C.c_ubyte)),1)
         self.name(self.dpy,self.window,b"PYRION OS - Boceto sin logica")
-        self._set_window_icon()
         self.select(self.dpy,self.window,(1<<15)|(1<<17)|(1<<2))
         self.gc=self.gc_create(self.dpy,self.window,0,None)
         self.map(self.dpy,self.window)
@@ -713,8 +682,7 @@ def main():
     if "--check" in sys.argv[1:]:
         try:
             C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
-            print("OK: PYRION X11 disponible. Fondo:", BACKGROUND_URL,
-                  "Logo:", LOGO_URL, "Icono:", ICON_URL)
+            print("OK: PYRION X11 disponible. Fondo:", BACKGROUND_URL)
             return 0
         except OSError as error:
             print("ERROR:",error,file=sys.stderr)
