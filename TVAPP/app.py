@@ -138,19 +138,19 @@ class TVAppManager:
         pos_y = max(0, (self.root.winfo_screenheight() - 800) // 2)
         self.root.geometry(f"400x800+{pos_x}+{pos_y}")
         self.root.resizable(False, False)
-        self.root.configure(bg="#f3f6fa")
+        self.root.configure(bg="#ffffff")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
 
-        header = tk.Frame(root, bg="#15243b", height=66)
+        header = tk.Frame(root, bg="#ffffff", height=66)
         header.pack(fill="x")
         header.pack_propagate(False)
         tk.Label(
-            header, text="TVAPP", bg="#15243b", fg="white",
+            header, text="TVAPP", bg="#ffffff", fg="#111827",
             font=("Segoe UI", 17, "bold")
         ).pack(side="left", padx=(22, 18))
         self.version_label = tk.Label(
-            header, text="Version: --", bg="#15243b", fg="#c8d8ec",
+            header, text="Version: --", bg="#ffffff", fg="#475467",
             font=("Segoe UI", 11)
         )
         self.version_label.pack(side="left")
@@ -172,7 +172,7 @@ class TVAppManager:
         self.status_var = tk.StringVar(value="Comprobando dependencias locales...")
         tk.Label(
             root, textvariable=self.status_var, anchor="w",
-            bg="#f3f6fa", fg="#475467", font=("Segoe UI", 9),
+            bg="#ffffff", fg="#475467", font=("Segoe UI", 9),
             padx=14, pady=9
         ).pack(fill="x")
 
