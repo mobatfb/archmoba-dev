@@ -20,7 +20,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.17-centrado"
+APP_VERSION = "0.2.18-esquinas-limpias"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo-v2.png"
 
@@ -399,15 +399,20 @@ class PyrionDesktop:
         self.text(x + (bw - len(title) * 6) // 2, y - 15,
                   title, "#111111")
 
-        # Caja de busqueda con marco fino y esquinas ligeramente redondeadas.
+        # Borde fino con cuatro esquinas redondeadas, sin circulos.
         self.rect(x + 6, y, bw - 12, 1, "#111111")
         self.rect(x + 6, y + bh - 1, bw - 12, 1, "#111111")
         self.rect(x, y + 6, 1, bh - 12, "#111111")
         self.rect(x + bw - 1, y + 6, 1, bh - 12, "#111111")
-        for cx in (x + 6, x + bw - 7):
-            for cy in (y + 6, y + bh - 7):
-                self.drawarc(self.dpy, self.pixmap, self.gc, cx - 6, cy - 6,
-                             12, 12, 0, 360 * 64)
+        self.pen("#111111")
+        for ax, ay, start in (
+            (x, y, 90),                   # superior izquierda
+            (x + bw - 13, y, 0),         # superior derecha
+            (x, y + bh - 13, 180),       # inferior izquierda
+            (x + bw - 13, y + bh - 13, 270),  # inferior derecha
+        ):
+            self.drawarc(self.dpy, self.pixmap, self.gc, ax, ay,
+                         12, 12, start * 64, 90 * 64)
 
         value = self.search_text or "Buscar"
         if self.search_focus:
