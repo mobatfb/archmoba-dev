@@ -19,6 +19,7 @@ import io
 import json
 import queue
 import re
+import shutil
 import subprocess
 import threading
 import unicodedata
@@ -31,7 +32,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.35-medidor-dependencias"
+APP_VERSION = "0.2.36-pip-linux-corregido"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -1400,42 +1401,124 @@ root.mainloop()
             "No se pudo preparar pip en Python. " +
             (" | ".join(details)[-1200:] or "Verifica la conexión a Internet."))
 
+    @staticmethod
+    def _pip_error_details(log_path, code):
+        """Seleccionar errores de pip; no mostrar solo archivos de 100 MB."""
+        try:
+            with log_path.open("rb") as file:
+                length = file.seek(0, 2)
+                file.seek(max(0, length - 100_000))
+                lines = file.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            return "pip terminó con código %s. No se pudo leer su registro." % code
+
+        important = []
+        flags = ("error:", "oserror:", "no space left", "disk quota",
+                 "permission denied", "could not install",
+                 "no matching distribution", "externally-managed-environment",
+                 "cannot install", "subprocess-exited-with-error",
+                 "failed building wheel", "resolutionimpossible",
+                 "connection broken", "read timed out", "sslerror")
+        for line in lines:
+            cleaned = line.strip()
+            if any(flag in cleaned.lower() for flag in flags):
+                if cleaned not in important:
+                    important.append(cleaned)
+        if important:
+            # Los primeros errores pueden ser encabezados; conservar el último
+            # diagnóstico significativo, no las líneas de descargas posteriores.
+            best = important[-2:]
+            return " | ".join(best)[-750:]
+        others = [line.strip() for line in lines
+                  if line.strip() and not any(
+                      token in line.lower() for token in (
+                          "using cached", "downloading ", "collecting ",
+                          "━━━━━━━━", "metadata (", "obtaining dependency"))]
+        return (" | ".join(others[-3:])[-650:] if others
+                else "pip terminó con código %s sin diagnóstico." % code)
+
+    @staticmethod
+    def _pip_fatal_error(message):
+        """Errores permanentes no se solucionan con cinco descargas idénticas."""
+        indicators = (
+            "no space left on device", "disk quota exceeded",
+            "permission denied", "read-only file system",
+            "no matching distribution found",
+            "externally-managed-environment",
+            "resolutionimpossible", "invalid requirement",
+            "unsupported wheel", "not a supported wheel",
+        )
+        lowered = message.lower()
+        return any(marker in lowered for marker in indicators)
+
+    def _pip_free_space(self):
+        """Comprobar la unidad donde se instalarán paquetes y temporales."""
+        self.deps_root.mkdir(parents=True, exist_ok=True)
+        return shutil.disk_usage(self.deps_root).free
+
     def _install_package(self, key, token, name, index, total, env):
-        """Avanza por etapas confirmadas de pip y paquetes terminados."""
+        """pip con temporales persistentes, sin caché duplicada y errores claros."""
         self.deps_lib.mkdir(parents=True, exist_ok=True)
-        # Del 12% al 92% se reparte entre los paquetes pendientes.
+        temp_root = self.deps_root / "tmp"
+        temp_root.mkdir(parents=True, exist_ok=True)
+        pip_env = env.copy()
+        # En MiniLinux /tmp puede ser tmpfs pequeño; Qt WebEngine es >100 MB.
+        # Usar el mismo disco que el entorno de paquetes.
+        for variable in ("TMPDIR", "TMP", "TEMP"):
+            pip_env[variable] = str(temp_root)
+        pip_env["PIP_NO_CACHE_DIR"] = "1"
+        log_path = self.deps_root / ("pip-" + self._tool_safe_id(key) + ".log")
+
         base = 12.0 + (index - 1) * 80.0 / max(1, total)
         span = 80.0 / max(1, total)
-        log_path = self.deps_root / ("pip-" + self._tool_safe_id(key) + ".log")
+        qt_engine = ("pywebview[qt]" in name.lower() or
+                     "pyqt6-webengine" in name.lower())
+        # Qt6 y QtWebEngine necesitan cientos de MB una vez descomprimidos.
+        if qt_engine and self._pip_free_space() < 750 * 1024 * 1024:
+            available = self._pip_free_space() // (1024 * 1024)
+            raise RuntimeError(
+                "Espacio insuficiente para Qt WebEngine: %d MB libres. "
+                "Necesitas al menos 750 MB disponibles en %s. "
+                "Libera espacio o amplía el almacenamiento de MiniLinux."
+                % (available, self.deps_root))
+
         for attempt in range(1, 6):
+            # No reiniciar la barra si una descarga requiere reintento.
             self._deps_status(
                 key, token,
-                "Instalando %s (%d/%d), intento %d/5..." %
+                "Preparando %s (%d/%d), intento %d/5..." %
                 (name, index, total, attempt), base)
             command = [
                 sys.executable, "-m", "pip", "install", "--no-input",
                 "--disable-pip-version-check", "--prefer-binary",
+                "--no-cache-dir", "--timeout", "90", "--retries", "2",
                 "--upgrade", "--target", str(self.deps_lib), name,
             ]
+            if qt_engine:
+                # No compilar PyQt6 desde fuentes en un Linux minimo.
+                command.insert(5, "--only-binary=:all:")
             try:
                 with log_path.open("wb") as output:
                     proc = subprocess.Popen(command, stdout=output,
-                                            stderr=subprocess.STDOUT, env=env)
-                    start = time.monotonic()
-                    next_message = start + 2.0
+                                            stderr=subprocess.STDOUT,
+                                            env=pip_env)
+                    started = time.monotonic()
+                    next_update = started + 1.5
                     while proc.poll() is None:
-                        if time.monotonic() - start > 600:
+                        if time.monotonic() - started > 600:
                             proc.kill()
                             proc.wait(timeout=10)
                             raise TimeoutError("pip superó 10 minutos")
-                        if time.monotonic() >= next_message:
-                            elapsed = int(time.monotonic() - start)
+                        now = time.monotonic()
+                        if now >= next_update:
                             observed = self._pip_observed_stage(log_path)
-                            self._deps_status(key, token,
+                            elapsed = int(now - started)
+                            self._deps_status(
+                                key, token,
                                 "Descargando/instalando %s (%d/%d): %ds" %
                                 (name, index, total, elapsed),
                                 base + span * observed)
-                            next_message = time.monotonic() + 2.0
+                            next_update = now + 1.5
                         time.sleep(0.2)
                     result = proc.returncode
                 if result == 0:
@@ -1445,16 +1528,32 @@ root.mainloop()
                         "Paquete %d/%d instalado: %s" % (index, total, name),
                         base + span)
                     return
-                tail = log_path.read_text(
-                    encoding="utf-8", errors="replace")[-900:]
-                error = "pip devolvió %d: %s" % (result, tail.strip())
+                detail = self._pip_error_details(log_path, result)
+                if self._pip_fatal_error(detail):
+                    if "no space left" in detail.lower():
+                        detail += (" — disco de PYRIONOS: %d MB libres" %
+                                   (self._pip_free_space() // (1024 * 1024)))
+                    raise RuntimeError(
+                        "Instalación detenida (error no recuperable): " + detail)
+                error = "pip devolvió %d: %s" % (result, detail)
+            except RuntimeError:
+                raise
             except (OSError, subprocess.TimeoutExpired, TimeoutError) as exc:
                 error = str(exc)
+                if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
+                    raise RuntimeError(
+                        "Espacio insuficiente al instalar %s. %s"
+                        % (name, error)) from exc
+
             if attempt < 5:
+                self._deps_status(
+                    key, token,
+                    "Reintentando %s: %s" % (name, error[:135]), base)
                 time.sleep(2)
         raise RuntimeError(
-            "No se pudo instalar %s tras 5 intentos. %s" %
-            (name, error[-900:]))
+            "No se pudo instalar %s tras 5 intentos. "
+            "Causa: %s. Registro: %s"
+            % (name, error[-650:], log_path))
 
     def _prepare_tool_async(self, tool, key, filename):
         """No ejecutar el .py hasta resolver imports y guide.csv."""
