@@ -1,0 +1,115 @@
+{
+  "schema": "pyrion-os-iso-boot-v1",
+  "original_iso_name": "PYRION_OS.iso",
+  "original_iso_sha256": "ec1fcc08ca0f68ae9e05f294c74d9856be304f1505a8fdf35bc8e0e5a2e35504",
+  "original_iso_bytes": 65937408,
+  "sector_bytes": 2048,
+  "layout_file": ".pyrion_boot/layout.bin",
+  "layout_sha256": "36b226ab59aa172e5a6a2469a815d3ffee9645e4651aee3109b36ee956192af0",
+  "files_start_sector": 25,
+  "volume_id": "MINILINUX_AMDEV_113_HYBRID",
+  "volume_descriptor": {
+    "pvd_lba": 16,
+    "eltorito_record_lba": 17,
+    "catalog_lba": 24,
+    "root_directory_lba": 21,
+    "boot_directory_lba": 22
+  },
+  "bios_uefi": [
+    {
+      "image": "BIOSBOOT.IMG",
+      "catalog_lba_field_offset": 49192,
+      "bootable": true,
+      "emulation": 0,
+      "load_segment": 0,
+      "sector_count_512": 4,
+      "platform_id": 0
+    },
+    {
+      "image": "EFIBOOT.IMG",
+      "catalog_lba_field_offset": 49256,
+      "bootable": true,
+      "emulation": 0,
+      "load_segment": 0,
+      "sector_count_512": 0,
+      "platform_id": 239
+    }
+  ],
+  "system_area": {
+    "mbr_signature": "0000",
+    "nonzero_bytes": 0,
+    "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479"
+  },
+  "files": [
+    {
+      "name": "BIOSBOOT.IMG",
+      "sector_original": 25,
+      "size_original": 2048,
+      "record_offset": 45124,
+      "sha256_original": "773af02703cd36b62bb9d472de42d942a821b0566a86fd178bcd9a046d0d2bfe",
+      "gap_sectors": 0,
+      "gap_file": null
+    },
+    {
+      "name": "VMLINUZ",
+      "sector_original": 26,
+      "size_original": 12142528,
+      "record_offset": 45356,
+      "sha256_original": "2b2358b37674d2505350528875bb17afae2a36522a9e8a9417eaca65a7da0e08",
+      "gap_sectors": 0,
+      "gap_file": null
+    },
+    {
+      "name": "INITRD.IMG",
+      "sector_original": 5955,
+      "size_original": 29514824,
+      "record_offset": 45218,
+      "sha256_original": "cf1533f0b65e8a2ab58942898bac5aae84bf2158f18584b931e2e371af149175",
+      "gap_sectors": 0,
+      "gap_file": null
+    },
+    {
+      "name": "EFIBOOT.IMG",
+      "sector_original": 20368,
+      "size_original": 16777216,
+      "record_offset": 45172,
+      "sha256_original": "8abe48a544672c65704c444675c9d1214aca01ac628cd8475fb6a256cdb60309",
+      "gap_sectors": 1,
+      "gap_file": null
+    },
+    {
+      "name": "PYTHON.IMG",
+      "sector_original": 28577,
+      "size_original": 7350505,
+      "record_offset": 45264,
+      "sha256_original": "be3cb86109f86bd4d10d73005b375bec1d4a4bd151666b7720bc090eb480e86b",
+      "gap_sectors": 17,
+      "gap_file": "gap_antes_PYTHON.IMG.bin"
+    },
+    {
+      "name": "PYRION.IMG",
+      "sector_original": 32167,
+      "size_original": 35953,
+      "record_offset": 45310,
+      "sha256_original": "467c4ec68e20c28f44d2a9d32723edb6692dd15f1851e6c564dd243b350ce196",
+      "gap_sectors": 0,
+      "gap_file": null
+    },
+    {
+      "name": "README.TXT",
+      "sector_original": 32195,
+      "size_original": 530,
+      "record_offset": 45398,
+      "sha256_original": "21beb1c9ea3974fcadc68cfdc32e701611736d21ac6f208af3fabd02789d6259",
+      "gap_sectors": 10,
+      "gap_file": "gap_antes_README.TXT.bin"
+    }
+  ],
+  "trailing_sectors": 0,
+  "trailing_file": null,
+  "images_originales": {
+    "PYTHON": ".pyrion_boot/PYTHON.original.img",
+    "PYRION": ".pyrion_boot/PYRION.original.img"
+  },
+  "nota": "El empaquetador usa src/ y estos metadatos; no necesita la ISO original."
+}
