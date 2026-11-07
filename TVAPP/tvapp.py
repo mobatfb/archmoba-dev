@@ -2,7 +2,7 @@
 
 import tkinter as tk
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 def render(parent):
@@ -10,7 +10,7 @@ def render(parent):
     pantalla = tk.Frame(parent, bg="white")
     texto = tk.Label(
         pantalla,
-        text="Hola, esta app se actualizó",
+        text="Hola rosss",
         bg="white",
         fg="#111827",
         font=("Segoe UI", 28, "bold"),
