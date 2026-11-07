@@ -32,7 +32,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.36-pip-linux-corregido"
+APP_VERSION = "0.2.37-proxy-tools-linux"
 MAX_SEARCH_CHARS = 30
 CATALOG_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/guide.csv"
 TOOLS_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PTM/"
@@ -1495,8 +1495,14 @@ root.mainloop()
                 "--upgrade", "--target", str(self.deps_lib), name,
             ]
             if qt_engine:
-                # No compilar PyQt6 desde fuentes en un Linux minimo.
-                command.insert(5, "--only-binary=:all:")
+                # Solo Qt debe usar wheels precompiladas. pywebview depende
+                # de proxy_tools, que PyPI publica solo como sdist; forzar
+                # --only-binary=:all: impedia resolverlo siempre.
+                qt_wheels = (
+                    "PyQt6,PyQt6-Qt6,PyQt6-sip,"
+                    "PyQt6-WebEngine,PyQt6-WebEngine-Qt6"
+                )
+                command.insert(5, "--only-binary=" + qt_wheels)
             try:
                 with log_path.open("wb") as output:
                     proc = subprocess.Popen(command, stdout=output,
