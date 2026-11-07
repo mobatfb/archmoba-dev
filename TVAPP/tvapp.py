@@ -7,7 +7,7 @@ Todo funciona con tkinter y recursos integrados sin archivos graficos externos.
 import os
 import tkinter as tk
 
-VERSION = "1.0.13"
+VERSION = "1.0.14"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 HERO_BOTTOM = 222  # El contenido empieza mas arriba, sin la barra de estado simulada
@@ -99,6 +99,8 @@ import sys
 import threading
 import time
 from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urlsplit, quote
+from urllib.error import HTTPError, URLError
 import webbrowser
 
 PLAYLIST_ROOT = "https://iptv-org.github.io/iptv/"
@@ -118,6 +120,10 @@ SOURCES = {
     "Documentales": "categories/documentary.m3u",
 }
 GROUPED_SOURCES = {"Categorías", "Países", "Idiomas"}
+XTREAM_SECTIONS = ("Xtream TV", "Xtream Cine", "Xtream Series")
+XTREAM_SERVER_DEFAULT = "http://xcmas.ddns.net:80"
+XTREAM_MAX_RESPONSE = 32 * 1024 * 1024
+
 CACHE_LIFETIME = 60 * 60  # 1 hora
 MAX_PLAYLIST_BYTES = 35 * 1024 * 1024
 
@@ -176,8 +182,132 @@ def tvapp_data_dir():
     return directory
 
 
+
+def normalize_xtream_server(server):
+    """Solo acepta URL HTTP(S) sin credenciales ni rutas."""
+    parts = urlsplit(server.strip().rstrip("/"))
+    try:
+        port = parts.port
+    except ValueError:
+        raise ValueError("Puerto Xtream no válido.") from None
+    if (parts.scheme not in ("http", "https") or not parts.hostname
+            or parts.username or parts.password or parts.query or parts.fragment
+            or parts.path not in ("", "/") or (port is not None and port < 1)):
+        raise ValueError("Servidor inválido: escribe http(s)://host:puerto.")
+    return parts.scheme + "://" + parts.netloc
+
+
+def xtream_request(session, action=None, **params):
+    """Acceso Xtream; no guardar ni registrar credenciales."""
+    query = {"username": session["user"], "password": session["password"]}
+    if action:
+        query["action"] = action
+    query.update(params)
+    url = session["server"] + "/player_api.php?" + urlencode(query)
+    request = Request(url, headers={
+        "User-Agent": "ARCHMOBA-TVAPP/1.0", "Accept": "application/json",
+    })
+    try:
+        with urlopen(request, timeout=18) as response:
+            payload = response.read(XTREAM_MAX_RESPONSE + 1)
+    except HTTPError as exc:
+        raise ValueError("Servidor Xtream: HTTP " + str(exc.code)) from None
+    except (URLError, TimeoutError, OSError):
+        raise ValueError("No se pudo conectar al servidor Xtream.") from None
+    if len(payload) > XTREAM_MAX_RESPONSE:
+        raise ValueError("El catálogo Xtream excede el límite de descarga.")
+    try:
+        return json.loads(payload.decode("utf-8-sig"))
+    except (ValueError, UnicodeError):
+        raise ValueError("El servidor no devolvió JSON válido.") from None
+
+
+def xtream_stream_url(session, item):
+    """Construye la dirección solo en memoria al iniciar la reproducción."""
+    base = session["server"]
+    user = quote(session["user"], safe="")
+    password = quote(session["password"], safe="")
+    stream_id = quote(str(item["stream_id"]), safe="")
+    kind = item.get("kind")
+    if kind == "live":
+        return f"{base}/live/{user}/{password}/{stream_id}.{session.get('output', 'ts')}"
+    if kind == "movie":
+        folder = "movie"
+    elif kind == "episode":
+        folder = "series"
+    else:
+        raise ValueError("Selecciona un episodio de la serie.")
+    ext = str(item.get("extension") or "mp4").lower()
+    if not re.fullmatch(r"[a-z0-9]{2,8}", ext):
+        ext = "mp4"
+    return f"{base}/{folder}/{user}/{password}/{stream_id}.{ext}"
+
+
+def xtream_favorite_key(item):
+    if item.get("source") != "xtream":
+        return item.get("url", "")
+    return "xc:" + ":".join((
+        str(item.get("account_tag", "")),
+        str(item.get("kind", "")),
+        str(item.get("stream_id", "")),
+    ))
+
+
+def xtream_parse_catalog(items, groups, kind, account_tag):
+    result = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        stream_id = item.get("series_id") if kind == "series" else item.get("stream_id")
+        if stream_id is None or not str(stream_id).isdigit():
+            continue
+        result.append({
+            "source": "xtream",
+            "kind": kind,
+            "id": str(stream_id),
+            "stream_id": str(stream_id),
+            "name": str(item.get("name") or "Sin título")[:240],
+            "logo": str(item.get("cover") or item.get("stream_icon") or "")[:800],
+            "group": groups.get(str(item.get("category_id") or ""), "Sin categoría")[:120],
+            "extension": str(item.get("container_extension") or "mp4")[:10],
+            "account_tag": account_tag,
+        })
+        if len(result) >= 25000:
+            break
+    return result
+
+
+def xtream_parse_episodes(info, series, account_tag):
+    result = []
+    episodes = info.get("episodes", {}) if isinstance(info, dict) else {}
+    if not isinstance(episodes, dict):
+        return result
+    for season, items in episodes.items():
+        if not isinstance(items, list):
+            continue
+        for i, item in enumerate(items):
+            if not isinstance(item, dict) or not str(item.get("id", "")).isdigit():
+                continue
+            episode_id = str(item["id"])
+            result.append({
+                "source": "xtream",
+                "kind": "episode",
+                "id": episode_id,
+                "stream_id": episode_id,
+                "name": ("E" + str(item.get("episode_num") or i + 1) +
+                         " · " + str(item.get("title") or series["name"]))[:240],
+                "logo": series.get("logo", ""),
+                "group": "Temporada " + str(season)[:10],
+                "extension": str(item.get("container_extension") or "mp4")[:10],
+                "account_tag": account_tag,
+            })
+            if len(result) >= 3000:
+                return result
+    return result
+
+
 class TVSports(tk.Frame):
-    CATEGORIES = list(SOURCES.keys())
+    CATEGORIES = list(XTREAM_SECTIONS) + list(SOURCES.keys()) + ["Favoritos"]
     NAV = ["Inicio", "Vivo", "VOD", "Partidos", "Cuenta"]
 
     def __init__(self, parent):
@@ -185,7 +315,7 @@ class TVSports(tk.Frame):
         self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0, relief="flat")
         self.canvas.pack(fill="both", expand=True)
         self.active_tab = "Vivo"
-        self.category = "Deportes"
+        self.category = "Xtream TV"
         self.category_offset = 0
         self.channel_offset = 0
         self.search_open = False
@@ -204,6 +334,19 @@ class TVSports(tk.Frame):
                                          state="readonly", font=("Segoe UI", 9))
         self.group_picker.bind("<<ComboboxSelected>>", lambda _: self._on_filter_changed())
         self.group_values = ["Todos"]
+
+        # Inicio de sesión efímero: nunca se persiste la contraseña.
+        self.xtream_session = None
+        self.xtream_auth_token = 0
+        self.xtream_connecting = False
+        self.xtream_note = "Introduce usuario y contraseña para conectar."
+        self.xc_server = tk.StringVar(value=XTREAM_SERVER_DEFAULT)
+        self.xc_user = tk.StringVar()
+        self.xc_password = tk.StringVar()
+        self.series_items = None
+        self.series_name = ""
+        self.series_request_id = 0
+        self._build_xtream_form()
 
         self.storage = tvapp_data_dir()
         self.catalogs = {}
@@ -261,7 +404,187 @@ class TVSports(tk.Frame):
         self.canvas.bind("<Button-5>", lambda _: self._wheel_linux(1))
         self.bind("<Destroy>", self._on_destroy, add="+")
         self.after(100, self._check_events)
-        self._select_category("Deportes")
+        self._select_category("Xtream TV")
+
+    def _build_xtream_form(self):
+        form = tk.Frame(self, bg=PANEL, highlightthickness=0)
+        self.xtream_form = form
+        tk.Label(form, text="XTREAM CODES", bg=PANEL, fg=CYAN,
+                 font=("Segoe UI", 14, "bold"), anchor="w").pack(
+                     fill="x", padx=9, pady=(4, 0))
+        for title, variable, secret in (
+            ("Servidor", self.xc_server, False),
+            ("Usuario", self.xc_user, False),
+            ("Contraseña", self.xc_password, True),
+        ):
+            tk.Label(form, text=title, bg=PANEL, fg=WHITE,
+                     font=("Segoe UI", 9), anchor="w").pack(
+                         fill="x", padx=9, pady=(2, 0))
+            entry = tk.Entry(
+                form, textvariable=variable, show="*" if secret else "",
+                bg="#2b2d3b", fg="white", insertbackground="white",
+                relief="flat", font=("Segoe UI", 10),
+            )
+            entry.pack(fill="x", padx=9, ipady=3)
+            if secret:
+                entry.bind("<Return>", lambda _e: self._connect_xtream())
+        buttons = tk.Frame(form, bg=PANEL)
+        buttons.pack(fill="x", padx=9, pady=(7, 2))
+        self.xc_connect_button = tk.Button(
+            buttons, text="Conectar", command=self._connect_xtream,
+            bg="#286578", fg="white", activebackground="#3585a0",
+            relief="flat", font=("Segoe UI", 10, "bold"),
+        )
+        self.xc_connect_button.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.xc_disconnect_button = tk.Button(
+            buttons, text="Salir", command=self._disconnect_xtream,
+            bg="#3b3444", fg="white", activebackground="#504059",
+            relief="flat", font=("Segoe UI", 9),
+        )
+        self.xc_disconnect_button.pack(side="right")
+        self.xc_note_label = tk.Label(
+            form, text="", bg=PANEL, fg=MUTED, anchor="w", justify="left",
+            wraplength=325, font=("Segoe UI", 8),
+        )
+        self.xc_note_label.pack(fill="x", padx=9, pady=(4, 0))
+
+    def _draw_xtream_form(self, w, h):
+        self.group_picker.place_forget()
+        self.xtream_form.place(
+            x=9, y=HERO_BOTTOM + 7, width=max(210, w - 18),
+            height=max(215, min(299, h - HERO_BOTTOM - 88)),
+        )
+        self.xtream_form.lift()
+        self.xc_note_label.config(text=self.xtream_note)
+        self.xc_connect_button.config(
+            state="disabled" if self.xtream_connecting else "normal",
+            text="Conectando..." if self.xtream_connecting else "Conectar",
+        )
+        self.xc_disconnect_button.config(
+            state="normal" if self.xtream_session else "disabled",
+        )
+
+    def _connect_xtream(self):
+        if self.xtream_connecting:
+            return
+        try:
+            server = normalize_xtream_server(self.xc_server.get())
+        except ValueError as exc:
+            self.xtream_note = str(exc)
+            self.redraw()
+            return
+        user, password = self.xc_user.get().strip(), self.xc_password.get()
+        if not user or not password:
+            self.xtream_note = "Introduce usuario y contraseña."
+            self.redraw()
+            return
+        self.xtream_auth_token += 1
+        token = self.xtream_auth_token
+        self.xtream_connecting = True
+        self.xtream_note = "Comprobando cuenta Xtream..."
+        session = {
+            "server": server, "user": user, "password": password,
+            "account_tag": hashlib.sha256(
+                (server + "\0" + user).encode("utf-8")).hexdigest()[:16],
+        }
+        self.redraw()
+        threading.Thread(
+            target=self._xtream_auth_worker, args=(token, session),
+            daemon=True,
+        ).start()
+
+    def _xtream_auth_worker(self, token, session):
+        try:
+            payload = xtream_request(session)
+            info = payload.get("user_info", {}) if isinstance(payload, dict) else {}
+            if str(info.get("auth")) != "1":
+                raise ValueError("Usuario o contraseña incorrectos.")
+            if str(info.get("status", "")).lower() != "active":
+                raise ValueError("La cuenta está inactiva.")
+            formats = info.get("allowed_output_formats") or []
+            session["output"] = "m3u8" if isinstance(formats, list) and "m3u8" in formats else "ts"
+            self.events.put(("xc_auth", (token, session)))
+        except Exception as exc:
+            self.events.put(("xc_auth_error", (token, str(exc)[:120])))
+
+    def _disconnect_xtream(self):
+        self.xtream_auth_token += 1
+        self.xtream_connecting = False
+        self.xtream_session = None
+        self.xc_password.set("")
+        self.catalogs = {
+            key: value for key, value in self.catalogs.items()
+            if key not in XTREAM_SECTIONS
+        }
+        self.series_items = None
+        self._release_player()
+        self.selected = None
+        self.xtream_note = "Cuenta desconectada. La contraseña no se guardó."
+        self._select_category("Xtream TV")
+        self.active_tab = "Vivo"
+        self.redraw()
+
+    def _xtream_catalog_worker(self, category, token, session):
+        kind, action, category_action = {
+            "Xtream TV": ("live", "get_live_streams", "get_live_categories"),
+            "Xtream Cine": ("movie", "get_vod_streams", "get_vod_categories"),
+            "Xtream Series": ("series", "get_series", "get_series_categories"),
+        }[category]
+        try:
+            raw_categories = xtream_request(session, category_action)
+            groups = {
+                str(item.get("category_id")): str(item.get("category_name") or "Otros")
+                for item in raw_categories if isinstance(item, dict)
+            } if isinstance(raw_categories, list) else {}
+            raw_items = xtream_request(session, action)
+            if not isinstance(raw_items, list):
+                raise ValueError("No se recibió un catálogo Xtream válido.")
+            items = xtream_parse_catalog(
+                raw_items, groups, kind, session["account_tag"],
+            )
+            self.events.put(("loaded", (token, category, items, False)))
+        except Exception as exc:
+            self.events.put(("load_error", (token, category, str(exc)[:120])))
+
+    def _xtream_series_worker(self, token, session, series):
+        try:
+            info = xtream_request(
+                session, "get_series_info", series_id=series["stream_id"],
+            )
+            episodes = xtream_parse_episodes(info, series, session["account_tag"])
+            if not episodes:
+                raise ValueError("Esta serie no tiene episodios disponibles.")
+            self.events.put(("xc_episodes", (token, series["name"], episodes)))
+        except Exception as exc:
+            self.events.put(("xc_episode_error", (token, str(exc)[:120])))
+
+    def _show_xtream_series(self, series):
+        if (not self.xtream_session or
+                series.get("account_tag") != self.xtream_session["account_tag"]):
+            self.hint = "Conecta la cuenta de esta serie."
+            self.redraw()
+            return
+        self._release_player()
+        self.selected = None
+        self.active_tab = "Vivo"
+        self.category = "Xtream Series"
+        self.series_request_id += 1
+        token = self.series_request_id
+        self.series_name = series["name"]
+        self.series_items = []
+        self.channel_offset = 0
+        self.group_choice.set("Todos")
+        self.loading = True
+        self.hint = "Consultando episodios..."
+        threading.Thread(
+            target=self._xtream_series_worker,
+            args=(token, dict(self.xtream_session), series),
+            daemon=True,
+        ).start()
+        self.redraw()
+
+    def _back_to_series(self):
+        self._select_category("Xtream Series")
 
     def _on_destroy(self, event):
         if event.widget is self:
@@ -273,7 +596,10 @@ class TVSports(tk.Frame):
             if isinstance(raw, dict):
                 return {k: v for k, v in raw.items()
                         if isinstance(k, str) and isinstance(v, dict)
-                        and isinstance(v.get("url"), str)}
+                        and (isinstance(v.get("url"), str) or
+                             (v.get("source") == "xtream" and
+                              isinstance(v.get("stream_id"), str) and
+                              isinstance(v.get("account_tag"), str)))}
         except (OSError, ValueError):
             pass
         return {}
@@ -282,7 +608,16 @@ class TVSports(tk.Frame):
         path = self.storage / "favorites.json"
         tmp = path.with_suffix(".tmp")
         try:
-            tmp.write_text(json.dumps(self.favorites, ensure_ascii=False, indent=2),
+            clean = {}
+            for key, item in self.favorites.items():
+                if item.get("source") == "xtream":
+                    safe_fields = ("source", "kind", "id", "stream_id",
+                                   "account_tag", "name", "logo", "group",
+                                   "extension")
+                    clean[key] = {k: item[k] for k in safe_fields if k in item}
+                else:
+                    clean[key] = item
+            tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=2),
                            encoding="utf-8")
             os.replace(tmp, path)
         except OSError as exc:
@@ -343,7 +678,8 @@ class TVSports(tk.Frame):
                     self.catalogs[category] = channels
                     if token == self.request_id and self.category == category:
                         self.loading = False
-                        self.hint = f"{len(channels):,} canales" + (" (copia local)" if from_cache else "")
+                        unit = "elementos" if category in XTREAM_SECTIONS else "canales"
+                        self.hint = f"{len(channels):,} {unit}" + (" (copia local)" if from_cache else "")
                         groups = sorted({c["group"] for c in channels if c["group"]}, key=str.casefold)
                         self.group_values = ["Todos"] + groups
                         self.group_picker["values"] = self.group_values
@@ -355,6 +691,44 @@ class TVSports(tk.Frame):
                     if token == self.request_id and category == self.category:
                         self.loading = False
                         self.hint = "No se pudo descargar: " + message[:110]
+                        self.redraw()
+                elif kind == "xc_auth":
+                    token, session = payload
+                    if token == self.xtream_auth_token:
+                        self.xtream_connecting = False
+                        self.xtream_session = session
+                        self.xc_password.set("")
+                        self.xtream_note = (
+                            "Cuenta activa. HTTP sin cifrar; evita redes públicas."
+                            if session["server"].startswith("http://")
+                            else "Cuenta activa. Puedes abrir TV, Cine y Series."
+                        )
+                        self.catalogs = {
+                            k: v for k, v in self.catalogs.items()
+                            if k not in XTREAM_SECTIONS
+                        }
+                        self.active_tab = "Vivo"
+                        self._select_category("Xtream TV")
+                elif kind == "xc_auth_error":
+                    token, message = payload
+                    if token == self.xtream_auth_token:
+                        self.xtream_connecting = False
+                        self.xtream_note = "Acceso fallido: " + message
+                        self.redraw()
+                elif kind == "xc_episodes":
+                    token, title, episodes = payload
+                    if token == self.series_request_id and self.category == "Xtream Series":
+                        self.series_items = episodes
+                        self.series_name = title
+                        self.loading = False
+                        self.hint = f"{len(episodes)} episodios disponibles"
+                        self._set_group_values(episodes)
+                        self.redraw()
+                elif kind == "xc_episode_error":
+                    token, message = payload
+                    if token == self.series_request_id:
+                        self.loading = False
+                        self.hint = message
                         self.redraw()
                 elif kind == "logo":
                     url, raw = payload
@@ -380,6 +754,9 @@ class TVSports(tk.Frame):
         self._release_player()
         self.selected = None
         self.category = category
+        self.series_request_id += 1
+        self.series_items = None
+        self.series_name = ""
         self.channel_offset = 0
         self.group_choice.set("Todos")
         self.group_picker.place_forget()
@@ -388,15 +765,28 @@ class TVSports(tk.Frame):
         if category == "Favoritos":
             self.loading = False
             self.hint = f"{len(self.favorites)} favoritos guardados"
+        elif category in XTREAM_SECTIONS and not self.xtream_session:
+            self.loading = False
+            self.hint = "Introduce tu acceso Xtream Codes."
         elif category in self.catalogs:
             self.loading = False
             self.hint = f"{len(self.catalogs[category]):,} canales"
             self._set_group_values(self.catalogs[category])
         else:
             self.loading = True
-            self.hint = "Descargando lista M3U..."
-            threading.Thread(target=self._download_playlist, args=(category, token),
-                             daemon=True).start()
+            if category in XTREAM_SECTIONS:
+                self.hint = "Consultando servidor Xtream..."
+                threading.Thread(
+                    target=self._xtream_catalog_worker,
+                    args=(category, token, dict(self.xtream_session)),
+                    daemon=True,
+                ).start()
+            else:
+                self.hint = "Descargando lista M3U..."
+                threading.Thread(
+                    target=self._download_playlist, args=(category, token),
+                    daemon=True,
+                ).start()
         self.redraw()
 
     def _set_group_values(self, channels):
@@ -407,10 +797,12 @@ class TVSports(tk.Frame):
     def _visible_channels(self):
         if self.category == "Favoritos":
             channels = list(self.favorites.values())
+        elif self.category == "Xtream Series" and self.series_items is not None:
+            channels = self.series_items
         else:
             channels = self.catalogs.get(self.category, [])
         group = self.group_choice.get()
-        if self.category in GROUPED_SOURCES and group != "Todos":
+        if (self.category in GROUPED_SOURCES or self.category in XTREAM_SECTIONS) and group != "Todos":
             channels = [c for c in channels if c["group"] == group]
         q = self.query.get().strip().casefold()
         if q:
@@ -432,17 +824,28 @@ class TVSports(tk.Frame):
 
     def _select_tab(self, tab):
         self.active_tab = tab
-        if tab in ("VOD", "Partidos"):
-            self._select_category("Películas" if tab == "VOD" else "Deportes")
+        if tab in ("VOD", "Partidos", "Vivo"):
+            target = {
+                "VOD": "Xtream Cine" if self.xtream_session else "Películas",
+                "Partidos": "Deportes",
+                "Vivo": "Xtream TV" if self.xtream_session else "Deportes",
+            }[tab]
+            self._select_category(target)
         else:
             self._release_player()
             self.selected = None
             self.redraw()
 
     def _toggle_favorite(self, channel):
-        key = channel["url"]
+        key = xtream_favorite_key(channel)
+        if not key:
+            return
         if key in self.favorites:
             del self.favorites[key]
+        elif channel.get("source") == "xtream":
+            fields = ("source", "kind", "id", "stream_id", "account_tag",
+                      "name", "logo", "group", "extension")
+            self.favorites[key] = {k: channel[k] for k in fields if k in channel}
         else:
             self.favorites[key] = dict(channel)
         self._save_favorites()
@@ -574,6 +977,10 @@ class TVSports(tk.Frame):
 
     def _draw_live(self, w, h):
         c = self.canvas
+        if self.category in XTREAM_SECTIONS and not self.xtream_session:
+            c.create_rectangle(0, HERO_BOTTOM, w, h, fill=PANEL, outline="")
+            self._draw_xtream_form(w, h)
+            return
         left = 112
         c.create_rectangle(0, HERO_BOTTOM, left, h, fill=SIDE, outline="")
         c.create_rectangle(left, HERO_BOTTOM, w, h, fill=PANEL, outline="")
@@ -592,14 +999,22 @@ class TVSports(tk.Frame):
                 self._text(left/2,y,label,10,WHITE,False,"center",tags=(tag,))
             self._click(tag, lambda item=category: self._select_category(item))
 
-        self._text(left+8,HERO_BOTTOM+21,self.category,15,WHITE,bold=True,
+        heading = self.series_name if self.series_items is not None else self.category
+        self._text(left+8,HERO_BOTTOM+21,heading[:24],15,WHITE,bold=True,
                    width=w-left-25)
-        if self.category in GROUPED_SOURCES and self.catalogs.get(self.category):
+        if self.series_items is not None:
+            self._round(w-58,HERO_BOTTOM+2,w-8,HERO_BOTTOM+28,8,
+                        "#2d4550",tags=("series_back",))
+            self._text(w-33,HERO_BOTTOM+15,"Volver",9,WHITE,
+                       anchor="center",tags=("series_back",))
+            self._click("series_back",self._back_to_series)
+        if ((self.category in GROUPED_SOURCES or self.category in XTREAM_SECTIONS)
+                and (self.catalogs.get(self.category) or self.series_items)):
             self.group_picker.place(x=left+6,y=HERO_BOTTOM+33,
                                     width=w-left-15,height=26)
         else:
             self.group_picker.place_forget()
-        cards_top = HERO_BOTTOM + (74 if self.category in GROUPED_SOURCES else 47)
+        cards_top = HERO_BOTTOM + (74 if (self.category in GROUPED_SOURCES or self.category in XTREAM_SECTIONS) else 47)
         available = self._visible_channels()
         self._text(left+8,cards_top-6,
                    "Cargando canales..." if self.loading else self.hint,
@@ -622,7 +1037,7 @@ class TVSports(tk.Frame):
             sub = (channel.get("group") or "Canal en vivo")[:29]
             self._text(x1+51,y+40,sub,9,MUTED,italic=True,tags=(tag,))
             star_tag=f"favorite_{row}"
-            marked = channel["url"] in self.favorites
+            marked = xtream_favorite_key(channel) in self.favorites
             self._text(x2-14,y+29,"★" if marked else "☆",18,
                        GOLD if marked else MUTED,anchor="center",tags=(star_tag,))
             self._click(tag,lambda ch=channel:self._open_channel(ch))
@@ -646,6 +1061,9 @@ class TVSports(tk.Frame):
     def _draw_other(self, w, h):
         c=self.canvas
         c.create_rectangle(0,HERO_BOTTOM,w,h,fill=PANEL,outline="")
+        if self.active_tab == "Cuenta":
+            self._draw_xtream_form(w, h)
+            return
         if self.active_tab=="Inicio":
             heading,desc="TVAPP · IPTV-org","Miles de canales públicos organizados por tema."
         elif self.active_tab=="Cuenta":
@@ -733,6 +1151,28 @@ class TVSports(tk.Frame):
         self.events.put(("vlc_ready",(token,None,error)))
 
     def _open_channel(self, channel):
+        if channel.get("source") == "xtream":
+            if not self.xtream_session:
+                self.xtream_note = "Conecta la cuenta en la pestaña Cuenta."
+                self.active_tab = "Cuenta"
+                self.redraw()
+                return
+            if channel.get("account_tag") != self.xtream_session["account_tag"]:
+                self.hint = "El favorito pertenece a otra cuenta Xtream."
+                self.redraw()
+                return
+            if channel.get("kind") == "series":
+                self._show_xtream_series(channel)
+                return
+            try:
+                playback_item = dict(channel)
+                playback_item["url"] = xtream_stream_url(
+                    self.xtream_session, channel)
+                channel = playback_item
+            except ValueError as exc:
+                self.hint = str(exc)
+                self.redraw()
+                return
         self._release_player()
         self.selected=channel
         self.player_state="Preparando reproducción..."
@@ -864,6 +1304,7 @@ class TVSports(tk.Frame):
         w,h=c.winfo_width(),c.winfo_height()
         if w<10 or h<10:return
         c.delete("all")
+        self.xtream_form.place_forget()
         c.create_rectangle(0,0,w,h,fill=BG,outline="")
         self._draw_header(w)
         self._draw_hero(w)

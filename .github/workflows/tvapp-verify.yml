@@ -1,0 +1,66 @@
+name: TVAPP Python Verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'TVAPP/tvapp.py'
+      - '.github/workflows/tvapp-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Comprobar sintaxis y utilidades Xtream
+        run: |
+          python -m py_compile TVAPP/tvapp.py
+          python - <<'PY'
+          import ast
+          import re
+          from pathlib import Path
+          from urllib.parse import quote, urlsplit
+          source = Path("TVAPP/tvapp.py").read_text(encoding="utf-8")
+          tree = ast.parse(source)
+          names = {"normalize_xtream_server", "xtream_stream_url",
+                   "xtream_parse_catalog", "xtream_parse_episodes",
+                   "xtream_favorite_key"}
+          funcs = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name in names]
+          assert {node.name for node in funcs} == names
+          helpers = {}
+          helpers.update(re=re, quote=quote, urlsplit=urlsplit)
+          exec(compile(ast.Module(body=funcs, type_ignores=[]), "helpers", "exec"), helpers)
+          normalize = helpers["normalize_xtream_server"]
+          assert normalize("http://stream.example:80/") == "http://stream.example:80"
+          try:
+              normalize("file:///etc/passwd")
+              raise AssertionError("URL scheme no validado")
+          except ValueError:
+              pass
+          session = {"server": "http://stream.example:80",
+                     "user": "example_user", "password": "example_password",
+                     "output": "m3u8"}
+          live = {"source": "xtream", "kind": "live", "stream_id": "42",
+                  "account_tag": "local_test"}
+          url = helpers["xtream_stream_url"](session, live)
+          assert url.endswith("/live/example_user/example_password/42.m3u8")
+          item = helpers["xtream_parse_catalog"](
+              [{"stream_id": 42, "name": "Canal", "category_id": "1"}],
+              {"1": "Noticias"}, "live", "local_test")[0]
+          assert item["group"] == "Noticias" and "url" not in item
+          assert helpers["xtream_favorite_key"](item) == "xc:local_test:live:42"
+          episodes = helpers["xtream_parse_episodes"](
+              {"episodes": {"1": [{"id": "99", "episode_num": 1, "title": "Piloto"}]}},
+              {"name": "Serie", "logo": ""}, "local_test")
+          assert episodes[0]["stream_id"] == "99"
+          assert "VERSION = \"1.0.14\"" in source
+          print("TVAPP v1.0.14 - comprobaciones correctas")
+          PY
