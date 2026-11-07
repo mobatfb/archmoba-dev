@@ -27,7 +27,7 @@ import urllib.request
 import zlib
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.8-actualizacion-rapida"
+APP_VERSION = "0.2.9-actualizacion-rapida"
 SERVER = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/PYRIONOS/assets/"
 BACKGROUND_URL = SERVER + "pyrion-fondo.png"
 LOGO_URL = SERVER + "pyrion-logo.png"
