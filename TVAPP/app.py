@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import queue
@@ -12,6 +14,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from urllib.request import Request, urlopen
 
 if sys.version_info < (3, 10):
@@ -29,11 +32,13 @@ except ImportError as exc:
 
 REPOSITORY = "mobatfb/archmoba-dev"
 BRANCH = "main"
-REMOTE_URL = (
-    f"https://raw.githubusercontent.com/{REPOSITORY}/{BRANCH}/TVAPP/tvapp.py"
+COMMITS_URL = (
+    f"https://api.github.com/repos/{REPOSITORY}/commits"
+    "?path=TVAPP%2Ftvapp.py&per_page=1"
 )
 BASE_DIR = Path(__file__).resolve().parent
 TVAPP_PATH = BASE_DIR / "tvapp.py"
+STATE_PATH = BASE_DIR / ".tvapp_update.json"
 
 # Algunos nombres de importacion difieren del nombre del paquete en PyPI.
 PIP_NAMES = {
@@ -220,45 +225,128 @@ class TVAppManager:
                     "Comprueba el nombre del paquete."
                 )
 
-    def _fetch_remote(self) -> str:
-        req = Request(
-            REMOTE_URL,
-            headers={"User-Agent": "ARCHMOBA-TVAPP/1.0", "Cache-Control": "no-cache"}
+    @staticmethod
+    def _get_text(url: str, max_bytes: int = 1024 * 1024) -> str:
+        """Solicita contenido fresco a GitHub (con timeout) sin bloquear Tkinter."""
+        request = Request(
+            url,
+            headers={
+                "User-Agent": "ARCHMOBA-TVAPP/1.1",
+                "Accept": "application/vnd.github+json",
+                "Cache-Control": "no-cache, no-store, max-age=0",
+                "Pragma": "no-cache",
+            },
         )
-        with urlopen(req, timeout=20) as response:
-            raw = response.read(1024 * 1024 + 1)
-        if len(raw) > 1024 * 1024:
-            raise ValueError("tvapp.py remoto supera 1 MB.")
-        return raw.decode("utf-8-sig")
+        with urlopen(request, timeout=10) as response:
+            data = response.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise ValueError("El archivo remoto excede el tamano permitido.")
+        return data.decode("utf-8-sig")
+
+    def _latest_tvapp_commit(self) -> str:
+        """Lee el commit mas reciente que modifico TVAPP/tvapp.py."""
+        url = f"{COMMITS_URL}&cache_bust={time.time_ns()}"
+        items = json.loads(self._get_text(url, max_bytes=256 * 1024))
+        if not isinstance(items, list) or not items:
+            raise ValueError("GitHub no devolvio commits para tvapp.py.")
+        sha = items[0].get("sha", "")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("GitHub devolvio un commit no valido.")
+        return sha
+
+    @staticmethod
+    def _file_hash(source: str) -> str:
+        return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _read_state() -> dict:
+        try:
+            state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            return state if isinstance(state, dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    @staticmethod
+    def _save_state(commit: str, source: str) -> None:
+        data = {
+            "commit": commit,
+            "sha256": TVAppManager._file_hash(source),
+            "version": version_from_source(source),
+        }
+        atomic_write(STATE_PATH, json.dumps(data, indent=2))
+
+    def _download_commit(self, commit: str) -> str:
+        """Descarga el archivo inmutable asociado a ese commit."""
+        url = (
+            f"https://raw.githubusercontent.com/{REPOSITORY}/"
+            f"{commit}/TVAPP/tvapp.py"
+        )
+        return self._get_text(url)
 
     def _worker(self, action: str) -> None:
+        local_loaded = False
         try:
             if action == "startup" and TVAPP_PATH.exists():
-                source = TVAPP_PATH.read_text(encoding="utf-8")
-                version_from_source(source)
-                self._ensure_dependencies(source)
-                self._tell("show", "Aplicacion lista.")
+                try:
+                    local = TVAPP_PATH.read_text(encoding="utf-8")
+                    version_from_source(local)
+                    self._ensure_dependencies(local)
+                    self._tell("show", (local, "Version local cargada. Comprobando GitHub..."))
+                    local_loaded = True
+                except Exception as exc:
+                    self._tell("status", f"Se recuperara la version local: {exc}")
+
+            self._tell("status", "Consultando ultimo commit de tvapp.py en GitHub...")
+            remote = None
+            try:
+                commit = self._latest_tvapp_commit()
+                self._tell("status", f"Commit {commit[:8]} encontrado. Comprobando cambios...")
+            except Exception:
+                # Respaldo si la API esta limitada o bloqueada.
+                self._tell(
+                    "status",
+                    "API de commits no disponible. Descargando archivo sin cache...",
+                )
+                direct_url = (
+                    f"https://raw.githubusercontent.com/{REPOSITORY}/{BRANCH}"
+                    f"/TVAPP/tvapp.py?cache_bust={time.time_ns()}"
+                )
+                remote = self._get_text(direct_url)
+                commit = "direct-" + self._file_hash(remote)
+
+            local = TVAPP_PATH.read_text(encoding="utf-8") if TVAPP_PATH.exists() else None
+            state = self._read_state()
+
+            if (
+                local is not None
+                and remote is None
+                and state.get("commit") == commit
+                and state.get("sha256") == self._file_hash(local)
+            ):
+                version = version_from_source(local)
+                self._tell("show", (
+                    local,
+                    f"Sin cambios: v{version}, commit {commit[:8]}.",
+                ))
+                return
+
+            if remote is None:
+                self._tell("status", f"Descargando tvapp.py del commit {commit[:8]}...")
+                remote = self._download_commit(commit)
+            version = version_from_source(remote)
+            compile(remote, str(TVAPP_PATH), "exec")
+
+            if local != remote:
+                self._ensure_dependencies(remote)
+                self._tell("apply", (remote, version, commit))
             else:
-                self._tell("status", "Buscando nueva version en GitHub...")
-                remote = self._fetch_remote()
-                remote_version = version_from_source(remote)
-                compile(remote, str(TVAPP_PATH), "exec")
-
-                local_version = "0"
-                if TVAPP_PATH.exists():
-                    try:
-                        local = TVAPP_PATH.read_text(encoding="utf-8")
-                        local_version = version_from_source(local)
-                    except (ValueError, SyntaxError, OSError):
-                        pass
-
-                if version_numbers(remote_version) > version_numbers(local_version):
-                    self._ensure_dependencies(remote)
-                    self._tell("apply", (remote, remote_version))
-                else:
-                    self._tell("status", f"Ya tienes la ultima version ({local_version}).")
+                self._tell("same", (remote, version, commit))
         except Exception as exc:
-            self._tell("error", str(exc))
+            # Cuando hay copia local funcional, el inicio puede continuar sin red.
+            if action == "startup" and local_loaded:
+                self._tell("warning", f"Sin actualizacion: {exc}")
+            else:
+                self._tell("error", f"No se pudo comprobar GitHub: {exc}")
         finally:
             self._tell("done", None)
 
@@ -288,7 +376,7 @@ class TVAppManager:
         widget.pack(fill="both", expand=True)
         self.version_label.config(text=f"Version: {version_from_source(source)}")
 
-    def _apply(self, remote: str, version: str) -> None:
+    def _apply(self, remote: str, version: str, commit: str) -> None:
         previous = TVAPP_PATH.read_text(encoding="utf-8") if TVAPP_PATH.exists() else None
         try:
             atomic_write(TVAPP_PATH, remote)
@@ -299,7 +387,10 @@ class TVAppManager:
             else:
                 atomic_write(TVAPP_PATH, previous)
             raise
-        self.status_var.set(f"Actualizado a v{version}. Interfaz recargada.")
+        self._save_state(commit, remote)
+        self.status_var.set(
+            f"Actualizado a v{version} desde commit {commit[:8]}. Interfaz recargada."
+        )
 
     def _process_events(self) -> None:
         try:
@@ -309,12 +400,21 @@ class TVAppManager:
                     if kind == "status":
                         self.status_var.set(str(value))
                     elif kind == "show":
-                        source = TVAPP_PATH.read_text(encoding="utf-8")
+                        source, status = value
                         self._show_source(source)
-                        self.status_var.set(str(value))
+                        self.status_var.set(str(status))
                     elif kind == "apply":
-                        source, version = value
-                        self._apply(source, version)
+                        source, version, commit = value
+                        self._apply(source, version, commit)
+                    elif kind == "same":
+                        source, version, commit = value
+                        self._show_source(source)
+                        self._save_state(commit, source)
+                        self.status_var.set(
+                            f"Sin cambios: v{version}, commit {commit[:8]}. Interfaz recargada."
+                        )
+                    elif kind == "warning":
+                        self.status_var.set(str(value))
                     elif kind == "error":
                         self.status_var.set("Error: " + str(value))
                         messagebox.showerror("TVAPP", str(value), parent=self.root)
