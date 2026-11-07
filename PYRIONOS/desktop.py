@@ -16,7 +16,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.24-fuentes-modernas"
+APP_VERSION = "0.2.25-bordes-suaves"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -384,6 +384,42 @@ class PyrionDesktop:
             cursor += width + gap
         return result
 
+    def rounded_outline(self, x, y, w, h, radius=14, color="#111111"):
+        """Borde fino de esquinas amplias y antialias sin dependencias extra.
+
+        Los cuatro arcos se calculan con supermuestreo 4x4 y se mezclan
+        con el fondo blanco del escritorio, evitando escalones de XDrawArc.
+        """
+        radius = max(2, min(int(radius), int(w) // 2, int(h) // 2))
+        rgb = tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+        self.rect(x + radius, y, w - 2 * radius, 1, color)
+        self.rect(x + radius, y + h - 1, w - 2 * radius, 1, color)
+        self.rect(x, y + radius, 1, h - 2 * radius, color)
+        self.rect(x + w - 1, y + radius, 1, h - 2 * radius, color)
+
+        outer = radius * radius
+        inner = (radius - 1) * (radius - 1)
+        for py in range(radius):
+            for px in range(radius):
+                covered = 0
+                for sy in range(4):
+                    dy = py + (sy + 0.5) / 4 - radius
+                    for sx in range(4):
+                        dx = px + (sx + 0.5) / 4 - radius
+                        d2 = dx * dx + dy * dy
+                        if inner <= d2 <= outer:
+                            covered += 1
+                if not covered:
+                    continue
+                # Tono intermedio para un contorno suave sobre blanco.
+                shade = tuple(255 - round((255 - c) * covered / 16)
+                              for c in rgb)
+                tint = "#%02X%02X%02X" % shade
+                self.rect(x + px, y + py, 1, 1, tint)
+                self.rect(x + w - 1 - px, y + py, 1, 1, tint)
+                self.rect(x + px, y + h - 1 - py, 1, 1, tint)
+                self.rect(x + w - 1 - px, y + h - 1 - py, 1, 1, tint)
+
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
@@ -391,20 +427,8 @@ class PyrionDesktop:
         logo_w, logo_h, gap = 226, 101, 14
         self.draw_pyrionos_logo(x + (bw - logo_w) // 2, y - logo_h - gap)
 
-        # Borde fino con cuatro esquinas redondeadas, sin circulos.
-        self.rect(x + 6, y, bw - 12, 1, "#111111")
-        self.rect(x + 6, y + bh - 1, bw - 12, 1, "#111111")
-        self.rect(x, y + 6, 1, bh - 12, "#111111")
-        self.rect(x + bw - 1, y + 6, 1, bh - 12, "#111111")
-        self.pen("#111111")
-        for ax, ay, start in (
-            (x, y, 90),                   # superior izquierda
-            (x + bw - 13, y, 0),         # superior derecha
-            (x, y + bh - 13, 180),       # inferior izquierda
-            (x + bw - 13, y + bh - 13, 270),  # inferior derecha
-        ):
-            self.drawarc(self.dpy, self.pixmap, self.gc, ax, ay,
-                         12, 12, start * 64, 90 * 64)
+        # Contorno natural: radio de 14 px y esquinas suavizadas.
+        self.rounded_outline(x, y, bw, bh, radius=14, color="#111111")
 
         # Etiqueta fija en negrita y separador alineado con su ancho real.
         self.text(x + 18, y + 27, "Buscar", "#111111", "label")
