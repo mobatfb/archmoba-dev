@@ -30,9 +30,9 @@ except ImportError as exc:
     ) from exc
 
 
-APP_VERSION = "1.0.7"
-WINDOW_WIDTH = 400
-WINDOW_HEIGHT = 800
+APP_VERSION = "1.0.9"
+WINDOW_WIDTH = 380
+WINDOW_HEIGHT = 650
 REPOSITORY = "mobatfb/archmoba-dev"
 BRANCH = "main"
 COMMITS_URL = (
