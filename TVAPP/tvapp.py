@@ -819,7 +819,11 @@ class TVSports(tk.Frame):
             try:self.video_frame.destroy()
             except tk.TclError:pass
         self.video_frame=None
-        self.video_controls.place_forget()
+        try:
+            if self.video_controls.winfo_exists():
+                self.video_controls.place_forget()
+        except tk.TclError:
+            pass
 
     def _close_player(self):
         self._release_player()
