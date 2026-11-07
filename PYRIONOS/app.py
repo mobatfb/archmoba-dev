@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 """PYRION OS - lanzador de escritorio GitHub, con actualizacion en vivo.
 
-* Descarga directamente desktop.py de GitHub cada 5 segundos (sin feed Atom).
-* Evita caches mediante una URL unica en cada consulta.
-* Compara SHA-256 y solo reinicia el escritorio si cambia el contenido.
+* Comprueba el archivo directo en GitHub cada 5 segundos.
+* Revisa tambien el feed de commits y descarga por SHA como respaldo.
+* Prepara el nuevo escritorio antes de cerrar el anterior (handoff X11).
+* Reutiliza las imagenes temporales en RAM para acelerar la recarga.
 * Guarda el codigo y la configuracion temporal en RAM, nunca en un disco.
 * NO usa desktop_offline.py, cachés persistentes ni copias de respaldo.
 * Cuando el usuario cierra el escritorio, termina el lanzador.
@@ -19,9 +20,12 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import queue
+import re
 import threading
+import xml.etree.ElementTree as ET
 import os
 from pathlib import Path
 import shutil
@@ -34,15 +38,21 @@ import time
 import urllib.request
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.4.8-direct-check"
+APP_VERSION = "0.4.9-live-handoff"
 DESKTOP_NAME = "desktop.py"
 REPOSITORY = "mobatfb/archmoba-dev"
 DESKTOP_PATH = "PYRIONOS/desktop.py"
 RAW_BASE = "https://raw.githubusercontent.com/" + REPOSITORY + "/"
 GITHUB_URL = RAW_BASE + "main/" + DESKTOP_PATH
+COMMIT_FEED_URL = (
+    "https://github.com/" + REPOSITORY + "/commits/main/" + DESKTOP_PATH + ".atom"
+)
 MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
+MAX_FEED_BYTES = 512 * 1024
 HTTP_TIMEOUT = 4.0
 DEFAULT_INTERVAL = 5.0
+FEED_INTERVAL = 10.0
+DESKTOP_READY_TIMEOUT = 12.0
 MEMORY_FILESYSTEMS = {"tmpfs", "ramfs", "rootfs"}
 _STOP = False
 
@@ -122,6 +132,7 @@ def _environment(ram_root: Path) -> dict[str, str]:
         "TMP": ram_root / "tmp",
         "TEMP": ram_root / "tmp",
         "PYTHONPYCACHEPREFIX": ram_root / "cache" / "pyc",
+        "PYRION_RAM_ASSETS_DIR": ram_root / "assets",
     }
     for name, folder in folders.items():
         folder.mkdir(parents=True, exist_ok=True)
@@ -158,19 +169,88 @@ def _get_bytes(url: str, max_size: int, accept: str) -> bytes:
     return payload
 
 
-def _download_desktop() -> bytes:
-    """Obtiene la version publicada en main, como TVAPP, en cada consulta.
+def _latest_desktop_commit() -> str:
+    """Obtiene el ultimo SHA publicado para desktop.py sin consumir la API REST."""
+    url = COMMIT_FEED_URL + "?pyrion_check=" + str(time.time_ns())
+    root = ET.fromstring(_get_bytes(url, MAX_FEED_BYTES, "application/atom+xml"))
+    ns = "{http://www.w3.org/2005/Atom}"
+    if root.tag != ns + "feed":
+        raise ValueError("El feed de commits no contiene un Atom valido")
+    item = root.find(ns + "entry")
+    if item is None:
+        raise ValueError("El feed de commits esta vacio")
+    identifier = (item.findtext(ns + "id") or "").strip()
+    match = re.search(r"/([0-9a-fA-F]{40})$", identifier)
+    if match is None:
+        link = item.find(ns + "link")
+        href = link.get("href", "") if link is not None else ""
+        match = re.search(r"/commit/([0-9a-fA-F]{40})(?:$|[?#])", href)
+    if match is None:
+        raise ValueError("No fue posible leer el SHA del commit")
+    return match.group(1).lower()
 
-    No depende del feed Atom ni de un numero de version manual. Evita
-    una URL repetida para reducir respuestas obsoletas de caches intermedias.
-    """
-    url = GITHUB_URL + "?pyrion_live=" + str(time.time_ns())
+
+def _download_desktop(commit: str | None = None) -> bytes:
+    """Descarga de main (rapida) o de un SHA inmutable (evita CDN obsoleta)."""
+    if commit is None:
+        url = GITHUB_URL + "?pyrion_live=" + str(time.time_ns())
+    else:
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise ValueError("Commit SHA invalido")
+        url = RAW_BASE + commit + "/" + DESKTOP_PATH
     payload = _get_bytes(url, MAX_DOWNLOAD_BYTES, "text/plain")
     source = payload.decode("utf-8-sig")
     compile(source, "PYRIONOS/desktop.py", "exec")
     if "class PyrionDesktop" not in source or "def main()" not in source:
         raise ValueError("El archivo descargado no parece ser desktop.py de PYRION")
     return source.encode("utf-8")
+
+
+def _version_tuple(source: bytes) -> tuple[int, ...]:
+    """Extrae APP_VERSION sin ejecutar el escritorio remoto."""
+    try:
+        tree = ast.parse(source.decode("utf-8-sig"))
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            if not any(isinstance(t, ast.Name) and t.id == "APP_VERSION"
+                       for t in node.targets):
+                continue
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                match = re.match(r"^(\d+(?:\.\d+)*)", node.value.value)
+                if match:
+                    return tuple(int(x) for x in match.group(1).split("."))
+    except (SyntaxError, UnicodeError, ValueError):
+        pass
+    return ()
+
+
+def _probe_desktop(active_digest: str, last_commit: str | None,
+                   verify_commit: bool, ignored_hashes: set[str]):
+    """Prioriza el archivo directo, y comprueba el SHA si la CDN no cambio."""
+    raw_error = None
+    try:
+        raw = _download_desktop()
+    except (OSError, UnicodeError, ValueError, SyntaxError) as exc:
+        raw = None
+        raw_error = exc
+    else:
+        raw_digest = hashlib.sha256(raw).hexdigest()
+        if raw_digest != active_digest and raw_digest not in ignored_hashes:
+            return raw, "main", None
+
+    if verify_commit:
+        try:
+            new_commit = _latest_desktop_commit()
+            if new_commit != last_commit:
+                candidate = _download_desktop(new_commit)
+                return candidate, "commit", new_commit
+        except (OSError, UnicodeError, ValueError, SyntaxError, ET.ParseError) as exc:
+            if raw is None:
+                raise OSError("GitHub no responde: " + str(exc)) from exc
+    if raw is None:
+        raise OSError("No se pudo leer desktop.py: " + str(raw_error))
+    return None, "sin_cambios", last_commit
 
 
 def _save_desktop(target: Path, contents: bytes) -> None:
@@ -222,11 +302,13 @@ def _notice(message: str) -> None:
 
 
 def _session(root: Path, interval: float) -> int:
-    """Inicia el escritorio y consulta directamente GitHub cada 5 segundos."""
+    """Actualizacion en vivo: no cierra el desktop viejo hasta que el nuevo pinta."""
     environment = _environment(root)
     destination = root / DESKTOP_NAME
-    print("%s %s | modo RAM, directo a GitHub" % (APP_NAME, APP_VERSION), flush=True)
-    print("Descargando desktop.py desde GitHub...", flush=True)
+    pending_path = root / "desktop_nuevo.py"
+    ready_path = root / "desktop_nuevo.ready"
+    print("%s %s | solo RAM | comprobacion cada %.1fs" %
+          (APP_NAME, APP_VERSION, interval), flush=True)
     try:
         source = _download_desktop()
         _save_desktop(destination, source)
@@ -234,28 +316,33 @@ def _session(root: Path, interval: float) -> int:
         _notice("No se pudo iniciar desde GitHub: " + str(exc))
         return 5
     digest = hashlib.sha256(source).hexdigest()
-    print("desktop.py iniciado: SHA-256=" + digest[:16], flush=True)
+    print("PYRION: desktop inicial %s, SHA-256=%s" %
+          (_version_tuple(source), digest[:16]), flush=True)
     try:
         child = _launch(destination, root, environment)
     except OSError as exc:
         _notice("No se pudo ejecutar desktop.py: " + str(exc))
         return 6
 
-    # La descarga se ejecuta en un hilo: el escritorio no queda bloqueado.
     results = queue.Queue(maxsize=1)
-    pending = False
+    fetching = False
+    stage = None
+    last_commit = None
+    recent_hashes = {digest}
+    rejected_hashes = set()
     last_notice = 0.0
-    rejected_hash = None
-    rollback = None  # (codigo anterior, SHA-256, SHA rechazado, limite de tiempo)
+    last_feed = float("-inf")
     next_check = time.monotonic() + interval
 
-    def fetch_worker():
+    def fetch_worker(prior_digest: str, prior_commit: str | None,
+                     use_feed: bool, ignored_hashes: set[str]):
         try:
-            result = (True, _download_desktop())
+            data = (True, _probe_desktop(prior_digest, prior_commit,
+                                         use_feed, ignored_hashes))
         except (OSError, UnicodeError, ValueError, SyntaxError) as exc:
-            result = (False, str(exc))
+            data = (False, str(exc))
         try:
-            results.put_nowait(result)
+            results.put_nowait(data)
         except queue.Full:
             pass
 
@@ -263,81 +350,105 @@ def _session(root: Path, interval: float) -> int:
         while not _STOP:
             code = child.poll()
             if code is not None:
-                if code != 0 and rollback is not None:
-                    old_source, old_digest, bad_hash, deadline = rollback
-                    if time.monotonic() <= deadline:
-                        print("PYRION: nuevo escritorio fallo; restaurando el anterior.",
-                              file=sys.stderr, flush=True)
-                        try:
-                            _save_desktop(destination, old_source)
-                            child = _launch(destination, root, environment)
-                        except OSError as exc:
-                            _notice("No se pudo restaurar el escritorio: " + str(exc))
-                            return 7
-                        source = old_source
-                        digest = old_digest
-                        rejected_hash = bad_hash
-                        rollback = None
-                        continue
-                print("desktop.py cerrado; codigo=" + str(code), flush=True)
+                print("PYRION: desktop.py cerrado; codigo=" + str(code), flush=True)
                 return code
             now = time.monotonic()
-            if rollback is not None and now > rollback[3]:
-                rollback = None
-            if not pending and now >= next_check:
-                pending = True
+            if stage is not None:
+                updated_child, candidate, new_digest, deadline = stage
+                if updated_child.poll() is not None:
+                    rejected_hashes.add(new_digest)
+                    print("PYRION: la actualizacion fallo al iniciar; sigo con la anterior.",
+                          file=sys.stderr, flush=True)
+                    stage = None
+                elif ready_path.is_file():
+                    try:
+                        ready_pid = ready_path.read_text(encoding="ascii").strip()
+                    except OSError:
+                        ready_pid = ""
+                    if ready_pid == str(updated_child.pid):
+                        try:
+                            _save_desktop(destination, candidate)
+                        except OSError as exc:
+                            rejected_hashes.add(new_digest)
+                            _stop_child(updated_child)
+                            print("PYRION: fallo al confirmar actualizacion: " + str(exc),
+                                  file=sys.stderr, flush=True)
+                        else:
+                            previous = child
+                            child = updated_child
+                            source = candidate
+                            digest = new_digest
+                            recent_hashes.add(digest)
+                            print("PYRION: escritorio listo, version %s, SHA-256=%s" %
+                                  (_version_tuple(source), digest[:16]), flush=True)
+                            _stop_child(previous)
+                        stage = None
+                elif now >= deadline:
+                    rejected_hashes.add(new_digest)
+                    _stop_child(updated_child)
+                    print("PYRION: escritorio nuevo no aviso que estaba listo; "+
+                          "se mantiene la version anterior.", file=sys.stderr, flush=True)
+                    stage = None
+                if stage is None:
+                    pending_path.unlink(missing_ok=True)
+                    ready_path.unlink(missing_ok=True)
+
+            if not fetching and stage is None and now >= next_check:
+                fetching = True
                 next_check = now + interval
-                threading.Thread(target=fetch_worker, daemon=True,
-                                 name="pyrion-direct-check").start()
-            if pending:
+                use_feed = now - last_feed >= FEED_INTERVAL
+                if use_feed:
+                    last_feed = now
+                ignored = (recent_hashes | rejected_hashes) - {digest}
+                threading.Thread(target=fetch_worker,
+                                 args=(digest, last_commit, use_feed, ignored),
+                                 daemon=True, name="pyrion-update-check").start()
+            if fetching:
                 try:
-                    ok, data = results.get_nowait()
+                    ok, result = results.get_nowait()
                 except queue.Empty:
                     pass
                 else:
-                    pending = False
+                    fetching = False
                     if not ok:
-                        # Un fallo de red NO cierra el escritorio ya abierto.
-                        if time.monotonic() - last_notice > 20:
-                            print("PYRION: fallo temporal de actualizacion: " + str(data),
+                        if now - last_notice > 20:
+                            print("PYRION: actualizacion pospuesta: " + str(result),
                                   file=sys.stderr, flush=True)
-                            last_notice = time.monotonic()
+                            last_notice = now
                     else:
-                        candidate = data
-                        candidate_hash = hashlib.sha256(candidate).hexdigest()
-                        if (candidate_hash != digest and candidate_hash != rejected_hash
-                                and not _STOP and child.poll() is None):
-                            print("PYRION: nuevo desktop.py detectado en GitHub.", flush=True)
-                            try:
-                                _save_desktop(destination, candidate)
-                            except OSError as exc:
-                                print("PYRION: no se pudo actualizar en RAM: " + str(exc),
-                                      file=sys.stderr, flush=True)
-                            else:
-                                _stop_child(child)
-                                if _STOP:
-                                    break
+                        candidate, origin, commit_sha = result
+                        if commit_sha:
+                            last_commit = commit_sha
+                        if candidate is not None and stage is None:
+                            next_digest = hashlib.sha256(candidate).hexdigest()
+                            previous_version = _version_tuple(source)
+                            proposed_version = _version_tuple(candidate)
+                            if proposed_version and previous_version and proposed_version < previous_version:
+                                print("PYRION: se descarta una respuesta antigua de GitHub (%s)." %
+                                      origin, flush=True)
+                            elif (next_digest not in recent_hashes and
+                                  next_digest not in rejected_hashes):
+                                print("PYRION: cambio detectado por %s. Preparando escritorio..." %
+                                      origin, flush=True)
                                 try:
-                                    child = _launch(destination, root, environment)
+                                    _save_desktop(pending_path, candidate)
+                                    ready_path.unlink(missing_ok=True)
+                                    pending_env = environment.copy()
+                                    pending_env["PYRION_DESKTOP_READY_FILE"] = str(ready_path)
+                                    new_child = _launch(pending_path, root, pending_env)
                                 except OSError as exc:
-                                    # Restaurar solamente la copia anterior en RAM.
-                                    _save_desktop(destination, source)
-                                    child = _launch(destination, root, environment)
-                                    rejected_hash = candidate_hash
-                                    rollback = None
-                                    print("PYRION: actualizacion revertida: " + str(exc),
+                                    rejected_hashes.add(next_digest)
+                                    print("PYRION: actualizacion rechazada: " + str(exc),
                                           file=sys.stderr, flush=True)
                                 else:
-                                    rollback = (source, digest, candidate_hash,
-                                                time.monotonic() + 10.0)
-                                    source = candidate
-                                    digest = candidate_hash
-                                    print("PYRION: escritorio actualizado, SHA-256=" +
-                                          digest[:16], flush=True)
-            time.sleep(0.1)
+                                    stage = (new_child, candidate, next_digest,
+                                             now + DESKTOP_READY_TIMEOUT)
+            time.sleep(0.05)
     except KeyboardInterrupt:
         pass
     finally:
+        if stage is not None:
+            _stop_child(stage[0])
         _stop_child(child)
     return 0
 
@@ -354,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
     locations = _ram_locations()
     if options.diagnostico:
         print("PYRION %s | GitHub: %s" % (APP_VERSION, GITHUB_URL))
-        print("Actualizacion: descarga directa de desktop.py con URL unica")
+        print("Actualizacion: main 5s, feed Atom 10s, traspaso X11 tras renderizar")
         print("Intervalo predeterminado: %.0f segundos" % DEFAULT_INTERVAL)
         for directory, free, kind in locations:
             print("RAM: %s (%s, %.1f MiB libres)" %
