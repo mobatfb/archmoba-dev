@@ -16,7 +16,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.22-fuente-bold"
+APP_VERSION = "0.2.23-busqueda-con-limpiar"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -302,6 +302,16 @@ class PyrionDesktop:
         self.text(x + 8, y + main_h + 13,
                   "Buscador y lanzador de herramientas", "#FFFFFF")
 
+    def _search_input_layout(self):
+        """Posiciones del texto y la X; comparte calculo con el hit-test."""
+        x, y, bw, bh = self._search_bounds()
+        tx = x + 81
+        # Reservar espacio al boton rojo y a la X de limpieza.
+        max_chars = max(1, (bw - 190) // 6)
+        visible = self.search_text[-max_chars:]
+        clear_x = tx + len(visible) * 6 + 12 if self.search_text else None
+        return tx, visible, clear_x
+
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
@@ -324,10 +334,27 @@ class PyrionDesktop:
             self.drawarc(self.dpy, self.pixmap, self.gc, ax, ay,
                          12, 12, start * 64, 90 * 64)
 
-        value = self.search_text or "Buscar"
+        # "Buscar" es una etiqueta fija, no un texto que desaparece.
+        self.text(x + 18, y + 27, "Buscar", "#111111")
+        self.pen("#777777")
+        self.drawline(self.dpy, self.pixmap, self.gc,
+                      x + 67, y + 12, x + 67, y + 32)
+
+        # Entrada editable y boton X junto a la consulta (solo si hay texto).
+        tx, visible, clear_x = self._search_input_layout()
+        if visible:
+            self.text(tx, y + 27, visible, "#111111")
+        caret_x = tx + len(visible) * 6
         if self.search_focus:
-            value += "|"
-        self.text(x + 18, y + 27, value[:max(1, (bw - 110) // 7)], "#111111")
+            self.pen("#111111")
+            self.drawline(self.dpy, self.pixmap, self.gc,
+                          caret_x + 1, y + 14, caret_x + 1, y + 30)
+        if clear_x is not None:
+            self.pen("#555555")
+            self.drawline(self.dpy, self.pixmap, self.gc,
+                          clear_x - 4, y + 18, clear_x + 4, y + 26)
+            self.drawline(self.dpy, self.pixmap, self.gc,
+                          clear_x + 4, y + 18, clear_x - 4, y + 26)
 
         # Boton circular rojo.
         self.pen("#F01818")
@@ -362,9 +389,14 @@ class PyrionDesktop:
     def click_ui(self, x, y):
         bx, by, bw, bh = self._search_bounds()
         if bx <= x < bx + bw and by <= y < by + bh:
-            if x >= bx + bw - 84 and x < bx + bw - 50:
+            _, _, clear_x = self._search_input_layout()
+            if clear_x is not None and abs(x - clear_x) <= 9 and abs(y - (by + 22)) <= 11:
+                # La X borra solo la consulta y deja el cursor listo para escribir.
                 self.search_text = ""
                 self.search_focus = True
+            elif bx + bw - 84 <= x < bx + bw - 50:
+                # Boton rojo (accion Buscar/Enter): no elimina lo escrito.
+                self.search_focus = False
             elif x >= bx + bw - 47:
                 # El icono de subir se conecta al gestor de archivos mas adelante.
                 self.search_focus = False
