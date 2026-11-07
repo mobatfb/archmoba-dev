@@ -16,7 +16,7 @@ import sys
 import time
 
 APP_NAME = "PYRION OS"
-APP_VERSION = "0.2.21-logo-pyrionos"
+APP_VERSION = "0.2.22-fuente-bold"
 
 U = C.c_ulong
 P = C.c_void_p
@@ -36,6 +36,10 @@ class XRenderColor(C.Structure):
 
 class XftColor(C.Structure):
     _fields_ = [("pixel", U), ("color", XRenderColor)]
+
+
+class XFontHandle(C.Structure):
+    _fields_ = [("ext_data", P), ("fid", U)]
 
 
 class XGlyphInfo(C.Structure):
@@ -122,6 +126,11 @@ class PyrionDesktop:
         self.drawarc = bind(x, "XDrawArc", I, P, U, P, I, I, UI, UI, I, I)
         self.copy = bind(x, "XCopyArea", I, P, U, U, P, I, I, UI, UI, I, I)
         self.drawstring = bind(x, "XDrawString", I, P, U, P, I, I, C.c_char_p, I)
+        self.load_query_font = bind(x, "XLoadQueryFont", P, P, C.c_char_p)
+        self.free_font = bind(x, "XFreeFont", I, P, P)
+        self.set_font = bind(x, "XSetFont", I, P, P, U)
+        self.xtext_width = bind(x, "XTextWidth", I, P, C.c_char_p, I)
+        self.foreground_gc = bind(x, "XSetForeground", I, P, P, U)
         self.lookup = bind(x, "XLookupString", I, C.POINTER(XKeyEvent), C.c_char_p, I, C.POINTER(U), P)
         self.flush = bind(x, "XFlush", I, P)
         self.pending = bind(x, "XPending", I, P)
@@ -144,6 +153,97 @@ class PyrionDesktop:
         self.search_text = ""
         self.search_focus = False
         self.active_tab = "Recientes"
+        self.xft_lib = None
+        self.logo_xft_font = None
+        self.logo_core_font = None
+        self.logo_gc = None
+        self._prepare_logo_font()
+
+    def _prepare_logo_font(self):
+        """Carga fuente sans serif negrita de Xft o una alternativa X11."""
+        try:
+            ft = C.CDLL(ctypes.util.find_library("Xft") or "libXft.so.2")
+            self.xft_font_open = bind(ft, "XftFontOpenName", P, P, I, C.c_char_p)
+            self.xft_font_close = bind(ft, "XftFontClose", None, P, P)
+            self.xft_draw_create = bind(ft, "XftDrawCreate", P, P, U, P, U)
+            self.xft_draw_destroy = bind(ft, "XftDrawDestroy", None, P)
+            self.xft_draw_string = bind(
+                ft, "XftDrawStringUtf8", None, P, C.POINTER(XftColor), P,
+                I, I, C.c_char_p, I)
+            self.xft_extents = bind(
+                ft, "XftTextExtentsUtf8", None, P, P, C.c_char_p, I,
+                C.POINTER(XGlyphInfo))
+            self.xft_color_alloc = bind(
+                ft, "XftColorAllocValue", I, P, P, U,
+                C.POINTER(XRenderColor), C.POINTER(XftColor))
+            self.xft_color_free = bind(
+                ft, "XftColorFree", None, P, P, U, C.POINTER(XftColor))
+            for face in (
+                b"DejaVu Sans:style=Bold:pixelsize=32",
+                b"Liberation Sans:style=Bold:pixelsize=32",
+                b"sans:style=Bold:pixelsize=30",
+            ):
+                font = self.xft_font_open(self.dpy, self.screen, face)
+                if font:
+                    self.xft_lib = ft
+                    self.logo_xft_font = font
+                    return
+        except (OSError, AttributeError) as error:
+            print("PYRION: Xft no disponible: " + str(error),
+                  file=sys.stderr, flush=True)
+
+        # La alternativa X11 utiliza fuentes reales, sin bitmap manual.
+        for face in (
+            b"-*-helvetica-bold-r-normal--34-*-*-*-*-*-iso8859-1",
+            b"9x15bold",
+            b"fixed",
+        ):
+            font = self.load_query_font(self.dpy, face)
+            if font:
+                self.logo_core_font = font
+                break
+
+    def draw_logo_title(self, x, y, width):
+        """Dibuja PYRIONOS centrado con letras blancas negritas."""
+        title = b"PYRIONOS"
+        baseline = y + 56
+        if self.xft_lib and self.logo_xft_font:
+            draw = self.xft_draw_create(self.dpy, self.pixmap,
+                                        self.visual, self.colormap)
+            if draw:
+                white = XftColor()
+                rgba = XRenderColor(65535, 65535, 65535, 65535)
+                allocated = self.xft_color_alloc(
+                    self.dpy, self.visual, self.colormap,
+                    C.byref(rgba), C.byref(white))
+                try:
+                    if allocated:
+                        metrics = XGlyphInfo()
+                        self.xft_extents(self.dpy, self.logo_xft_font,
+                                         title, len(title), C.byref(metrics))
+                        left = x + (width - metrics.xOff) // 2
+                        self.xft_draw_string(draw, C.byref(white),
+                                             self.logo_xft_font, int(left),
+                                             int(baseline), title, len(title))
+                        return
+                finally:
+                    if allocated:
+                        self.xft_color_free(self.dpy, self.visual,
+                                            self.colormap, C.byref(white))
+                    self.xft_draw_destroy(draw)
+
+        if self.logo_core_font and self.logo_gc:
+            font = C.cast(self.logo_core_font, C.POINTER(XFontHandle)).contents
+            self.set_font(self.dpy, self.logo_gc, font.fid)
+            self.foreground_gc(self.dpy, self.logo_gc,
+                               self._allocate("#FFFFFF"))
+            width_px = self.xtext_width(self.logo_core_font, title, len(title))
+            self.drawstring(self.dpy, self.pixmap, self.logo_gc,
+                            x + (width - width_px) // 2, baseline,
+                            title, len(title))
+        else:
+            self.text(x + (width - len(title) * 6) // 2, baseline,
+                      title.decode("ascii"), "#FFFFFF")
 
     def _allocate(self, color):
         if color not in self.colors:
@@ -194,29 +294,8 @@ class PyrionDesktop:
             self.rect(x + lw - corner + i, y + i, corner - i, 1,
                       "#FF1B1B")
 
-        # Letras grandes de PYRIONOS, sin depender de fuentes externas.
-        glyphs = {
-            "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
-            "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
-            "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
-            "I": ("11111", "00100", "00100", "00100", "00100", "00100", "11111"),
-            "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
-            "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
-            "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
-        }
-        title = "PYRIONOS"
-        scale, spacing = 4, 4
-        glyph_w = 5 * scale
-        text_w = len(title) * (glyph_w + spacing) - spacing
-        tx = x + (lw - text_w) // 2
-        ty = y + (main_h - 7 * scale) // 2
-        for ch in title:
-            for row, bits in enumerate(glyphs[ch]):
-                for col, bit in enumerate(bits):
-                    if bit == "1":
-                        self.rect(tx + col * scale, ty + row * scale,
-                                  scale, scale, "#FFFFFF")
-            tx += glyph_w + spacing
+        # Titulo con tipografia real en lugar del dibujo bitmap 5x7.
+        self.draw_logo_title(x, y, lw)
 
         # Franja inferior roja y leyenda, como el icono de referencia.
         self.rect(x, y + main_h, lw, footer_h, "#FF1B1B")
@@ -353,6 +432,7 @@ class PyrionDesktop:
         self.name(self.dpy,self.window,b"PYRION OS")
         self.select(self.dpy,self.window,(1<<15)|(1<<17)|(1<<2)|(1<<0))
         self.gc=self.gc_create(self.dpy,self.window,0,None)
+        self.logo_gc=self.gc_create(self.dpy,self.window,0,None)
         self.map(self.dpy,self.window)
         self.lower(self.dpy,self.window)
         self.paint()
@@ -400,6 +480,9 @@ class PyrionDesktop:
     def close(self):
         if self.dpy:
             if self.pixmap:self.pixmap_free(self.dpy,self.pixmap)
+            if self.logo_gc:self.gc_free(self.dpy,self.logo_gc)
+            if self.logo_xft_font:self.xft_font_close(self.dpy,self.logo_xft_font)
+            if self.logo_core_font:self.free_font(self.dpy,self.logo_core_font)
             if self.gc:self.gc_free(self.dpy,self.gc)
             if self.window:self.destroy_window(self.dpy,self.window)
             self.close_dpy(self.dpy)
