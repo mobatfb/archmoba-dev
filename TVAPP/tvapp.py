@@ -2,19 +2,19 @@
 
 import tkinter as tk
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 800
 
 
 def render(parent):
     """Crea una pantalla adaptable al espacio disponible."""
-    pantalla = tk.Frame(parent, bg="white")
+    pantalla = tk.Frame(parent, bg="black")
     texto = tk.Label(
         pantalla,
         text="Hola rosss",
-        bg="white",
-        fg="#111827",
+        bg="black",
+        fg="white",
         font=("Segoe UI", 28, "bold"),
         wraplength=340,
         justify="center",
@@ -31,7 +31,7 @@ def main():
     """Abre tvapp.py como una aplicacion movil independiente en Windows."""
     ventana = tk.Tk()
     ventana.title(f"TVAPP - v{VERSION}")
-    ventana.configure(bg="white")
+    ventana.configure(bg="black")
     ventana.minsize(360, 640)
     ventana.update_idletasks()
     x = max(0, (ventana.winfo_screenwidth() - WINDOW_WIDTH) // 2)
