@@ -31,3 +31,20 @@ Nota: ningun archivo .py puede instalar Python si no existe un interprete capaz
 de ejecutarlo. Por eso se incluye el iniciador iniciar.bat (Windows).
 tkinter forma parte de la distribucion habitual de Python para Windows; no se
 instala con pip.
+
+## Iniciador para Windows (.exe)
+
+El archivo `launcher.go` contiene el codigo fuente del iniciador independiente de Windows (64 bits), compilado con Go (sin dependencias externas). Al abrir `TVAPP_Launcher.exe`:
+
+1. Descarga `TVAPP/app.py` de la rama `main` y lo guarda en `%LOCALAPPDATA%\\ARCHMOBA\\TVAPP\\app.py`.
+2. Comprueba si Python 3.10+ dispone de `tkinter`. Si no lo encuentra, intenta instalar Python 3.13 con `winget`.
+3. Ejecuta `app.py` y cierra el iniciador. `app.py` se encarga de descargar y visualizar `tvapp.py`.
+4. Si GitHub no responde y ya existe una copia local de `app.py`, intenta utilizarla.
+
+Para compilar en Windows con Go instalado:
+
+```bat
+go build -trimpath -ldflags="-s -w -H=windowsgui" -o TVAPP_Launcher.exe launcher.go
+```
+
+El ejecutable es una aplicacion de escritorio (sin consola). Para la instalacion automatica de Python, Windows debe tener winget. No incluye firma digital.
