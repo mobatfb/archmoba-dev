@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""PYRION OS Desktop v0.4.2
+"""PYRION Desktop - prueba independiente en Python (Windows / Linux).
 
-Escritorio experimental para Windows/Linux, construido con PySide6.
-Los datos persistentes se guardan en una carpeta 'pyrionos' situada en
-un disco montado y accesible. La ubicación se busca en cada inicio.
-
-PySide6 se instala automaticamente en el almacenamiento persistente si falta.
-Ejecucion:   python desktop.py
-
-NOTA: esto es una interfaz de escritorio, no un reemplazo del kernel ni
-un compositor Wayland. El generador automatico de apps mediante IA es
-una funcionalidad futura; las herramientas integradas si son reales.
+Abre la interfaz grafica con PySide6 sin app.py, sin ISO, sin automodificar el
+sistema operativo y sin operaciones de deteccion, montaje o formateo de discos.
+Guarda pruebas e historial en ~/pyrionos_desktop_prueba.
+No instala ni descarga librerias al iniciar; requiere PySide6 instalado.
 """
 
 from __future__ import annotations
@@ -594,8 +588,8 @@ class DependencyManager:
             return True
 
 
-APP_NAME = "PYRION OS"
-APP_VERSION = "0.4.2"
+APP_NAME = "PYRION Desktop"
+APP_VERSION = "0.4.0-prueba"
 DIR_NAME = "pyrionos"
 SUBFOLDERS = ("apps", "config", "data", "cache", "logs", "downloads", "envs", "runtime")
 
@@ -634,836 +628,71 @@ def read_json_strict(path: Path, default: Any) -> Any:
         raise StorageError(f"No se pudo leer {path}: {exc}") from exc
 
 
-def mounted_volumes() -> list[Path]:
-    """Obtiene discos/volumenes montados sin pedir privilegios de administrador."""
-    volumes: list[Path] = []
-    if os.name == "nt":
-        # Win32 GetDriveTypeW: 3 = unidad fija. Evita pendrives y red por defecto.
-        import ctypes
-        get_drives = ctypes.windll.kernel32.GetLogicalDrives
-        get_type = ctypes.windll.kernel32.GetDriveTypeW
-        bits = get_drives()
-        for index in range(26):
-            if (bits >> index) & 1:
-                root = Path(chr(65 + index) + ":\\")
-                if get_type(str(root)) == 3:
-                    volumes.append(root)
-    else:
-        # psutil es opcional. Si no esta, usamos los montajes de Linux.
-        try:
-            import psutil
-            for part in psutil.disk_partitions(all=False):
-                if part.fstype.lower() in {
-                    "proc", "sysfs", "devtmpfs", "tmpfs", "squashfs",
-                    "cgroup", "cgroup2", "autofs", "devpts", "overlay"
-                }:
-                    continue
-                volumes.append(Path(part.mountpoint))
-        except ImportError:
-            if sys.platform.startswith("linux") and Path("/proc/mounts").exists():
-                ignored = {
-                    "proc", "sysfs", "devtmpfs", "tmpfs", "squashfs",
-                    "cgroup", "cgroup2", "autofs", "devpts", "overlay"
-                }
-                for line in Path("/proc/mounts").read_text(errors="replace").splitlines():
-                    fields = line.split()
-                    if len(fields) >= 3 and fields[2] not in ignored:
-                        volumes.append(Path(fields[1].replace("\\040", " ")))
-        volumes.append(Path("/"))
-
-    # Siempre incluir el disco donde se encuentra el directorio personal.
-    home = Path.home()
-    result = [home]
-    result.extend(volumes)
-    unique: list[Path] = []
-    seen = set()
-    for path in result:
-        try:
-            canonical = path.resolve(strict=True)
-        except OSError:
-            continue
-        key = os.path.normcase(str(canonical))
-        if key not in seen and canonical.is_dir():
-            seen.add(key)
-            unique.append(canonical)
-    return unique
-
-
-# PYRION OS - discovery and safe provisioning of Linux persistent disks.
-# This block is embedded in app.py and desktop.py so the first boot works
-# even before extra modules have been downloaded from GitHub.
-STORAGE_MIN_FREE = 700 * 1024 * 1024
-STORAGE_MOUNT_BASE = Path('/mnt/pyrion-volumes')
-STORAGE_LINUX_FS = {'ext4', 'ext3', 'ext2', 'vfat', 'fat', 'exfat', 'ntfs', 'ntfs3', 'xfs', 'btrfs'}
-
-
-def _storage_note(message: str) -> None:
-    try:
-        logpath = Path.home() / '.cache' / 'pyrionos' / 'storage_scan.log'
-        logpath.parent.mkdir(parents=True, exist_ok=True)
-        with logpath.open('a', encoding='utf-8') as fp:
-            fp.write(f'[{datetime.now(timezone.utc).isoformat()}] {message}\n')
-    except OSError:
-        pass
-    out = getattr(sys, 'stderr', None)
-    if out:
-        try:
-            out.write('PYRION STORAGE: ' + message + '\n')
-            out.flush()
-        except (OSError, ValueError):
-            pass
-    observer = globals().get('BOOT_OBSERVER')
-    if observer is not None:
-        try:
-            observer.log('Almacenamiento: ' + message)
-        except Exception:
-            pass
-
-
-def _linux_mounts() -> list[dict]:
-    result = []
-    try:
-        with open('/proc/mounts', encoding='utf-8', errors='replace') as fp:
-            for line in fp:
-                fields = line.strip().split()
-                if len(fields) >= 4:
-                    def decode(part: str) -> str:
-                        return (part.replace('\\040', ' ').replace('\\011', '\t')
-                                    .replace('\\012', '\n').replace('\\134', '\\'))
-                    result.append({'device': decode(fields[0]), 'path': Path(decode(fields[1])),
-                                   'fs': fields[2], 'options': fields[3].split(',')})
-    except OSError as exc:
-        _storage_note('No se pudo leer /proc/mounts: ' + str(exc))
-    return result
-
-
-def _linux_disks() -> list[dict]:
-    """Consult /sys instead of relying on lsblk, blkid or udev."""
-    result = []
-    base = Path('/sys/block')
-    if not base.is_dir():
-        return result
-    try:
-        disk_dirs = list(base.iterdir())
-    except OSError:
-        return result
-    for disk in disk_dirs:
-        name = disk.name
-        if not re.fullmatch(r'(?:sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+)', name):
-            continue
-        def number(path: Path, default: int = 0) -> int:
-            try:
-                return int(path.read_text().strip())
-            except (OSError, ValueError):
-                return default
-        disk_bytes = number(disk / 'size') * 512
-        if disk_bytes < 512 * 1024 * 1024:
-            continue
-        rotational = number(disk / 'queue' / 'rotational', 1)
-        removable = number(disk / 'removable', 0)
-        partitions = []
-        try:
-            parts = list(disk.iterdir())
-        except OSError:
-            parts = []
-        for entry in parts:
-            if (entry / 'partition').is_file():
-                partitions.append(entry.name)
-        result.append({'name': name, 'device': Path('/dev') / name, 'bytes': disk_bytes,
-                       'ssd': rotational == 0, 'removable': removable != 0,
-                       'partitions': sorted(partitions)})
-    return result
-
-
-def _linux_filesystem_type(device: Path) -> str:
-    """Read-only checks; blkid is optional in small live Linux systems."""
-    blkid = shutil.which('blkid')
-    if blkid:
-        try:
-            result = subprocess.run([blkid, '-p', '-o', 'value', '-s', 'TYPE', str(device)],
-                                    capture_output=True, text=True, timeout=5, check=False)
-            if result.returncode == 0 and result.stdout.strip().lower() in STORAGE_LINUX_FS:
-                return result.stdout.strip().lower()
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    try:
-        with device.open('rb', buffering=0) as fp:
-            head = fp.read(131072)
-        if len(head) >= 1082 and head[1080:1082] == b'\x53\xef':
-            return 'ext4'
-        if head[:4] == b'XFSB':
-            return 'xfs'
-        if head[65536 + 64:65536 + 72] == b'_BHRfS_M':
-            return 'btrfs'
-        if head[3:11] == b'NTFS    ':
-            return 'ntfs'
-        if head[3:11] == b'EXFAT   ':
-            return 'exfat'
-        if head[54:62] in (b'FAT12   ', b'FAT16   ') or head[82:90] == b'FAT32   ':
-            return 'vfat'
-    except OSError as exc:
-        _storage_note('No se puede inspeccionar ' + str(device) + ': ' + str(exc))
-    return ''
-
-
-def _linux_existing_old_pyrion_ext2(device: Path) -> bool:
-    """Read-only identification of the old Mini Linux EXT2 test volume."""
-    try:
-        with device.open('rb', buffering=0) as handle:
-            header = handle.read(2048)
-        # ext2/ext3/ext4 magic and superblock name (1024+120).
-        return (header[1080:1082] == b'\x53\xef' and
-                header[1144:1160].split(b'\0', 1)[0] == b'PYRIONDATA')
-    except OSError:
-        return False
-
-
-def _linux_disk_blank(device: Path, size: int) -> bool:
-    """Strict safety check: no partitions and all-zero sampled ends."""
-    if size < 512 * 1024 * 1024 or size > 64 * 1024 ** 4:
-        return False
-    try:
-        import stat
-        if not stat.S_ISBLK(device.stat().st_mode):
-            return False
-        with device.open('rb', buffering=0) as fp:
-            first = fp.read(min(2 * 1024 * 1024, size))
-            fp.seek(max(0, size - 2 * 1024 * 1024))
-            last = fp.read(min(2 * 1024 * 1024, size))
-        return (len(first) >= 512 and len(last) >= 512
-                and not any(first) and not any(last))
-    except (OSError, ValueError):
-        return False
-
-
-def _linux_confirm_format(device: Path, size: int, filesystem: str = "fat32", existing: bool = False) -> bool:
-    """Require a typed confirmation; no destructive action during unattended boot."""
-    mib = size // (1024 * 1024)
-    expected = 'FORMATEAR ' + str(device)
-    _storage_note("Formato solicitado: " + filesystem.upper())
-    _storage_note(f'Disco candidato: {device}, {mib} MiB; FAT32; existente={existing}; esperando autorizacion')
-    if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'):
-        script = '''import sys
-try:
- import tkinter as tk
- from tkinter import simpledialog, messagebox
- root=tk.Tk(); root.withdraw(); root.attributes('-topmost', True)
- device,size,expected,filesystem,existing=sys.argv[1:]
- ok=messagebox.askyesno('PYRION OS - FORMATEO DEL DISCO',
-     'Disco candidato: '+device+' ('+size+' MiB).\\n'
-     +('ATENCION: ya contiene EXT2 de una prueba anterior.\\n' if existing=='1' else 'Disco detectado sin formato.\\n')
-     +'Convertir a '+filesystem.upper()+' BORRARA TODOS LOS DATOS DE ESE DISCO.\\n'
-     'No se modificara si cancelas.\\n\\nDeseas continuar?', parent=root)
- if not ok: sys.exit(1)
- answer=simpledialog.askstring('Confirmacion irreversible',
-     'Escribe exactamente: '+expected, parent=root)
- sys.exit(0 if answer==expected else 1)
-except Exception:
- sys.exit(2)
-'''
-        try:
-            result = subprocess.run([sys.executable, '-c', script, str(device), str(mib), expected, filesystem, '1' if existing else '0'],
-                                    timeout=180, check=False,
-                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL)
-            if result.returncode == 0:
-                return True
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    if getattr(sys.stdin, 'isatty', lambda: False)():
-        try:
-            print(f'ADVERTENCIA: BORRADO IRREVERSIBLE del disco {device} ({mib} MiB), formato {filesystem.upper()}. Disco ya formateado: {existing}')
-            return input('Escribe exactamente ' + expected + ': ').strip() == expected
-        except (OSError, EOFError, KeyboardInterrupt):
-            return False
-    return False
-
-
-class _LinuxStorageFinder:
-    """Prioritize existing installations, default to FAT32 for new storage."""
-
-    def __init__(self, is_installation, recorded: dict):
-        self.is_installation = is_installation
-        self.recorded = recorded if isinstance(recorded, dict) else {}
-        self.probe_mounts: list[Path] = []
-        self.mount_tool = shutil.which('mount')
-        self.mount_errors: dict[str, str] = {}
-        self.umount_tool = shutil.which('umount')
-
-    def _existing_mount(self, device: Path) -> tuple[Path, bool] | None:
-        for item in _linux_mounts():
-            raw = item['device']
-            if raw == str(device):
-                return item['path'], 'rw' in item['options']
-            if raw.startswith('/dev/'):
-                try:
-                    if Path(raw).resolve() == device.resolve():
-                        return item['path'], 'rw' in item['options']
-                except OSError:
-                    pass
-        return None
-
-    @staticmethod
-    def _filesystem_ready(fs: str) -> bool:
-        try:
-            registered = Path('/proc/filesystems').read_text(errors='replace').splitlines()
-            return any(line.split() and line.split()[-1] == fs for line in registered)
-        except OSError:
-            return False
-
-    def _ensure_filesystem_driver(self, filesystem: str) -> None:
-        """Try kernel modules already in this ISO; never download kernel drivers."""
-        if filesystem in ('vfat', 'fat'):
-            needed, primary = ('nls_iso8859-1', 'nls_cp437', 'fat', 'vfat'), 'vfat'
-        elif filesystem in ('ext4', 'ext3', 'ext2'):
-            needed, primary = ('crc16', 'mbcache', 'jbd2', 'ext4'), 'ext4'
-        else:
-            return
-        if self._filesystem_ready(primary):
-            return
-        insmod = shutil.which('insmod')
-        base = Path('/lib/modules/pyrion_cd')
-        if not insmod or not base.is_dir() or getattr(os, 'geteuid', lambda: 1)() != 0:
-            _storage_note(f'Soporte {primary} no cargado; no hay insmod/modulos disponibles para recuperarlo.')
-            return
-        for module in needed:
-            path = base / (module + '.ko')
-            if not path.is_file():
-                _storage_note(f'Falta controlador local {path}; NO se borrara ningun disco.')
-                continue
-            try:
-                result = subprocess.run([insmod, str(path)], capture_output=True,
-                                        text=True, errors='replace', check=False, timeout=9)
-                if result.returncode != 0:
-                    detail = (result.stderr or result.stdout or f'codigo {result.returncode}').strip()
-                    if 'file exists' not in detail.lower():
-                        _storage_note('insmod ' + module + ': ' + detail[-350:])
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                _storage_note('No se pudo activar ' + module + ': ' + str(exc)[-250:])
-        if not self._filesystem_ready(primary):
-            _storage_note(f'ATENCION: el kernel no registra el sistema de archivos {primary} en /proc/filesystems.')
-
-    def _run_mount(self, device: Path, directory: Path, fstype: str, rw: bool) -> bool:
-        """Try safe mount variants and keep the real kernel errors visible.
-
-        A failed mount NEVER implies the volume is blank or may be formatted.
-        """
-        if not self.mount_tool:
-            self.mount_errors[str(device)] = 'No existe el comando mount.'
-            return False
-        self._ensure_filesystem_driver(fstype)
-        if fstype in ('fat', 'vfat'):
-            attempts = [('vfat', 'rw,nosuid,nodev,umask=022' if rw else 'ro,nosuid,nodev'),
-                        ('vfat', 'rw' if rw else 'ro')]
-        elif fstype in ('ext2', 'ext3', 'ext4'):
-            attempts = [('ext4', 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'),
-                        ('ext4', 'rw' if rw else 'ro')]
-        elif fstype in ('ntfs', 'ntfs3'):
-            attempts = [('ntfs3', 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'),
-                        ('ntfs', 'rw' if rw else 'ro')]
-        else:
-            attempts = [(fstype, 'rw,nosuid,nodev' if rw else 'ro,nosuid,nodev'),
-                        (fstype, 'rw' if rw else 'ro')]
-        messages = []
-        for kind, flags in dict.fromkeys(attempts):
-            try:
-                result = subprocess.run([self.mount_tool, '-t', kind, '-o', flags,
-                                         str(device), str(directory)], capture_output=True,
-                                        text=True, errors='replace', timeout=15, check=False)
-                if result.returncode == 0:
-                    # On very small Linux rootfs, is_mount() alone may not be
-                    # sufficient; validate against /proc/mounts too.
-                    found = directory.is_mount() or any(
-                        m['path'] == directory and
-                        (m['device'] == str(device) or m['device'] == device.name)
-                        for m in _linux_mounts()
-                    )
-                    if found:
-                        self.mount_errors.pop(str(device), None)
-                        _storage_note(f'{device} montado correctamente: {kind}, {flags}, {directory}')
-                        return True
-                    messages.append(f'{kind} {flags}: mount devolvio 0 pero el sistema no registro el montaje')
-                else:
-                    msg = (result.stderr or result.stdout or f'codigo {result.returncode}').strip()
-                    messages.append(f'{kind} {flags}: {msg[-360:]}')
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                messages.append(f'{kind} {flags}: {type(exc).__name__}: {exc}')
-        summary = ' | '.join(messages[-4:]) or 'Error de montaje desconocido'
-        self.mount_errors[str(device)] = summary
-        _storage_note(f'MONTAJE FALLIDO {device} [{fstype}] : {summary[-1300:]}')
-        return False
-
-    def _unmount_probe(self, mountpoint: Path) -> None:
-        if mountpoint not in self.probe_mounts:
-            return
-        if self.umount_tool:
-            try:
-                result = subprocess.run([self.umount_tool, str(mountpoint)], timeout=12,
-                                        capture_output=True, check=False)
-                if result.returncode == 0:
-                    self.probe_mounts.remove(mountpoint)
-            except (OSError, subprocess.TimeoutExpired):
-                pass
-
-    def _candidate_location(self, device: Path, filesystem: str) -> dict | None:
-        mounted = self._existing_mount(device)
-        if mounted:
-            path, rw = mounted
-            if not path.is_dir():
-                return None
-            return {'device': device, 'path': path, 'rw': rw, 'temporary': False, 'fs': filesystem}
-        if not self.mount_tool or not self.umount_tool or os.geteuid() != 0:
-            _storage_note(f'{device} no esta montado; se necesitan permisos y mount/umount')
-            return None
-        STORAGE_MOUNT_BASE.mkdir(parents=True, exist_ok=True)
-        path = STORAGE_MOUNT_BASE / device.name
-        path.mkdir(parents=True, exist_ok=True)
-        if not self._run_mount(device, path, filesystem, rw=False):
-            _storage_note(f'No se pudo montar {device} ({filesystem}). Falta controlador o utilidad de montaje.')
-            return None
-        self.probe_mounts.append(path)
-        return {'device': device, 'path': path, 'rw': False, 'temporary': True, 'fs': filesystem}
-
-    @staticmethod
-    def _installation_at(directory: Path, checker) -> Path | None:
-        for candidate in (directory / 'pyrionos', directory / 'PYRIONOS',
-                          directory / 'data' / 'pyrionos', directory / 'home' / 'pyrionos'):
-            try:
-                if checker(candidate):
-                    return candidate
-            except OSError:
-                pass
-        return None
-
-    def _make_writable(self, candidate: dict) -> Path:
-        mountpoint = candidate['path']
-        if candidate['rw']:
-            return mountpoint
-        if not candidate['temporary']:
-            raise StorageError(f'El disco {candidate["device"]} ya esta montado en solo lectura: {mountpoint}')
-        self._unmount_probe(mountpoint)
-        if mountpoint in self.probe_mounts:
-            raise StorageError(f'No se pudo desmontar temporalmente {mountpoint} para escribir')
-        if not self._run_mount(candidate['device'], mountpoint, candidate['fs'], rw=True):
-            raise StorageError(f'No se pudo montar {candidate["device"]} en lectura/escritura')
-        return mountpoint
-
-    def _select_installation(self, installed: list[dict]) -> dict:
-        saved = str(self.recorded.get('id') or '')
-        if saved:
-            matches = []
-            for entry in installed:
-                try:
-                    meta = read_json_strict(entry['folder'] / 'config' / 'instalacion.json', {})
-                    if meta.get('id') == saved:
-                        matches.append(entry)
-                except StorageError:
-                    pass
-            if matches:
-                return matches[0]
-            raise StorageError(
-                'La instalacion encontrada en el disco tiene un ID diferente al '
-                'registrado previamente. No se cambiara a otro usuario o disco '
-                'sin seleccionar explicitamente su ubicacion.'
-            )
-        if len(installed) == 1:
-            return installed[0]
-        raise StorageError('Hay varias instalaciones PYRION en discos diferentes; selecciona una ubicacion manualmente.')
-
-    def _format_unique_blank(self, item: dict, *, convert_existing: bool = False) -> dict:
-        """Make FAT32 on an entire disk only after explicit typed authorization.
-
-        A single unmountable older PYRIONDATA EXT2 disk may be converted, but
-        never silently, and only after an additional signature/label check.
-        """
-        device = item['device']
-        if not self.mount_tool or not self.umount_tool or os.geteuid() != 0:
-            raise StorageError(f'Faltan mount/umount o permisos para preparar {device}.')
-        mkfs = shutil.which('mkdosfs') or shutil.which('mkfs.fat') or shutil.which('mkfs.vfat')
-        if not mkfs:
-            raise StorageError('Falta mkdosfs o mkfs.fat en Mini Linux. No se modifico el disco.')
-        if item['partitions'] or self._existing_mount(device):
-            raise StorageError('El disco tiene particiones o esta montado. No se formateara.')
-        if convert_existing:
-            if not _linux_existing_old_pyrion_ext2(device):
-                raise StorageError('El disco no tiene la firma EXT2 PYRIONDATA esperada. Se cancelo el formateo.')
-            _storage_note('Disco EXT2 PYRIONDATA anterior encontrado sin poderse montar: conversion FAT32 disponible con confirmacion.')
-        elif not _linux_disk_blank(device, item['bytes']):
-            raise StorageError('No se puede garantizar que el disco este vacio; no se formateo.')
-        if not _linux_confirm_format(device, item['bytes'], 'fat32', existing=convert_existing):
-            raise StorageError('Formato FAT32 cancelado por el usuario. Ningun archivo fue borrado por PYRION.')
-        fresh = {d['name']: d for d in _linux_disks()}.get(item['name'])
-        if not fresh or fresh['partitions'] or fresh['bytes'] != item['bytes'] or self._existing_mount(device):
-            raise StorageError('El hardware cambio durante la confirmacion. Formateo cancelado.')
-        if convert_existing:
-            if not _linux_existing_old_pyrion_ext2(device):
-                raise StorageError('La firma del disco cambio. Formateo cancelado.')
-        elif not _linux_disk_blank(device, item['bytes']):
-            raise StorageError('El disco dejo de estar vacio. Formateo cancelado.')
-        _storage_note('Formateando exclusivamente ' + str(device) + ' en FAT32 (BORRADO CONFIRMADO).')
-        # BusyBox mkdosfs creates FAT32 and accepts -n LABEL; no partitioning.
-        command = [mkfs, '-n', 'PYRIONDATA', str(device)]
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=240, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise StorageError('No se pudo ejecutar mkdosfs: ' + str(exc)) from exc
-        if result.returncode != 0:
-            raise StorageError('Falló mkdosfs: ' + ((result.stderr or result.stdout) or '')[-800:])
-        if _linux_filesystem_type(device) != 'vfat':
-            raise StorageError('mkdosfs termino pero FAT32 no fue reconocido. Revisa el disco.')
-        directory = STORAGE_MOUNT_BASE / device.name
-        directory.mkdir(parents=True, exist_ok=True)
-        if not self._run_mount(device, directory, 'vfat', rw=True):
-            raise StorageError('FAT32 creado, pero no se pudo montar. Verifica /var/log/modules-cd.log, /proc/filesystems y dmesg; NO vuelvas a formatear.')
-        return {'device': device, 'path': directory, 'rw': True, 'temporary': False, 'fs': 'vfat'}
-
-    def _copy_ram_installation(self, target: Path) -> None:
-        """Move an ephemeral live-session installation without deleting the original."""
-        sources = []
-        raw = self.recorded.get('ruta')
-        if isinstance(raw, str) and raw.strip():
-            sources.append(Path(raw).expanduser())
-        sources.append(Path.home() / 'pyrionos')
-        for src in dict.fromkeys(sources):
-            if not self.is_installation(src) or src == target:
-                continue
-            if target.exists() and any(target.iterdir()):
-                return
-            # No migration from a real existing disk that might not be the
-            # user's selected installation. Only migrate the rootfs/tmpfs copy.
-            try:
-                root_dev = os.stat('/').st_dev
-                if os.stat(src).st_dev != root_dev:
-                    continue
-                bytes_required = sum(p.stat().st_size for p in src.rglob('*') if p.is_file() and not p.is_symlink())
-                if shutil.disk_usage(target.parent).free < bytes_required + 40 * 1024 * 1024:
-                    raise StorageError('No hay espacio para trasladar la copia anterior de PYRION.')
-                _storage_note(f'Copiando instalacion temporal {src} a disco persistente {target}')
-                shutil.copytree(src, target, dirs_exist_ok=True, symlinks=False)  # FAT32 no admite enlaces simbolicos
-                if not self.is_installation(target):
-                    raise StorageError('La copia no fue validada; se conserva la original sin cambios.')
-                _storage_note('Instalacion anterior copiada correctamente; original preservado.')
-                return
-            except StorageError:
-                raise
-            except OSError as exc:
-                raise StorageError(f'No se pudo migrar {src} al disco persistente: {exc}') from exc
-
-    def discover(self) -> Path | None:
-        disks = _linux_disks()
-        if not disks:
-            _storage_note('El kernel no detecta ningun disco fisico con capacidad suficiente.')
-            return None
-        _storage_note('Discos encontrados: ' + ', '.join(
-            f"{d['device']} ({d['bytes'] // (1024 * 1024)} MiB, "
-            f"{'SSD' if d['ssd'] else 'HDD'}, {len(d['partitions'])} particiones)" for d in disks
-        ))
-        installed, available, blank, old_unmounted = [], [], [], []
-        failed_mounts: list[str] = []
-        unfamiliar: list[str] = []
-        try:
-            for disk in disks:
-                if not disk['partitions'] and _linux_disk_blank(disk['device'], disk['bytes']):
-                    blank.append(disk)
-                for partition in disk['partitions'] or [disk['name']]:
-                    device = Path('/dev') / partition
-                    filesystem = _linux_filesystem_type(device)
-                    if not filesystem:
-                        unfamiliar.append(str(device))
-                        _storage_note('No se encontro firma FAT/ext en ' + str(device) + '. No se modificara.')
-                        continue
-                    _storage_note('Sistema de archivos detectado: ' + str(device) + ' = ' + filesystem)
-                    volume = self._candidate_location(device, filesystem)
-                    if volume is None:
-                        failed_mounts.append(f'{device} ({filesystem}): '
-                                             + self.mount_errors.get(str(device), 'No hay acceso de montaje'))
-                        if (not disk['partitions'] and device == disk['device']
-                                and _linux_existing_old_pyrion_ext2(device)):
-                            old_unmounted.append(disk)
-                        continue
-                    volume['disk'] = disk
-                    folder = self._installation_at(volume['path'], self.is_installation)
-                    if folder:
-                        volume['folder'] = folder
-                        installed.append(volume)
-                        continue
-                    if filesystem not in STORAGE_LINUX_FS:
-                        continue
-                    dest = volume['path'] / DIR_NAME
-                    if dest.exists() and (not dest.is_dir() or any(dest.iterdir())):
-                        continue
-                    free = shutil.disk_usage(volume['path']).free
-                    if free < STORAGE_MIN_FREE:
-                        _storage_note(f'{device} tiene {free // (1024 * 1024)} MiB; se requieren 700 MiB libres.')
-                        continue
-                    score = (100 if disk['ssd'] else 0) + (65 if filesystem in ('vfat', 'fat') else 50 if filesystem in ('ext4', 'ext3', 'ext2') else 20 if filesystem == 'exfat' else 10) + min(free // (1024**3), 25)
-                    if disk['removable']:
-                        score -= 40
-                    volume['score'] = score
-                    available.append(volume)
-            if installed:
-                chosen = self._select_installation(installed)
-                folder = chosen['folder']
-                self._make_writable(chosen)
-                _storage_note('Instalacion existente reutilizada: ' + str(folder))
-                return folder
-            # An offline/stale pointer to a missing durable installation must
-            # not be silently replaced by a brand-new empty installation.
-            saved = str(self.recorded.get('id') or '')
-            prior = self.recorded.get('ruta')
-            if saved and isinstance(prior, str) and not self.is_installation(Path(prior)):
-                raise StorageError(
-                    'Se recordaba una instalacion PYRION anterior que no se encontro '
-                    'en ningun disco. Conecta el disco original. No se creara '
-                    'una instalacion paralela con datos vacios.'
-                )
-            if available:
-                errors = []
-                for chosen in sorted(available, key=lambda v: (v['score'], v['path'].as_posix()), reverse=True):
-                    try:
-                        self._make_writable(chosen)
-                    except StorageError as exc:
-                        errors.append(str(exc))
-                        _storage_note('Candidato descartado: ' + str(exc))
-                        continue
-                    folder = chosen['path'] / DIR_NAME
-                    if chosen['fs'] in ('vfat', 'fat', 'exfat', 'ntfs', 'ntfs3'):
-                        _storage_note('Usando ' + chosen['fs'] + '. Para librerias Qt con '
-                                      'enlaces simbolicos y permisos Unix se recomienda ext4.')
-                    self._copy_ram_installation(folder)
-                    _storage_note('Almacenamiento persistente seleccionado: ' + str(folder))
-                    return folder
-                raise StorageError('Ningun disco pudo montarse en lectura/escritura: ' + '; '.join(errors[-3:]))
-            if len(blank) == 1 and len(disks) == 1:
-                item = self._format_unique_blank(blank[0])
-                folder = item['path'] / DIR_NAME
-                self._copy_ram_installation(folder)
-                _storage_note('Disco inicializado para PYRION: ' + str(folder))
-                return folder
-            if len(disks) == 1 and len(old_unmounted) == 1 and not blank:
-                item = self._format_unique_blank(old_unmounted[0], convert_existing=True)
-                folder = item['path'] / DIR_NAME
-                self._copy_ram_installation(folder)
-                return folder
-            if blank:
-                raise StorageError('Existen varios dispositivos o candidatos dudosos. Discos vacios: ' + ', '.join(str(d['device']) for d in blank)
-                                   + '. No se formateara ninguno automaticamente.')
-            filesystems = '(no disponible)'
-            try:
-                filesystems = ', '.join(line.strip().split()[-1]
-                                       for line in Path('/proc/filesystems').read_text(errors='replace').splitlines()
-                                       if line.strip())
-            except OSError:
-                pass
-            if failed_mounts:
-                raise StorageError(
-                    'Se detecto almacenamiento pero Linux NO PUDO MONTARLO. '
-                    'No se formateo ni borro ningun disco. '
-                    + 'Diagnostico: ' + ' ; '.join(failed_mounts[:3])[-1600:]
-                    + '. Sistemas del kernel: ' + filesystems[-300:]
-                    + '. Registros: /var/log/modules-cd.log, '
-                    '/var/log/pyrion-storage.log y ~/.cache/pyrionos/storage_scan.log.'
-                )
-            raise StorageError(
-                'Se reconocieron discos, pero no se encontro ningun sistema de '
-                'archivos compatible ni espacio libre suficiente. '
-                + ('Sin firma reconocible: ' + ', '.join(unfamiliar[:5]) + '. ' if unfamiliar else '')
-                + 'No se formateo ningun disco. '
-                'Registros: ~/.cache/pyrionos/storage_scan.log.'
-            )
-        finally:
-            for mountpoint in list(self.probe_mounts):
-                self._unmount_probe(mountpoint)
-
-
-def _linux_find_storage(checker, pointer: Path) -> Path | None:
-    """Search real disks before any rootfs or /root RAM fallback."""
-    recorded = read_json_strict(pointer, {})
-    if isinstance(recorded, dict) and recorded.get('ruta'):
-        try:
-            known = Path(recorded['ruta'])
-            if checker(known) and os.stat(known).st_dev != os.stat('/').st_dev:
-                # Still scan real disks: known device may be a stale mount.
-                pass
-        except OSError:
-            pass
-    return _LinuxStorageFinder(checker, recorded).discover()
-
-
-
-
-def _linux_ram_root() -> bool:
-    root_mount = next((m for m in _linux_mounts() if m['path'] == Path('/')), None)
-    if root_mount is None:
-        return True
-    return root_mount['fs'].lower() in ('rootfs', 'tmpfs', 'ramfs', 'overlay', 'squashfs')
-
-
 class PersistentStore:
-    """Descubre o crea UN almacenamiento estable y recuerda su ubicacion."""
+    """Almacenamiento local de PRUEBA: no examina ni modifica discos."""
 
     def __init__(self, preferred_parent: Path | None = None):
-        if os.name == "nt":
-            config_base = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
-        else:
-            config_base = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
-        # Este archivo contiene solamente una referencia: los datos estan en el disco.
-        self.pointer = config_base / "pyrionos" / "ubicacion.json"
-        self.root = self._discover(preferred_parent)
+        selected = (
+            str(preferred_parent) if preferred_parent is not None
+            else os.environ.get("PYRION_TEST_DATA_DIR", "").strip()
+        )
+        self.root = (
+            Path(selected).expanduser().resolve()
+            if selected else Path.home() / "pyrionos_desktop_prueba"
+        )
         self._prepare()
 
     @staticmethod
     def _is_installation(path: Path) -> bool:
-        if not path.is_dir() or path.is_symlink():
-            return False
         marker = path / "config" / "instalacion.json"
         if not marker.is_file():
             return False
         try:
             data = read_json_strict(marker, {})
-            return isinstance(data, dict) and data.get("producto") == "pyrionos"
-        except StorageError:
+            return isinstance(data, dict) and data.get("producto") == "pyrionos_prueba"
+        except (OSError, StorageError):
             return False
-
-    @staticmethod
-    def _is_empty(path: Path) -> bool:
-        return path.is_dir() and not any(path.iterdir())
-
-    def _candidate_paths(self) -> list[Path]:
-        result: list[Path] = []
-        for volume in mounted_volumes():
-            result.append(volume / DIR_NAME)
-        result.append(Path.home() / DIR_NAME)
-        # Duplicados preservando orden.
-        return list(dict.fromkeys(result))
-
-    def _discover(self, preferred_parent: Path | None) -> Path:
-        # Ruta explicita util para instalar en un disco elegido por el usuario.
-        env_dir = os.environ.get("PYRIONOS_DATA_DIR", "").strip()
-        if env_dir and preferred_parent is None:
-            preferred_parent = Path(env_dir).expanduser()
-
-        if preferred_parent is not None:
-            selected = Path(preferred_parent).expanduser().resolve()
-            target = selected if selected.name.lower() == DIR_NAME else selected / DIR_NAME
-            if target.is_symlink():
-                raise StorageError("La ruta seleccionada es un enlace simbolico no permitido.")
-            if target.exists() and not (self._is_installation(target) or self._is_empty(target)):
-                raise StorageError(f"La carpeta ya contiene datos ajenos a PYRION: {target}")
-            return target
-
-        # Real volumes are discovered before the legacy /root fallback.
-        # Essential: the live ISO rootfs is RAM and cannot store PySide6.
-        if sys.platform.startswith('linux'):
-            chosen = _linux_find_storage(self._is_installation, self.pointer)
-            if chosen is not None:
-                return chosen
-            if _linux_ram_root():
-                raise StorageError(
-                    'PYRION esta ejecutandose desde rootfs/overlay temporal y no '
-                    'ha encontrado un disco persistente. No se instalaran paquetes '
-                    'en RAM. Diagnostico: ~/.cache/pyrionos/storage_scan.log'
-                )
-
-        recorded = read_json_strict(self.pointer, {})
-        recorded_path = recorded.get("ruta") if isinstance(recorded, dict) else None
-        recorded_id = recorded.get("id") if isinstance(recorded, dict) else None
-        if recorded_path:
-            target = Path(recorded_path).expanduser()
-            if self._is_installation(target):
-                if recorded_id:
-                    identity = read_json_strict(target / "config" / "instalacion.json", {})
-                    if identity.get("id") != recorded_id:
-                        raise StorageError("La carpeta encontrada no coincide con la instalacion anterior.")
-                return target
-
-        # Escanear todos los discos en cada arranque para encontrar un PYRION existente.
-        candidates = self._candidate_paths()
-        installations = [p for p in candidates if self._is_installation(p)]
-        if recorded_id:
-            for p in installations:
-                meta = read_json_strict(p / "config" / "instalacion.json", {})
-                if meta.get("id") == recorded_id:
-                    return p
-            raise StorageError(
-                "No se encontro el disco que contiene tus datos de PYRION. "
-                "Conecta el disco original y vuelve a iniciar, o selecciona "
-                "manualmente una ubicacion. No se creara una instalacion vacia."
-            )
-        if recorded_path:
-            raise StorageError(
-                "No se encontro la carpeta persistente de PYRION. "
-                "No se creara otra para evitar aparentar que se perdieron tus datos."
-            )
-        if installations:
-            # Preferir la del disco personal, si existe.
-            return installations[0]
-
-        # Primer arranque: crear en el disco de usuario. En Windows probar la raiz
-        # de la unidad fija personal; si no tenemos permisos, usar la carpeta HOME.
-        preferred: list[Path] = []
-        if os.name == "nt":
-            preferred.append(Path(Path.home().anchor) / DIR_NAME)
-        preferred.append(Path.home() / DIR_NAME)
-        for path in preferred:
-            if path.exists() and not self._is_empty(path):
-                continue
-            try:
-                path.mkdir(parents=True, exist_ok=True)
-                # Verificar escritura real en lugar de confiar solo en os.access().
-                probe = path / (".escritura-" + uuid.uuid4().hex)
-                probe.write_text("ok", encoding="utf-8")
-                probe.unlink()
-                return path
-            except OSError:
-                continue
-        raise StorageError("No se encontro un disco local escribible para crear 'pyrionos'.")
 
     def _prepare(self) -> None:
         try:
             self.root.mkdir(parents=True, exist_ok=True)
-            for name in SUBFOLDERS:
-                (self.root / name).mkdir(parents=True, exist_ok=True)
+            for subfolder in SUBFOLDERS:
+                (self.root / subfolder).mkdir(parents=True, exist_ok=True)
             marker = self.root / "config" / "instalacion.json"
             existing = read_json_strict(marker, {})
+            if existing and existing.get("producto") != "pyrionos_prueba":
+                raise StorageError("La carpeta elegida pertenece a otra instalacion.")
             if not existing:
                 existing = {
-                    "producto": "pyrionos",
+                    "producto": "pyrionos_prueba",
                     "id": str(uuid.uuid4()),
                     "creado": datetime.now(timezone.utc).isoformat(),
                     "version_inicial": APP_VERSION,
                 }
                 write_json_atomic(marker, existing)
-            if existing.get("producto") != "pyrionos":
-                raise StorageError("La carpeta de datos no pertenece a PYRION.")
             self.installation_id = existing["id"]
-            # Archivos vacios de datos: nunca reemplazar si ya existen.
-            for filename in ("historial.json", "solicitudes.json"):
-                path = self.root / "data" / filename
-                if not path.exists():
+            for name in ("historial", "solicitudes"):
+                path = self.root / "data" / f"{name}.json"
+                if not path.is_file():
                     write_json_atomic(path, [])
-            if not (self.root / "config" / "preferencias.json").exists():
-                write_json_atomic(self.root / "config" / "preferencias.json", {"tema": "oscuro"})
-            write_json_atomic(self.pointer, {
-                "ruta": str(self.root.resolve()),
-                "id": self.installation_id,
-            })
-        except (OSError, KeyError) as exc:
-            raise StorageError(f"No fue posible preparar el almacenamiento: {exc}") from exc
+            preferences = self.root / "config" / "preferencias.json"
+            if not preferences.is_file():
+                write_json_atomic(preferences, {"tema": "oscuro"})
+        except (OSError, KeyError, ValueError) as exc:
+            raise StorageError("No se pudo crear la carpeta de pruebas: " + str(exc)) from exc
 
     def load_list(self, name: str) -> list:
         if name not in ("historial", "solicitudes"):
-            raise ValueError("Nombre de coleccion no permitido")
+            raise ValueError("Coleccion desconocida")
         data = read_json_strict(self.root / "data" / f"{name}.json", [])
         if not isinstance(data, list):
-            raise StorageError(f"El archivo {name}.json no contiene una lista valida.")
+            raise StorageError("Historial o solicitudes con formato invalido")
         return data
 
     def append(self, name: str, entry: dict) -> None:
-        events = self.load_list(name)
-        events.insert(0, entry)
-        # Historial acotado para evitar crecer indefinidamente.
-        write_json_atomic(self.root / "data" / f"{name}.json", events[:2000])
+        entries = self.load_list(name)
+        entries.insert(0, entry)
+        write_json_atomic(self.root / "data" / f"{name}.json", entries[:2000])
 
     def record(self, title: str, status: str) -> None:
         self.append("historial", {
@@ -1475,13 +704,13 @@ class PersistentStore:
     def check(self) -> tuple[bool, str]:
         try:
             if not self._is_installation(self.root):
-                return False, "No se reconoce la instalacion."
+                return False, "Carpeta de pruebas no valida."
             for name in ("historial", "solicitudes"):
                 self.load_list(name)
             probe = self.root / "cache" / (".prueba-" + uuid.uuid4().hex)
             probe.write_text("ok", encoding="utf-8")
             probe.unlink()
-            return True, "Carpeta localizada, datos legibles y disco escribible."
+            return True, "Datos locales de prueba accesibles y escribibles."
         except (OSError, StorageError) as exc:
             return False, str(exc)
 
@@ -1503,234 +732,11 @@ def identify_tool(request: str) -> str | None:
     return None
 
 
-# Instalador del escritorio: se ejecuta ANTES de importar cualquier clase Qt.
-# No necesita pip del sistema y nunca instala paquetes globalmente.
+# Desktop normal: PySide6 es una dependencia externa, sin instalaciones
+# ni procesos privilegiados al iniciar este archivo de prueba.
 DESKTOP_QT_FAILURE = ""
 DESKTOP_QT_LOG = ""
-DESKTOP_QT_PACKAGE = "PySide6-Essentials>=6.5,<7"
 
-
-def _qt_setup_notify(root: Path, message: str) -> None:
-    """Registrar el arranque incluso si AMDEV usa pythonw sin consola."""
-    line = f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] {message}"
-    try:
-        log_path = root / "logs" / "desktop_setup.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-    except OSError:
-        pass
-    stream = getattr(sys, "stderr", None)
-    if stream is not None:
-        try:
-            stream.write("PYRION: " + message + "\n")
-            stream.flush()
-        except (OSError, ValueError, AttributeError):
-            pass
-
-
-def _qt_import_probe(site_dir: Path) -> tuple[bool, str]:
-    """Comprobar Qt en proceso separado sin contaminar el proceso del desktop."""
-    environment = os.environ.copy()
-    current = environment.get("PYTHONPATH", "")
-    environment["PYTHONPATH"] = os.pathsep.join(
-        [str(site_dir)] + ([current] if current else [])
-    )
-    environment["PYTHONNOUSERSITE"] = "1"
-    check = (
-        "from PySide6.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QUrl, QSize, QRectF; "
-        "from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QPdfWriter, QPageSize, QImage; "
-        "from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QDialog, QTabWidget"
-    )
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", check], env=environment,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, errors="replace", timeout=40, check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, f"No se pudo comprobar Qt: {type(exc).__name__}: {exc}"
-    if result.returncode == 0:
-        return True, ""
-    return False, (result.stderr or result.stdout or f"Error {result.returncode}")[-1400:]
-
-
-def _activate_persistent_qt(site_dir: Path) -> None:
-    """Importar desde el volumen persistente sin modificar sys.path global del OS."""
-    directory = str(site_dir)
-    if directory in sys.path:
-        sys.path.remove(directory)
-    sys.path.insert(0, directory)
-    current = os.environ.get("PYTHONPATH", "")
-    parts = [p for p in current.split(os.pathsep) if p and p != directory]
-    os.environ["PYTHONPATH"] = os.pathsep.join([directory] + parts)
-
-
-QT_PERSISTENT_MIN_MIB = 320
-QT_TEMP_MIN_MIB = 220
-QT_SHARED_MIN_MIB = 560
-
-
-def _storage_mib(number: int) -> str:
-    return f"{number / (1024 * 1024):.0f} MiB"
-
-
-def _qt_disk_preflight(root: Path, notify: Callable[[str], None]) -> Path:
-    """Preflight disk space before downloading large PySide6 wheels.
-
-    Installing Qt needs substantially more than the compressed wheel size.
-    The final packages always live in the persistent root; only the working
-    directory may use /tmp when it is a separate and sufficiently large disk.
-    Never delete applications, installed environments, or user data.
-    """
-    root = Path(root)
-    default_temp = Path(tempfile.gettempdir())
-    use_external_temp = False
-    external_free = 0
-    try:
-        use_external_temp = (root.stat().st_dev != default_temp.stat().st_dev)
-        external_free = shutil.disk_usage(default_temp).free
-        if external_free < QT_TEMP_MIN_MIB * 1024 * 1024:
-            use_external_temp = False
-    except OSError:
-        use_external_temp = False
-
-    required_mib = QT_PERSISTENT_MIN_MIB if use_external_temp else QT_SHARED_MIN_MIB
-    available = shutil.disk_usage(root).free
-    notify("Espacio disponible en " + str(root) + ": " + _storage_mib(available))
-    if use_external_temp:
-        notify("Temporales de pip en " + str(default_temp) + " (otro disco: "
-               + _storage_mib(external_free) + " libres).")
-    else:
-        notify("Temporales de pip dentro del almacenamiento persistente.")
-
-    # Only pip's disposable download cache may be removed automatically.
-    # Installed libraries, application folders and user documents are never touched.
-    cache = root / "cache" / "pip"
-    if available < required_mib * 1024 * 1024 and cache.is_dir() and not cache.is_symlink():
-        notify("Espacio insuficiente; eliminando solo descargas temporales del cache pip...")
-        try:
-            shutil.rmtree(cache)
-            cache.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            notify("No se pudo limpiar el cache pip: " + str(exc))
-        available = shutil.disk_usage(root).free
-        notify("Espacio tras limpiar cache: " + _storage_mib(available))
-
-    if sys.platform.startswith("linux"):
-        try:
-            info = os.statvfs(root)
-            if info.f_favail < 1500:
-                raise RuntimeError(
-                    "No hay inodos libres suficientes en " + str(root)
-                    + ". Comprueba df -i y libera espacio o mueve PYRION a otro disco."
-                )
-        except OSError:
-            pass
-
-    if available < required_mib * 1024 * 1024:
-        requirement = f"al menos {required_mib} MiB libres"
-        raise RuntimeError(
-            "ESPACIO INSUFICIENTE PARA PYSIDE6. En " + str(root) + " hay "
-            + _storage_mib(available) + " disponibles; se recomiendan " + requirement
-            + ". El paquete descargado no es su tamano final: requiere espacio "
-            "para extraer Qt y preparar la instalacion. Amplia el disco o mueve "
-            "la carpeta persistente a un volumen con mas espacio. "
-            "Diagnostico: df -h / /tmp " + str(root) + ". "
-            "PYRION no ha borrado tus aplicaciones ni documentos."
-        )
-
-    selected_temp = default_temp if use_external_temp else root / "runtime" / "tmp"
-    selected_temp.mkdir(parents=True, exist_ok=True)
-    return selected_temp
-
-
-def ensure_desktop_qt() -> None:
-    """Instala solo los modulos Qt usados por PYRION en pyrionos/envs/desktop."""
-    global DESKTOP_QT_LOG
-    store = PersistentStore()  # Respeta PYRIONOS_DATA_DIR pasado por app.py.
-    root = store.root
-    os.environ["PYRIONOS_DATA_DIR"] = str(root)
-    DESKTOP_QT_LOG = str(root / "logs" / "desktop_setup.log")
-    manager = DependencyManager(root)
-    target = root / "envs" / "desktop" / "site-packages"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    notify = lambda msg: _qt_setup_notify(root, msg)
-    valid, diagnosis = _qt_import_probe(target)
-    if valid:
-        _activate_persistent_qt(target)
-        notify("PySide6 disponible. Se reutiliza la instalacion existente.")
-        return
-
-    notify("PySide6 no esta disponible; iniciando instalacion automatica persistente.")
-    notify("Ubicacion de instalacion: " + str(target))
-    if diagnosis:
-        notify("Comprobacion inicial: " + diagnosis.replace("\n", " ")[-350:])
-
-    # Las ruedas son independientes del Python del sistema. La instalacion se
-    # realiza en staging y solo se publica si se pueden importar los modulos.
-    stage = target.parent / (".desktop-qt-install-" + uuid.uuid4().hex)
-    backup = target.parent / (".desktop-qt-backup-" + uuid.uuid4().hex)
-    try:
-        # Check both disk space and inodes before pip downloads the 84 MB wheel.
-        temp_dir = _qt_disk_preflight(root, notify)
-        stage.mkdir(mode=0o700)
-        pip_cmd, pip_env = manager._pip_cmd(
-            notify, temp_dir=temp_dir, no_cache=True
-        )
-        cmd = pip_cmd + [
-            "--isolated", "install", "--disable-pip-version-check", "--no-input",
-            "--only-binary=:all:", "--prefer-binary", "--timeout", "30",
-            "--retries", "2", "--no-cache-dir",
-            "--target", str(stage), DESKTOP_QT_PACKAGE,
-        ]
-        notify("Instalando PySide6-Essentials y shiboken6 en el disco persistente...")
-        rc, details = manager._run_monitored(
-            cmd, pip_env, notify, "Instalacion de PySide6", timeout=900,
-        )
-        if rc != 0:
-            if "No space left on device" in details or "[Errno 28]" in details:
-                free = shutil.disk_usage(root).free
-                raise RuntimeError(
-                    "El disco se quedo sin espacio durante la extraccion de PySide6. "
-                    "Libres en " + str(root) + ": " + _storage_mib(free)
-                    + ". Usa df -h / /tmp " + str(root)
-                    + " y amplia o cambia el almacenamiento persistente. "
-                    "No se han eliminado datos de usuario."
-                )
-            raise RuntimeError("pip termino con codigo " + str(rc) + ": " + details[-2500:])
-        passed, reason = _qt_import_probe(stage)
-        if not passed:
-            raise RuntimeError(
-                "PySide6 fue descargado pero no pudo importarse: " + reason
-            )
-        if target.exists():
-            os.replace(target, backup)
-        try:
-            os.replace(stage, target)
-        except Exception:
-            if backup.exists() and not target.exists():
-                os.replace(backup, target)
-            raise
-        _activate_persistent_qt(target)
-        notify("PySide6 instalado y comprobado correctamente. Se abrira el escritorio.")
-    except Exception as exc:
-        notify(f"No se pudo instalar PySide6: {type(exc).__name__}: {exc}")
-        raise
-    finally:
-        if stage.exists():
-            shutil.rmtree(stage, ignore_errors=True)
-        if backup.exists() and target.exists():
-            shutil.rmtree(backup, ignore_errors=True)
-
-
-# Si se ejecuta directamente, el instalador corre antes de definir las
-# ventanas Qt. Si se importa como modulo para pruebas, no hace descargas.
-if __name__ == "__main__":
-    try:
-        ensure_desktop_qt()
-    except Exception as _qt_exc:
-        DESKTOP_QT_FAILURE = f"{type(_qt_exc).__name__}: {_qt_exc}"
 
 # Solo el escritorio necesita PySide6. El almacenamiento anterior usa Python puro.
 try:
@@ -1743,8 +749,9 @@ try:
         QHeaderView, QSizePolicy, QAbstractItemView, QTabWidget, QPlainTextEdit,
     )
     QT_READY = True
-except ImportError:
+except (ImportError, OSError) as exc:
     QT_READY = False
+    DESKTOP_QT_FAILURE = f"{type(exc).__name__}: {exc}"
 
 
 if QT_READY:
@@ -2256,7 +1263,8 @@ if QT_READY:
             self.clock_timer.timeout.connect(self._update_clock)
             self.clock_timer.start(30_000)
             self._update_clock()
-            QTimer.singleShot(150, self._sync_catalog)
+            # Busqueda inicial local. No conectar automaticamente a GitHub.
+            QTimer.singleShot(150, self._refresh_installed_list)
 
         def _build_topbar(self, shell):
             top = QFrame()
@@ -2769,56 +1777,29 @@ if QT_READY:
 
 def main() -> int:
     if not QT_READY:
-        reason = DESKTOP_QT_FAILURE or "PySide6 no esta disponible en el Python seleccionado."
         message = (
-            "No fue posible preparar PySide6 automaticamente en el almacenamiento "
-            "persistente de PYRION.\n"
-            + reason
-            + ("\nRegistro: " + DESKTOP_QT_LOG if DESKTOP_QT_LOG else "")
-            + "\nComprueba Internet, espacio disponible y compatibilidad del Linux."
+            "PYRION Desktop necesita PySide6 para abrir la interfaz.\n"
+            "Paquete: PySide6-Essentials\n\n"
+            + (DESKTOP_QT_FAILURE or "No se encontro PySide6")
         )
-        stream = getattr(sys, "stderr", None)
-        if stream is not None:
-            try:
-                print(message, file=stream)
-            except (OSError, ValueError):
-                pass
-        return 20
+        try:
+            print(message, file=sys.stderr)
+        except (OSError, ValueError):
+            pass
+        return 2
+
     app = QApplication(sys.argv)
-    app.setApplicationName(APP_NAME)
+    app.setApplicationName("PYRION Desktop - Prueba")
     app.setApplicationVersion(APP_VERSION)
     try:
         storage = PersistentStore()
     except StorageError as exc:
-        QMessageBox.warning(
-            None, "PYRION · almacenamiento no disponible",
-            f"{exc}\n\nPuedes seleccionar una carpeta o disco para los datos de PYRION. "
-            "Si los datos estaban en un disco desconectado, es preferible reconectarlo y reiniciar.",
-        )
-        selected = QFileDialog.getExistingDirectory(None, "Seleccionar disco o carpeta para pyrionos", str(Path.home()))
-        if not selected:
-            return 1
-        try:
-            storage = PersistentStore(preferred_parent=Path(selected))
-        except StorageError as second_exc:
-            QMessageBox.critical(None, "No fue posible iniciar PYRION", str(second_exc))
-            return 1
+        QMessageBox.critical(None, "PYRION Desktop", str(exc))
+        return 1
+
     window = PyrionDesktop(storage)
+    window.setWindowTitle("PYRION Desktop | Prueba independiente")
     window.show()
-    app.processEvents()
-    # Confirm to the loader that Qt has created the desktop window.
-    # A fresh unique marker is supplied per launch; stale markers cannot match.
-    ready_file = os.environ.get("PYRIONOS_READY_FILE", "").strip()
-    if ready_file:
-        try:
-            marker = Path(ready_file)
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text(json.dumps({
-                "pid": os.getpid(), "version": APP_VERSION,
-                "ready": True, "created": datetime.now().isoformat(),
-            }, ensure_ascii=False), encoding="utf-8")
-        except (OSError, ValueError) as exc:
-            _qt_setup_notify(storage.root, f"No se pudo notificar el inicio del escritorio: {exc}")
     return app.exec()
 
 
