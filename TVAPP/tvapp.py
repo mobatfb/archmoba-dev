@@ -2,7 +2,7 @@
 
 import tkinter as tk
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 800
 
@@ -37,6 +37,7 @@ def main():
     x = max(0, (ventana.winfo_screenwidth() - WINDOW_WIDTH) // 2)
     y = max(0, (ventana.winfo_screenheight() - WINDOW_HEIGHT) // 2)
     ventana.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}")
+    ventana.resizable(False, False)
     render(ventana).pack(fill="both", expand=True)
     ventana.mainloop()
 
