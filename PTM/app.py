@@ -29,7 +29,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 APP_TITLE = "PTM - Buscador y lanzador de herramientas"
-APP_VERSION = "1.0.80"
+APP_VERSION = "1.0.81"
 APP_UPDATE_DATE = "04/11/2026"
 APP_UPDATE_TIME = "18:53"
 SEARCH_MAX_LENGTH = 40
@@ -812,6 +812,16 @@ class PTMApp(tk.Tk):
         self.footer.pack(fill="x", padx=10, pady=(0, 9))
         self.footer.pack_propagate(False)
 
+        # Versión universal de la herramienta activa, tomada de guide.csv.
+        self.tool_version_label = tk.Label(
+            self.footer,
+            text="",
+            bg=WHITE,
+            fg=TEAL,
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+        )
+
         self.zoom_box = tk.Frame(self.footer, bg=WHITE)
 
         self.zoom_minus = tk.Button(
@@ -978,6 +988,7 @@ class PTMApp(tk.Tk):
     # ---------- Inicio ----------
     def show_home(self):
         self.current_key = "home"
+        self._update_tool_version_footer()
         if hasattr(self, "zoom_box"):
             self.zoom_box.pack_forget()
         self.current_tool_widget = None
@@ -5015,9 +5026,30 @@ class PTMApp(tk.Tk):
         meta["zoom_mode"] = "fit"
         self._schedule_tool_viewport(key, delay=10, allow_grow=False)
 
+    def _update_tool_version_footer(self, key=None):
+        """Muestra la versión de cualquier herramienta, sin modificar sus widgets."""
+        if not hasattr(self, "tool_version_label"):
+            return
+        if not key or key == "home" or key not in self.open_tabs:
+            self.tool_version_label.pack_forget()
+            return
+
+        meta = self.open_tabs[key]
+        tool = meta.get("tool") or {}
+        name = str(tool.get("name") or meta.get("name") or "Herramienta")
+        # Los títulos largos no deben desplazar el control de zoom ni la versión PTM.
+        if len(name) > 32:
+            name = name[:29].rstrip() + "..."
+        version = str(tool.get("version") or "").strip()
+        label = f"v{version.lstrip('vV')}" if version else "versión no indicada"
+        self.tool_version_label.configure(text=f"{name} · {label}")
+        if not self.tool_version_label.winfo_manager():
+            self.tool_version_label.pack(side="left", padx=(4, 14), pady=(2, 0))
+
     def _update_zoom_footer(self, key=None):
         if not hasattr(self, "zoom_box"):
             return
+        self._update_tool_version_footer(key)
 
         if not key or key == "home" or key not in self.open_tabs:
             self.zoom_box.pack_forget()
