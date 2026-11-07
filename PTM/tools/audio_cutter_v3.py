@@ -1,7 +1,7 @@
 # ARGUMENTOS: audio cutter recortar cortar audio mp3 wav m4a flac ogg fragmento inicio fin vista previa exportar
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Audio Cutter 1.0.2 para PTM. Reproductor y recortador con FFmpeg portable."""
+"""Audio Cutter v1.0.5: límites arrastrables y aguja de reproducción."""
 import os
 import re
 import shutil
@@ -172,6 +172,10 @@ class AudioCutter(tk.Frame):
         self.preview_started_at = 0.0
         self.preview_deadline = 0.0
         self.preview_source = None
+        self.playhead = 0.0
+        self.preview_from = 0.0
+        self.drag_target = None
+        self.playhead_var = tk.StringVar(value='00:00.00')
         self.start_var = tk.StringVar(value="00:00.00")
         self.end_var = tk.StringVar(value="00:00.00")
         self.format_var = tk.StringVar(value="mp3")
@@ -223,14 +227,22 @@ class AudioCutter(tk.Frame):
         self.end_entry.pack(side="left", padx=(6, 18))
         self._button(row, "Usar todo", self.full_range).pack(side="left")
         self._label(settings, "", textvariable=self.detail_var, fg=MUTED).pack(anchor="w")
-        self.timeline = tk.Canvas(settings, height=46, bg="#0d182b",
+        self.timeline = tk.Canvas(settings, height=62, bg="#0d182b",
                                   highlightthickness=0, cursor="crosshair")
         self.timeline.pack(fill="x", pady=(9, 3))
-        self.timeline.bind("<Button-1>", self._timeline_click)
+        self.timeline.bind("<ButtonPress-1>", self._timeline_press)
+        self.timeline.bind("<B1-Motion>", self._timeline_drag)
+        self.timeline.bind("<ButtonRelease-1>", self._timeline_release)
+        self.timeline.bind("<Motion>", self._timeline_hover)
         self.timeline.bind("<Configure>", lambda _event: self._draw_timeline())
         self.start_var.trace_add("write", lambda *_: self._draw_timeline())
         self.end_var.trace_add("write", lambda *_: self._draw_timeline())
-        self._label(settings, "Clic izquierdo: fija inicio. Mayús + clic: fija fin.", fg=MUTED, size=9).pack(anchor="w")
+        controls = tk.Frame(settings, bg=PANEL)
+        controls.pack(fill="x")
+        self._label(controls, "Arrastra VERDE: inicio  |  ROJO: fin  |  AMARILLO: reproducir",
+                    fg=MUTED, size=9).pack(side="left")
+        self._label(controls, "", textvariable=self.playhead_var, fg="#ffd166",
+                    size=9, bold=True).pack(side="right")
         output = tk.Frame(body, bg=PANEL, padx=14, pady=12)
         output.pack(fill="x", pady=(0, 9))
         self._label(output, "3. EXPORTAR FRAGMENTO", fg=ACCENT, bold=True).pack(anchor="w")
@@ -283,6 +295,8 @@ class AudioCutter(tk.Frame):
                     self.source = path
                     self.duration = duration
                     self.source_var.set(path.name)
+                    self.stop_preview(update_status=False)
+                    self.playhead = 0.0
                     self.start_var.set("00:00.00")
                     self.end_var.set(format_time(duration))
                     self.detail_var.set(f"Duración: {format_time(duration)}")
@@ -307,39 +321,113 @@ class AudioCutter(tk.Frame):
         return start, min(end, self.duration)
 
     def full_range(self):
+        self.stop_preview(update_status=False)
+        self.playhead = 0.0
         self.start_var.set("00:00.00")
         self.end_var.set(format_time(self.duration))
         self._draw_timeline()
+
+    def _timeline_bounds(self):
+        width = max(2, self.timeline.winfo_width())
+        return 8.0, max(9.0, float(width - 8))
+
+    def _time_to_x(self, seconds):
+        left, right = self._timeline_bounds()
+        return left + (right - left) * seconds / max(self.duration, 0.001)
+
+    def _x_to_time(self, x):
+        left, right = self._timeline_bounds()
+        ratio = max(0.0, min(1.0, (float(x) - left) / (right - left)))
+        return self.duration * ratio
+
+    def _timeline_values(self):
+        if self.duration <= 0:
+            return None
+        try:
+            start = max(0.0, min(self.duration, parse_time(self.start_var.get())))
+            end = max(0.0, min(self.duration, parse_time(self.end_var.get())))
+        except ValueError:
+            return None
+        return (start, end) if start < end else None
 
     def _draw_timeline(self):
         if not hasattr(self, "timeline"):
             return
         c = self.timeline
         c.delete("all")
-        width = max(2, c.winfo_width())
-        c.create_rectangle(5, 13, width - 5, 33, fill="#293e5a", outline="")
-        if not self.duration:
+        left, right = self._timeline_bounds()
+        c.create_rectangle(left, 23, right, 43, fill="#293e5a", outline="")
+        values = self._timeline_values()
+        if values is None:
             return
-        try:
-            start = max(0, min(self.duration, parse_time(self.start_var.get())))
-            end = max(0, min(self.duration, parse_time(self.end_var.get())))
-        except ValueError:
-            return
-        left = 5 + (width - 10) * start / self.duration
-        right = 5 + (width - 10) * end / self.duration
-        c.create_rectangle(left, 13, right, 33, fill=ACCENT, outline="")
-        for x in (left, right):
-            c.create_line(x, 7, x, 39, fill="#ffffff", width=2)
+        start, end = values
+        self.playhead = max(start, min(end, self.playhead))
+        first, last = self._time_to_x(start), self._time_to_x(end)
+        needle = self._time_to_x(self.playhead)
+        c.create_rectangle(first, 23, last, 43, fill="#205d61", outline="")
+        c.create_line(first, 19, first, 49, fill="#42e59b", width=3)
+        c.create_rectangle(first - 5, 37, first + 5, 53, fill="#42e59b", outline="#0d182b")
+        c.create_line(last, 19, last, 49, fill="#ff6673", width=3)
+        c.create_rectangle(last - 5, 37, last + 5, 53, fill="#ff6673", outline="#0d182b")
+        c.create_line(needle, 9, needle, 55, fill="#ffd166", width=2)
+        c.create_polygon(needle - 7, 5, needle + 7, 5, needle, 17,
+                         fill="#ffd166", outline="")
+        self.playhead_var.set(f"▶ {format_time(self.playhead)}")
+        self.detail_var.set(
+            f"Duración: {format_time(self.duration)}  |  "
+            f"Selección: {format_time(end - start)}"
+        )
 
-    def _timeline_click(self, event):
-        if self.duration <= 0:
+    def _timeline_press(self, event):
+        values = self._timeline_values()
+        if values is None:
             return
-        ratio = max(0, min(1, (event.x - 5) / max(1, self.timeline.winfo_width() - 10)))
-        current = format_time(self.duration * ratio)
-        if event.state & 0x0001:
-            self.end_var.set(current)
+        start, end = values
+        x = event.x
+        # Tiradores verde y rojo en la zona inferior; aguja amarilla arriba.
+        if event.y >= 19 and abs(x - self._time_to_x(start)) <= 13:
+            self.drag_target = "start"
+        elif event.y >= 19 and abs(x - self._time_to_x(end)) <= 13:
+            self.drag_target = "end"
         else:
-            self.start_var.set(current)
+            self.drag_target = "head"
+        self.stop_preview(update_status=False)
+        self._timeline_move(event)
+
+    def _timeline_drag(self, event):
+        if self.drag_target:
+            self._timeline_move(event)
+
+    def _timeline_release(self, event):
+        if self.drag_target:
+            self._timeline_move(event)
+        self.drag_target = None
+
+    def _timeline_move(self, event):
+        values = self._timeline_values()
+        if values is None:
+            return
+        start, end = values
+        current = self._x_to_time(event.x)
+        gap = min(0.02, self.duration / 2)
+        if self.drag_target == "start":
+            self.start_var.set(format_time(max(0.0, min(current, end - gap))))
+        elif self.drag_target == "end":
+            self.end_var.set(format_time(min(self.duration, max(current, start + gap))))
+        else:
+            self.playhead = min(end, max(start, current))
+            self._draw_timeline()
+
+    def _timeline_hover(self, event):
+        values = self._timeline_values()
+        if values is None:
+            return
+        start, end = values
+        near = event.y >= 19 and (
+            abs(event.x - self._time_to_x(start)) <= 13 or
+            abs(event.x - self._time_to_x(end)) <= 13
+        )
+        self.timeline.configure(cursor="sb_h_double_arrow" if near else "crosshair")
 
     def _mci_command(self, command):
         """MCI integrado en Windows, sin instalar reproductores externos."""
@@ -392,6 +480,13 @@ class AudioCutter(tk.Frame):
 
     def stop_preview(self, update_status=True):
         """Detiene solo la vista previa activa y libera sus recursos."""
+        if self.preview_backend and self.preview_started_at:
+            self.playhead = min(
+                self.duration,
+                self.preview_from + max(0.0, time.monotonic() - self.preview_started_at),
+            )
+            self._draw_timeline()
+        self.preview_started_at = 0.0
         self.preview_generation += 1
         self.preview_cancel.set()
         if self.preview_alias:
@@ -435,6 +530,9 @@ class AudioCutter(tk.Frame):
         if generation != self.preview_generation:
             return
         now = time.monotonic()
+        elapsed = max(0.0, now - self.preview_started_at)
+        self.playhead = min(self.duration, self.preview_from + elapsed)
+        self._draw_timeline()
         finished = now >= self.preview_deadline
         if not finished and now - self.preview_started_at >= 0.5:
             try:
@@ -461,15 +559,24 @@ class AudioCutter(tk.Frame):
         except ValueError as exc:
             messagebox.showwarning("Intervalo", str(exc), parent=self)
             return
+        position = min(end, max(start, self.playhead))
+        if position >= end - 0.01:
+            messagebox.showwarning(
+                "Aguja de reproducción",
+                "Mueve la aguja amarilla antes del final del fragmento.", parent=self,
+            )
+            return
         self.stop_preview(update_status=False)
+        self.playhead = position
+        self._draw_timeline()
         self.preview_cancel.clear()
         errors = []
         try:
-            self._preview_with_pygame(start)
+            self._preview_with_pygame(position)
         except Exception as exc:
             errors.append(f"Pygame: {exc}")
             try:
-                self._preview_with_mci(start, end)
+                self._preview_with_mci(position, end)
             except Exception as mci_exc:
                 errors.append(f"Windows MCI: {mci_exc}")
                 self.stop_preview(update_status=False)
@@ -481,11 +588,12 @@ class AudioCutter(tk.Frame):
                 )
                 return
 
+        self.preview_from = position
         self.preview_started_at = time.monotonic()
-        self.preview_deadline = self.preview_started_at + (end - start)
+        self.preview_deadline = self.preview_started_at + (end - position)
         current_generation = self.preview_generation
         self.status_var.set(
-            f"Reproduciendo {format_time(start)} - {format_time(end)} "
+            f"Reproduciendo {format_time(position)} - {format_time(end)} "
             f"({self.preview_backend.upper()})."
         )
         self.after(150, lambda: self._monitor_preview(current_generation))
