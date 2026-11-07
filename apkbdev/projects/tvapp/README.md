@@ -1,32 +1,26 @@
-# TVAPP Android | ARCHMOBA APKBDEV
+# ARCHMOBA TVAPP Android — 1.0.17-test
 
-Aplicación Android nativa de prueba basada en la interfaz de `TVAPP/tvapp.py`, sin
-Tkinter ni VLC para Windows. Identificador: `com.archmoba.tvapp`. Android 8+.
+Aplicación Android nativa creada con `apkbdev`, tomando como referencia funcional `TVAPP/tvapp.py` **v1.0.17**. No ejecuta Tkinter de Windows ni VLC para escritorio: utiliza componentes Android y Media3 ExoPlayer.
 
-## Funcionalidad
+## Acceso y catálogo
 
-- Pantalla vertical, cabecera GDX y visor de video donde antes aparecía el logo.
-- Listas IPTV-org M3U: Todas, Noticias, Deportes, Películas, Música, por categoría,
-  país e idioma, y accesos Ecuador/Español.
-- Buscador y paginación de canales, favoritos guardados en el dispositivo.
-- Logotipos por `tvg-logo`, obtenidos por red, sin descarga en el hilo principal.
-- Video HLS con Media3 ExoPlayer embebido en el visor; pausa, mute, cierre y
-  botón para abrir el enlace en un reproductor externo compatible.
-- Barra inferior flotante Inicio, Vivo, VOD, Partidos y Cuenta.
+Al abrir la APK aparece una pantalla con dos opciones:
 
-La APK no ejecuta `TVAPP/tvapp.py`; es su adaptación nativa. La transmisión
-requiere Internet y que cada URL M3U siga funcionando, sin restricciones
-geográficas ni de terceros. Algunos formatos/transmisiones no serán compatibles.
-No existe inicio de sesión, compras ni servicios de pago. No se incluyen listas
-privadas ni credenciales.
+- **Modo local multirregión**: listas M3U de IPTV-org. Categorías `Todos`, `Categorías`, `Noticias`, `Deportes`, `Películas`, `Música`, `Países`, `Idiomas`, `Ecuador`, `Español`, `Infantil`, `Cultura`, `Documentales` y `Favoritos`.
+- **Modo servidor externo**: formulario Xtream Codes con **servidor, usuario y contraseña vacíos**. El servidor sólo muestra un ejemplo (`Ej. http://servidor:puerto`). La app consulta `player_api.php` para autenticar y cargar `Xtream TV`, `Xtream Cine`, `Xtream Series`; permite explorar episodios de series.
 
-## Compilar con el kit existente
+Los menús laterales y los favoritos se filtran según el modo elegido, sin mezclar ambas fuentes. Desde la pestaña **Cuenta** se puede cambiar de modo. La app conserva la cabecera GDX, logo cuando no hay reproducción, visor de video superior, barra inferior flotante, logos de canales, búsqueda y paginación.
+
+## Seguridad de credenciales y limitaciones
+
+No se incluyen servidores DDNS ni cuentas privadas en la APK o repositorio. Los datos se introducen en el teléfono y la contraseña no se persiste en preferencias; los favoritos Xtream guardan sólo identificadores de contenido y un identificador derivado de servidor/usuario. Los enlaces Xtream se construyen en memoria al reproducir. Si el servidor usa **HTTP**, puede enviar credenciales en texto claro; usar HTTPS cuando esté disponible.
+
+Se necesita Internet; no todos los canales o formatos funcionan necesariamente ni está garantizada la disponibilidad o legalidad de transmisiones de terceros. La APK requiere Android 8.0+; reproducción con Media3 ExoPlayer, compatible con HLS y ciertos streams progresivos. No sustituye la comprobación manual en un dispositivo físico.
+
+## Construcción APKBDEV
 
 ```bash
 python3 apkbdev/tools/build_apk.py --project tvapp
 ```
 
-En GitHub Actions: **APKBDEV - Android APK Builder**. Los commits de este
-proyecto disparan la construcción automáticamente; como alternativa se puede
-usar `Run workflow` con `project=tvapp`. La APK debug firmada para pruebas
-queda como artifact `APKBDEV-tvapp` y como release de pruebas.
+Automatización: `.github/workflows/apkbdev-build.yml`. Produce una APK debug firmada para pruebas, publicada como artifact `APKBDEV-tvapp` y GitHub Release de pruebas. Si el teléfono rechaza actualizar una APK debug anterior por firma diferente, puede requerir desinstalar la versión de prueba previa (esto elimina datos locales).
