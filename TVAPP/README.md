@@ -59,3 +59,21 @@ El ejecutable es una aplicacion de escritorio (sin consola). Para la instalacion
 - El iniciador Windows actualizado (`TVAPP_Launcher_v1.1.exe`) tambien consulta el commit mas reciente de `app.py` antes de descargarlo y abrirlo. El ejecutable compilado se distribuye por separado; el fuente permanece en `launcher.go`.
 
 **Importante:** despues de modificar `app.py` en GitHub, cierra la aplicacion y vuelve a abrir el ejecutable para recibir el nuevo mecanismo de actualizacion. Luego los cambios de `tvapp.py` se mostraran desde el propio boton sin recompilar el EXE.
+
+## TVAPP v1.0.11: IPTV-org integrado
+
+`TVAPP/tvapp.py` utiliza listas públicas de IPTV-org y **ya no muestra canales ficticios**. Conserva la interfaz móvil de 380 × 650 px y la barra de navegación flotante.
+
+- **Todos**: `index.m3u`; **Categorías**: `index.category.m3u`
+- **Noticias, Deportes, Películas, Música**: listas de `categories/{news,sports,movies,music}.m3u`
+- **Países, Idiomas**: `index.country.m3u` y `index.language.m3u`; usa el selector desplegable para elegir un grupo
+- **Ecuador, Español, Infantil, Cultura, Documentales**: accesos rápidos a las listas correspondientes
+- **Favoritos**: se guardan en `%LOCALAPPDATA%\\ARCHMOBA\\TVAPP\\favorites.json` en Windows
+- **Carga**: descargas en hilos secundarios, caché local durante una hora, sin bloquear la interfaz. En caso de error, intenta la última copia local
+- **Búsqueda**: filtra por nombre en la categoría actual; el botón de estrella agrega o quita favoritos
+- **Logotipos**: se obtienen de `tvg-logo` cuando están disponibles (Pillow es opcional para JPEG/WebP)
+- **Reproducción**: al abrir un canal intenta incrustar video con `python-vlc`. Si no está instalado, intenta instalar el módulo en segundo plano. Para reproducir dentro de la ventana **también se necesita VLC Desktop/libVLC** en Windows. El botón «Abrir VLC» ofrece abrir el canal externamente cuando corresponda
+
+Se necesita acceso a Internet para cargar listas no cacheadas y para reproducir transmisiones. Algunos enlaces públicos pueden fallar, estar restringidos por región o no ser compatibles con el reproductor. No se incluyen credenciales ni servicios privados. La sección VOD muestra canales de la categoría Películas; no constituye una biblioteca de video bajo demanda.
+
+La versión de `app.py` y la de `tvapp.py` son independientes. Para recibir los cambios del catálogo M3U, basta con pulsar el icono de actualizar en el `app.py` actual.
