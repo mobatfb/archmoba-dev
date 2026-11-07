@@ -360,7 +360,7 @@ class PyrionDesktop:
         bh = 44
         x = (w - bw) // 2
         # Centrar verticalmente el conjunto: logo (101), espacio (14), buscador (44) y categorias.
-        y = max(115, (h + 40) // 2)
+        y = max(125, (h + 40) // 2 - (70 if self.search_text.strip() else 0))
         return x, y, bw, bh
 
     def draw_pyrionos_logo(self, x, y):
@@ -744,6 +744,87 @@ class PyrionDesktop:
                 self.rect(x + px, y + h - 1 - py, 1, 1, tint)
                 self.rect(x + w - 1 - px, y + h - 1 - py, 1, 1, tint)
 
+    def _result_geom(self):
+        x, y, bw, bh = self._search_bounds()
+        top = y + bh + 51
+        bottom = max(top + 12, self.size[1] - 29)
+        row_height = 68 if self.show_all_results else 38
+        n_visible = max(1, (bottom - top - 10) // row_height)
+        return x, top, bw, row_height, n_visible
+
+    def _ellipsize(self, value, max_px, style="body"):
+        text = str(value or "")
+        if self.text_width(text, style) <= max_px:
+            return text
+        while text and self.text_width(text + "…", style) > max_px:
+            text = text[:-1]
+        return text + "…" if text else ""
+
+    def draw_results(self):
+        """Durante escritura: 5 compactos; Enter: todos con scroll y detalles."""
+        self.results_click_areas = []
+        if self.selected_top_tab != "PYRIONOS" or not self.search_text.strip():
+            return
+        x, top, bw, rh, max_rows = self._result_geom()
+        matches = self._search_matches()
+        visible = matches if self.show_all_results else matches[:5]
+        if not visible:
+            msg = ("Consultando herramientas PTM..." if self.catalog_fetching and
+                   not self.catalog_tools else "Sin coincidencias")
+            self.text(x + 6, top + 15, msg, "#5B6974", "tab")
+            return
+        scroll_max = max(0, len(visible) - max_rows)
+        self.results_scroll = min(max(0, self.results_scroll), scroll_max)
+        display = visible[self.results_scroll:self.results_scroll + max_rows]
+        for index, tool in enumerate(display):
+            ry = top + index * rh
+            self.rect(x, ry, bw, rh - 4, "#F3F6F8")
+            self.rect(x, ry, bw, 1, "#D8E0E7")
+            self.rect(x, ry + rh - 5, bw, 1, "#D8E0E7")
+            self.rect(x, ry, 1, rh - 4, "#D8E0E7")
+            self.rect(x + bw - 1, ry, 1, rh - 4, "#D8E0E7")
+            starred = tool["key"] in self.user_state["favorites"]
+            name = ("* " if starred else "") + tool["name"]
+            if self.show_all_results:
+                self.text(x + 10, ry + 19, self._ellipsize(name, bw - 26, "label"),
+                          "#172B40", "label")
+                description = self._ellipsize(tool.get("descripcion", ""), bw - 26, "tab")
+                self.text(x + 10, ry + 37, description, "#56636D", "tab")
+                desc = (tool.get("categoria", "") + "  ·  v" +
+                        tool.get("version", "") + "  ·  " +
+                        str(tool["visits"]) + " visitas  ·  " + tool.get("autor", ""))
+                self.text(x + 10, ry + 54, self._ellipsize(desc, bw - 26, "caption"),
+                          "#677683", "caption")
+            else:
+                self.text(x + 10, ry + 24, self._ellipsize(name, bw - 180, "label"),
+                          "#172B40", "label")
+                meta = tool.get("categoria", "") + " · v" + tool.get("version", "")
+                tw = self.text_width(meta, "caption")
+                self.text(x + bw - min(bw - 15, tw + 10), ry + 24,
+                          self._ellipsize(meta, 150, "caption"), "#56636D", "caption")
+            self.results_click_areas.append((x, ry, bw, rh - 4, tool))
+        if len(visible) > max_rows:
+            tip = ("%s resultados · rueda del raton para desplazarse" % len(matches))
+            self.text(x + 3, self.size[1] - 10, tip, "#607384", "caption")
+        elif not self.show_all_results and len(matches) > 5:
+            self.text(x + 3, self.size[1] - 10,
+                      "%s coincidencias · mostrando 5 · Enter para ver todas" % len(matches),
+                      "#607384", "caption")
+        elif self.show_all_results:
+            self.text(x + 3, self.size[1] - 10,
+                      "%s coincidencias · clic derecho para favoritos" % len(matches),
+                      "#607384", "caption")
+
+    def _result_scroll(self, delta):
+        if not self.search_text.strip() or self.selected_top_tab != "PYRIONOS":
+            return
+        _, _, _, _, rows = self._result_geom()
+        matches = self._search_matches()
+        shown = matches if self.show_all_results else matches[:5]
+        max_scroll = max(0, len(shown) - rows)
+        self.results_scroll = min(max(0, self.results_scroll + delta), max_scroll)
+        self.paint()
+
     def draw_search(self):
         """Cabecera PYRIONOS, buscador y enlaces inspirados en el boceto."""
         x, y, bw, bh = self._search_bounds()
@@ -807,12 +888,30 @@ class PyrionDesktop:
                               tx_tab, y + bh + 28,
                               tx_tab + tab_width, y + bh + 28)
 
-    def click_ui(self, x, y):
+    def click_ui(self, x, y, button=1):
+        if button in (4, 5):
+            self._result_scroll(-1 if button == 4 else 1)
+            return
         for title, tx, ty, tw, th in self._top_tabs_layout():
             if tx <= x < tx + tw and ty <= y < ty + th:
-                self.selected_top_tab = title
-                self.search_focus = False
-                self.paint()
+                if title != "PYRIONOS" and button == 1 and x >= tx + tw - 20 and y <= ty + 19:
+                    self._close_tool_tab(title)
+                elif title != "PYRIONOS" and button == 3:
+                    meta = self.open_tabs.get(title)
+                    if meta:
+                        self._toggle_favorite(meta["tool"])
+                else:
+                    self._activate_tool_tab(title)
+                return
+        if self.selected_top_tab != "PYRIONOS":
+            self._click_tool_panel(x, y, button)
+            return
+        for rx, ry, rw, rh, tool in self.results_click_areas:
+            if rx <= x < rx + rw and ry <= y < ry + rh:
+                if button == 3:
+                    self._toggle_favorite(tool)
+                elif button == 1:
+                    self._open_tool(tool)
                 return
         bx, by, bw, bh = self._search_bounds()
         if bx <= x < bx + bw and by <= y < by + bh:
@@ -821,9 +920,12 @@ class PyrionDesktop:
                 # La X borra solo la consulta y deja el cursor listo para escribir.
                 self.search_text = ""
                 self.search_focus = True
+                self.show_all_results = False
+                self.results_scroll = 0
             elif bx + bw - 84 <= x < bx + bw - 50:
-                # Boton rojo (accion Buscar/Enter): no elimina lo escrito.
-                self.search_focus = False
+                # Boton rojo equivale a Enter: todas las coincidencias PTM.
+                self._expand_results()
+                return
             elif x >= bx + bw - 47:
                 # El icono de subir se conecta al gestor de archivos mas adelante.
                 self.search_focus = False
@@ -835,8 +937,9 @@ class PyrionDesktop:
             for tab, cursor, tab_width in self._tab_layout():
                 if cursor <= x <= cursor + tab_width:
                     self.active_tab = tab
-                    self.search_focus = False
-                    self.paint()
+                    cmd = {"Recientes": "%recents%", "Favoritos": "%favorites%",
+                           "Más usados": "%used%", "Recomendados": "%recommended%"}
+                    self._set_search_command(cmd[tab])
                     return
         self.search_focus = False
         self.paint()
@@ -850,13 +953,18 @@ class PyrionDesktop:
         if keysym.value == 0xFF08:  # Backspace
             self.search_text = self.search_text[:-1]
         elif keysym.value in (0xFF0D, 0xFF8D):  # Enter
-            self.search_focus = False
+            self._expand_results()
+            return
         elif 0 < count <= 31:
             value = buffer.raw[:count].decode("utf-8", "ignore")
             if value.isprintable():
                 available = MAX_SEARCH_CHARS - len(self.search_text)
                 if available > 0:
                     self.search_text += value[:available]
+        # Buscar durante la escritura: mostrar como maximo 5 sugerencias.
+        self.show_all_results = False
+        self.results_scroll = 0
+        self.last_search_edit = time.monotonic()
         self.paint()
 
     def paint(self):
@@ -867,7 +975,11 @@ class PyrionDesktop:
         self.pixmap = self.pixmap_create(self.dpy, self.window, w, h, self.depth)
         self.rect(0, 0, w, h, "#FFFFFF")
         self.draw_top_tabs()
-        self.draw_search()
+        if self.selected_top_tab == "PYRIONOS":
+            self.draw_search()
+            self.draw_results()
+        else:
+            self.draw_tool_panel()
         self.copy(self.dpy, self.pixmap, self.window, self.gc,
                   0, 0, w, h, 0, 0)
         self.flush(self.dpy)
@@ -902,13 +1014,18 @@ class PyrionDesktop:
             except OSError as error:
                 print("PYRION: no se pudo indicar que el escritorio esta listo: " +
                       str(error), file=sys.stderr, flush=True)
-        print("PYRION: escritorio con buscador iniciado.", flush=True)
+        self._init_catalog()
+        print("PYRION: escritorio con buscador PTM iniciado.", flush=True)
 
     def run(self):
         self.create()
         last_check=0
         while self.running:
             now=time.monotonic()
+            if self._poll_catalog():
+                self.paint()
+            if self._poll_tools():
+                self.paint()
             if now-last_check>1.2:
                 new=(self.screen_w(self.dpy,self.screen),self.screen_h(self.dpy,self.screen))
                 if new!=self.size:
@@ -921,7 +1038,7 @@ class PyrionDesktop:
                 ev=XEvent()
                 self.next_event(self.dpy,C.byref(ev))
                 if ev.type == 4:  # ButtonPress
-                    self.click_ui(ev.xbutton.x, ev.xbutton.y)
+                    self.click_ui(ev.xbutton.x, ev.xbutton.y, ev.xbutton.button)
                 elif ev.type == 2:  # KeyPress
                     self.key_ui(ev.xkey)
                 elif ev.type==12:  # Expose
