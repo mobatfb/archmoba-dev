@@ -61,6 +61,35 @@ jobs:
               {"episodes": {"1": [{"id": "99", "episode_num": 1, "title": "Piloto"}]}},
               {"name": "Serie", "logo": ""}, "local_test")
           assert episodes[0]["stream_id"] == "99"
-          assert "VERSION = \"1.0.14\"" in source
-          print("TVAPP v1.0.14 - comprobaciones correctas")
+          assert "VERSION = \"1.0.15\"" in source
+          # Ejecutar la acción de modo interno sin levantar una ventana.
+          class TestVar:
+              def __init__(self):
+                  self.value = "mock-secret"
+              def set(self, value):
+                  self.value = value
+          class TestApp:
+              def __init__(self):
+                  self.xtream_auth_token = 0
+                  self.xtream_connecting = True
+                  self.xc_password = TestVar()
+                  self.use_internal = False
+                  self.active_tab = "Cuenta"
+                  self.selected_category = ""
+              def _select_category(self, category):
+                  self.selected_category = category
+          cls = next(node for node in tree.body if isinstance(node, ast.ClassDef)
+                     and node.name == "TVSports")
+          internal = next(node for node in cls.body
+                          if isinstance(node, ast.FunctionDef) and node.name == "_use_internal")
+          ns = {}
+          exec(compile(ast.Module(body=[internal], type_ignores=[]), "test_internal", "exec"), ns)
+          app = TestApp()
+          ns["_use_internal"](app)
+          assert app.use_internal and app.selected_category == "Todos"
+          assert app.active_tab == "Vivo" and app.xc_password.value == ""
+          assert app.xtream_auth_token == 1 and not app.xtream_connecting
+          assert "Usar interno  ·  IPTV-org" in source
+          assert '"Todos": "index.m3u"' in source
+          print("TVAPP v1.0.15 - comprobaciones correctas")
           PY

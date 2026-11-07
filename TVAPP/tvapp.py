@@ -7,7 +7,7 @@ Todo funciona con tkinter y recursos integrados sin archivos graficos externos.
 import os
 import tkinter as tk
 
-VERSION = "1.0.14"
+VERSION = "1.0.15"
 WINDOW_WIDTH = 380
 WINDOW_HEIGHT = 650
 HERO_BOTTOM = 222  # El contenido empieza mas arriba, sin la barra de estado simulada
@@ -316,6 +316,7 @@ class TVSports(tk.Frame):
         self.canvas.pack(fill="both", expand=True)
         self.active_tab = "Vivo"
         self.category = "Xtream TV"
+        self.use_internal = False
         self.category_offset = 0
         self.channel_offset = 0
         self.search_open = False
@@ -442,6 +443,15 @@ class TVSports(tk.Frame):
             relief="flat", font=("Segoe UI", 9),
         )
         self.xc_disconnect_button.pack(side="right")
+        self.xc_internal_button = tk.Button(
+            form, text="Usar interno  ·  IPTV-org",
+            command=self._use_internal,
+            bg="#24535d", fg=WHITE, activebackground="#367887",
+            activeforeground=WHITE, relief="flat",
+            font=("Segoe UI", 10, "bold"), cursor="hand2",
+            borderwidth=0,
+        )
+        self.xc_internal_button.pack(fill="x", padx=9, pady=(5, 1), ipady=3)
         self.xc_note_label = tk.Label(
             form, text="", bg=PANEL, fg=MUTED, anchor="w", justify="left",
             wraplength=325, font=("Segoe UI", 8),
@@ -463,6 +473,17 @@ class TVSports(tk.Frame):
         self.xc_disconnect_button.config(
             state="normal" if self.xtream_session else "disabled",
         )
+
+    def _use_internal(self):
+        """Accede a las URLs M3U preconfiguradas, sin autenticar con Xtream."""
+        self.xtream_auth_token += 1  # Descarta inicios de sesión pendientes.
+        self.xtream_connecting = False
+        self.xc_password.set("")
+        self.use_internal = True
+        self.active_tab = "Vivo"
+        # La opción Todos utiliza SOURCES["Todos"] (index.m3u);
+        # las categorías restantes quedan disponibles en el panel lateral.
+        self._select_category("Todos")
 
     def _connect_xtream(self):
         if self.xtream_connecting:
@@ -520,6 +541,7 @@ class TVSports(tk.Frame):
         self._release_player()
         self.selected = None
         self.xtream_note = "Cuenta desconectada. La contraseña no se guardó."
+        self.use_internal = False
         self._select_category("Xtream TV")
         self.active_tab = "Vivo"
         self.redraw()
@@ -697,6 +719,7 @@ class TVSports(tk.Frame):
                     if token == self.xtream_auth_token:
                         self.xtream_connecting = False
                         self.xtream_session = session
+                        self.use_internal = False
                         self.xc_password.set("")
                         self.xtream_note = (
                             "Cuenta activa. HTTP sin cifrar; evita redes públicas."
@@ -754,6 +777,10 @@ class TVSports(tk.Frame):
         self._release_player()
         self.selected = None
         self.category = category
+        if category in XTREAM_SECTIONS:
+            self.use_internal = False
+        elif category in SOURCES:
+            self.use_internal = True
         self.series_request_id += 1
         self.series_items = None
         self.series_name = ""
@@ -826,9 +853,11 @@ class TVSports(tk.Frame):
         self.active_tab = tab
         if tab in ("VOD", "Partidos", "Vivo"):
             target = {
-                "VOD": "Xtream Cine" if self.xtream_session else "Películas",
+                "VOD": ("Películas" if self.use_internal or not self.xtream_session
+                        else "Xtream Cine"),
                 "Partidos": "Deportes",
-                "Vivo": "Xtream TV" if self.xtream_session else "Deportes",
+                "Vivo": ("Todos" if self.use_internal else
+                         "Xtream TV" if self.xtream_session else "Deportes"),
             }[tab]
             self._select_category(target)
         else:
