@@ -247,8 +247,31 @@ public final class MainActivity extends Activity {
                 paint.setStyle(Paint.Style.FILL);
                 postInvalidateDelayed(550);
             }
-            // Los botones llevan su propio brillo y borde redondeado.
-            // No dibujar un contorno rectangular adicional.
+            // Resaltar de forma persistente SOLO el himno seleccionado y
+            // reproduciéndose. El marco acompaña las esquinas tipo app.
+            if (selectedTrack >= 0 && media != null) {
+                final RectF selected = touchRects[selectedTrack == ECUADOR ? 0 : 2];
+                final int accent = selectedTrack == ECUADOR ? 0xFFFFD54D : 0xFF41E6FF;
+                final float inset = Math.max(3f, w * .008f);
+                final RectF frame = new RectF(selected);
+                frame.inset(inset, inset);
+                final float radius = Math.min(frame.width(), frame.height()) * .18f;
+
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(3f, w * .011f));
+                paint.setColor(accent);
+                paint.setShadowLayer(Math.max(10f, w * .035f), 0f, 0f, accent);
+                canvas.drawRoundRect(frame, radius, radius, paint);
+                paint.clearShadowLayer();
+
+                // Segundo trazo interior para que el borde destaque en fondos claros.
+                paint.setStrokeWidth(Math.max(1f, w * .0032f));
+                paint.setColor(0xEFFFFFFF);
+                frame.inset(inset * .62f, inset * .62f);
+                canvas.drawRoundRect(frame, Math.max(0f, radius - inset), 
+                        Math.max(0f, radius - inset), paint);
+                paint.setStyle(Paint.Style.FILL);
+            }
             float barY = h * .82f;
             float barLeft = w * .07f, barRight = w * .93f;
             rounded(canvas, new RectF(barLeft, barY - h * .004f,
