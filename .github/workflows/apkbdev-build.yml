@@ -81,6 +81,10 @@ jobs:
             apkbdev/tests/BadgeFreshnessTest.java
           java -cp "$RUNNER_TEMP/orbit-badges" com.archmoba.colibri.BadgeFreshnessTest
 
+      - name: Preparar herramientas graficas de Himnos Policiales
+        if: env.PROJECT_SLUG == 'himnos-policiales'
+        run: python3 -m pip install --quiet Pillow
+
       - name: Verificar y preparar los himnos originales
         if: env.PROJECT_SLUG == 'himnos-policiales'
         run: python3 apkbdev/projects/himnos-policiales/unpack_resources.py

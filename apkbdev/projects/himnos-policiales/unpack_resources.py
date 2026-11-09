@@ -43,6 +43,37 @@ def main():
                 continue
             destination.write_bytes(archive.read(name))
             print("OK", name, destination.stat().st_size, "bytes")
+    # Adaptacion permanente de la cabecera: borrar el escudo CENTRAL
+    # y conservar el titulo HIMNOS POLICIALES, bandera y fondo original.
+    # Solo se corrige el recurso original del paquete; no modifica los dos
+    # escudos que funcionan como botones de reproduccion.
+    from PIL import Image, ImageFilter
+    original = ROOT / "app" / "src" / "main" / "assets" / "cabecera.webp"
+    current = Image.open(original).convert("RGB")
+    if current.size == (1000, 459):
+        w, h = current.size
+        # Recrear cielo azul a partir del fondo de nubes existente a la
+        # derecha del antiguo escudo, sin copiar emblemas ni personas.
+        clouds = current.crop((682, 0, 761, 302))
+        clouds = clouds.resize((w, 302), Image.Resampling.BICUBIC)
+        clouds = clouds.filter(ImageFilter.GaussianBlur(8))
+        layer = Image.new("RGB", (w, h), (3, 19, 39))
+        layer.paste(clouds, (0, 0))
+        mask = Image.new("L", (w, h), 0)
+        pixels = mask.load()
+        def smooth(value):
+            t = max(0.0, min(1.0, value))
+            return t * t * (3.0 - 2.0 * t)
+        for y in range(0, 306):
+            vertical = 1.0 if y <= 287 else (1.0 - smooth((y - 287) / 6.0))
+            if vertical <= 0.0:
+                continue
+            for x in range(180, 812):
+                horizontal = smooth((x - 220) / 150.0) * (1.0 - smooth((x - 660) / 130.0))
+                pixels[x, y] = int(255.0 * min(1.0, horizontal) * vertical)
+        corrected = Image.composite(layer, current, mask)
+        corrected.save(original, "WEBP", quality=91, method=6)
+        print("Cabecera corregida sin escudo central", original.stat().st_size, "bytes")
     print("Recursos verificados SHA-256", digest)
 
 if __name__ == "__main__":
