@@ -20,7 +20,8 @@ EXPECTED_ZIP = {
     "res/raw/himno_ecuador.mp3", "res/raw/himno_policia.mp3",
     "res/drawable-nodpi/launcher_himnos.webp",
 }
-CUSTOM_LAUNCHER_SHA256 = "ad2d275e279e5096b5ded2dc451db2db15949b06542d2e1fd18a45fbeb101102"
+CUSTOM_LAUNCHER_SHA256 = "b02508b69ef4b5847b68d904a211d40e43176416b14bc6893002d032de7e303d"
+ADAPTIVE_LAUNCHER_SHA256 = "2d760406945f058bdf716729f3b9eda2255e50ee3b05080b57d09a20f1cf8f02"
 ARTWORK_SHA256 = {
     "fondo.webp": "c6069f7c6c147da2f71bb7049e5685a5e8ee6d92f407078643f974e12f13d1fe",
     "ecuador.webp": "75236cc975ab5a6c2bffbe0a83ee0c4d4f9ec68d041aae01de19217d62f893d9",
@@ -84,10 +85,27 @@ def main() -> None:
             target.write_bytes(archive.read(name))
             print("Audio verificado", name, target.stat().st_size, "bytes")
 
-    # No sobrescribir el icono personalizado de la APK que envió el usuario.
+    # Ícono de inicio: se conserva el diseño dividido y el escudo policial
+    # remitido por el usuario. Sin franjas negras; adaptativo a Android 8+.
     launcher = APP_MAIN / "res" / "drawable-nodpi" / "launcher_himnos.webp"
-    if not launcher.is_file() or sha256(launcher.read_bytes()) != CUSTOM_LAUNCHER_SHA256:
-        raise RuntimeError("Falta el ícono personalizado de Himnos Policiales")
+    adaptive = APP_MAIN / "res" / "drawable-nodpi" / "launcher_himnos_adaptive.webp"
+    for label, icon, expected in (
+        ("legado", launcher, CUSTOM_LAUNCHER_SHA256),
+        ("adaptativo", adaptive, ADAPTIVE_LAUNCHER_SHA256),
+    ):
+        if not icon.is_file() or sha256(icon.read_bytes()) != expected:
+            raise RuntimeError(f"Falta o cambió el ícono {label}")
+        with Image.open(icon) as im:
+            im.load()
+            if im.width != im.height or im.width < 512:
+                raise RuntimeError(f"Dimensiones inválidas del ícono {label}")
+            rgb = im.convert("RGB")
+            # No debe haber esquinas negras incorporadas a los WEBP.
+            if any(all(c < 38 for c in rgb.getpixel(p))
+                   for p in ((0, 0), (im.width - 1, 0),
+                             (0, im.height - 1), (im.width - 1, im.height - 1))):
+                raise RuntimeError(f"El ícono {label} tiene esquinas oscuras")
+        print("Ícono verificado", label, icon.stat().st_size, "bytes")
 
     # Usar el fondo vertical continuo y botones completos redondeados del
     # último boceto aprobado. No crear máscaras que recorten el escudo.

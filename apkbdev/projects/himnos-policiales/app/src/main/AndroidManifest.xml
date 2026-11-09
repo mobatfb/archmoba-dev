@@ -3,7 +3,8 @@
     <!-- Solo los anuncios utilizan Internet; los himnos son locales. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:icon="@drawable/launcher_himnos"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:label="Himnos Policiales"
         android:theme="@android:style/Theme.Material.NoActionBar"

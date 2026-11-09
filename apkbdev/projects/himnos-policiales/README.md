@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.4
+# Himnos Policiales para Android — v1.3.5
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -17,7 +17,8 @@ Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaP
 - **STOP detiene inmediatamente** el audio y reinicia el contador a 00:00.
 - Si se selecciona otro himno, detiene el anterior y comienza el nuevo.
 - Música local: los dos archivos MP3 originales vienen incluidos. No necesita Internet.
-- La imagen personalizada del lanzador enviada previamente por el usuario se conserva.
+- Ícono del lanzador optimizado sin bordes negros: conserva el diseño mitad Ecuador/mitad Policía e incorpora el escudo policial exacto de referencia entregado por el usuario.
+- Android usa un ícono adaptativo en `res/mipmap-anydpi-v26/ic_launcher.xml`, con colores que llenan la forma de cada lanzador. No se modifica el diseño interno de la pantalla.
 
 
 ## Publicidad dinámica (pub.pub)

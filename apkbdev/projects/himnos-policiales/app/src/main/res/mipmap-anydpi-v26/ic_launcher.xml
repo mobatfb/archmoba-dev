@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Fondo de pantalla completa y margen externo de sangrado para el
+         recorte automático del lanzador, sin negro ni transparencia. -->
+    <background android:drawable="@drawable/launcher_himnos_adaptive" />
+    <foreground android:drawable="@drawable/launcher_icon_foreground_empty" />
+</adaptive-icon>
