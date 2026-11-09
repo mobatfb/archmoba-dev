@@ -20,3 +20,14 @@ python3 apkbdev/tools/build_apk.py --project himnos-policiales
 También se construye automáticamente al modificar el proyecto, con `.github/workflows/apkbdev-build.yml`. El APK se publica en la sección **Releases**, como `himnos-policiales-debug.apk`.
 
 Archivo fuente principal: `app/src/main/java/com/archmoba/himnospoliciales/MainActivity.java`. Audio sin necesidad de red, compatible con `MediaPlayer` del sistema Android.
+
+
+## Ajustes de interfaz v1.2.0
+- **Un solo fondo vertical** generado a partir de la cabecera y cinta originales. Ya no hay áreas ni barras rectangulares oscuras detrás de los controles.
+- **Botones flotantes con transparencia**: emblema del Ecuador, STOP y emblema policial, dibujados encima del fondo.
+- **STOP inmediato**: al tocar el botón se silencia, se libera el reproductor y se pone el contador a 00:00 sin espera ni disminución gradual. El aumento gradual de volumen durante 2 segundos al pulsar un himno se mantiene.
+- **Ícono nuevo aportado por el usuario**: mitad emblema Ecuador y mitad emblema policial, incluido como recurso Android local.
+- Barra de tiempo inferior con opción de arrastrar y posicionar el audio.
+- Los dos MP3 permanecen incluidos; funcionamiento sin conexión.
+
+Todos los recursos visuales se preparan en tiempo de compilación mediante Pillow y `unpack_resources.py`, sin enlaces externos.

@@ -92,27 +92,18 @@ public final class MainActivity extends Activity {
         }
     }
 
-    /** STOP total: 2 segundos bajando el sonido, después para y reinicia. */
-    private void stopWithFade() {
-        if (media == null) {
-            selectedTrack = -1;
-            view.invalidate();
-            return;
+    /** STOP inmediato: silencia y libera el audio sin fundido ni retardo. */
+    private void stopImmediately() {
+        ++operation;
+        handler.removeCallbacksAndMessages(null);
+        if (media != null) {
+            try { media.setVolume(0f, 0f); }
+            catch (IllegalStateException ignored) { }
         }
-        final int id = ++operation;
-        boolean active;
-        try { active = media.isPlaying(); }
-        catch (IllegalStateException ignored) { active = false; }
-        if (!active) {
-            releaseCurrent();
-            selectedTrack = -1;
-            view.invalidate();
-            return;
-        }
-        fadingOut = true;
-        // Si se pulsa STOP durante la subida, parte del volumen real aplicado.
-        float startVolume = currentVolume;
-        fade(id, startVolume, 0f, true);
+        releaseCurrent();
+        selectedTrack = -1;
+        fadingOut = false;
+        if (view != null) view.invalidate();
     }
 
     private float currentVolume = 0f;
@@ -186,11 +177,11 @@ public final class MainActivity extends Activity {
 
     private final class PlayerArtwork extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        private final Bitmap header = asset("cabecera.webp");
+        private final Bitmap wallpaper = asset("fondo.webp");
         private final Bitmap ecu = asset("ecuador.webp");
         private final Bitmap stop = asset("stop.webp");
         private final Bitmap police = asset("policia.webp");
-        private final Bitmap ribbon = asset("cinta.webp");
+        // Cinta tricolor y cabecera están integradas en el único fondo vertical.
         private final RectF[] touchRects = {new RectF(), new RectF(), new RectF()};
         private final RectF timeline = new RectF();
         private int activeTouch = -1;
@@ -221,23 +212,28 @@ public final class MainActivity extends Activity {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             final float w = getWidth(), h = getHeight();
-            // La ventana Android ya excluye la barra de estado y de navegación.
-            // La cabecera nueva, sin escudo central, se ajusta sin estiramientos extremos.
-            // Se mantiene despejada la zona de controles y la cinta inferior.
-            paint.setShader(new LinearGradient(0, 0, 0, h, 0xFF020D20,
-                    0xFF052A54, Shader.TileMode.CLAMP));
-            canvas.drawRect(0, 0, w, h, paint);
-            paint.setShader(null);
-            float topH = h * .44f;
-            bitmap(canvas, header, new RectF(0, 0, w, topH));
+            // Fondo único a pantalla completa; nada tapa el paisaje detrás.
+            if (wallpaper != null) {
+                bitmap(canvas, wallpaper, new RectF(0, 0, w, h));
+            } else {
+                paint.setShader(new LinearGradient(0, 0, 0, h, 0xFF020D20,
+                        0xFF052A54, Shader.TileMode.CLAMP));
+                canvas.drawRect(0, 0, w, h, paint);
+                paint.setShader(null);
+            }
+            // Botones transparentes superpuestos sobre el fondo, sin tarjetas.
             float buttonsTop = h * .48f;
-            float buttonH = Math.min(h * .22f, w * .38f);
-            float margin = w * .015f;
-            float leftW = w * .335f;
-            float middleW = w * .285f;
-            touchRects[0].set(margin, buttonsTop, margin + leftW, buttonsTop + buttonH);
-            touchRects[1].set((w - middleW) / 2f, buttonsTop + buttonH * .035f,
-                    (w + middleW) / 2f, buttonsTop + buttonH * .965f);
+            float buttonH = Math.min(h * .20f, w * .31f);
+            float margin = w * .02f;
+            float leftW = w * .31f;
+            float middleW = w * .30f;
+            touchRects[0].set(margin, buttonsTop,
+                    margin + leftW, buttonsTop + buttonH);
+            float stopH = middleW * .93f;
+            touchRects[1].set((w - middleW) / 2f,
+                    buttonsTop + (buttonH - stopH) / 2f,
+                    (w + middleW) / 2f,
+                    buttonsTop + (buttonH + stopH) / 2f);
             touchRects[2].set(w - margin - leftW, buttonsTop,
                     w - margin, buttonsTop + buttonH);
             bitmap(canvas, ecu, touchRects[0]);
@@ -284,8 +280,7 @@ public final class MainActivity extends Activity {
             canvas.drawText(time(now), barLeft, barY + h * .043f, paint);
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText(time(total), barRight, barY + h * .043f, paint);
-            // Cinta tricolor del boceto como pie decorativo.
-            bitmap(canvas, ribbon, new RectF(0, h * .915f, w, h));
+            // Pie tricolor ya incorporado al fondo de pantalla completo.
             if (media != null) postInvalidateDelayed(100L);
         }
         private int hit(float x, float y) {
@@ -312,7 +307,7 @@ public final class MainActivity extends Activity {
                         if (activeTouch == 0) play(ECUADOR);
                         else if (activeTouch == 1) {
                             stopTouchedAt = android.os.SystemClock.uptimeMillis();
-                            stopWithFade();
+                            stopImmediately();
                         } else play(POLICIA);
                         invalidate(); // respuesta visible inmediatamente al tocar
                         performClick();
