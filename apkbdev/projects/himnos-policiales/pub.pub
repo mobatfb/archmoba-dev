@@ -1,15 +1,18 @@
-[
-  {
-    "id": 1,
-    "imagen": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/apkbdev/projects/himnos-policiales/app/src/main/assets/fondo.webp",
-    "descripction": "Obtén tu propia agenda virtual gratis",
-    "textbutton": "Ir a agenda",
-    "linkbuton": "https://agenda.archmoba.com/"
-  },
-  {
-    "id": 2,
-    "descripction": "Organiza tu escritorio de windows",
-    "textbutton": "Descargar AMO",
-    "linkbuton": "https://amo.archomoba.com/"
-  }
-]
+{
+  "selected_id": 1,
+  "publicaciones": [
+    {
+      "id": 1,
+      "imagen": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/apkbdev/projects/himnos-policiales/app/src/main/assets/fondo.webp",
+      "descripction": "Obtén tu propia agenda virtual gratis",
+      "textbutton": "Ir a agenda",
+      "linkbuton": "https://agenda.archmoba.com/"
+    },
+    {
+      "id": 2,
+      "descripction": "Organiza tu escritorio de windows",
+      "textbutton": "Descargar AMO",
+      "linkbuton": "https://amo.archomoba.com/"
+    }
+  ]
+}
