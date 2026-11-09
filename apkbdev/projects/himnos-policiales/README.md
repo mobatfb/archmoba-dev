@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.2
+# Himnos Policiales para Android — v1.3.3
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -18,6 +18,15 @@ Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaP
 - Si se selecciona otro himno, detiene el anterior y comienza el nuevo.
 - Música local: los dos archivos MP3 originales vienen incluidos. No necesita Internet.
 - La imagen personalizada del lanzador enviada previamente por el usuario se conserva.
+
+
+## Publicidad dinámica (pub.pub)
+- El recuadro publicitario aparece en el extremo inferior derecho, sobre la cinta tricolor, como en la captura de referencia.
+- Muestra la miniatura del anuncio, su `description` y el botón naranja `button_text`. Solo el botón abre `button_url` en el navegador.
+- En `pub.pub` del repositorio, el campo numérico `selected_id` selecciona qué objeto del arreglo `ads` mostrar. Todos los nombres están en inglés: `id`, `image`, `description`, `button_text`, `button_url`.
+- La aplicación consulta el JSON público de GitHub al abrirse o al volver al primer plano; modificar `selected_id`, imágenes, texto o URL no exige recompilar la APK.
+- Sin conexión se usa la última configuración válida guardada localmente o la copia inicial incluida en los assets. Miniaturas originales locales de Agenda y AMO en formato WEBP.
+- Los himnos siguen disponibles completamente sin conexión. El permiso de Internet se usa para descargar anuncios/imágenes.
 
 ## Compilación automatizada
 ```bash

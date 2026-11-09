@@ -3,13 +3,14 @@
   "ads": [
     {
       "id": 1,
-      "image": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/apkbdev/projects/himnos-policiales/app/src/main/assets/fondo.webp",
+      "image": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/apkbdev/projects/himnos-policiales/app/src/main/assets/agenda_ad.webp",
       "description": "Obtén tu propia agenda virtual gratis",
       "button_text": "Ir a agenda",
       "button_url": "https://agenda.archmoba.com/"
     },
     {
       "id": 2,
+      "image": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/apkbdev/projects/himnos-policiales/app/src/main/assets/amo_ad.webp",
       "description": "Organiza tu escritorio de windows",
       "button_text": "Descargar AMO",
       "button_url": "https://amo.archomoba.com/"

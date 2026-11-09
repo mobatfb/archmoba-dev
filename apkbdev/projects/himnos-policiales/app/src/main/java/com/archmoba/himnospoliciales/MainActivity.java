@@ -18,13 +18,14 @@ import android.view.MotionEvent;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.content.res.AssetFileDescriptor;
 import java.io.InputStream;
 import java.util.Locale;
 
 /**
- * Himnos Policiales, una pantalla y tres controles.
- * Incluye audios locales; no requiere red.
+ * Himnos Policiales: tres controles de audio local y publicidad opcional.
+ * Los himnos funcionan sin Internet; el anuncio puede refrescarse en línea.
  */
 public final class MainActivity extends Activity {
     private static final long FADE_MS = 2000L;
@@ -36,13 +37,29 @@ public final class MainActivity extends Activity {
     private int operation = 0;
     private boolean fadingOut = false;
     private PlayerArtwork view;
+    private PromoBanner promotion;
 
     @Override public void onCreate(Bundle bundle) {
         super.onCreate(bundle);
         getWindow().setStatusBarColor(Color.rgb(3, 15, 32));
         getWindow().setNavigationBarColor(Color.rgb(2, 9, 22));
         view = new PlayerArtwork();
-        setContentView(view);
+        promotion = new PromoBanner(this);
+        FrameLayout layers = new FrameLayout(this);
+        FrameLayout.LayoutParams full = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
+        layers.addView(view, full);
+        layers.addView(promotion, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(layers);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        // Sin bloquear la pantalla: lee selected_id y el anuncio actual de pub.pub.
+        if (promotion != null) promotion.refreshFromGithub();
     }
 
     private void play(int track) {
@@ -169,6 +186,7 @@ public final class MainActivity extends Activity {
         fadingOut = false;
     }
     @Override protected void onDestroy() {
+        if (promotion != null) promotion.dispose();
         operation++;
         releaseCurrent();
         handler.removeCallbacksAndMessages(null);
