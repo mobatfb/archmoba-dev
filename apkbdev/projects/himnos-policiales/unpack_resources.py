@@ -63,9 +63,9 @@ def main() -> None:
             im.load()
             if im.size[0] < 200 or im.size[1] < 200:
                 raise RuntimeError(f"Imagen demasiado pequeña: {name}")
-            if name != "fondo" and im.mode != "RGBA":
+            if name != "fondo.webp" and im.mode != "RGBA":
                 raise RuntimeError(f"El botón debe conservar transparencia: {name}")
-            if name != "fondo" and im.getpixel((0, 0))[3] != 0:
+            if name != "fondo.webp" and im.getpixel((0, 0))[3] != 0:
                 raise RuntimeError(f"El botón contiene fondo rectangular: {name}")
         print("Arte aprobado", name, path.stat().st_size, "bytes")
     print("OK: audios, fondo completo, icono y botones originales verificados")
