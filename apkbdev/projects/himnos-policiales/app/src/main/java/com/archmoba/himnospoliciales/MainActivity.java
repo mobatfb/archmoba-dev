@@ -183,7 +183,6 @@ public final class MainActivity extends Activity {
         private final Bitmap police = asset("policia.webp");
         // Cinta tricolor y cabecera están integradas en el único fondo vertical.
         private final RectF[] touchRects = {new RectF(), new RectF(), new RectF()};
-        private final RectF timeline = new RectF();
         private int activeTouch = -1;
         private long stopTouchedAt = 0L;
 
@@ -223,9 +222,9 @@ public final class MainActivity extends Activity {
             }
             // Botones transparentes superpuestos sobre el fondo, sin tarjetas.
             float buttonsTop = h * .48f;
-            float buttonH = Math.min(h * .20f, w * .31f);
-            float margin = w * .02f;
-            float leftW = w * .31f;
+            float buttonH = Math.min(h * .22f, w * .34f);
+            float margin = w * .01f;
+            float leftW = w * .34f;
             float middleW = w * .30f;
             touchRects[0].set(margin, buttonsTop,
                     margin + leftW, buttonsTop + buttonH);
@@ -258,7 +257,6 @@ public final class MainActivity extends Activity {
             }
             float barY = h * .82f;
             float barLeft = w * .07f, barRight = w * .93f;
-            timeline.set(barLeft, barY - h * .016f, barRight, barY + h * .016f);
             rounded(canvas, new RectF(barLeft, barY - h * .004f,
                     barRight, barY + h * .004f), h * .004f, 0xFF7696B6);
             int total = duration();
@@ -269,10 +267,7 @@ public final class MainActivity extends Activity {
                         barLeft + (barRight - barLeft) * fraction, barY + h * .005f),
                         h * .004f, 0xFF00D9FF);
             }
-            float knobX = barLeft + (barRight - barLeft) * fraction;
-            paint.setColor(0xFFFFFFFF);
-            paint.setStyle(Paint.Style.FILL);
-            canvas.drawCircle(knobX, barY, w * .012f, paint);
+            // Barra de progreso informativa: sin deslizador ni control táctil.
             paint.setColor(Color.WHITE);
             paint.setTextSize(w * .047f);
             paint.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
@@ -313,12 +308,9 @@ public final class MainActivity extends Activity {
                         performClick();
                         return true;
                     }
-                    if (timeline.contains(x, y) && media != null && !fadingOut)
-                        seekAt(x);
+                    // Los toques fuera de los tres botones NO alteran la reproducción.
                     return true;
                 case MotionEvent.ACTION_MOVE:
-                    if (activeTouch < 0 && timeline.contains(x, y)
-                            && media != null && !fadingOut) seekAt(x);
                     return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
@@ -326,16 +318,6 @@ public final class MainActivity extends Activity {
                     return true;
                 default: return true;
             }
-        }
-
-        private void seekAt(float x) {
-            int len = duration();
-            if (len <= 0 || timeline.width() <= 0f) return;
-            float fraction = Math.max(0f, Math.min(1f,
-                    (x - timeline.left) / timeline.width()));
-            try { media.seekTo((int) (fraction * len)); }
-            catch (IllegalStateException ignored) { }
-            invalidate();
         }
 
         @Override public boolean performClick() {

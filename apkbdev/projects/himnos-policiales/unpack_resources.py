@@ -107,25 +107,37 @@ def make_full_background(assets: Path, header: Image.Image) -> None:
     print("OK wallpaper vertical continuo", out.stat().st_size, "bytes")
 
 
+# Contornos trazados sobre los escudos, en coordenadas 320 x 304.
+# Las tarjetas rectangular y plateada NO forman parte del botón.
+EMBLEM_MASKS = {
+    "policia": [(49,57),(55,55),(62,72),(73,91),(86,113),(105,131),(112,133),(97,110),(89,99),(96,85),(113,66),(139,57),(160,54),(181,58),(204,70),(223,87),(239,105),(250,88),(267,61),(273,56),(276,80),(271,104),(262,130),(251,150),(231,167),(233,190),(242,224),(250,243),(250,252),(245,267),(225,265),(201,272),(181,279),(159,288),(140,282),(122,275),(103,267),(87,266),(73,267),(72,255),(79,243),(85,232),(90,207),(92,182),(89,170),(70,160),(60,143),(50,121),(46,100),(46,81)],
+    "ecuador": [(72,78),(85,72),(112,64),(142,61),(157,69),(176,60),(198,63),(226,69),(253,79),(258,83),(246,89),(220,88),(206,87),(199,91),(181,104),(171,110),(164,116),(150,108),(144,108),(134,97),(122,88),(106,90),(88,89),(78,86),(86,105),(89,121),(80,138),(78,155),(81,180),(83,211),(94,232),(79,244),(79,253),(91,256),(110,240),(124,258),(143,275),(157,279),(174,270),(192,250),(204,239),(226,253),(241,255),(255,253),(248,244),(234,229),(240,211),(248,184),(247,150),(241,129),(233,117),(223,109),(211,104),(200,98)],
+}
+
 def make_floating_buttons(assets: Path) -> None:
-    """Elimina los recuadros exteriores y conserva el emblema visible."""
+    """Conserva los escudos y STOP, eliminando sus tarjetas de fondo."""
     for name in ("ecuador", "policia", "stop"):
         file = assets / (name + ".webp")
         source = Image.open(file).convert("RGBA")
-        w,h = source.size
-        mask = Image.new("L",(w,h),0)
+        w, h = source.size
+        mask = Image.new("L", (w, h), 0)
         md = ImageDraw.Draw(mask)
         if name == "stop":
-            md.ellipse((w*.05,h*.02,w*.95,h*.99),fill=255)
-            blur = 3.3
+            # STOP conserva su resplandor circular, no su recuadro.
+            md.ellipse((w*.05,h*.02,w*.95,h*.99), fill=255)
+            blur = 2.6
         else:
-            md.rounded_rectangle((w*.012,h*.012,w*.988,h*.988),
-                                 radius=int(min(w,h)*.17), fill=255)
-            blur = 2.0
+            # Alfa transparente fuera del escudo: no dibujar tarjetas.
+            sx, sy = w / 320.0, h / 304.0
+            points = [(round(x*sx),round(y*sy)) for x,y in EMBLEM_MASKS[name]]
+            md.polygon(points, fill=255)
+            blur = 1.4
         source.putalpha(mask.filter(ImageFilter.GaussianBlur(blur)))
-        source.save(file,"WEBP",quality=92,method=6)
-        print("OK botón flotante",name,file.stat().st_size,"bytes")
-
+        source.save(file,"WEBP",quality=95,method=6)
+        result = Image.open(file)
+        assert result.mode == "RGBA", f"{name}: falta transparencia RGBA"
+        assert result.getpixel((0,0))[3] == 0, f"{name}: la tarjeta de fondo permanece"
+        print("OK escudo sin recuadro", name, file.stat().st_size, "bytes")
 
 def main() -> None:
     parts = sorted(PARTS.glob("part-*.bin"))
