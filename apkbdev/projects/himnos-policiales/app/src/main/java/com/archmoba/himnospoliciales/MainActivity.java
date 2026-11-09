@@ -220,12 +220,13 @@ public final class MainActivity extends Activity {
                 canvas.drawRect(0, 0, w, h, paint);
                 paint.setShader(null);
             }
-            // Botones transparentes superpuestos sobre el fondo, sin tarjetas.
-            float buttonsTop = h * .48f;
+            // Dos botones completos tipo app y STOP circular entre ambos.
+            // Los WEBP ya tienen esquinas redondeadas y canal alfa.
+            float buttonsTop = h * .51f;
             float buttonH = Math.min(h * .22f, w * .34f);
             float margin = w * .01f;
             float leftW = w * .34f;
-            float middleW = w * .30f;
+            float middleW = w * .29f;
             touchRects[0].set(margin, buttonsTop,
                     margin + leftW, buttonsTop + buttonH);
             float stopH = middleW * .93f;
@@ -246,15 +247,8 @@ public final class MainActivity extends Activity {
                 paint.setStyle(Paint.Style.FILL);
                 postInvalidateDelayed(550);
             }
-            // Luz de selección sobre los bordes, sin ocultar los escudos.
-            if (selectedTrack >= 0) {
-                RectF active = touchRects[selectedTrack == ECUADOR ? 0 : 2];
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(w * .006f);
-                paint.setColor(selectedTrack == ECUADOR ? 0xFFFFD95C : 0xFF65E2FF);
-                canvas.drawRoundRect(active, w * .025f, w * .025f, paint);
-                paint.setStyle(Paint.Style.FILL);
-            }
+            // Los botones llevan su propio brillo y borde redondeado.
+            // No dibujar un contorno rectangular adicional.
             float barY = h * .82f;
             float barLeft = w * .07f, barRight = w * .93f;
             rounded(canvas, new RectF(barLeft, barY - h * .004f,
@@ -279,12 +273,22 @@ public final class MainActivity extends Activity {
             if (media != null) postInvalidateDelayed(100L);
         }
         private int hit(float x, float y) {
-            final float slop = Math.max(18f, getWidth() * .015f);
-            // Priorizar STOP para evitar que su zona ampliada choque con los dos himnos.
-            if (containsExpanded(touchRects[1], x, y, slop)) return 1;
-            if (containsExpanded(touchRects[0], x, y, slop)) return 0;
-            if (containsExpanded(touchRects[2], x, y, slop)) return 2;
-            return -1;
+            final float slop = Math.max(12f, getWidth() * .012f);
+            // Evitar superposición entre las áreas táctiles de los tres botones.
+            // Primero probar el rectángulo real; después, el más cercano.
+            for (int index = 0; index < 3; index++) {
+                if (touchRects[index].contains(x, y)) return index;
+            }
+            int best = -1;
+            float distance = Float.MAX_VALUE;
+            for (int index = 0; index < 3; index++) {
+                RectF rect = touchRects[index];
+                if (containsExpanded(rect, x, y, slop)) {
+                    float d = Math.abs(x - rect.centerX());
+                    if (d < distance) { distance = d; best = index; }
+                }
+            }
+            return best;
         }
 
         private boolean containsExpanded(RectF r, float x, float y, float s) {
