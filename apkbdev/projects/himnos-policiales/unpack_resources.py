@@ -9,7 +9,7 @@ from pathlib import Path
 import hashlib
 import io
 import zipfile
-from PIL import Image
+from PIL import Image, ImageFilter, ImageChops
 
 ROOT = Path(__file__).resolve().parent
 APP_MAIN = ROOT / "app" / "src" / "main"
@@ -30,6 +30,43 @@ ARTWORK_SHA256 = {
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+def generate_selected_button(assets: Path, name: str, color: tuple[int, int, int]) -> None:
+    """Colorea el borde visible del propio icono, sin dibujar otro marco.
+
+    El borde se extrae del alfa del WEBP aprobado, por lo que respeta
+    exactamente sus esquinas redondeadas sin espacios entre icono y selección.
+    """
+    original_path = assets / (name + ".webp")
+    with Image.open(original_path) as source:
+        normal = source.convert("RGBA")
+
+    alpha = normal.getchannel("A")
+    # La parte opaca define el contorno real, ignorando la neblina de brillo.
+    silhouette = alpha.point(lambda p: 255 if p >= 190 else 0)
+    eroded = silhouette.filter(ImageFilter.MinFilter(11))
+    edge = ImageChops.subtract(silhouette, eroded)
+
+    # Halo detrás del icono, unido al perímetro original.
+    halo = edge.filter(ImageFilter.GaussianBlur(8))
+    behind = Image.new("RGBA", normal.size, (*color, 0))
+    behind.putalpha(halo)
+    selected = Image.alpha_composite(behind, normal)
+
+    # Capa dorada/celeste aplicada SOBRE el borde exacto ya existente.
+    tint = Image.new("RGBA", normal.size, (*color, 0))
+    tint.putalpha(edge.point(lambda value: min(255, int(value * .86))))
+    selected = Image.alpha_composite(selected, tint)
+
+    destination = assets / (name + "_activo.webp")
+    selected.save(destination, "WEBP", quality=96, method=6)
+    with Image.open(destination) as check:
+        rgba = check.convert("RGBA")
+        if rgba.size != normal.size or rgba.getpixel((0, 0))[3] != 0:
+            raise RuntimeError("Borde de selección incorrecto para " + name)
+    print("OK botón seleccionado con borde integrado", destination.name,
+          destination.stat().st_size, "bytes")
+
 
 def main() -> None:
     parts = sorted((ROOT / "media").glob("part-*.bin"))
@@ -68,7 +105,11 @@ def main() -> None:
             if name != "fondo.webp" and im.getpixel((0, 0))[3] != 0:
                 raise RuntimeError(f"El botón contiene fondo rectangular: {name}")
         print("Arte aprobado", name, path.stat().st_size, "bytes")
-    print("OK: audios, fondo completo, icono y botones originales verificados")
+    # Los activos se regeneran en cada compilación a partir de los botones
+    # originales verificados. No cambian los audios ni el fondo del boceto.
+    generate_selected_button(assets, "ecuador", (255, 215, 48))
+    generate_selected_button(assets, "policia", (65, 240, 255))
+    print("OK: audios, fondo completo, icono y botones activos verificados")
 
 if __name__ == "__main__":
     main()

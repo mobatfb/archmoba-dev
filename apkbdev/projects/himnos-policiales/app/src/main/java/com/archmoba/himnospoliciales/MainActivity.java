@@ -179,8 +179,10 @@ public final class MainActivity extends Activity {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final Bitmap wallpaper = asset("fondo.webp");
         private final Bitmap ecu = asset("ecuador.webp");
+        private final Bitmap ecuSelected = asset("ecuador_activo.webp");
         private final Bitmap stop = asset("stop.webp");
         private final Bitmap police = asset("policia.webp");
+        private final Bitmap policeSelected = asset("policia_activo.webp");
         // Cinta tricolor y cabecera están integradas en el único fondo vertical.
         private final RectF[] touchRects = {new RectF(), new RectF(), new RectF()};
         private int activeTouch = -1;
@@ -236,9 +238,15 @@ public final class MainActivity extends Activity {
                     buttonsTop + (buttonH + stopH) / 2f);
             touchRects[2].set(w - margin - leftW, buttonsTop,
                     w - margin, buttonsTop + buttonH);
-            bitmap(canvas, ecu, touchRects[0]);
+            // El brillo seleccionado está integrado en el contorno real
+            // del WEBP: evita marcos geométricos separados y espacios falsos.
+            boolean selectingEcuador = media != null && selectedTrack == ECUADOR;
+            boolean selectingPolice = media != null && selectedTrack == POLICIA;
+            bitmap(canvas, selectingEcuador && ecuSelected != null ? ecuSelected : ecu,
+                    touchRects[0]);
             bitmap(canvas, stop, touchRects[1]);
-            bitmap(canvas, police, touchRects[2]);
+            bitmap(canvas, selectingPolice && policeSelected != null ? policeSelected : police,
+                    touchRects[2]);
             if (android.os.SystemClock.uptimeMillis() - stopTouchedAt < 550L) {
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(w * .012f);
@@ -247,31 +255,8 @@ public final class MainActivity extends Activity {
                 paint.setStyle(Paint.Style.FILL);
                 postInvalidateDelayed(550);
             }
-            // Resaltar de forma persistente SOLO el himno seleccionado y
-            // reproduciéndose. El marco acompaña las esquinas tipo app.
-            if (selectedTrack >= 0 && media != null) {
-                final RectF selected = touchRects[selectedTrack == ECUADOR ? 0 : 2];
-                final int accent = selectedTrack == ECUADOR ? 0xFFFFD54D : 0xFF41E6FF;
-                final float inset = Math.max(3f, w * .008f);
-                final RectF frame = new RectF(selected);
-                frame.inset(inset, inset);
-                final float radius = Math.min(frame.width(), frame.height()) * .18f;
-
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(3f, w * .011f));
-                paint.setColor(accent);
-                paint.setShadowLayer(Math.max(10f, w * .035f), 0f, 0f, accent);
-                canvas.drawRoundRect(frame, radius, radius, paint);
-                paint.clearShadowLayer();
-
-                // Segundo trazo interior para que el borde destaque en fondos claros.
-                paint.setStrokeWidth(Math.max(1f, w * .0032f));
-                paint.setColor(0xEFFFFFFF);
-                frame.inset(inset * .62f, inset * .62f);
-                canvas.drawRoundRect(frame, Math.max(0f, radius - inset), 
-                        Math.max(0f, radius - inset), paint);
-                paint.setStyle(Paint.Style.FILL);
-            }
+            // Sin rectángulos extra: el botón seleccionado reemplaza su propio
+            // WEBP y la selección termina al liberar el reproductor.
             float barY = h * .82f;
             float barLeft = w * .07f, barRight = w * .93f;
             rounded(canvas, new RectF(barLeft, barY - h * .004f,

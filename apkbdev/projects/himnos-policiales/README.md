@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.1
+# Himnos Policiales para Android — v1.3.2
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -7,7 +7,7 @@ Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaP
 - **Botón Ecuador:** `assets/ecuador.webp`, bandera completa amarillo/azul/rojo con su escudo, esquinas tipo app redondeadas y brillo azul.
 - **Botón Policía:** `assets/policia.webp`, blanco/azul tipo bandera con escudo policial completo, esquinas redondeadas y brillo azul.
 - **Botón STOP:** `assets/stop.webp`, círculo rojo con cuadrado blanco.
-- **Borde de selección permanente:** al tocar un himno aparece un marco luminoso con esquinas redondeadas (dorado para Ecuador, celeste para la Policía). Se mantiene visible mientras ese himno se reproduce y se elimina al pulsar STOP, al finalizar o ante un error de reproducción.
+- **Borde integrado de selección:** no se dibujan rectángulos adicionales ni márgenes artificiales. El color dorado (Ecuador) o celeste (Policía) ilumina el contorno exacto del propio botón redondeado; permanece durante la reproducción y desaparece con STOP, al terminar o ante un error. El recurso seleccionado se genera desde los WEBP originales con Pillow en APKBDEV.
 - **Barra inferior:** solo informativa, muestra tiempo transcurrido y duración, no se puede arrastrar.
 
 ## Comportamiento
