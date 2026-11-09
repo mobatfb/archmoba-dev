@@ -1,0 +1,303 @@
+package com.archmoba.himnospoliciales;
+
+import android.app.Activity;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.media.MediaPlayer;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.content.res.AssetFileDescriptor;
+import java.io.InputStream;
+import java.util.Locale;
+
+/**
+ * Himnos Policiales, una pantalla y tres controles.
+ * Incluye audios locales; no requiere red.
+ */
+public final class MainActivity extends Activity {
+    private static final long FADE_MS = 2000L;
+    private static final int ECUADOR = 0;
+    private static final int POLICIA = 1;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private MediaPlayer media;
+    private int selectedTrack = -1;
+    private int operation = 0;
+    private boolean fadingOut = false;
+    private final String[] titles = {"HIMNO NACIONAL DEL ECUADOR", "HIMNO DE LA POLICÍA NACIONAL"};
+    private PlayerArtwork view;
+
+    @Override public void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
+        getWindow().setStatusBarColor(Color.rgb(3, 15, 32));
+        getWindow().setNavigationBarColor(Color.rgb(2, 9, 22));
+        view = new PlayerArtwork();
+        setContentView(view);
+    }
+
+    private void play(int track) {
+        // Un nuevo toque cancela cualquier fundido anterior.
+        int id = ++operation;
+        releaseCurrent();
+        selectedTrack = track;
+        fadingOut = false;
+        final MediaPlayer candidate = new MediaPlayer();
+        media = candidate;
+        try (AssetFileDescriptor fd = getResources().openRawResourceFd(
+                track == ECUADOR ? R.raw.himno_ecuador : R.raw.himno_policia)) {
+            if (fd == null) throw new IllegalStateException("Audio no disponible");
+            candidate.setDataSource(fd.getFileDescriptor(), fd.getStartOffset(), fd.getLength());
+            candidate.setVolume(0f, 0f);
+            candidate.setOnPreparedListener(mp -> {
+                if (id != operation || media != mp) return;
+                mp.start();
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                fade(id, 0f, 1f, false);
+                view.invalidate();
+            });
+            candidate.setOnCompletionListener(mp -> {
+                if (id != operation || media != mp) return;
+                operation++;
+                releaseCurrent();
+                selectedTrack = -1;
+                view.invalidate();
+            });
+            candidate.setOnErrorListener((mp, what, extra) -> {
+                if (id == operation && media == mp) {
+                    operation++;
+                    releaseCurrent();
+                    selectedTrack = -1;
+                    view.invalidate();
+                }
+                return true;
+            });
+            candidate.prepareAsync();
+        } catch (Exception error) {
+            if (id == operation) {
+                operation++;
+                releaseCurrent();
+                selectedTrack = -1;
+                view.invalidate();
+            }
+        }
+    }
+
+    /** STOP total: 2 segundos bajando el sonido, después para y reinicia. */
+    private void stopWithFade() {
+        if (media == null) {
+            selectedTrack = -1;
+            view.invalidate();
+            return;
+        }
+        final int id = ++operation;
+        boolean active;
+        try { active = media.isPlaying(); }
+        catch (IllegalStateException ignored) { active = false; }
+        if (!active) {
+            releaseCurrent();
+            selectedTrack = -1;
+            view.invalidate();
+            return;
+        }
+        fadingOut = true;
+        // Si se pulsa STOP durante la subida, parte del volumen real aplicado.
+        float startVolume = currentVolume;
+        fade(id, startVolume, 0f, true);
+    }
+
+    private float currentVolume = 0f;
+
+    private void fade(final int id, final float from, final float to, final boolean stopAtEnd) {
+        final long started = android.os.SystemClock.uptimeMillis();
+        final Runnable step = new Runnable() {
+            @Override public void run() {
+                if (id != operation || media == null) return;
+                float t = Math.min(1f, (android.os.SystemClock.uptimeMillis() - started) / (float) FADE_MS);
+                currentVolume = Math.max(0f, Math.min(1f, from + (to - from) * t));
+                try { media.setVolume(currentVolume, currentVolume); }
+                catch (IllegalStateException error) { return; }
+                if (t >= 1f) {
+                    if (stopAtEnd) {
+                        operation++;
+                        releaseCurrent();
+                        selectedTrack = -1;
+                        fadingOut = false;
+                    }
+                    view.invalidate();
+                } else {
+                    handler.postDelayed(this, 25L);
+                }
+            }
+        };
+        handler.post(step);
+    }
+
+    private void releaseCurrent() {
+        if (media != null) {
+            try { media.setOnCompletionListener(null); media.setOnPreparedListener(null);
+                  media.setOnErrorListener(null); media.reset(); media.release(); }
+            catch (Exception ignored) { }
+            media = null;
+        }
+        currentVolume = 0f;
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    private int position() {
+        if (media == null) return 0;
+        try { return Math.max(0, media.getCurrentPosition()); }
+        catch (IllegalStateException ignored) { return 0; }
+    }
+    private int duration() {
+        if (media == null) return selectedTrack == ECUADOR ? 142000 :
+                selectedTrack == POLICIA ? 94284 : 0;
+        try { return Math.max(0, media.getDuration()); }
+        catch (IllegalStateException ignored) { return 0; }
+    }
+    private static String time(int millis) {
+        int s = Math.max(0, millis) / 1000;
+        return String.format(Locale.ROOT, "%02d:%02d", s / 60, s % 60);
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        // No reproducir de forma oculta y sin controles al dejar la aplicación.
+        operation++;
+        releaseCurrent();
+        selectedTrack = -1;
+        fadingOut = false;
+    }
+    @Override protected void onDestroy() {
+        operation++;
+        releaseCurrent();
+        handler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
+    private final class PlayerArtwork extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final Bitmap header = asset("cabecera.webp");
+        private final Bitmap ecu = asset("ecuador.webp");
+        private final Bitmap stop = asset("stop.webp");
+        private final Bitmap police = asset("policia.webp");
+        private final Bitmap ribbon = asset("cinta.webp");
+        private final RectF[] touchRects = {new RectF(), new RectF(), new RectF()};
+        private final RectF timeline = new RectF();
+        private float downX, downY;
+
+        PlayerArtwork() { super(MainActivity.this); setLayerType(View.LAYER_TYPE_SOFTWARE, null); }
+
+        private Bitmap asset(String file) {
+            try (InputStream in = getAssets().open(file)) {
+                return BitmapFactory.decodeStream(in);
+            } catch (Exception ignored) { return null; }
+        }
+        private void bitmap(Canvas canvas, Bitmap b, RectF at) {
+            if (b != null) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(Color.WHITE);
+                paint.setAlpha(255);
+                paint.clearShadowLayer();
+                canvas.drawBitmap(b, new Rect(0, 0, b.getWidth(), b.getHeight()), at, paint);
+            }
+        }
+        private void rounded(Canvas canvas, RectF rectangle, float radius, int color) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.clearShadowLayer();
+            paint.setColor(color);
+            canvas.drawRoundRect(rectangle, radius, radius, paint);
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            final float w = getWidth(), h = getHeight();
+            // Diseño adaptable: mismas piezas del boceto, sin duplicar una barra falsa.
+            paint.setShader(new LinearGradient(0, 0, 0, h, 0xFF020D20,
+                    0xFF052A54, Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, w, h, paint);
+            paint.setShader(null);
+            float topH = h * .48f;
+            bitmap(canvas, header, new RectF(0, 0, w, topH));
+            float buttonsTop = h * .49f;
+            float buttonH = Math.min(h * .255f, w * .38f);
+            float margin = w * .015f;
+            float leftW = w * .335f;
+            float middleW = w * .285f;
+            touchRects[0].set(margin, buttonsTop, margin + leftW, buttonsTop + buttonH);
+            touchRects[1].set((w - middleW) / 2f, buttonsTop + buttonH * .035f,
+                    (w + middleW) / 2f, buttonsTop + buttonH * .965f);
+            touchRects[2].set(w - margin - leftW, buttonsTop,
+                    w - margin, buttonsTop + buttonH);
+            bitmap(canvas, ecu, touchRects[0]);
+            bitmap(canvas, stop, touchRects[1]);
+            bitmap(canvas, police, touchRects[2]);
+            // Luz de selección sobre los bordes, sin ocultar los escudos.
+            if (selectedTrack >= 0) {
+                RectF active = touchRects[selectedTrack == ECUADOR ? 0 : 2];
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(w * .006f);
+                paint.setColor(selectedTrack == ECUADOR ? 0xFFFFD95C : 0xFF65E2FF);
+                canvas.drawRoundRect(active, w * .025f, w * .025f, paint);
+                paint.setStyle(Paint.Style.FILL);
+            }
+            float barY = h * .844f;
+            float barLeft = w * .07f, barRight = w * .93f;
+            timeline.set(barLeft, barY - h * .016f, barRight, barY + h * .016f);
+            rounded(canvas, new RectF(barLeft, barY - h * .004f,
+                    barRight, barY + h * .004f), h * .004f, 0xFF7696B6);
+            int total = duration();
+            int now = position();
+            float fraction = total > 0 ? Math.min(1f, (float) now / total) : 0f;
+            if (fraction > 0f) {
+                rounded(canvas, new RectF(barLeft, barY - h * .005f,
+                        barLeft + (barRight - barLeft) * fraction, barY + h * .005f),
+                        h * .004f, 0xFF00D9FF);
+            }
+            float knobX = barLeft + (barRight - barLeft) * fraction;
+            paint.setColor(0xFFFFFFFF);
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(knobX, barY, w * .012f, paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(w * .047f);
+            paint.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
+            paint.setTextAlign(Paint.Align.LEFT);
+            canvas.drawText(time(now), barLeft, barY + h * .043f, paint);
+            paint.setTextAlign(Paint.Align.RIGHT);
+            canvas.drawText(time(total), barRight, barY + h * .043f, paint);
+            // Cinta tricolor del boceto como pie decorativo.
+            bitmap(canvas, ribbon, new RectF(0, h * .924f, w, h));
+            if (media != null) postInvalidateDelayed(100L);
+        }
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            float x = event.getX(), y = event.getY();
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                downX = x; downY = y;
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                if (Math.abs(x - downX) > 38f || Math.abs(y - downY) > 38f) return true;
+                if (touchRects[0].contains(x, y)) play(ECUADOR);
+                else if (touchRects[1].contains(x, y)) stopWithFade();
+                else if (touchRects[2].contains(x, y)) play(POLICIA);
+                else if (timeline.contains(x, y) && media != null && !fadingOut) {
+                    int len = duration();
+                    try { media.seekTo((int) (Math.max(0f, Math.min(1f,
+                            (x - timeline.left) / timeline.width())) * len)); }
+                    catch (IllegalStateException ignored) { }
+                    invalidate();
+                }
+                return true;
+            }
+            return true;
+        }
+    }
+}

@@ -29,11 +29,13 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Seleccionar TVAPP para compilaciones automáticas
+      - name: Seleccionar proyecto para compilaciones automáticas
         if: github.event_name == 'push'
         shell: bash
         run: |
-          if git diff --name-only HEAD^ HEAD | grep -q '^apkbdev/projects/tvapp/'; then
+          if git diff --name-only HEAD^ HEAD | grep -q '^apkbdev/projects/himnos-policiales/'; then
+            echo 'PROJECT_SLUG=himnos-policiales' >> "$GITHUB_ENV"
+          elif git diff --name-only HEAD^ HEAD | grep -q '^apkbdev/projects/tvapp/'; then
             echo 'PROJECT_SLUG=tvapp' >> "$GITHUB_ENV"
           fi
 
@@ -78,6 +80,10 @@ jobs:
             apkbdev/projects/orbit-launcher/app/src/main/java/com/archmoba/colibri/BadgeFreshnessPolicy.java \
             apkbdev/tests/BadgeFreshnessTest.java
           java -cp "$RUNNER_TEMP/orbit-badges" com.archmoba.colibri.BadgeFreshnessTest
+
+      - name: Verificar y preparar los himnos originales
+        if: env.PROJECT_SLUG == 'himnos-policiales'
+        run: python3 apkbdev/projects/himnos-policiales/unpack_resources.py
 
       - name: Compilar proyecto Android
         run: python3 apkbdev/tools/build_apk.py --project "$PROJECT_SLUG"
