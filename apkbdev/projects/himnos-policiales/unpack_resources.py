@@ -20,8 +20,8 @@ EXPECTED_ZIP = {
     "res/raw/himno_ecuador.mp3", "res/raw/himno_policia.mp3",
     "res/drawable-nodpi/launcher_himnos.webp",
 }
-CUSTOM_LAUNCHER_SHA256 = "5e237705eb45441c06916ff5960efa827efe6a445efbf869c130631ce3d84698"
-ADAPTIVE_LAUNCHER_SHA256 = "8d234da27a18c6ee319060122ea7052f5f5e1c6b8903dd446c7ca4bf755fc41a"
+CUSTOM_LAUNCHER_SHA256 = "704c8e636cf5446902820e91e1e29f9b565ed98cb9f9f0adf080b9e5fce983e5"
+ADAPTIVE_LAUNCHER_SHA256 = "6998e072a0011e4a74c47091f70574c6b3714c0911c498e34b0c61097cc8087b"
 ARTWORK_SHA256 = {
     "fondo.webp": "c6069f7c6c147da2f71bb7049e5685a5e8ee6d92f407078643f974e12f13d1fe",
     "ecuador.webp": "75236cc975ab5a6c2bffbe0a83ee0c4d4f9ec68d041aae01de19217d62f893d9",
@@ -85,8 +85,9 @@ def main() -> None:
             target.write_bytes(archive.read(name))
             print("Audio verificado", name, target.stat().st_size, "bytes")
 
-    # Ícono de inicio: se conserva el diseño dividido y el escudo policial
-    # remitido por el usuario. Sin franjas negras; adaptativo a Android 8+.
+    # Ícono de inicio: nuevo diseño aprobado, bandera de Ecuador a la
+    # izquierda, escudo policial a la derecha y unión luminosa desplazada.
+    # Ambos archivos son opacos: sin franjas ni esquinas negras.
     launcher = APP_MAIN / "res" / "drawable-nodpi" / "launcher_himnos.webp"
     adaptive = APP_MAIN / "res" / "drawable-nodpi" / "launcher_himnos_adaptive.webp"
     for label, icon, expected in (
