@@ -1,6 +1,6 @@
 # Himnos Policiales — APK Android independiente
 
-Proyecto nativo Android **basado en el boceto aprobado**. Paquete `com.archmoba.himnospoliciales` para Android 8.0 o superior. Incluye el **Himno Nacional del Ecuador (2:22)** y el **Himno de la Policía Nacional (1:34)** con los audios originales entregados por el usuario. No utiliza Internet, permisos de red, cuentas ni anuncios.
+Proyecto nativo Android **basado en el boceto aprobado**, actualizado para retirar el escudo central de la cabecera, dejando el título **HIMNOS POLICIALES**. Paquete `com.archmoba.himnospoliciales` para Android 8.0 o superior. Incluye el **Himno Nacional del Ecuador (2:22)** y el **Himno de la Policía Nacional (1:34)** con los audios originales entregados por el usuario. No utiliza Internet, permisos de red, cuentas ni anuncios.
 
 ## Controles únicos
 

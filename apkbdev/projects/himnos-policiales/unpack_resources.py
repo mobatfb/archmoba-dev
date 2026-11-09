@@ -36,6 +36,11 @@ def main():
         for name in sorted(EXPECTED):
             destination = root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
+            # La cabecera sin escudo central se conserva como recurso propio
+            # del proyecto; los audios y demás iconos se verifican del paquete.
+            if name == "assets/cabecera.webp" and destination.is_file():
+                print("OK cabecera personalizada", destination.stat().st_size, "bytes")
+                continue
             destination.write_bytes(archive.read(name))
             print("OK", name, destination.stat().st_size, "bytes")
     print("Recursos verificados SHA-256", digest)

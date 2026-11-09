@@ -15,6 +15,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.MotionEvent;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.WindowManager;
 import android.content.res.AssetFileDescriptor;
@@ -34,7 +35,6 @@ public final class MainActivity extends Activity {
     private int selectedTrack = -1;
     private int operation = 0;
     private boolean fadingOut = false;
-    private final String[] titles = {"HIMNO NACIONAL DEL ECUADOR", "HIMNO DE LA POLICÍA NACIONAL"};
     private PlayerArtwork view;
 
     @Override public void onCreate(Bundle bundle) {
@@ -193,7 +193,8 @@ public final class MainActivity extends Activity {
         private final Bitmap ribbon = asset("cinta.webp");
         private final RectF[] touchRects = {new RectF(), new RectF(), new RectF()};
         private final RectF timeline = new RectF();
-        private float downX, downY;
+        private int activeTouch = -1;
+        private long stopTouchedAt = 0L;
 
         PlayerArtwork() { super(MainActivity.this); setLayerType(View.LAYER_TYPE_SOFTWARE, null); }
 
@@ -220,15 +221,17 @@ public final class MainActivity extends Activity {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             final float w = getWidth(), h = getHeight();
-            // Diseño adaptable: mismas piezas del boceto, sin duplicar una barra falsa.
+            // La ventana Android ya excluye la barra de estado y de navegación.
+            // La cabecera nueva, sin escudo central, se ajusta sin estiramientos extremos.
+            // Se mantiene despejada la zona de controles y la cinta inferior.
             paint.setShader(new LinearGradient(0, 0, 0, h, 0xFF020D20,
                     0xFF052A54, Shader.TileMode.CLAMP));
             canvas.drawRect(0, 0, w, h, paint);
             paint.setShader(null);
-            float topH = h * .48f;
+            float topH = h * .44f;
             bitmap(canvas, header, new RectF(0, 0, w, topH));
-            float buttonsTop = h * .49f;
-            float buttonH = Math.min(h * .255f, w * .38f);
+            float buttonsTop = h * .48f;
+            float buttonH = Math.min(h * .22f, w * .38f);
             float margin = w * .015f;
             float leftW = w * .335f;
             float middleW = w * .285f;
@@ -240,6 +243,14 @@ public final class MainActivity extends Activity {
             bitmap(canvas, ecu, touchRects[0]);
             bitmap(canvas, stop, touchRects[1]);
             bitmap(canvas, police, touchRects[2]);
+            if (android.os.SystemClock.uptimeMillis() - stopTouchedAt < 550L) {
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(w * .012f);
+                paint.setColor(0xFFFFD8D8);
+                canvas.drawRoundRect(touchRects[1], w * .14f, w * .14f, paint);
+                paint.setStyle(Paint.Style.FILL);
+                postInvalidateDelayed(550);
+            }
             // Luz de selección sobre los bordes, sin ocultar los escudos.
             if (selectedTrack >= 0) {
                 RectF active = touchRects[selectedTrack == ECUADOR ? 0 : 2];
@@ -249,7 +260,7 @@ public final class MainActivity extends Activity {
                 canvas.drawRoundRect(active, w * .025f, w * .025f, paint);
                 paint.setStyle(Paint.Style.FILL);
             }
-            float barY = h * .844f;
+            float barY = h * .82f;
             float barLeft = w * .07f, barRight = w * .93f;
             timeline.set(barLeft, barY - h * .016f, barRight, barY + h * .016f);
             rounded(canvas, new RectF(barLeft, barY - h * .004f,
@@ -274,29 +285,66 @@ public final class MainActivity extends Activity {
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText(time(total), barRight, barY + h * .043f, paint);
             // Cinta tricolor del boceto como pie decorativo.
-            bitmap(canvas, ribbon, new RectF(0, h * .924f, w, h));
+            bitmap(canvas, ribbon, new RectF(0, h * .915f, w, h));
             if (media != null) postInvalidateDelayed(100L);
         }
+        private int hit(float x, float y) {
+            final float slop = Math.max(18f, getWidth() * .015f);
+            // Priorizar STOP para evitar que su zona ampliada choque con los dos himnos.
+            if (containsExpanded(touchRects[1], x, y, slop)) return 1;
+            if (containsExpanded(touchRects[0], x, y, slop)) return 0;
+            if (containsExpanded(touchRects[2], x, y, slop)) return 2;
+            return -1;
+        }
+
+        private boolean containsExpanded(RectF r, float x, float y, float s) {
+            return x >= r.left - s && x <= r.right + s
+                    && y >= r.top - s && y <= r.bottom + s;
+        }
+
         @Override public boolean onTouchEvent(MotionEvent event) {
-            float x = event.getX(), y = event.getY();
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downX = x; downY = y;
-                return true;
+            final float x = event.getX(), y = event.getY();
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    activeTouch = hit(x, y);
+                    if (activeTouch >= 0) {
+                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                        if (activeTouch == 0) play(ECUADOR);
+                        else if (activeTouch == 1) {
+                            stopTouchedAt = android.os.SystemClock.uptimeMillis();
+                            stopWithFade();
+                        } else play(POLICIA);
+                        invalidate(); // respuesta visible inmediatamente al tocar
+                        performClick();
+                        return true;
+                    }
+                    if (timeline.contains(x, y) && media != null && !fadingOut)
+                        seekAt(x);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (activeTouch < 0 && timeline.contains(x, y)
+                            && media != null && !fadingOut) seekAt(x);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    activeTouch = -1;
+                    return true;
+                default: return true;
             }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (Math.abs(x - downX) > 38f || Math.abs(y - downY) > 38f) return true;
-                if (touchRects[0].contains(x, y)) play(ECUADOR);
-                else if (touchRects[1].contains(x, y)) stopWithFade();
-                else if (touchRects[2].contains(x, y)) play(POLICIA);
-                else if (timeline.contains(x, y) && media != null && !fadingOut) {
-                    int len = duration();
-                    try { media.seekTo((int) (Math.max(0f, Math.min(1f,
-                            (x - timeline.left) / timeline.width())) * len)); }
-                    catch (IllegalStateException ignored) { }
-                    invalidate();
-                }
-                return true;
-            }
+        }
+
+        private void seekAt(float x) {
+            int len = duration();
+            if (len <= 0 || timeline.width() <= 0f) return;
+            float fraction = Math.max(0f, Math.min(1f,
+                    (x - timeline.left) / timeline.width()));
+            try { media.seekTo((int) (fraction * len)); }
+            catch (IllegalStateException ignored) { }
+            invalidate();
+        }
+
+        @Override public boolean performClick() {
+            super.performClick();
             return true;
         }
     }
