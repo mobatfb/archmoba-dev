@@ -25,7 +25,7 @@ import java.util.Locale;
 
 /**
  * Himnos Policiales: tres controles de audio local y publicidad opcional.
- * Los himnos funcionan sin Internet; el anuncio puede refrescarse en línea.
+ * Los himnos funcionan sin Internet; el anuncio solo aparece con red.
  */
 public final class MainActivity extends Activity {
     private static final long FADE_MS = 2000L;
@@ -58,8 +58,14 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        // Sin bloquear la pantalla: lee selected_id y el anuncio actual de pub.pub.
+        // Solo publicidad de Internet; comienza oculta en cada regreso a la app.
         if (promotion != null) promotion.refreshFromGithub();
+    }
+
+    @Override protected void onPause() {
+        // Olvidar el anuncio y rechazar respuestas pendientes al salir.
+        if (promotion != null) promotion.hideAndCancel();
+        super.onPause();
     }
 
     private void play(int track) {

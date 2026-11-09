@@ -28,25 +28,23 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Small, independently clickable promotional card over the bottom tricolor.
  * Reads the selected advert from pub.pub on GitHub every time the app resumes.
- * Includes bundled JSON and thumbnails for immediate/offline display.
+ * Never bundles or caches advertising data: hide unless network succeeds.
  */
 final class PromoBanner extends View {
     private static final String CONFIG_URL =
             "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/"
                     + "apkbdev/projects/himnos-policiales/pub.pub";
-    private static final String PREFERENCES = "himnos_promo_cache";
-    private static final String CACHE_KEY = "last_valid_pub";
     private static final int MAX_JSON_BYTES = 64 * 1024;
     private static final int MAX_IMAGE_BYTES = 1200 * 1024;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF buttonArea = new RectF();
-    private final AtomicBoolean fetching = new AtomicBoolean(false);
+    private final AtomicInteger requestGeneration = new AtomicInteger();
     private volatile boolean disposed;
     private Ad current;
     private boolean pressed;
@@ -71,63 +69,58 @@ final class PromoBanner extends View {
     PromoBanner(Context context) {
         super(context);
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        // Always show the bundled advert immediately, even without network.
-        try (InputStream stream = context.getAssets().open("pub.pub")) {
-            Ad bundled = parse(new String(readLimited(stream, MAX_JSON_BYTES), StandardCharsets.UTF_8));
-            applyLocalAd(bundled);
-        } catch (Exception ignored) { }
-        // A previously downloaded valid configuration takes precedence offline.
-        String cached = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                .getString(CACHE_KEY, "");
-        if (cached != null && !cached.isEmpty()) {
-            try { applyLocalAd(parse(cached)); }
-            catch (Exception ignored) { }
-        }
+        // Publicidad ausente desde el inicio; nada se lee de assets o disco.
+        setVisibility(View.GONE);
     }
 
-    /** Download remote JSON and selected thumbnail without blocking the UI. */
+    /** Nuevo intento siempre remoto: ocultar ANTES de iniciar la consulta. */
     void refreshFromGithub() {
-        if (disposed || !fetching.compareAndSet(false, true)) return;
+        if (disposed) return;
+        final int request = requestGeneration.incrementAndGet();
+        hideNow();
         Thread worker = new Thread(() -> {
             try {
-                String json = new String(fetchBytes(CONFIG_URL, MAX_JSON_BYTES),
+                // Parámetro único por consulta para evitar versiones CDN anteriores.
+                String config = CONFIG_URL + "?refresh=" + System.currentTimeMillis();
+                String json = new String(fetchBytes(config, MAX_JSON_BYTES),
                         StandardCharsets.UTF_8);
-                Ad selected = parse(json); // Valid JSON may select no advert.
-                if (selected != null && !selected.imageUrl.isEmpty()) {
-                    try { selected.thumbnail = downloadImage(selected.imageUrl); }
-                    catch (Exception ignored) { }
-                }
-                if (disposed) return;
-                getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                        .edit().putString(CACHE_KEY, json).apply();
+                Ad selected = parse(json);
+                if (selected == null || selected.imageUrl.isEmpty()) return;
+                // Si falla la imagen, también ocultamos TODO el anuncio.
+                selected.thumbnail = downloadImage(selected.imageUrl);
+                if (selected.thumbnail == null) return;
+                if (disposed || request != requestGeneration.get()) return;
                 post(() -> {
-                    if (disposed) return;
-                    applyLocalAd(selected);
+                    if (disposed || request != requestGeneration.get()) return;
+                    current = selected;
+                    pressed = false;
+                    setVisibility(View.VISIBLE);
+                    invalidate();
                 });
             } catch (Exception ignored) {
-                // No Internet/GitHub failure: keep last bundled or cached ad.
-            } finally {
-                fetching.set(false);
+                // Sin internet, JSON inválido o imagen inaccesible: no mostrar nada.
             }
-        }, "Himnos-Publicidad");
+        }, "Himnos-Publicidad-Remota");
         worker.setDaemon(true);
         worker.start();
     }
 
-    void dispose() { disposed = true; }
+    /** Al salir de la app, descartar anuncios y respuestas anteriores. */
+    void hideAndCancel() {
+        requestGeneration.incrementAndGet();
+        hideNow();
+    }
 
-    private void applyLocalAd(Ad selected) {
-        if (selected != null && selected.thumbnail == null) {
-            String fallback = selected.id == 1 ? "agenda_ad.webp"
-                    : selected.id == 2 ? "amo_ad.webp" : "";
-            if (!fallback.isEmpty()) {
-                try (InputStream in = getContext().getAssets().open(fallback)) {
-                    selected.thumbnail = BitmapFactory.decodeStream(in);
-                } catch (Exception ignored) { }
-            }
-        }
-        current = selected;
+    void dispose() {
+        disposed = true;
+        hideAndCancel();
+    }
+
+    private void hideNow() {
+        current = null;
         pressed = false;
+        buttonArea.setEmpty();
+        setVisibility(View.GONE);
         invalidate();
     }
 
@@ -182,7 +175,7 @@ final class PromoBanner extends View {
         connection.setReadTimeout(5500);
         connection.setUseCaches(false);
         connection.setRequestProperty("Cache-Control", "no-cache");
-        connection.setRequestProperty("User-Agent", "HimnosPolicialesAndroid/1.3.3");
+        connection.setRequestProperty("User-Agent", "HimnosPolicialesAndroid/1.3.4");
         try {
             if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
                 throw new IOException("HTTP " + connection.getResponseCode());
@@ -274,13 +267,6 @@ final class PromoBanner extends View {
             paint.setAlpha(255);
             canvas.drawBitmap(photo, src, picture, paint);
             canvas.restore();
-        } else {
-            paint.setColor(0xFF154786);
-            paint.setTypeface(Typeface.DEFAULT_BOLD);
-            paint.setTextAlign(Paint.Align.CENTER);
-            paint.setTextSize(imageSize * .40f);
-            canvas.drawText(Integer.toString(ad.id), picture.centerX(),
-                    picture.centerY() + imageSize * .13f, paint);
         }
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(Math.max(1f, w * .0022f));

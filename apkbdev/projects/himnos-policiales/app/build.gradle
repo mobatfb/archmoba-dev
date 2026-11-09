@@ -10,8 +10,8 @@ android {
         applicationId 'com.archmoba.himnospoliciales'
         minSdk 26
         targetSdk 33
-        versionCode 9
-        versionName '1.3.3'
+        versionCode 10
+        versionName '1.3.4'
     }
 
     compileOptions {

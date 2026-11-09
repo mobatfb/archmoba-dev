@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.3
+# Himnos Policiales para Android — v1.3.4
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -25,7 +25,10 @@ Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaP
 - Muestra la miniatura del anuncio, su `description` y el botón naranja `button_text`. Solo el botón abre `button_url` en el navegador.
 - En `pub.pub` del repositorio, el campo numérico `selected_id` selecciona qué objeto del arreglo `ads` mostrar. Todos los nombres están en inglés: `id`, `image`, `description`, `button_text`, `button_url`.
 - La aplicación consulta el JSON público de GitHub al abrirse o al volver al primer plano; modificar `selected_id`, imágenes, texto o URL no exige recompilar la APK.
-- Sin conexión se usa la última configuración válida guardada localmente o la copia inicial incluida en los assets. Miniaturas originales locales de Agenda y AMO en formato WEBP.
+- **Sin publicidad offline ni caché:** no se empaqueta `pub.pub` ni miniaturas de anuncios dentro del APK. Tampoco se leen anuncios de `SharedPreferences` ni archivos locales.
+- En cada apertura o regreso a la app se oculta inmediatamente cualquier anuncio previo, se consulta `pub.pub` exclusivamente por HTTPS y se descarga la imagen de la publicación seleccionada.
+- Si falla la red, el JSON, la imagen o el `selected_id`, no se muestra absolutamente ningún anuncio.
+- Las imágenes de anuncios se conservan solo en `public/` del repositorio (servidas desde Internet), **fuera de los assets del APK**.
 - Los himnos siguen disponibles completamente sin conexión. El permiso de Internet se usa para descargar anuncios/imágenes.
 
 ## Compilación automatizada
