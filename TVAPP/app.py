@@ -205,38 +205,27 @@ class TVAppManager:
         pos_y = max(0, (self.root.winfo_screenheight() - WINDOW_HEIGHT) // 2)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{pos_x}+{pos_y}")
         lock_mobile_window(self.root)
-        self.root.configure(bg="#171820")
+        self.root.configure(bg="#000000")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
 
-        # Barra unica superior: estado y refresco. Sin titulo ni pie inferiores.
-        topbar = tk.Frame(root, bg="#ffffff", height=54)
-        topbar.pack(side="top", fill="x")
-        topbar.pack_propagate(False)
+        # El visor ocupa toda la ventana: el refresco flota sin barra superior.
         self.status_var = tk.StringVar(value="Comprobando dependencias...")
-        self.status_label = tk.Label(
-            topbar, textvariable=self.status_var,
-            bg="#ffffff", fg="#475467", anchor="w", justify="left",
-            font=("Segoe UI", 9), wraplength=294,
-        )
-        self.status_label.pack(side="left", fill="both", expand=True,
-                               padx=(9, 1), pady=5)
+        self.body = tk.Frame(root, bg="#000000", bd=0, highlightthickness=0)
+        self.body.pack(side="top", fill="both", expand=True)
 
         self.update_button = tk.Button(
-            topbar, text="↻", command=self.check_for_updates,
-            bg="#ffffff", fg="#087f91",
-            activebackground="#e9f6f7", activeforeground="#075e6e",
-            font=("Segoe UI Symbol", 20, "bold"),
+            root, text="↻", command=self.check_for_updates,
+            bg="#101820", fg="#11a8ff",
+            activebackground="#172c3d", activeforeground="#ffffff",
+            disabledforeground="#657b90",
+            font=("Segoe UI Symbol", 19, "bold"),
             relief="flat", bd=0, highlightthickness=0,
-            cursor="hand2", width=2, padx=3, pady=0,
+            cursor="hand2", padx=0, pady=0,
         )
-        self.update_button.pack(side="right", padx=(1, 10), pady=4)
-
-        # El actualizador sigue funcionando, pero su barra no se muestra.
-        # El area visible queda reservada exclusivamente al visor.
-        topbar.pack_forget()
-        self.body = tk.Frame(root, bg="#171820", bd=0, highlightthickness=0)
-        self.body.pack(side="top", fill="both", expand=True)
+        self.update_button.place(
+            relx=1.0, x=-9, y=9, anchor="ne", width=36, height=36
+        )
 
         self.root.after(100, self._process_events)
         self._start("startup")
