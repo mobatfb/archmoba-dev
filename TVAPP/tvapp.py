@@ -508,12 +508,16 @@ class TVViewer(tk.Frame):
         if self.dead:
             return
         try:
-            self.video_surface.place(x=0, y=0, relwidth=1, relheight=1)
+            # place conserva medidas anteriores si no se reinician.
+            self.video_surface.place(
+                x=0, y=0, width=0, height=0, relwidth=1, relheight=1
+            )
             self.video_surface.lift()
             if self.preview_player is not None:
                 self.preview_surface.place(
                     x=PREVIEW_X, y=PREVIEW_Y,
                     width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT,
+                    relwidth=0, relheight=0,
                 )
                 self.preview_surface.lift()
                 self.preview_return.place(
