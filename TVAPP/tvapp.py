@@ -1002,6 +1002,13 @@ class TVViewer(tk.Frame):
                         if self.current_category else "MINGA TV"
                     )
                 return result
+        # Los botones bajo el video funcionan aunque la lista muestre
+        # otra categoria o el canal provenga de initial.json.
+        if isinstance(self.channel, dict) and self.channel.get("url") == url:
+            return dict(self.channel)
+        if (isinstance(self.preview_channel, dict)
+                and self.preview_channel.get("url") == url):
+            return dict(self.preview_channel)
         return None
 
     def toggle_favorite(self, url):
@@ -1014,6 +1021,7 @@ class TVViewer(tk.Frame):
             self.trash.pop(url, None)  # Favorito desde Papelera: restaurar.
             self.favorites[url] = channel
         self.save_collections()
+        self.update_now_playing()
         # En categorias y resultados generales, mostrar favoritos arriba.
         self.refresh_channel_view(
             keep_position=self.list_mode not in ("channels", "search_results")
@@ -1029,6 +1037,7 @@ class TVViewer(tk.Frame):
             self.trash[url] = channel
             self.favorites.pop(url, None)
         self.save_collections()
+        self.update_now_playing()
         self.refresh_channel_view(keep_position=True)
 
     def refresh_channel_view(self, keep_position=False):
@@ -1332,7 +1341,7 @@ class TVViewer(tk.Frame):
                 x=0, y=0, width=0, height=0, relwidth=1, relheight=1
             )
             self.video_surface.lift()
-            if self.preview_player is not None:
+            if self.preview_player is not None and not self.fullscreen_active:
                 self.preview_surface.place(
                     x=PREVIEW_X, y=PREVIEW_Y,
                     width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT,
@@ -1354,7 +1363,7 @@ class TVViewer(tk.Frame):
 
     def sync_player_audio(self):
         """Solo el canal principal tiene sonido; la miniatura esta silenciada."""
-        for player, muted in ((self.player, False), (self.preview_player, True)):
+        for player, muted in ((self.player, self.is_muted), (self.preview_player, True)):
             if player is not None:
                 try:
                     player.audio_set_mute(muted)
@@ -1581,6 +1590,7 @@ class TVViewer(tk.Frame):
         # Si todos fallan, esperar antes de releer initial.json, sin bucle rapido.
         self.channel = None
         self.channel_name.set("")
+        self.update_now_playing()
         self.status.set("No hay canales con video. Nuevo intento en 60 segundos.")
         catalog_token = self.catalog_request
 
@@ -1618,6 +1628,7 @@ class TVViewer(tk.Frame):
         self.request_id += 1
         token = self.request_id
         self.release_player()
+        self.update_now_playing()
         self.show_loading()
         self.status.set("Preparando reproducción de " + self.channel["name"] + "...")
         self._prepare_vlc_windows()
@@ -1807,6 +1818,8 @@ class TVViewer(tk.Frame):
     def on_destroy(self, event):
         if event.widget is not self:
             return
+        if self.fullscreen_active:
+            self.exit_fullscreen()
         self.hide_loading()
         self.dead = True
         self.request_id += 1
