@@ -2010,10 +2010,8 @@ class TVViewer(tk.Frame):
                     before=self.list_frame,
                 )
             if self.list_mode == "favorites":
-                if self.search_query.get().strip():
-                    self.run_global_search()
-                else:
-                    self.show_providers()
+                # Al entrar a Buscar, siempre presentar las categorias padre.
+                self.show_providers()
             if not self.providers_ready and not self.providers_loading:
                 self.load_providers()
         else:
