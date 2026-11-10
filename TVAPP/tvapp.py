@@ -4,8 +4,11 @@ El catalogo initial.json se consulta desde GitHub al abrir; si no hay
 conexion se utiliza la ultima copia local valida. No incluye canales fijos.
 """
 
+import base64
+import binascii
 import ctypes
 from ctypes import wintypes
+import hashlib
 import importlib
 import json
 import os
@@ -37,6 +40,14 @@ USER_DATA_DIR = (Path(os.environ.get("LOCALAPPDATA") or
 FAVORITES_FILE = USER_DATA_DIR / "favorites.json"
 TRASH_FILE = USER_DATA_DIR / "trash.json"
 LAST_CHANNEL_FILE = USER_DATA_DIR / "last_channel.json"
+
+# La misma guia y formato que utiliza generador_cifrado_minga_tv.py.
+# IMPORTANTE: al distribuir tvapp.py, esta guia no es un secreto.
+PROVIDER_CIPHER_GUIDE = "dfdfdfhbe645293858654764t3ui48936274098"
+PROVIDER_CIPHER_PREFIX = "encv1:"
+PROVIDER_CIPHER_ITERATIONS = 390_000
+PROVIDER_CIPHER_SALT_BYTES = 16
+
 SPLASH_MIN_MS = 3000
 SPLASH_MAX_MS = 5400
 VIDEO_START_TIMEOUT_S = 15
@@ -51,6 +62,56 @@ BG = "#000000"
 WHITE = "#f3f7ff"
 MUTED = "#a2acc0"
 CYAN = "#11a8ff"
+
+
+def _provider_cipher_key(salt):
+    """Deriva exactamente la clave Fernet empleada por el generador."""
+    raw_key = hashlib.pbkdf2_hmac(
+        "sha256", PROVIDER_CIPHER_GUIDE.encode("utf-8"), salt,
+        PROVIDER_CIPHER_ITERATIONS, dklen=32,
+    )
+    return base64.urlsafe_b64encode(raw_key)
+
+
+def decrypt_provider_value(value):
+    """Decodifica encv1: del generador; deja intactos valores sin cifrar.
+
+    Ejemplo: provider["password"] = decrypt_provider_value(
+        provider.get("password", "")
+    )
+    """
+    if not isinstance(value, str):
+        raise TypeError("El campo del proveedor debe ser texto.")
+    if not value.startswith(PROVIDER_CIPHER_PREFIX):
+        return value
+    from cryptography.fernet import Fernet, InvalidToken
+
+    try:
+        packet = base64.urlsafe_b64decode(
+            value[len(PROVIDER_CIPHER_PREFIX):].encode("ascii")
+        )
+        if len(packet) <= PROVIDER_CIPHER_SALT_BYTES:
+            raise ValueError("El token del proveedor esta incompleto.")
+        salt = packet[:PROVIDER_CIPHER_SALT_BYTES]
+        ciphertext = packet[PROVIDER_CIPHER_SALT_BYTES:]
+        return Fernet(_provider_cipher_key(salt)).decrypt(
+            ciphertext
+        ).decode("utf-8")
+    except (ValueError, UnicodeError, binascii.Error, InvalidToken) as exc:
+        raise ValueError(
+            "El dato cifrado en providers.json esta alterado o usa otra guia."
+        ) from exc
+
+
+def decode_provider_entry(provider):
+    """Prepara una entrada de providers.json, cifrada o en texto directo."""
+    if not isinstance(provider, dict):
+        raise ValueError("Un proveedor debe ser un objeto JSON.")
+    decoded = dict(provider)
+    for field in ("name", "server", "username", "password"):
+        if field in decoded:
+            decoded[field] = decrypt_provider_value(decoded[field])
+    return decoded
 
 
 def parse_channels(text):
