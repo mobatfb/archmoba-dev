@@ -1310,12 +1310,12 @@ class TVViewer(tk.Frame):
                 )
                 for control in (star, bin_button):
                     control.bind(
-                        "<Enter>", lambda _event, w=control:
-                        w.configure(bg="#262a35"),
+                        "<Enter>",
+                        lambda _event, w=control: w.configure(bg="#262a35"),
                     )
                     control.bind(
-                        "<Leave>", lambda _event, w=control:
-                        w.configure(bg=BG),
+                        "<Leave>",
+                        lambda _event, w=control: w.configure(bg=BG),
                     )
                 self._row_action_widgets.append((star, bin_button))
             star, bin_button = self._row_action_widgets[slot]
