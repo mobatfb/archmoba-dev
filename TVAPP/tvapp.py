@@ -27,6 +27,10 @@ CHANNELS_URL = f"{RAW_BASE}/initial.json"
 CHANNELS_FILE = BASE_DIR / "initial.json"
 SPLASH_MIN_MS = 3000
 SPLASH_MAX_MS = 5400
+VIDEO_START_TIMEOUT_S = 15
+VIDEO_STALL_TIMEOUT_S = 12
+RETRY_ALL_CHANNELS_MS = 60000
+PLAYER_MONITOR_MS = 1000
 BG = "#000000"
 WHITE = "#f3f7ff"
 MUTED = "#a2acc0"
@@ -119,6 +123,10 @@ class TVViewer(tk.Frame):
         self.splash_finished = False
         self.request_id = 0
         self.catalog_request = 0
+        self.failed_channel_ids = set()
+        self.video_started_at = None
+        self.video_ready = False
+        self.stall_since = None
 
         # Solo el video, sin barra de titulo, detalles ni controles visibles.
         # 380 x 214: visor panoramico 16:9 en la parte superior.
@@ -164,6 +172,7 @@ class TVViewer(tk.Frame):
     def on_catalog(self, data, offline):
         old_id = self.channel["id"] if self.channel else None
         self.data = data
+        self.failed_channel_ids.clear()  # Un catalogo nuevo permite reintentar canales anteriores.
         self.channel = choose_channel(data, previous_id=old_id if data["selected_id"] == 0 else None)
         self.channel_name.set(self.channel["name"])
         label = self.channel.get("group", "General")
@@ -193,6 +202,43 @@ class TVViewer(tk.Frame):
     def replay_current(self):
         if self.channel is not None:
             self.play_current()
+
+    def channel_failed(self, reason):
+        """Cambia a otro canal aleatorio sin repetir los fallidos en la ronda."""
+        failed = self.channel
+        self.release_player()
+        self.status.set(reason)
+        if self.dead or failed is None or self.data is None:
+            return
+        if self.data["selected_id"] != 0:
+            return  # Un ID fijado en initial.json debe seguir siendo respetado.
+
+        self.failed_channel_ids.add(failed["id"])
+        available = [
+            item for item in self.data["channels"]
+            if item["id"] not in self.failed_channel_ids
+        ]
+        if available:
+            self.channel = random.choice(available)
+            self.channel_name.set(self.channel["name"])
+            self.channel_group.set(
+                self.channel.get("group", "General") + "  ·  Selección aleatoria"
+            )
+            self.play_current()
+            return
+
+        # Si todos fallan, esperar antes de releer initial.json, sin bucle rapido.
+        self.channel = None
+        self.channel_name.set("")
+        self.status.set("No hay canales con video. Nuevo intento en 60 segundos.")
+        catalog_token = self.catalog_request
+
+        def retry_catalog():
+            if (not self.dead and self.channel is None
+                    and self.catalog_request == catalog_token):
+                self.reload_catalog()
+
+        self.after(RETRY_ALL_CHANNELS_MS, retry_catalog)
 
     def _prepare_vlc_windows(self):
         if not sys.platform.startswith("win"):
@@ -279,34 +325,54 @@ class TVViewer(tk.Frame):
             else:
                 player.set_xwindow(self.video.winfo_id())
             self.instance, self.player, self.media = instance, player, media
+            self.video_started_at = time.monotonic()
+            self.video_ready = False
+            self.stall_since = None
             if player.play() == -1:
                 raise RuntimeError("VLC no pudo iniciar la transmisión.")
             self.status.set("Conectando a la señal de video...")
-            self.after(1300, lambda: self.monitor_player(token))
+            self.after(PLAYER_MONITOR_MS, lambda: self.monitor_player(token))
         except Exception as exc:
-            self.release_player()
-            self.status.set("VLC no disponible: " + str(exc)[:120] + ". Instala VLC Desktop.")
+            self.channel_failed("No se pudo abrir el canal: " + str(exc)[:120])
 
     def monitor_player(self, token):
         if self.dead or token != self.request_id or self.player is None:
             return
         try:
+            now = time.monotonic()
             state = str(self.player.get_state()).lower()
-            if "error" in state:
-                self.release_player()
-                self.status.set("Error de la transmisión. Prueba Reproducir u Otro canal.")
+            if any(value in state for value in ("error", "ended", "stopped")):
+                self.channel_failed("La transmisión falló o terminó.")
                 return
-            if "ended" in state:
-                self.release_player()
-                self.status.set("La transmisión finalizó. Puedes volver a reproducirla.")
-                return
-            if "playing" in state:
+
+            # Playing puede aparecer antes de que haya fotogramas de video.
+            # has_vout comprueba que VLC haya creado una salida de video real.
+            try:
+                video_available = self.player.has_vout() > 0
+            except (AttributeError, OSError):
+                video_available = "playing" in state
+
+            if "playing" in state and video_available:
+                self.video_ready = True
+                self.stall_since = None
                 self.status.set("En vivo · " + self.channel["name"])
-            elif "buffering" in state:
+            elif not self.video_ready:
+                if (self.video_started_at is not None
+                        and now - self.video_started_at >= VIDEO_START_TIMEOUT_S):
+                    self.channel_failed("La señal tardó demasiado en mostrar video.")
+                    return
                 self.status.set("Cargando señal en directo...")
-        except Exception:
-            pass
-        self.after(1500, lambda: self.monitor_player(token))
+            else:
+                if self.stall_since is None:
+                    self.stall_since = now
+                if now - self.stall_since >= VIDEO_STALL_TIMEOUT_S:
+                    self.channel_failed("La reproducción dejó de responder.")
+                    return
+                self.status.set("Recuperando señal de video...")
+        except Exception as exc:
+            self.channel_failed("Error al comprobar video: " + str(exc)[:120])
+            return
+        self.after(PLAYER_MONITOR_MS, lambda: self.monitor_player(token))
 
     def stop_current(self):
         self.request_id += 1
@@ -317,6 +383,9 @@ class TVViewer(tk.Frame):
     def release_player(self):
         player, media, instance = self.player, self.media, self.instance
         self.player = self.media = self.instance = None
+        self.video_started_at = None
+        self.video_ready = False
+        self.stall_since = None
         for resource, method in ((player, "stop"), (player, "release"),
                                  (media, "release"), (instance, "release")):
             if resource is not None:
