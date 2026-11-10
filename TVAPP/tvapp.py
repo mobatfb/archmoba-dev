@@ -137,6 +137,28 @@ class TVViewer(tk.Frame):
         self.video.pack(side="top", fill="x")
         self.video.pack_propagate(False)
 
+        # VLC dibuja sobre su propia superficie; el indicador es un widget
+        # hermano y queda encima sin interferir con la reproduccion.
+        self.video_surface = tk.Frame(
+            self.video, bg=BG, bd=0, highlightthickness=0,
+        )
+        self.video_surface.place(x=0, y=0, relwidth=1, relheight=1)
+        self.loading = tk.Canvas(
+            self.video, width=68, height=68, bg=BG,
+            bd=0, highlightthickness=0,
+        )
+        self.loading.create_oval(
+            12, 12, 56, 56, outline="#213344", width=4,
+        )
+        self.loading_arc = self.loading.create_arc(
+            12, 12, 56, 56, start=90, extent=102,
+            style=tk.ARC, outline=CYAN, width=4,
+        )
+        self.spinner_angle = 90
+        self.spinner_job = None
+        self.spinner_visible = False
+        self.show_loading()
+
         # Estado interno no visible; los errores no agregan elementos al visor.
         self.status = tk.StringVar(value="")
         self.channel_name = tk.StringVar(value="")
@@ -144,6 +166,35 @@ class TVViewer(tk.Frame):
 
         self.bind("<Destroy>", self.on_destroy, add="+")
         self.after(125, self.poll_events)
+
+    def show_loading(self):
+        """Muestra el anillo animado en el centro del area de video."""
+        if self.dead:
+            return
+        self.spinner_visible = True
+        self.loading.place(relx=0.5, rely=0.5, anchor="center")
+        self.loading.lift()
+        if self.spinner_job is None:
+            self.animate_loading()
+
+    def animate_loading(self):
+        self.spinner_job = None
+        if self.dead or not self.spinner_visible:
+            return
+        self.spinner_angle = (self.spinner_angle - 18) % 360
+        self.loading.itemconfigure(self.loading_arc, start=self.spinner_angle)
+        self.spinner_job = self.after(65, self.animate_loading)
+
+    def hide_loading(self):
+        """Retira y detiene la animacion cuando aparece el video."""
+        self.spinner_visible = False
+        if self.spinner_job is not None:
+            try:
+                self.after_cancel(self.spinner_job)
+            except tk.TclError:
+                pass
+            self.spinner_job = None
+        self.loading.place_forget()
 
     def startup(self):
         self.reload_catalog()
@@ -158,6 +209,7 @@ class TVViewer(tk.Frame):
             return
         self.catalog_request += 1
         token = self.catalog_request
+        self.show_loading()
         self.status.set("Leyendo initial.json desde GitHub...")
 
         def worker():
@@ -207,10 +259,13 @@ class TVViewer(tk.Frame):
         """Cambia a otro canal aleatorio sin repetir los fallidos en la ronda."""
         failed = self.channel
         self.release_player()
+        self.show_loading()
         self.status.set(reason)
         if self.dead or failed is None or self.data is None:
+            self.hide_loading()
             return
         if self.data["selected_id"] != 0:
+            self.hide_loading()
             return  # Un ID fijado en initial.json debe seguir siendo respetado.
 
         self.failed_channel_ids.add(failed["id"])
@@ -267,6 +322,7 @@ class TVViewer(tk.Frame):
         self.request_id += 1
         token = self.request_id
         self.release_player()
+        self.show_loading()
         self.status.set("Preparando reproducción de " + self.channel["name"] + "...")
         self._prepare_vlc_windows()
 
@@ -300,7 +356,7 @@ class TVViewer(tk.Frame):
             return
         try:
             self.vlc_module = module
-            self.video.update_idletasks()
+            self.video_surface.update_idletasks()
             instance = module.Instance(
                 "--quiet", "--network-caching=1500", "--live-caching=1500",
                 "--no-video-title-show", "--no-video-deco",
@@ -319,11 +375,11 @@ class TVViewer(tk.Frame):
                     media.add_option(":http-referrer=" + value)
             player.set_media(media)
             if sys.platform.startswith("win"):
-                player.set_hwnd(self.video.winfo_id())
+                player.set_hwnd(self.video_surface.winfo_id())
             elif sys.platform == "darwin":
-                player.set_nsobject(self.video.winfo_id())
+                player.set_nsobject(self.video_surface.winfo_id())
             else:
-                player.set_xwindow(self.video.winfo_id())
+                player.set_xwindow(self.video_surface.winfo_id())
             self.instance, self.player, self.media = instance, player, media
             self.video_started_at = time.monotonic()
             self.video_ready = False
@@ -355,14 +411,17 @@ class TVViewer(tk.Frame):
             if "playing" in state and video_available:
                 self.video_ready = True
                 self.stall_since = None
+                self.hide_loading()
                 self.status.set("En vivo · " + self.channel["name"])
             elif not self.video_ready:
+                self.show_loading()
                 if (self.video_started_at is not None
                         and now - self.video_started_at >= VIDEO_START_TIMEOUT_S):
                     self.channel_failed("La señal tardó demasiado en mostrar video.")
                     return
                 self.status.set("Cargando señal en directo...")
             else:
+                self.show_loading()
                 if self.stall_since is None:
                     self.stall_since = now
                 if now - self.stall_since >= VIDEO_STALL_TIMEOUT_S:
@@ -377,6 +436,7 @@ class TVViewer(tk.Frame):
     def stop_current(self):
         self.request_id += 1
         self.release_player()
+        self.hide_loading()
         if not self.dead:
             self.status.set("Reproducción detenida.")
 
@@ -403,10 +463,12 @@ class TVViewer(tk.Frame):
                 if event == "catalog" and token == self.catalog_request:
                     self.on_catalog(value, extra)
                 elif event == "catalog_error" and token == self.catalog_request:
+                    self.hide_loading()
                     self.status.set(value)
                     self.channel_name.set("No se pudo abrir initial.json")
                 elif event == "vlc" and token == self.request_id:
                     if value is None:
+                        self.hide_loading()
                         self.status.set("Instala VLC Desktop en Windows. " + str(extra)[:110])
                     else:
                         self.start_embedded(value, token)
@@ -417,6 +479,7 @@ class TVViewer(tk.Frame):
     def on_destroy(self, event):
         if event.widget is not self:
             return
+        self.hide_loading()
         self.dead = True
         self.request_id += 1
         self.catalog_request += 1
