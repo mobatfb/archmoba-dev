@@ -1,0 +1,58 @@
+{
+  "source": "IPTV-org",
+  "source_version": "TVAPP/tvapp.py v1.0.11",
+  "playlists": [
+    {
+      "name": "Todos",
+      "url": "https://iptv-org.github.io/iptv/index.m3u"
+    },
+    {
+      "name": "Categorías",
+      "url": "https://iptv-org.github.io/iptv/index.category.m3u"
+    },
+    {
+      "name": "Noticias",
+      "url": "https://iptv-org.github.io/iptv/categories/news.m3u"
+    },
+    {
+      "name": "Deportes",
+      "url": "https://iptv-org.github.io/iptv/categories/sports.m3u"
+    },
+    {
+      "name": "Películas",
+      "url": "https://iptv-org.github.io/iptv/categories/movies.m3u"
+    },
+    {
+      "name": "Música",
+      "url": "https://iptv-org.github.io/iptv/categories/music.m3u"
+    },
+    {
+      "name": "Países",
+      "url": "https://iptv-org.github.io/iptv/index.country.m3u"
+    },
+    {
+      "name": "Idiomas",
+      "url": "https://iptv-org.github.io/iptv/index.language.m3u"
+    },
+    {
+      "name": "Ecuador",
+      "url": "https://iptv-org.github.io/iptv/countries/ec.m3u"
+    },
+    {
+      "name": "Español",
+      "url": "https://iptv-org.github.io/iptv/languages/spa.m3u"
+    },
+    {
+      "name": "Infantil",
+      "url": "https://iptv-org.github.io/iptv/categories/kids.m3u"
+    },
+    {
+      "name": "Cultura",
+      "url": "https://iptv-org.github.io/iptv/categories/culture.m3u"
+    },
+    {
+      "name": "Documentales",
+      "url": "https://iptv-org.github.io/iptv/categories/documentary.m3u"
+    }
+  ]
+}
