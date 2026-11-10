@@ -703,55 +703,112 @@ class TVViewer(tk.Frame):
         if self._preview_mouse_api is not None:
             self.after(25, self._poll_preview_click)
 
+    def set_controls_hover(self, hovering):
+        """Oculta acciones solo al salir del video; mantiene el nombre visible."""
+        if self.dead or not hasattr(self, "quick_frames"):
+            return
+        show = bool(hovering) and not self.fullscreen_active
+        if show == self._video_controls_hover:
+            return
+        self._video_controls_hover = show
+        for slot in self.quick_frames.values():
+            if show:
+                slot.pack(side="left", padx=(2, 1), fill="y")
+            else:
+                slot.pack_forget()
+        self.refresh_now_title()
+
+    def pointer_near_player(self):
+        """Detecta el puntero sin depender del HWND nativo de VLC."""
+        x, y = self.winfo_pointerx(), self.winfo_pointery()
+        vx, vy = self.video.winfo_rootx(), self.video.winfo_rooty()
+        ux, uy = self.now_playing.winfo_rootx(), self.now_playing.winfo_rooty()
+        video_area = (
+            vx <= x < vx + self.video.winfo_width()
+            and vy <= y < vy + self.video.winfo_height()
+        )
+        controls_area = (
+            ux <= x < ux + self.now_playing.winfo_width()
+            and uy - 4 <= y < uy + self.now_playing.winfo_height()
+        )
+        return video_area or controls_area
+
+    def maybe_hide_controls(self):
+        if self._preview_mouse_api is None and not self.dead:
+            self.after(35, lambda: self.set_controls_hover(
+                self.pointer_near_player()
+            ))
+
+    def set_preview_hover(self, hovering):
+        """Contorno amarillo solo al apuntar a la miniatura."""
+        if self.dead or not hasattr(self, "preview_border"):
+            return
+        show = bool(hovering) and self.preview_player is not None
+        if show != self._pip_hover:
+            self._pip_hover = show
+            self.preview_border.configure(
+                bg="#ffd000" if show else "#3c434d",
+            )
+
     def _poll_preview_click(self):
-        """Detecta clics sobre video VLC, que absorbe eventos Tk en Windows."""
+        """Mouse nativo: hover y clic en miniatura aunque VLC absorba Tk."""
         if self.dead or self._preview_mouse_api is None:
             return
         try:
             api = self._preview_mouse_api
-            # Esc debe funcionar tambien cuando VLC captura el teclado.
+            foreground_pid = wintypes.DWORD(0)
+            api.GetWindowThreadProcessId(
+                api.GetForegroundWindow(), ctypes.byref(foreground_pid),
+            )
+            is_active = foreground_pid.value == os.getpid()
             esc_pressed = bool(api.GetAsyncKeyState(0x1B) & 0x8000)
-            if (esc_pressed and not self._fullscreen_escape_down
+            if (is_active and esc_pressed and not self._fullscreen_escape_down
                     and self.fullscreen_active):
-                foreground_pid = wintypes.DWORD(0)
-                foreground = api.GetForegroundWindow()
-                api.GetWindowThreadProcessId(
-                    foreground, ctypes.byref(foreground_pid)
-                )
-                if foreground_pid.value == os.getpid():
-                    self.exit_fullscreen()
+                self.exit_fullscreen()
             self._fullscreen_escape_down = esc_pressed
-            pressed = bool(api.GetAsyncKeyState(0x01) & 0x8000)
-            if pressed and not self._preview_mouse_down and self.preview_player is not None:
-                cursor = wintypes.POINT()
-                if api.GetCursorPos(ctypes.byref(cursor)):
-                    # Solo reaccionar cuando MINGA TV es la ventana activa.
-                    foreground_pid = wintypes.DWORD(0)
-                    foreground = api.GetForegroundWindow()
-                    api.GetWindowThreadProcessId(
-                        foreground, ctypes.byref(foreground_pid)
-                    )
-                    x = cursor.x - self.video.winfo_rootx()
-                    y = cursor.y - self.video.winfo_rooty()
-                    over_preview = (
-                        PREVIEW_X <= x < PREVIEW_X + PREVIEW_WIDTH
-                        and PREVIEW_Y <= y < PREVIEW_Y + PREVIEW_HEIGHT
-                    )
-                    # La X tiene prioridad: jamas debe abrir el video.
-                    over_close = (
-                        PREVIEW_X + PREVIEW_WIDTH - 25 <= x
-                        < PREVIEW_X + PREVIEW_WIDTH - 2
-                        and PREVIEW_Y + 2 <= y < PREVIEW_Y + 25
-                    )
-                    if (foreground_pid.value == os.getpid()
-                            and over_preview and not over_close):
-                        self.restore_previous()
-            self._preview_mouse_down = pressed
+
+            cursor = wintypes.POINT()
+            if api.GetCursorPos(ctypes.byref(cursor)):
+                x = cursor.x - self.video.winfo_rootx()
+                y = cursor.y - self.video.winfo_rooty()
+                over_video = (
+                    0 <= x < self.video.winfo_width()
+                    and 0 <= y < self.video.winfo_height()
+                )
+                over_controls = (
+                    self.now_playing.winfo_rootx() <= cursor.x <
+                    self.now_playing.winfo_rootx() + self.now_playing.winfo_width()
+                    and self.now_playing.winfo_rooty() - 4 <= cursor.y <
+                    self.now_playing.winfo_rooty() + self.now_playing.winfo_height()
+                )
+                self.set_controls_hover(
+                    is_active and (over_video or over_controls)
+                )
+                over_preview = (
+                    is_active and self.preview_player is not None
+                    and not self.fullscreen_active
+                    and PREVIEW_X <= x < PREVIEW_X + PREVIEW_WIDTH
+                    and PREVIEW_Y <= y < PREVIEW_Y + PREVIEW_HEIGHT
+                )
+                self.set_preview_hover(over_preview)
+                over_close = (
+                    PREVIEW_X + PREVIEW_WIDTH - 25 <= x
+                    < PREVIEW_X + PREVIEW_WIDTH - 2
+                    and PREVIEW_Y + 2 <= y < PREVIEW_Y + 25
+                )
+                pressed = bool(api.GetAsyncKeyState(0x01) & 0x8000)
+                if (pressed and not self._preview_mouse_down
+                        and over_preview and not over_close):
+                    self.restore_previous()
+                self._preview_mouse_down = pressed
+            else:
+                self.set_controls_hover(False)
+                self.set_preview_hover(False)
         except (OSError, AttributeError, ValueError, tk.TclError):
             self._preview_mouse_down = False
             self._fullscreen_escape_down = False
         if not self.dead:
-            self.after(25, self._poll_preview_click)
+            self.after(40, self._poll_preview_click)
 
     def draw_rounded_search_bar(self, _event=None):
         """Dibuja las esquinas redondeadas y ajusta el campo al ancho."""
@@ -1497,6 +1554,11 @@ class TVViewer(tk.Frame):
             )
             self.video_surface.lift()
             if self.preview_player is not None and not self.fullscreen_active:
+                self.preview_border.place(
+                    x=PREVIEW_X - 2, y=PREVIEW_Y - 2,
+                    width=PREVIEW_WIDTH + 4, height=PREVIEW_HEIGHT + 4,
+                )
+                self.preview_border.lift()
                 self.preview_surface.place(
                     x=PREVIEW_X, y=PREVIEW_Y,
                     width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT,
@@ -1510,6 +1572,7 @@ class TVViewer(tk.Frame):
                 self.preview_close.lift()
             else:
                 self.preview_surface.place_forget()
+                self.preview_border.place_forget()
                 self.preview_close.place_forget()
             if self.spinner_visible:
                 self.loading.tk.call("raise", str(self.loading))
@@ -1551,6 +1614,7 @@ class TVViewer(tk.Frame):
         self.preview_started_at = None
         self.preview_video_ready = False
         self.preview_stall_since = None
+        self.set_preview_hover(False)
         for resource, method in (
             (player, "stop"), (player, "release"),
             (media, "release"), (instance, "release"),
