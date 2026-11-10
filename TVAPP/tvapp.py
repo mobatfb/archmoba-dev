@@ -659,6 +659,7 @@ class TVViewer(tk.Frame):
         self.playlists_loading = False
         self.playlist_catalog = None
         self.providers = []
+        self.provider_rows = []
         self.providers_ready = False
         self.providers_loading = False
         self.providers_error = None
@@ -1877,14 +1878,19 @@ class TVViewer(tk.Frame):
         self.list_mode = "providers"
         self.back_button.grid_remove()
         self.set_row_actions_visible(False)
-        names = [item["name"] for item in self.providers]
-        if not names:
+        self.provider_rows = list(self.providers)
+        if not self.provider_rows:
             if self.providers_loading or not self.providers_ready:
-                names = ["Cargando proveedores..."]
+                message = "Cargando proveedores..."
             elif self.providers_error:
-                names = ["No se pudieron cargar los proveedores."]
+                message = "No se pudieron cargar los proveedores."
             else:
-                names = ["No hay proveedores configurados."]
+                message = "No hay proveedores configurados."
+            self.provider_rows.append(None)
+            names = [message]
+        else:
+            names = [item["name"] for item in self.provider_rows]
+        self.provider_rows.append({"id": "__trash__", "name": "Papelera"})
         names.append("Papelera")
         self._show_rows(names)
 
@@ -1958,21 +1964,29 @@ class TVViewer(tk.Frame):
             self.show_favorites()
 
     def load_playlist_catalog(self):
-        """Descarga las listas M3U solo al entrar en Buscar."""
-        if self.dead or self.playlists_loading:
+        """Descarga solo las categorias del proveedor padre seleccionado."""
+        if self.dead or self.playlists_loading or self.active_provider is None:
             return
+        provider = self.active_provider
         self.playlists_loading = True
         self.playlists_request += 1
         token = self.playlists_request
         if self.list_mode == "categories":
-            self.show_categories(clear_search=False)
+            self._show_rows(["Cargando categorías de " + provider["name"] + "..."])
 
         def worker():
             try:
-                playlists, offline = read_playlist_catalog()
-                self.events.put(("playlists", token, playlists, offline))
+                playlists = read_provider_categories(provider)
+                self.events.put(("playlists", token, playlists, provider["id"]))
             except Exception as exc:
-                self.events.put(("playlists_error", token, str(exc), False))
+                # Solo mensajes controlados. Nunca poner el enlace con credenciales.
+                reason = str(exc)
+                if not reason.startswith((
+                    "Este proveedor", "Formato de servidor", "No se pudo",
+                    "El servidor", "Catalogo JSON",
+                )):
+                    reason = "No fue posible cargar las categorías del proveedor."
+                self.events.put(("playlists_error", token, reason, provider["id"]))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2014,12 +2028,17 @@ class TVViewer(tk.Frame):
     def on_playlist_catalog(self, playlists):
         self.playlists_loading = False
         self.playlist_catalog = playlists
+        if self.active_provider is not None:
+            self.provider_catalog_cache[self.active_provider["id"]] = playlists
         if (self.active_tab == "Buscar" and self.list_mode == "categories"
                 and not self.search_query.get().strip()):
             self.show_categories(clear_search=False)
 
     def show_categories(self, clear_search=True):
-        """Regresa a las categorias y limpia la busqueda activa."""
+        """Categorias hijas del proveedor seleccionado; volver lleva al padre."""
+        if self.active_provider is None:
+            self.show_providers(clear_search=clear_search)
+            return
         if clear_search and self.search_query.get():
             self._ignore_search_change = True
             try:
@@ -2032,14 +2051,27 @@ class TVViewer(tk.Frame):
             except tk.TclError:
                 pass
             self.search_job = None
-        self.m3u_request += 1  # Descarta respuestas de categorias abandonadas.
+        self.m3u_request += 1
         self.list_mode = "categories"
         self.current_category = None
         self.current_channels = []
-        self.back_button.grid_remove()
+        self.back_button.configure(
+            text="← Proveedores", command=self.show_providers,
+        )
+        self.back_button.grid()
         self.set_row_actions_visible(False)
-        names = [item["name"] for item in (self.playlist_catalog or [])]
-        names.append("Papelera")  # Siempre al final, incluso sin conexion.
+        if self.playlist_catalog is not None:
+            names = [item["name"] for item in self.playlist_catalog]
+            if not names:
+                names = ["Este proveedor no contiene categorías."]
+        elif self.active_provider.get("error"):
+            names = [self.active_provider["error"]]
+        elif provider_kind(self.active_provider) == "unconfigured":
+            names = ["Este proveedor no tiene servidor configurado."]
+        elif self.playlists_loading:
+            names = ["Cargando categorías..."]
+        else:
+            names = ["No se pudieron cargar las categorías."]
         self._show_rows(names)
 
     def on_list_select(self, _event):
@@ -2049,11 +2081,19 @@ class TVViewer(tk.Frame):
         if not selection:
             return
         index = selection[0]
-        if self.list_mode == "categories":
-            entries = self.playlist_catalog or []
-            if index == len(entries):
+        if self.list_mode == "providers":
+            if index >= len(self.provider_rows):
+                return
+            provider = self.provider_rows[index]
+            if provider is None:
+                return
+            if provider.get("id") == "__trash__":
                 self.show_trash()
-            elif index < len(entries):
+            else:
+                self.open_provider(provider)
+        elif self.list_mode == "categories":
+            entries = self.playlist_catalog or []
+            if index < len(entries):
                 self.open_category(entries[index])
         elif self.list_mode in ("channels", "favorites", "trash", "search_results"):
             if index < len(self.current_channels):
@@ -2091,22 +2131,34 @@ class TVViewer(tk.Frame):
         self.current_category = category
         self.current_channels = []
         self.list_mode = "channels"
+        self.back_button.configure(
+            text="← Categorías", command=self.show_categories,
+        )
         self.back_button.grid()
         self.set_row_actions_visible(True)
         self.m3u_request += 1
         token = self.m3u_request
         self._show_rows(["Cargando canales de " + category["name"] + "..."])
         url = category["url"]
+        provider = self.active_provider
         if url in self.m3u_cache:
             self.on_category_channels(self.m3u_cache[url])
             return
 
         def worker():
             try:
-                channels = download_m3u_channels(url)
+                if category.get("loader") == "xtream":
+                    channels = read_xtream_channels(
+                        provider, category.get("category_id"),
+                    )
+                else:
+                    channels = download_m3u_channels(url)
                 self.events.put(("m3u", token, channels, url))
             except Exception as exc:
-                self.events.put(("m3u_error", token, str(exc), url))
+                reason = str(exc)
+                if category.get("loader") == "xtream":
+                    reason = "No se pudieron cargar los canales de Premium."
+                self.events.put(("m3u_error", token, reason, url))
 
         threading.Thread(target=worker, daemon=True).start()
 
