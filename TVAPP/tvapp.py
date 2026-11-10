@@ -1078,6 +1078,7 @@ class TVViewer(tk.Frame):
                 return
             self.trash[url] = channel
             self.favorites.pop(url, None)
+            self.clear_last_played_channel(url)
         self.save_collections()
         self.update_now_playing()
         self.refresh_channel_view(keep_position=True)
@@ -1334,6 +1335,8 @@ class TVViewer(tk.Frame):
             self.keep_current_as_preview()
         self.channel = dict(stream)
         self.manual_playback = True
+        self.startup_auto_active = False
+        self.startup_failed_urls.clear()
         self.channel_name.set(self.channel["name"])
         group = self.channel.get("group") or (
             self.current_category["name"] if self.current_category else self.active_tab
@@ -1493,6 +1496,8 @@ class TVViewer(tk.Frame):
         self.set_playing_marker(
             self.channel.get("url") if self.video_ready else None
         )
+        if self.video_ready:
+            self.remember_playing_channel()
         self.channel_name.set(self.channel["name"])
         self.channel_group.set(self.channel.get("group", "Canal anterior"))
         self.status.set("En vivo · " + self.channel["name"])
@@ -1881,13 +1886,13 @@ class TVViewer(tk.Frame):
                 just_started = not self.video_ready
                 self.video_ready = True
                 self.stall_since = None
-                if self.first_run_random_active:
-                    # La primera seleccion aleatoria ya encontro señal.
-                    self.first_run_random_active = False
-                    self.first_run_failed_urls.clear()
                 if just_started:
                     # VLC puede reiniciar el mute al empezar un flujo nuevo.
                     self.sync_player_audio()
+                    # Memorizar solo transmisiones comprobadas, nunca al elegir.
+                    self.remember_playing_channel()
+                self.startup_auto_active = False
+                self.startup_failed_urls.clear()
                 self.set_playing_marker(self.channel.get("url"))
                 self.hide_loading()
                 self.status.set("En vivo · " + self.channel["name"])
