@@ -495,11 +495,75 @@ class TVViewer(tk.Frame):
         self.dll_handles.clear()
 
 
+def ensure_launcher_toolbar(window, body):
+    """Restaura la barra blanca incluso si app.py local es una version anterior."""
+    if not isinstance(window, tk.Tk):
+        return None, None
+
+    # La version original tiene barra con etiqueta de estado y boton.
+    for child in window.winfo_children():
+        if child is body or not isinstance(child, tk.Frame):
+            continue
+        widgets = child.winfo_children()
+        if (any(isinstance(w, tk.Button) for w in widgets)
+                and any(isinstance(w, tk.Label) for w in widgets)):
+            if child.winfo_manager() != "pack":
+                child.pack(side="top", fill="x", before=body)
+            return child, None
+
+    # Compatibilidad OTA: algunos app.py antiguos solo tienen boton flotante.
+    old_button = next((
+        child for child in window.winfo_children()
+        if isinstance(child, tk.Button)
+        and str(child.cget("text")) in ("↻", "⟳")
+        and child.cget("command")
+    ), None)
+    if old_button is None:
+        return None, None
+
+    bar = getattr(window, "_minga_tv_toolbar_compat", None)
+    if bar is None or not bar.winfo_exists():
+        bar = tk.Frame(window, bg="#ffffff", height=54)
+        bar.pack(side="top", fill="x", before=body)
+        bar.pack_propagate(False)
+        status = tk.Label(
+            bar, text="Comprobando actualizaciones...",
+            bg="#ffffff", fg="#475467", anchor="w", justify="left",
+            font=("Segoe UI", 9), wraplength=294,
+        )
+        try:
+            variables = window.tk.call("info", "globals", "PY_VAR*")
+            if isinstance(variables, str):
+                variables = window.tk.splitlist(variables)
+            variables = sorted(
+                (name for name in variables
+                 if name.startswith("PY_VAR") and name[6:].isdigit()),
+                key=lambda name: int(name[6:]),
+            )
+            if variables:
+                status.configure(textvariable=variables[0])
+        except tk.TclError:
+            pass
+        status.pack(side="left", fill="both", expand=True, padx=(9, 54), pady=5)
+        window._minga_tv_toolbar_compat = bar
+
+    # Conservamos EL MISMO boton original y su callback de actualizacion.
+    old_button.configure(
+        bg="#ffffff", fg="#087f91",
+        activebackground="#e9f6f7", activeforeground="#075e6e",
+        font=("Segoe UI Symbol", 20, "bold"),
+        relief="flat", bd=0, highlightthickness=0,
+    )
+    old_button.place(relx=1.0, x=-10, y=7, anchor="ne", width=38, height=40)
+    return bar, old_button
+
+
 def render(parent):
-    """Devuelve el visor y superpone la bienvenida original de MINGA TV."""
+    """Devuelve el visor y conserva visible la barra original del lanzador."""
     parent.configure(bg=BG)
     window = parent.winfo_toplevel()
     window.configure(bg=BG)
+    toolbar, legacy_button = ensure_launcher_toolbar(window, parent)
     screen = TVViewer(parent)
     previous = getattr(window, "_minga_tv_splash", None)
     if previous is not None:
@@ -512,6 +576,11 @@ def render(parent):
     window._minga_tv_splash = splash
     splash.place(x=0, y=0, relwidth=1, relheight=1)
     splash.lift()
+    # La barra opaca permanece por encima del splash y del visor VLC.
+    if toolbar is not None:
+        toolbar.lift()
+    if legacy_button is not None:
+        legacy_button.lift()
     center = tk.Frame(splash, bg="#000000")
     center.place(relx=0.5, rely=0.45, anchor="center")
     logo_label = tk.Label(center, text="MINGA TV", bg="#000000", fg=WHITE,
