@@ -1,26 +1,32 @@
-[
-  {
-    "name": "Multicanal Catamayo (720p) [Not 24/7]",
-    "id": "MulticanalCatamayo.ec@SD",
-    "logo": "https://i.imgur.com/IHKBGmu.png",
-    "group": "General",
-    "url": "https://multicanal.streamseguro.com:5443/LiveApp/streams/streaming.m3u8",
-    "headers": {}
-  },
-  {
-    "name": "MTV Latin America (1080p)",
-    "id": "MTVLatinAmerica.us@Panregional",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/MTV_2021_%28brand_version%29.svg/960px-MTV_2021_%28brand_version%29.svg.png",
-    "group": "Entertainment",
-    "url": "http://15.204.246.24:8080/MTVHD/index.m3u8",
-    "headers": {}
-  },
-  {
-    "name": "Nick Jr. Latin America (1080p)",
-    "id": "NickJrLatinAmerica.us@Panregional",
-    "logo": "https://i.imgur.com/KT4tdQs.png",
-    "group": "Kids",
-    "url": "https://streaming.onnethn.com/NICK_JR/playlist.m3u8",
-    "headers": {}
-  }
-]
+{
+  "selected_id": 0,
+  "ads": [
+    {
+      "id": 1,
+      "channel_id": "MulticanalCatamayo.ec@SD",
+      "name": "Multicanal Catamayo (720p) [Not 24/7]",
+      "logo": "https://i.imgur.com/IHKBGmu.png",
+      "group": "General",
+      "url": "https://multicanal.streamseguro.com:5443/LiveApp/streams/streaming.m3u8",
+      "headers": {}
+    },
+    {
+      "id": 2,
+      "channel_id": "MTVLatinAmerica.us@Panregional",
+      "name": "MTV Latin America (1080p)",
+      "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/MTV_2021_%28brand_version%29.svg/960px-MTV_2021_%28brand_version%29.svg.png",
+      "group": "Entertainment",
+      "url": "http://15.204.246.24:8080/MTVHD/index.m3u8",
+      "headers": {}
+    },
+    {
+      "id": 3,
+      "channel_id": "NickJrLatinAmerica.us@Panregional",
+      "name": "Nick Jr. Latin America (1080p)",
+      "logo": "https://i.imgur.com/KT4tdQs.png",
+      "group": "Kids",
+      "url": "https://streaming.onnethn.com/NICK_JR/playlist.m3u8",
+      "headers": {}
+    }
+  ]
+}
