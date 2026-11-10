@@ -1180,8 +1180,10 @@ class TVViewer(tk.Frame):
             if self.list_mode in ("channels", "trash"):
                 # Al borrar el texto, conservar la categoria en pantalla.
                 self.refresh_channel_view()
-            else:
+            elif self.active_provider is not None:
                 self.show_categories(clear_search=False)
+            else:
+                self.show_providers(clear_search=False)
         else:
             self.search_job = self.after(280, self.run_global_search)
 
@@ -1193,8 +1195,10 @@ class TVViewer(tk.Frame):
         if not self.search_query.get().strip():
             if self.list_mode in ("channels", "trash"):
                 self.refresh_channel_view()
-            else:
+            elif self.active_provider is not None:
                 self.show_categories(clear_search=False)
+            else:
+                self.show_providers(clear_search=False)
             return
         if self.list_mode in ("channels", "trash"):
             # No descargar "Todos" ni salir de la categoria seleccionada.
@@ -1202,18 +1206,42 @@ class TVViewer(tk.Frame):
             return
         self.list_mode = "search_results"
         self.current_category = None
+        if self.active_provider is not None:
+            self.back_button.configure(
+                text="← Categorías", command=self.show_categories,
+            )
+        else:
+            self.back_button.configure(
+                text="← Proveedores", command=self.show_providers,
+            )
         self.back_button.grid()
         self.set_row_actions_visible(True)
         self.refresh_channel_view()
         self.ensure_global_catalog()
 
     def ensure_global_catalog(self):
-        """Descarga Todos en un hilo; solo una solicitud simultanea."""
-        self.global_search_url = next((
-            item["url"] for item in (self.playlist_catalog or [])
+        """Busca en la fuente activa, sin enviar credenciales al catalogo publico."""
+        provider = self.active_provider
+        choices = [
+            item for item in (self.playlist_catalog or [])
             if item["name"].casefold() == "todos"
-        ), GLOBAL_M3U_URL)
-        url = self.global_search_url
+        ]
+        if provider is not None and provider_kind(provider) == "xtream":
+            url = "xtream://" + provider["id"] + "/category/all"
+        elif choices:
+            url = choices[0]["url"]
+        elif provider is not None:
+            # No descargar una lista publica al buscar en otra fuente.
+            self.global_search_loading = False
+            self.global_search_error = None
+            self.refresh_channel_view()
+            return
+        else:
+            url = GLOBAL_M3U_URL
+        if self.global_search_url != url:
+            self.global_search_request += 1
+            self.global_search_loading = False
+        self.global_search_url = url
         if url in self.m3u_cache:
             self.refresh_channel_view()
             return
@@ -1227,10 +1255,16 @@ class TVViewer(tk.Frame):
 
         def worker():
             try:
-                channels = download_m3u_channels(url)
+                if provider is not None and provider_kind(provider) == "xtream":
+                    channels = read_xtream_channels(provider)
+                else:
+                    channels = download_m3u_channels(url)
                 self.events.put(("global_m3u", token, channels, url))
-            except Exception as exc:
-                self.events.put(("global_m3u_error", token, str(exc), url))
+            except Exception:
+                self.events.put((
+                    "global_m3u_error", token,
+                    "No se pudo consultar el catalogo del proveedor.", url,
+                ))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1905,6 +1939,7 @@ class TVViewer(tk.Frame):
         self.global_search_request += 1
         self.global_search_loading = False
         self.global_search_error = None
+        self.global_search_url = GLOBAL_M3U_URL
         self.playlist_catalog = self.provider_catalog_cache.get(provider["id"])
         self.list_mode = "categories"
         self.back_button.configure(
