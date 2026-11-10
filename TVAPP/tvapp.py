@@ -353,6 +353,13 @@ class TVViewer(tk.Frame):
         )
         self.video.pack(side="top", fill="x")
         self.video.pack_propagate(False)
+        self.fullscreen_exit = tk.Button(
+            self.video, text="×", command=self.exit_fullscreen,
+            bg="#181818", fg="#ffffff", activebackground="#333333",
+            activeforeground="#ffffff", font=("Segoe UI", 17),
+            relief="flat", bd=0, highlightthickness=0,
+            cursor="hand2",
+        )
 
         # Informacion del canal principal y acciones rapidas.
         self.now_playing = tk.Frame(self, bg=BG, height=34)
@@ -722,10 +729,164 @@ class TVViewer(tk.Frame):
         self._row_action_job = self.after_idle(self.draw_row_actions)
 
     def set_playing_marker(self, url=None):
-        """Actualiza el indicador solo si cambia el canal realmente activo."""
+        """Sincroniza el triangulo de la lista y la barra del video grande."""
         if self._playing_marker_url != url:
             self._playing_marker_url = url
             self.schedule_row_actions()
+        self.update_now_playing()
+
+    def update_now_playing(self):
+        """El nombre y los botones siguen al canal principal, no a la miniatura."""
+        if self.dead or not hasattr(self, "now_title"):
+            return
+        channel = self.channel
+        url = channel.get("url") if isinstance(channel, dict) else None
+        if url and self.splash_finished:
+            self.now_title.set(channel.get("name", "Canal sin nombre"))
+        else:
+            self.now_title.set("Sin reproducción")
+        self.now_indicator.configure(
+            text="▶" if url and url == self._playing_marker_url else ""
+        )
+        self.quick_buttons["mute"].configure(
+            text="🔇" if self.is_muted else "🔊",
+            fg="#ffd000" if self.is_muted else WHITE,
+        )
+        self.quick_buttons["fullscreen"].configure(
+            text="⛶", fg=WHITE,
+        )
+        self.quick_buttons["favorite"].configure(
+            text="★" if url in self.favorites else "☆",
+            fg="#ffd000" if url in self.favorites else WHITE,
+            state="normal" if url else "disabled",
+        )
+        self.quick_buttons["trash"].configure(
+            text="↩" if url in self.trash else "🗑",
+            fg="#11a8ff" if url in self.trash else "#ef7373",
+            state="normal" if url else "disabled",
+        )
+
+    def toggle_current_favorite(self):
+        if self.channel and self.channel.get("url"):
+            self.toggle_favorite(self.channel["url"])
+
+    def toggle_current_trash(self):
+        if self.channel and self.channel.get("url"):
+            self.toggle_trash(self.channel["url"])
+
+    def toggle_mute(self):
+        """Mute global del canal grande; la miniatura siempre sigue muda."""
+        if self.dead:
+            return
+        self.is_muted = not self.is_muted
+        self.sync_player_audio()
+        self.update_now_playing()
+
+    def toggle_fullscreen(self):
+        """Pantalla completa del video; Esc regresa sin reiniciar VLC."""
+        if self.dead:
+            return
+        if self.fullscreen_active:
+            self.exit_fullscreen()
+            return
+        root = self.winfo_toplevel()
+        hidden = []
+        # El lanzador tiene un bloqueo de tamaño: suspender temporalmente su
+        # controlador Configure y restaurarlo al salir del modo completo.
+        saved = {
+            "root": root,
+            "geometry": root.geometry(),
+            "minsize": root.minsize(),
+            "maxsize": root.maxsize(),
+            "resizable": root.resizable(),
+            "configure_bind": root.bind("<Configure>"),
+            "escape_bind": root.bind("<Escape>"),
+            "f11_bind": root.bind("<F11>"),
+            "hidden": hidden,
+        }
+        self._fullscreen_saved = saved
+        self.fullscreen_active = True
+        try:
+            root.bind("<Configure>", "")
+            root.minsize(1, 1)
+            root.maxsize(root.winfo_screenwidth(), root.winfo_screenheight())
+            root.resizable(True, True)
+            for widget in root.winfo_children():
+                if widget is self.master:
+                    continue
+                manager = widget.winfo_manager()
+                if manager == "pack":
+                    hidden.append((widget, manager, widget.pack_info()))
+                    widget.pack_forget()
+                elif manager == "place":
+                    hidden.append((widget, manager, widget.place_info()))
+                    widget.place_forget()
+                elif manager == "grid":
+                    hidden.append((widget, manager, widget.grid_info()))
+                    widget.grid_remove()
+            self.now_playing.pack_forget()
+            self.sections.pack_forget()
+            self.tab_content.pack_forget()
+            self.video.pack_configure(side="top", fill="both", expand=True)
+            root.bind("<Escape>", lambda _event: self.exit_fullscreen())
+            root.bind("<F11>", lambda _event: self.exit_fullscreen())
+            root.attributes("-fullscreen", True)
+            self.fullscreen_exit.place(
+                relx=1, x=-12, y=12, anchor="ne", width=34, height=32
+            )
+            self.layout_video_layers()
+            self.fullscreen_exit.lift()
+            root.focus_force()
+        except (tk.TclError, ValueError):
+            self.exit_fullscreen()
+
+    def exit_fullscreen(self):
+        """Restablece tamaño, controles y barra original del lanzador."""
+        if not self.fullscreen_active:
+            return
+        saved = self._fullscreen_saved
+        self.fullscreen_active = False
+        self._fullscreen_saved = None
+        if saved is None:
+            return
+        root = saved["root"]
+        try:
+            self.fullscreen_exit.place_forget()
+            root.attributes("-fullscreen", False)
+            self.video.pack_configure(side="top", fill="x", expand=False)
+            self.now_playing.pack(
+                side="top", fill="x", padx=3, pady=(2, 0), after=self.video
+            )
+            self.sections.pack(
+                side="top", fill="x", pady=(5, 0), after=self.now_playing
+            )
+            self.tab_content.pack(
+                side="top", fill="both", expand=True, after=self.sections
+            )
+            for widget, manager, info in saved["hidden"]:
+                if not widget.winfo_exists():
+                    continue
+                if manager == "pack":
+                    options = {k: v for k, v in info.items() if k != "in"}
+                    widget.pack(before=self.master, **options)
+                elif manager == "place":
+                    widget.place(**info)
+                elif manager == "grid":
+                    widget.grid(**info)
+            root.minsize(*saved["minsize"])
+            root.maxsize(*saved["maxsize"])
+            root.resizable(*saved["resizable"])
+            root.geometry(saved["geometry"])
+            self.layout_video_layers()
+        except tk.TclError:
+            pass
+        finally:
+            try:
+                root.bind("<Configure>", saved["configure_bind"] or "")
+                root.bind("<Escape>", saved["escape_bind"] or "")
+                root.bind("<F11>", saved["f11_bind"] or "")
+            except tk.TclError:
+                pass
 
     def set_row_actions_visible(self, visible):
         if visible:
