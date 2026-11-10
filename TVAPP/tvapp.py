@@ -413,6 +413,7 @@ class TVViewer(tk.Frame):
         self._last_list_width = 0
         self._tooltip_job = None
         self._tooltip_index = None
+        self._now_tip_job = None
         self._list_font = tkfont.Font(root=self, family="Segoe UI", size=13)
         self._now_font = tkfont.Font(root=self, family="Segoe UI", size=9)
         self.is_muted = False
@@ -471,6 +472,7 @@ class TVViewer(tk.Frame):
         self.now_playing.pack(side="top", fill="x", padx=3, pady=(2, 0))
         self.now_playing.pack_propagate(False)
         self.now_title = tk.StringVar(value="Sin reproducción")
+        self._now_full_name = "Sin reproducción"
         self.now_actions = tk.Frame(self.now_playing, bg=BG)
         self.now_actions.pack(side="right", padx=(2, 2))
         quick_actions = (
@@ -512,6 +514,18 @@ class TVViewer(tk.Frame):
             anchor="w", justify="left", width=1,
         )
         self.now_label.pack(side="left", fill="both", expand=True)
+        self.now_tooltip = tk.Label(
+            self, bg="#252a33", fg=WHITE, font=("Segoe UI", 10),
+            justify="left", anchor="w", padx=9, pady=6,
+            relief="solid", bd=1,
+        )
+        self.now_label.bind(
+            "<Configure>", lambda _event: self.refresh_now_title(), add="+"
+        )
+        self.now_label.bind("<Enter>", self.schedule_now_tooltip, add="+")
+        self.now_label.bind(
+            "<Leave>", lambda _event: self.hide_now_tooltip(), add="+"
+        )
         self.now_playing.update_idletasks()
         # El titulo permanece visible; los botones se muestran al acercar
         # el cursor al video o a esta barra, para aprovechar el espacio.
@@ -1040,16 +1054,58 @@ class TVViewer(tk.Frame):
             self.schedule_row_actions()
         self.update_now_playing()
 
+    def refresh_now_title(self):
+        """Recorta visualmente el titulo, conservando el nombre verdadero."""
+        if self.dead or not hasattr(self, "now_label"):
+            return
+        self.now_title.set(self.ellipsize(
+            self._now_full_name, self.now_label.winfo_width() - 6,
+            self._now_font,
+        ))
+
+    def schedule_now_tooltip(self, _event=None):
+        if self._now_tip_job is not None:
+            self.after_cancel(self._now_tip_job)
+        self._now_tip_job = self.after(480, self.show_now_tooltip)
+
+    def show_now_tooltip(self):
+        self._now_tip_job = None
+        if (self.dead or self._now_full_name == self.now_title.get()
+                or not self.now_playing.winfo_manager()):
+            return
+        self.now_tooltip.configure(
+            text=self._now_full_name,
+            wraplength=max(150, min(360, self.winfo_width() - 20)),
+        )
+        self.now_tooltip.place(
+            x=10, y=self.now_playing.winfo_y() + self.now_playing.winfo_height() + 3,
+        )
+        self.now_tooltip.lift()
+
+    def hide_now_tooltip(self):
+        if self._now_tip_job is not None:
+            try:
+                self.after_cancel(self._now_tip_job)
+            except tk.TclError:
+                pass
+            self._now_tip_job = None
+        if hasattr(self, "now_tooltip"):
+            self.now_tooltip.place_forget()
+
     def update_now_playing(self):
         """El nombre y los botones siguen al canal principal, no a la miniatura."""
         if self.dead or not hasattr(self, "now_title"):
             return
         channel = self.channel
         url = channel.get("url") if isinstance(channel, dict) else None
-        if url and self.splash_finished:
-            self.now_title.set(channel.get("name", "Canal sin nombre"))
-        else:
-            self.now_title.set("Sin reproducción")
+        title = (
+            channel.get("name", "Canal sin nombre")
+            if url and self.splash_finished else "Sin reproducción"
+        )
+        if title != self._now_full_name:
+            self._now_full_name = title
+            self.hide_now_tooltip()
+        self.refresh_now_title()
         self.now_indicator.configure(
             text="▶" if url and url == self._playing_marker_url else ""
         )
