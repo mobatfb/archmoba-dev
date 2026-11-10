@@ -386,31 +386,39 @@ class TVViewer(tk.Frame):
         )
         # Busqueda general, fija por encima de las categorias y los canales.
         self.search_query = tk.StringVar()
-        self.search_bar = tk.Frame(
-            self.search_panel, bg="#181818", highlightthickness=1,
-            highlightbackground="#373737", bd=0,
+        # Canvas permite un contorno realmente redondeado (Entry no lo admite).
+        self.search_bar = tk.Canvas(
+            self.search_panel, bg=BG, height=46, bd=0,
+            highlightthickness=0, relief="flat",
+        )
+        self.search_inner = tk.Frame(self.search_bar, bg="#181818", bd=0)
+        self.search_window = self.search_bar.create_window(
+            16, 23, anchor="w", window=self.search_inner,
         )
         tk.Label(
-            self.search_bar, text="⌕", bg="#181818", fg="#ffd000",
-            font=("Segoe UI Symbol", 17), padx=7,
+            self.search_inner, text="⌕", bg="#181818", fg="#ffd000",
+            font=("Segoe UI Symbol", 17), padx=5,
         ).pack(side="left")
         self.search_entry = tk.Entry(
-            self.search_bar, textvariable=self.search_query,
+            self.search_inner, textvariable=self.search_query,
             bg="#181818", fg="#ffffff", insertbackground="#ffffff",
             selectbackground="#385a6c", relief="flat", bd=0,
             highlightthickness=0, font=("Segoe UI", 11),
         )
         self.search_entry.pack(
-            side="left", fill="both", expand=True, ipady=7,
+            side="left", fill="both", expand=True, ipady=5,
         )
         self.search_clear = tk.Button(
-            self.search_bar, text="×", command=self.clear_general_search,
+            self.search_inner, text="×", command=self.clear_general_search,
             bg="#181818", fg="#b8bbc4", activebackground="#2a2a2a",
             activeforeground="#ffffff", font=("Segoe UI", 14),
             relief="flat", bd=0, highlightthickness=0, cursor="hand2",
-            padx=8, pady=0,
+            padx=6, pady=0,
         )
         self.search_clear.pack(side="right")
+        self.search_bar.bind(
+            "<Configure>", self.draw_rounded_search_bar, add="+",
+        )
         self.search_bar.pack(side="top", fill="x", padx=10, pady=(8, 0))
         self.search_query.trace_add(
             "write", lambda *_: self.on_global_search_changed()
@@ -525,6 +533,48 @@ class TVViewer(tk.Frame):
             self._preview_mouse_down = False
         if not self.dead:
             self.after(25, self._poll_preview_click)
+
+    def draw_rounded_search_bar(self, _event=None):
+        """Dibuja las esquinas redondeadas y ajusta el campo al ancho."""
+        width = self.search_bar.winfo_width()
+        height = self.search_bar.winfo_height()
+        if width < 42 or height < 20:
+            return
+        inset = 1
+        radius = min(16, (height - 2) // 2)
+        left, top = inset, inset
+        right, bottom = width - inset, height - inset
+        self.search_bar.delete("rounded_search")
+        self.search_bar.create_polygon(
+            left + radius, top,
+            right - radius, top,
+            right - radius, top,
+            right, top,
+            right, top + radius,
+            right, top + radius,
+            right, bottom - radius,
+            right, bottom - radius,
+            right, bottom,
+            right - radius, bottom,
+            right - radius, bottom,
+            left + radius, bottom,
+            left + radius, bottom,
+            left, bottom,
+            left, bottom - radius,
+            left, bottom - radius,
+            left, top + radius,
+            left, top + radius,
+            left, top,
+            left + radius, top,
+            fill="#181818", outline="#46515b", width=1,
+            smooth=True, splinesteps=20, tags="rounded_search",
+        )
+        self.search_bar.tag_lower("rounded_search")
+        self.search_bar.coords(self.search_window, 14, height / 2)
+        self.search_bar.itemconfigure(
+            self.search_window,
+            width=max(20, width - 28), height=max(20, height - 12),
+        )
 
     def clear_general_search(self):
         """Borra el texto sin salir de la categoria actual."""
