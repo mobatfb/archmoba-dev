@@ -1812,10 +1812,117 @@ class TVViewer(tk.Frame):
 
     def show_trash(self):
         self.list_mode = "trash"
+        self.active_provider = None
         self.current_category = {"name": "Papelera"}
+        self.back_button.configure(text="← Proveedores", command=self.show_providers)
         self.back_button.grid()
         self.set_row_actions_visible(True)
         self.refresh_channel_view()
+
+    def load_providers(self):
+        """Obtiene las categorias padre desde providers.json sin bloquear Tk."""
+        if self.dead or self.providers_loading:
+            return
+        self.providers_loading = True
+        self.providers_request += 1
+        token = self.providers_request
+        if self.list_mode == "providers":
+            self.show_providers(clear_search=False)
+
+        def worker():
+            try:
+                entries, offline = read_providers()
+                self.events.put(("providers", token, entries, offline))
+            except Exception:
+                self.events.put((
+                    "providers_error", token,
+                    "No se pudo descargar providers.json.", False,
+                ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_providers(self, entries, offline):
+        self.providers_loading = False
+        self.providers_ready = True
+        self.providers_error = None
+        self.providers = entries
+        if self.list_mode == "providers" and self.active_tab == "Buscar":
+            self.show_providers(clear_search=False)
+        if (self.splash_finished and self.player is None
+                and self.channel is not None
+                and self.channel.get("url", "").startswith("xtream://")):
+            self.play_current()
+
+    def show_providers(self, clear_search=True):
+        """Portada de Buscar: categorias padre y Papelera al final."""
+        if clear_search and self.search_query.get():
+            self._ignore_search_change = True
+            try:
+                self.search_query.set("")
+            finally:
+                self._ignore_search_change = False
+        if self.search_job is not None:
+            try:
+                self.after_cancel(self.search_job)
+            except tk.TclError:
+                pass
+            self.search_job = None
+        self.playlists_request += 1
+        self.playlists_loading = False
+        self.m3u_request += 1
+        self.active_provider = None
+        self.playlist_catalog = None
+        self.current_category = None
+        self.current_channels = []
+        self.list_mode = "providers"
+        self.back_button.grid_remove()
+        self.set_row_actions_visible(False)
+        names = [item["name"] for item in self.providers]
+        if not names:
+            if self.providers_loading or not self.providers_ready:
+                names = ["Cargando proveedores..."]
+            elif self.providers_error:
+                names = ["No se pudieron cargar los proveedores."]
+            else:
+                names = ["No hay proveedores configurados."]
+        names.append("Papelera")
+        self._show_rows(names)
+
+    def open_provider(self, provider):
+        """Abre una categoria padre, sin interrumpir el canal en pantalla."""
+        self.active_provider = provider
+        self.current_category = None
+        self.current_channels = []
+        self.playlists_request += 1
+        self.playlists_loading = False
+        self.m3u_request += 1
+        self.global_search_request += 1
+        self.global_search_loading = False
+        self.global_search_error = None
+        self.playlist_catalog = self.provider_catalog_cache.get(provider["id"])
+        self.list_mode = "categories"
+        self.back_button.configure(
+            text="← Proveedores", command=self.show_providers,
+        )
+        self.back_button.grid()
+        self.set_row_actions_visible(False)
+        if self.search_query.get():
+            self._ignore_search_change = True
+            try:
+                self.search_query.set("")
+            finally:
+                self._ignore_search_change = False
+        if provider.get("error"):
+            self._show_rows([provider["error"]])
+            return
+        if provider_kind(provider) == "unconfigured":
+            self._show_rows(["Este proveedor no tiene servidor configurado."])
+            return
+        if self.playlist_catalog is None:
+            self._show_rows(["Cargando categorías de " + provider["name"] + "..."])
+            self.load_playlist_catalog()
+        else:
+            self.show_categories(clear_search=False)
 
     def select_tab(self, name):
         """Cambia de pestana sin interrumpir el video en directo."""
@@ -1844,9 +1951,9 @@ class TVViewer(tk.Frame):
                 if self.search_query.get().strip():
                     self.run_global_search()
                 else:
-                    self.show_categories()
-            if self.playlist_catalog is None and not self.playlists_loading:
-                self.load_playlist_catalog()
+                    self.show_providers()
+            if not self.providers_ready and not self.providers_loading:
+                self.load_providers()
         else:
             self.show_favorites()
 
