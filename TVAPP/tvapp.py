@@ -1772,12 +1772,41 @@ class TVViewer(tk.Frame):
             query = normalized_search(self.search_query.get().strip())
             terms = query.split()
             available = {}
-            # Incluye favoritos locales y listas abiertas, incluso sin red.
-            sources = [self.favorites.values()]
-            if self.global_search_url in self.m3u_cache:
-                sources.append(self.m3u_cache[self.global_search_url])
+            # La busqueda de un proveedor no mezcla sus canales con otros.
+            if self.active_provider is not None:
+                provider = self.active_provider
+                if provider_kind(provider) == "xtream":
+                    prefix = "xtream://" + provider["id"] + "/"
+                    sources = [[
+                        item for item in self.favorites.values()
+                        if item["url"].startswith(prefix)
+                    ]]
+                    sources.extend(
+                        channels for key, channels in self.m3u_cache.items()
+                        if key.startswith(prefix + "category/")
+                    )
+                else:
+                    urls = {
+                        item["url"] for item in (self.playlist_catalog or [])
+                    }
+                    sources = [
+                        channels for key, channels in self.m3u_cache.items()
+                        if key in urls
+                    ]
+                    # Tambien permitir buscar en favoritos desde esta fuente.
+                    if self.global_search_url in urls:
+                        sources.append([
+                            item for item in self.favorites.values()
+                            if item["url"] in self.m3u_cache.get(
+                                self.global_search_url, []
+                            )
+                        ])
             else:
-                sources.extend(self.m3u_cache.values())
+                sources = [self.favorites.values()]
+                if self.global_search_url in self.m3u_cache:
+                    sources.append(self.m3u_cache[self.global_search_url])
+                else:
+                    sources.extend(self.m3u_cache.values())
             for source in sources:
                 for item in source:
                     url = item.get("url", "")
@@ -2757,7 +2786,12 @@ class TVViewer(tk.Frame):
             self.status.set("Conectando a la señal de video...")
             self.after(PLAYER_MONITOR_MS, lambda: self.monitor_player(token))
         except Exception as exc:
-            self.channel_failed("No se pudo abrir el canal: " + str(exc)[:120])
+            if (self.channel is not None
+                    and self.channel.get("url", "").startswith("xtream://")):
+                # Las excepciones de VLC pueden contener el URL con contrasena.
+                self.channel_failed("No se pudo abrir el canal premium.")
+            else:
+                self.channel_failed("No se pudo abrir el canal: " + str(exc)[:120])
 
     def monitor_player(self, token):
         if self.dead or token != self.request_id or self.player is None:
