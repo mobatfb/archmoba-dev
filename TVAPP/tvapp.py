@@ -479,6 +479,179 @@ class TVViewer(tk.Frame):
         if not self.dead:
             self.after(25, self._poll_preview_click)
 
+    def on_list_scroll(self, first, last):
+        """Sincroniza los botones de cada fila con el desplazamiento."""
+        self.playlist_scroll.set(first, last)
+        self.schedule_row_actions()
+
+    def schedule_row_actions(self):
+        if self.dead or self._row_action_job is not None:
+            return
+        self._row_action_job = self.after_idle(self.draw_row_actions)
+
+    def set_row_actions_visible(self, visible):
+        if visible:
+            if not self.row_actions.winfo_manager():
+                self.row_actions.pack(
+                    side="right", fill="y", padx=(0, 3), pady=(8, 6)
+                )
+        else:
+            self.row_actions.pack_forget()
+        self.schedule_row_actions()
+
+    def draw_row_actions(self):
+        """Dibuja dos botones reales solo en las filas visibles del Listbox."""
+        self._row_action_job = None
+        if self.dead:
+            return
+        if not self.row_actions.winfo_manager() or self.list_mode not in (
+            "channels", "favorites", "trash"
+        ):
+            for star, bin_button in self._row_action_widgets:
+                star.place_forget()
+                bin_button.place_forget()
+            return
+
+        height = self.playlist_list.winfo_height()
+        if height <= 1:
+            return
+        first = self.playlist_list.nearest(0)
+        last = self.playlist_list.nearest(max(0, height - 1))
+        slot = 0
+        for index in range(first, min(last + 1, len(self.current_channels))):
+            bbox = self.playlist_list.bbox(index)
+            if bbox is None:
+                continue
+            _, y, _, row_height = bbox
+            if y + row_height <= 0 or y >= height:
+                continue
+            if slot == len(self._row_action_widgets):
+                star = tk.Button(
+                    self.row_actions, bg=BG, fg="#ffffff",
+                    activebackground="#20242b", activeforeground="#ffd000",
+                    font=("Segoe UI Symbol", 14), relief="flat", bd=0,
+                    highlightthickness=0, cursor="hand2", padx=0, pady=0,
+                )
+                bin_button = tk.Button(
+                    self.row_actions, bg=BG, fg="#ef7373",
+                    activebackground="#20242b", activeforeground="#ffffff",
+                    font=("Segoe UI Emoji", 11), relief="flat", bd=0,
+                    highlightthickness=0, cursor="hand2", padx=0, pady=0,
+                )
+                self._row_action_widgets.append((star, bin_button))
+            star, bin_button = self._row_action_widgets[slot]
+            url = self.current_channels[index]["url"]
+            marked = url in self.favorites
+            star.configure(
+                text="★" if marked else "☆",
+                fg="#ffd000" if marked else "#ffffff",
+                command=lambda link=url: self.toggle_favorite(link),
+            )
+            in_trash = self.list_mode == "trash"
+            bin_button.configure(
+                text="↩" if in_trash else "🗑",
+                fg="#11a8ff" if in_trash else "#ef7373",
+                command=lambda link=url: self.toggle_trash(link),
+            )
+            row_height = max(20, row_height)
+            star.place(x=0, y=y, width=31, height=row_height)
+            bin_button.place(x=33, y=y, width=31, height=row_height)
+            slot += 1
+        for star, bin_button in self._row_action_widgets[slot:]:
+            star.place_forget()
+            bin_button.place_forget()
+
+    def save_collections(self):
+        for path, items in (
+            (FAVORITES_FILE, self.favorites), (TRASH_FILE, self.trash)
+        ):
+            try:
+                save_saved_channels(path, items)
+            except (OSError, TypeError, ValueError) as exc:
+                self.status.set("No se pudieron guardar los canales: " + str(exc))
+
+    def saved_channel(self, url):
+        for item in self.current_channels:
+            if item["url"] == url:
+                result = dict(item)
+                if not result.get("group"):
+                    result["group"] = (
+                        self.current_category["name"]
+                        if self.current_category else "MINGA TV"
+                    )
+                return result
+        return None
+
+    def toggle_favorite(self, url):
+        if url in self.favorites:
+            self.favorites.pop(url, None)
+        else:
+            channel = self.saved_channel(url)
+            if channel is None:
+                return
+            self.trash.pop(url, None)  # Favorito desde Papelera: restaurar.
+            self.favorites[url] = channel
+        self.save_collections()
+        self.refresh_channel_view(keep_position=True)
+
+    def toggle_trash(self, url):
+        if url in self.trash:
+            self.trash.pop(url, None)  # Restaurar un canal descartado.
+        else:
+            channel = self.saved_channel(url)
+            if channel is None:
+                return
+            self.trash[url] = channel
+            self.favorites.pop(url, None)
+        self.save_collections()
+        self.refresh_channel_view(keep_position=True)
+
+    def refresh_channel_view(self, keep_position=False):
+        """Recalcula la lista sin reiniciar ni detener el canal en pantalla."""
+        if self.list_mode == "favorites":
+            self.current_channels = sorted(
+                self.favorites.values(), key=lambda item: item["name"].casefold()
+            )
+            names = [item["name"] for item in self.current_channels]
+            if not names:
+                names = ["No tienes canales favoritos."]
+        elif self.list_mode == "trash":
+            self.current_channels = sorted(
+                self.trash.values(), key=lambda item: item["name"].casefold()
+            )
+            names = [item["name"] for item in self.current_channels]
+            if not names:
+                names = ["La Papelera está vacía."]
+        elif self.list_mode == "channels" and self.current_category:
+            base = self.m3u_cache.get(
+                self.current_category["url"], self.current_channels
+            )
+            self.current_channels = [
+                item for item in base if item["url"] not in self.trash
+            ]
+            names = [item["name"] for item in self.current_channels]
+            if not names:
+                names = ["No hay canales disponibles en esta categoría."]
+        else:
+            return
+        self._show_rows(names, keep_position=keep_position)
+
+    def show_favorites(self):
+        self.list_mode = "favorites"
+        self.current_category = None
+        self.back_button.pack_forget()
+        if not self.search_panel.winfo_manager():
+            self.search_panel.pack(fill="both", expand=True)
+        self.set_row_actions_visible(True)
+        self.refresh_channel_view()
+
+    def show_trash(self):
+        self.list_mode = "trash"
+        self.current_category = {"name": "Papelera"}
+        self.back_button.pack(side="top", fill="x", before=self.list_frame)
+        self.set_row_actions_visible(True)
+        self.refresh_channel_view()
+
     def select_tab(self, name):
         """Cambia de pestana sin interrumpir el video en directo."""
         if name not in self.tab_labels:
@@ -490,12 +663,14 @@ class TVViewer(tk.Frame):
                 fg="#ffd000" if selected else "#ffffff",
                 font=("Segoe UI", 14, "bold" if selected else "normal"),
             )
+        self.search_panel.pack(fill="both", expand=True)
         if name == "Buscar":
-            self.search_panel.pack(fill="both", expand=True)
+            if self.list_mode == "favorites":
+                self.show_categories()
             if self.playlist_catalog is None and not self.playlists_loading:
                 self.load_playlist_catalog()
         else:
-            self.search_panel.pack_forget()
+            self.show_favorites()
 
     def load_playlist_catalog(self):
         """Descarga las listas M3U solo al entrar en Buscar."""
@@ -516,8 +691,9 @@ class TVViewer(tk.Frame):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _show_rows(self, names):
-        """Rellena la lista por bloques para que miles de canales no congelen Tk."""
+    def _show_rows(self, names, keep_position=False):
+        """Inserta por bloques sin congelar Tk, y conserva el scroll si procede."""
+        old_index = self.playlist_list.nearest(0) if keep_position else 0
         self.list_render_token += 1
         token = self.list_render_token
         self.playlist_list.delete(0, tk.END)
@@ -531,13 +707,17 @@ class TVViewer(tk.Frame):
                 self.playlist_list.insert(tk.END, *chunk)
             if start + 250 < len(names):
                 self.after(1, lambda: add_rows(start + 250))
+            elif keep_position and names:
+                self.playlist_list.yview(min(old_index, len(names) - 1))
+            self.schedule_row_actions()
 
         add_rows()
 
     def on_playlist_catalog(self, playlists):
         self.playlists_loading = False
         self.playlist_catalog = playlists
-        self.show_categories()
+        if self.active_tab == "Buscar" and self.list_mode == "categories":
+            self.show_categories()
 
     def show_categories(self):
         """Regresa a los nombres de las listas guardadas en channels.json."""
@@ -546,10 +726,10 @@ class TVViewer(tk.Frame):
         self.current_category = None
         self.current_channels = []
         self.back_button.pack_forget()
-        if self.playlist_catalog is None:
-            self._show_rows(["No hay categorias disponibles."])
-            return
-        self._show_rows([item["name"] for item in self.playlist_catalog])
+        self.set_row_actions_visible(False)
+        names = [item["name"] for item in (self.playlist_catalog or [])]
+        names.append("Papelera")  # Siempre al final, incluso sin conexion.
+        self._show_rows(names)
 
     def on_list_select(self, _event):
         if self.dead or self.active_tab != "Buscar":
@@ -559,9 +739,12 @@ class TVViewer(tk.Frame):
             return
         index = selection[0]
         if self.list_mode == "categories":
-            if self.playlist_catalog and index < len(self.playlist_catalog):
-                self.open_category(self.playlist_catalog[index])
-        elif self.list_mode == "channels":
+            entries = self.playlist_catalog or []
+            if index == len(entries):
+                self.show_trash()
+            elif index < len(entries):
+                self.open_category(entries[index])
+        elif self.list_mode in ("channels", "favorites", "trash"):
             if index < len(self.current_channels):
                 self.play_from_search(self.current_channels[index])
 
@@ -582,9 +765,11 @@ class TVViewer(tk.Frame):
         self.channel = dict(stream)
         self.manual_playback = True
         self.channel_name.set(self.channel["name"])
-        self.channel_group.set(
-            self.current_category["name"] if self.current_category else "Buscar"
+        group = self.channel.get("group") or (
+            self.current_category["name"] if self.current_category else self.active_tab
         )
+        self.channel["group"] = group
+        self.channel_group.set(group)
         if self.splash_finished:
             self.play_current()
 
@@ -594,6 +779,7 @@ class TVViewer(tk.Frame):
         self.current_channels = []
         self.list_mode = "channels"
         self.back_button.pack(side="top", fill="x", before=self.list_frame)
+        self.set_row_actions_visible(True)
         self.m3u_request += 1
         token = self.m3u_request
         self._show_rows(["Cargando canales de " + category["name"] + "..."])
@@ -615,7 +801,7 @@ class TVViewer(tk.Frame):
         if self.current_category is None or self.list_mode != "channels":
             return
         self.current_channels = channels
-        self._show_rows([item["name"] for item in channels])
+        self.refresh_channel_view()
 
     def layout_video_layers(self):
         """Coloca la miniatura por encima del reproductor principal."""
@@ -1057,7 +1243,8 @@ class TVViewer(tk.Frame):
                     self.on_playlist_catalog(value)
                 elif event == "playlists_error" and token == self.playlists_request:
                     self.playlists_loading = False
-                    self._show_rows(["Error al cargar las categorias."])
+                    if self.active_tab == "Buscar" and self.list_mode == "categories":
+                        self.show_categories()
                 elif event == "m3u" and token == self.m3u_request:
                     if self.current_category and extra == self.current_category["url"]:
                         self.m3u_cache[extra] = value
