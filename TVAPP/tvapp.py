@@ -137,6 +137,29 @@ class TVViewer(tk.Frame):
         self.video.pack(side="top", fill="x")
         self.video.pack_propagate(False)
 
+        # Secciones visibles debajo del video; se conectaran a sus funciones
+        # de favoritos y busqueda en una siguiente etapa.
+        self.sections = tk.Frame(self, bg=BG, bd=0, highlightthickness=0)
+        self.sections.pack(side="top", fill="x", pady=(7, 0))
+        for title, symbol in (("Favoritos", "★"), ("Buscar", "⌕")):
+            row = tk.Frame(
+                self.sections, bg="#101216", height=52,
+                bd=0, highlightthickness=0,
+            )
+            row.pack(fill="x", padx=9, pady=(0, 7))
+            row.pack_propagate(False)
+            tk.Frame(row, bg=CYAN, width=3).pack(side="left", fill="y")
+            tk.Label(
+                row, text=symbol, bg="#101216", fg=CYAN,
+                font=("Segoe UI Symbol", 18),
+                padx=15, bd=0,
+            ).pack(side="left")
+            tk.Label(
+                row, text=title, bg="#101216", fg=WHITE,
+                font=("Segoe UI", 12, "bold"),
+                anchor="w", bd=0,
+            ).pack(side="left", fill="y")
+
         # VLC dibuja sobre su propia superficie; el indicador es un widget
         # hermano y queda encima sin interferir con la reproduccion.
         self.video_surface = tk.Frame(
