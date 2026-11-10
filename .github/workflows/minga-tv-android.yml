@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-android:
@@ -26,12 +26,20 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar SDK Android
-        uses: android-actions/setup-android@v3
+      - name: Verificar SDK Android preinstalado
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | sort | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          "$SDKMANAGER" --version
 
       - name: Instalar plataforma y herramientas Android
         run: |
-          sdkmanager --install "platforms;android-36" "build-tools;35.0.0"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
 
       - name: Configurar Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
@@ -54,3 +62,16 @@ jobs:
           path: TVAPP/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publicar enlace directo de descarga
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp TVAPP/android/app/build/outputs/apk/debug/app-debug.apk /tmp/MINGA-TV-Android-debug.apk
+          if ! gh release view minga-tv-android-preview >/dev/null 2>&1; then
+            gh release create minga-tv-android-preview \
+              --title "MINGA TV Android - version de prueba" \
+              --notes "APK de prueba de MINGA TV para Android, generado con GitHub Actions." \
+              --prerelease
+          fi
+          gh release upload minga-tv-android-preview /tmp/MINGA-TV-Android-debug.apk --clobber
