@@ -2843,18 +2843,34 @@ class TVViewer(tk.Frame):
         try:
             while True:
                 event, token, value, extra = self.events.get_nowait()
-                if event == "catalog" and token == self.catalog_request:
+                if event == "providers" and token == self.providers_request:
+                    self.on_providers(value, extra)
+                elif event == "providers_error" and token == self.providers_request:
+                    self.providers_loading = False
+                    self.providers_ready = True
+                    self.providers_error = value
+                    if self.active_tab == "Buscar" and self.list_mode == "providers":
+                        self.show_providers(clear_search=False)
+                    if (self.splash_finished and self.player is None
+                            and self.channel is not None
+                            and self.channel.get("url", "").startswith("xtream://")):
+                        self.channel_failed("No se pudieron cargar los proveedores.")
+                elif event == "catalog" and token == self.catalog_request:
                     self.on_catalog(value, extra)
                 elif event == "catalog_error" and token == self.catalog_request:
                     self.hide_loading()
                     self.status.set(value)
                     self.channel_name.set("No se pudo abrir initial.json")
                 elif event == "playlists" and token == self.playlists_request:
-                    self.on_playlist_catalog(value)
+                    if (self.active_provider is not None
+                            and self.active_provider["id"] == extra):
+                        self.on_playlist_catalog(value)
                 elif event == "playlists_error" and token == self.playlists_request:
-                    self.playlists_loading = False
-                    if self.active_tab == "Buscar" and self.list_mode == "categories":
-                        self.show_categories()
+                    if (self.active_provider is not None
+                            and self.active_provider["id"] == extra):
+                        self.playlists_loading = False
+                        if self.active_tab == "Buscar" and self.list_mode == "categories":
+                            self._show_rows([value])
                 elif event == "global_m3u" and token == self.global_search_request:
                     self.global_search_loading = False
                     self.global_search_error = None
@@ -2896,6 +2912,7 @@ class TVViewer(tk.Frame):
         self.request_id += 1
         self.catalog_request += 1
         self.playlists_request += 1
+        self.providers_request += 1
         self.m3u_request += 1
         self.list_render_token += 1
         if self.search_job is not None:
