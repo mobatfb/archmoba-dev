@@ -1308,6 +1308,15 @@ class TVViewer(tk.Frame):
                     font=("Segoe UI Emoji", 11), relief="flat", bd=0,
                     highlightthickness=0, cursor="hand2", padx=0, pady=0,
                 )
+                for control in (star, bin_button):
+                    control.bind(
+                        "<Enter>", lambda _event, w=control:
+                        w.configure(bg="#262a35"),
+                    )
+                    control.bind(
+                        "<Leave>", lambda _event, w=control:
+                        w.configure(bg=BG),
+                    )
                 self._row_action_widgets.append((star, bin_button))
             star, bin_button = self._row_action_widgets[slot]
             url = self.current_channels[index]["url"]
@@ -2377,6 +2386,15 @@ class TVViewer(tk.Frame):
             except tk.TclError:
                 pass
             self.search_job = None
+        for name in ("_list_reflow_job", "_tooltip_job", "_now_tip_job",
+                     "_row_action_job"):
+            job = getattr(self, name, None)
+            if job is not None:
+                try:
+                    self.after_cancel(job)
+                except tk.TclError:
+                    pass
+                setattr(self, name, None)
         self.global_search_request += 1
         self.release_player()
         self.close_preview()
