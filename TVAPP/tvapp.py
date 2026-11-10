@@ -1559,6 +1559,37 @@ class TVViewer(tk.Frame):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def remember_playing_channel(self):
+        """Guarda el canal grande SOLO cuando VLC confirma video real."""
+        channel = self.channel
+        if (self.dead or self.player is None or not self.video_ready
+                or not isinstance(channel, dict)):
+            return
+        url = channel.get("url")
+        if not isinstance(url, str) or url in self.trash:
+            return
+        if (self.last_played_channel is not None
+                and self.last_played_channel.get("url") == url):
+            return  # No escribir el disco cada segundo de reproduccion.
+        record = dict(channel)
+        try:
+            save_saved_channels(LAST_CHANNEL_FILE, {"channel": record})
+        except (OSError, TypeError, ValueError) as exc:
+            self.status.set("No se pudo guardar el ultimo canal: " + str(exc))
+            return
+        self.last_played_channel = record
+
+    def clear_last_played_channel(self, url):
+        """Una emisora en Papelera no puede ser el inicio automatico."""
+        if (self.last_played_channel is None
+                or self.last_played_channel.get("url") != url):
+            return
+        self.last_played_channel = None
+        try:
+            LAST_CHANNEL_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass  # La comprobacion de Papelera tambien protege el reinicio.
+
     def import_initial_favorites_once(self, data):
         """Primera instalacion: guarda TODOS los canales del initial.json."""
         if not self.first_run_pending:
@@ -1589,24 +1620,56 @@ class TVViewer(tk.Frame):
         if self.manual_playback:
             return  # No reemplazar un canal elegido por el usuario.
         self.failed_channel_ids.clear()
-        self.first_run_failed_urls.clear()
-        if first_run and self.favorites:
-            # No usar selected_id la primera vez: escoger entre Favoritos.
-            self.first_run_random_active = True
-            self.channel = random.choice(list(self.favorites.values()))
+        self.startup_failed_urls.clear()
+        self.startup_auto_active = False
+        source_label = ""
+        last = self.last_played_channel
+        favorites = [
+            item for item in self.favorites.values()
+            if item["url"] not in self.trash
+        ]
+        if first_run and favorites:
+            # Primera vez: todos los initial.json son Favoritos; elegir uno.
+            self.channel = dict(random.choice(favorites))
+            source_label = "Favorito aleatorio (primera vez)"
+            self.startup_auto_active = True
+        elif last is not None and last["url"] not in self.trash:
+            # Siguientes inicios: reproducir incluso si no estaba en Favoritos.
+            self.channel = dict(last)
+            source_label = "Ultimo canal reproducido"
+            self.startup_auto_active = True
+        elif favorites:
+            # Sin ultimo canal valido (o enviado a Papelera).
+            self.channel = dict(random.choice(favorites))
+            source_label = "Favorito aleatorio"
+            self.startup_auto_active = True
         else:
-            self.first_run_random_active = False
-            self.channel = choose_channel(
-                data, previous_id=old_id if data["selected_id"] == 0 else None
-            )
+            # Mantener la seleccion original cuando no hay favoritos guardados,
+            # sin volver a ofrecer ningun canal que este en Papelera.
+            available = [
+                item for item in data["channels"]
+                if item["url"] not in self.trash
+            ]
+            selected = data["selected_id"]
+            fixed = next(
+                (item for item in available if item["id"] == selected), None
+            ) if selected else None
+            candidates = [
+                item for item in available if item.get("id") != old_id
+            ]
+            self.channel = dict(
+                fixed or random.choice(candidates or available)
+            ) if available else None
+            source_label = ("Canal fijo" if fixed else "Seleccion aleatoria")
+        if self.channel is None:
+            self.channel_name.set("")
+            self.channel_group.set("")
+            self.update_now_playing()
+            self.hide_loading()
+            self.status.set("No hay canales fuera de la Papelera para iniciar.")
+            return
         self.channel_name.set(self.channel["name"])
-        label = self.channel.get("group", "General")
-        if first_run:
-            label += "  ·  Favorito aleatorio (primera vez)"
-        elif data["selected_id"] == 0:
-            label += "  ·  Selección aleatoria"
-        else:
-            label += f"  ·  Canal #{data['selected_id']}"
+        label = self.channel.get("group", "General") + "  ·  " + source_label
         if offline:
             label += "  ·  Copia local"
         self.channel_group.set(label)
