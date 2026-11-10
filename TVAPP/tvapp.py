@@ -318,15 +318,28 @@ class TVViewer(tk.Frame):
         self.tab_content = tk.Frame(self, bg=BG, bd=0, highlightthickness=0)
         self.tab_content.pack(side="top", fill="both", expand=True)
         self.search_panel = tk.Frame(self.tab_content, bg=BG)
+        # Boton fijo: queda visible aun cuando se desplazan miles de canales.
+        self.back_button = tk.Button(
+            self.search_panel, text="← Volver a categorías",
+            command=self.show_categories,
+            bg=BG, fg="#ffd000", activebackground=BG,
+            activeforeground="#ffffff",
+            font=("Segoe UI", 11, "bold"), anchor="w",
+            cursor="hand2", relief="flat", bd=0,
+            highlightthickness=0, padx=12, pady=8,
+        )
+        self.back_button.pack(side="top", fill="x")
+        self.list_frame = tk.Frame(self.search_panel, bg=BG)
+        self.list_frame.pack(side="top", fill="both", expand=True)
         self.playlist_list = tk.Listbox(
-            self.search_panel, bg=BG, fg=WHITE,
+            self.list_frame, bg=BG, fg=WHITE,
             font=("Segoe UI", 12), bd=0, relief="flat",
             highlightthickness=0, selectbackground="#1d2630",
             selectforeground="#ffd000", activestyle="none",
             exportselection=False,
         )
         self.playlist_scroll = tk.Scrollbar(
-            self.search_panel, orient="vertical", command=self.playlist_list.yview
+            self.list_frame, orient="vertical", command=self.playlist_list.yview
         )
         self.playlist_list.configure(yscrollcommand=self.playlist_scroll.set)
         self.playlist_list.pack(
@@ -501,10 +514,8 @@ class TVViewer(tk.Frame):
             if self.playlist_catalog and index < len(self.playlist_catalog):
                 self.open_category(self.playlist_catalog[index])
         elif self.list_mode == "channels":
-            if index == 0:
-                self.show_categories()
-            elif index - 1 < len(self.current_channels):
-                self.play_from_search(self.current_channels[index - 1])
+            if index < len(self.current_channels):
+                self.play_from_search(self.current_channels[index])
 
     def play_from_search(self, stream):
         """Abre el canal y conserva fija la miniatura mientras este visible."""
@@ -536,10 +547,7 @@ class TVViewer(tk.Frame):
         self.list_mode = "channels"
         self.m3u_request += 1
         token = self.m3u_request
-        self._show_rows([
-            "← Volver a categorías",
-            "Cargando canales de " + category["name"] + "...",
-        ])
+        self._show_rows(["Cargando canales de " + category["name"] + "..."])
         url = category["url"]
         if url in self.m3u_cache:
             self.on_category_channels(self.m3u_cache[url])
@@ -558,9 +566,7 @@ class TVViewer(tk.Frame):
         if self.current_category is None or self.list_mode != "channels":
             return
         self.current_channels = channels
-        names = ["← Volver a categorías"]
-        names.extend(item["name"] for item in channels)
-        self._show_rows(names)
+        self._show_rows([item["name"] for item in channels])
 
     def layout_video_layers(self):
         """Coloca la miniatura por encima del reproductor principal."""
@@ -1010,7 +1016,6 @@ class TVViewer(tk.Frame):
                 elif event == "m3u_error" and token == self.m3u_request:
                     if self.current_category and extra == self.current_category["url"]:
                         self._show_rows([
-                            "← Volver a categorías",
                             "No se pudieron cargar los canales.",
                             str(value)[:100],
                         ])
