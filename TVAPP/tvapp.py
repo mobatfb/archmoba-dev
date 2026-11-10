@@ -1413,23 +1413,22 @@ class TVViewer(tk.Frame):
         estado mute, ponemos volumen 0 a la miniatura y recuperamos 100 al
         devolverla al reproductor grande. Nunca silenciamos el video en si.
         """
-        # Prioridad a silenciar la miniatura para evitar dos sonidos a la vez.
-        if self.preview_player is not None:
-            try:
-                self.preview_player.audio_set_mute(True)
-                self.preview_player.audio_set_volume(0)
-            except (OSError, AttributeError, RuntimeError):
-                pass
-        if self.player is not None:
-            try:
-                if self.is_muted:
-                    self.player.audio_set_mute(True)
-                    self.player.audio_set_volume(0)
-                else:
-                    self.player.audio_set_volume(100)
-                    self.player.audio_set_mute(False)
-            except (OSError, AttributeError, RuntimeError):
-                pass
+        # Mute y volumen se aplican por separado: si VLC rechaza uno,
+        # el otro aun puede mantener silenciada la vista secundaria.
+        for player, silenced in (
+            (self.preview_player, True),
+            (self.player, self.is_muted),
+        ):
+            if player is None:
+                continue
+            for method, value in (
+                ("audio_set_volume", 0 if silenced else 100),
+                ("audio_set_mute", silenced),
+            ):
+                try:
+                    getattr(player, method)(value)
+                except (OSError, AttributeError, RuntimeError):
+                    pass
 
     def close_preview(self):
         """Cierra la miniatura y libera el reproductor secundario."""
