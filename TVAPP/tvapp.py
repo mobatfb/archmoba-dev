@@ -1700,7 +1700,7 @@ class TVViewer(tk.Frame):
             self.play_current()
 
     def channel_failed(self, reason):
-        """Reintenta el canal automatico o devuelve el anterior si era manual."""
+        """Si falla el ultimo canal, intenta otros favoritos sin repetirlos."""
         failed = self.channel
         self.release_player()
         self.show_loading()
@@ -1712,40 +1712,47 @@ class TVViewer(tk.Frame):
             else:
                 self.hide_loading()
             return
-        # Durante la primera reproduccion probar los demas favoritos, en
-        # orden aleatorio, si la señal inicial no funciona.
-        if self.first_run_random_active and failed is not None:
-            self.first_run_failed_urls.add(failed["url"])
-            if isinstance(failed.get("id"), int):
-                self.failed_channel_ids.add(failed["id"])
+        if self.startup_auto_active and failed is not None:
+            self.startup_failed_urls.add(failed["url"])
             candidates = [
                 item for item in self.favorites.values()
-                if item["url"] not in self.first_run_failed_urls
+                if item["url"] not in self.trash
+                and item["url"] not in self.startup_failed_urls
             ]
             if candidates:
-                self.channel = random.choice(candidates)
+                self.channel = dict(random.choice(candidates))
                 self.channel_name.set(self.channel["name"])
                 self.channel_group.set(
-                    self.channel.get("group", "General")
-                    + "  ·  Favorito aleatorio (primera vez)"
+                    self.channel.get("group", "General") + "  ·  Favorito alternativo"
                 )
                 self.play_current()
                 return
-            self.first_run_random_active = False
+            # No reabrir automaticamente el canal fallido desde initial.json.
+            self.startup_auto_active = False
+            self.channel = None
+            self.channel_name.set("")
+            self.update_now_playing()
+            self.hide_loading()
+            self.status.set("No hay favoritos disponibles con señal.")
+            return
         if self.dead or failed is None or self.data is None:
             self.hide_loading()
             return
         if self.data["selected_id"] != 0:
             self.hide_loading()
-            return  # Un ID fijado en initial.json debe seguir siendo respetado.
+            return  # Respetar los canales fijos seleccionados en initial.json.
 
-        self.failed_channel_ids.add(failed["id"])
+        failed_id = failed.get("id")
+        if isinstance(failed_id, int):
+            self.failed_channel_ids.add(failed_id)
         available = [
             item for item in self.data["channels"]
             if item["id"] not in self.failed_channel_ids
+            and item["url"] not in self.trash
+            and item["url"] != failed.get("url")
         ]
         if available:
-            self.channel = random.choice(available)
+            self.channel = dict(random.choice(available))
             self.channel_name.set(self.channel["name"])
             self.channel_group.set(
                 self.channel.get("group", "General") + "  ·  Selección aleatoria"
@@ -1753,7 +1760,7 @@ class TVViewer(tk.Frame):
             self.play_current()
             return
 
-        # Si todos fallan, esperar antes de releer initial.json, sin bucle rapido.
+        # Si todos fallan, releer initial.json mas tarde, sin bucle rapido.
         self.channel = None
         self.channel_name.set("")
         self.update_now_playing()
@@ -1891,8 +1898,8 @@ class TVViewer(tk.Frame):
                     self.sync_player_audio()
                     # Memorizar solo transmisiones comprobadas, nunca al elegir.
                     self.remember_playing_channel()
-                self.startup_auto_active = False
-                self.startup_failed_urls.clear()
+                if just_started:
+                    self.startup_failed_urls.clear()
                 self.set_playing_marker(self.channel.get("url"))
                 self.hide_loading()
                 self.status.set("En vivo · " + self.channel["name"])
