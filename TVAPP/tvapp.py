@@ -927,9 +927,105 @@ class TVViewer(tk.Frame):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    @staticmethod
+    def ellipsize(text, max_width, font):
+        """Acorta por pixeles, no por caracteres; conserva URL y nombre reales."""
+        if max_width < 24 or font.measure(text) <= max_width:
+            return text
+        suffix = "…"
+        low, high = 0, len(text)
+        while low < high:
+            mid = (low + high + 1) // 2
+            if font.measure(text[:mid] + suffix) <= max_width:
+                low = mid
+            else:
+                high = mid - 1
+        return text[:low].rstrip() + suffix
+
+    def on_listbox_resize(self, event):
+        self.schedule_row_actions()
+        if abs(event.width - self._last_list_width) < 3:
+            return
+        self._last_list_width = event.width
+        if self._list_reflow_job is not None:
+            try:
+                self.after_cancel(self._list_reflow_job)
+            except tk.TclError:
+                pass
+        self._list_reflow_job = self.after(120, self.reflow_channel_titles)
+
+    def reflow_channel_titles(self):
+        self._list_reflow_job = None
+        if self.dead or not self._row_full_names:
+            return
+        self._show_rows(self._row_full_names, keep_position=True)
+
+    def show_full_row_tooltip(self, index):
+        self._tooltip_job = None
+        if (self.dead or self.list_mode == "categories"
+                or self._tooltip_index != index
+                or index >= len(self._row_full_names)
+                or index >= self.playlist_list.size()):
+            return
+        full_name = self._row_full_names[index]
+        if self.playlist_list.get(index) == full_name:
+            return
+        bbox = self.playlist_list.bbox(index)
+        if bbox is None:
+            return
+        self.row_tooltip.configure(
+            text=full_name,
+            wraplength=max(140, min(360, self.list_frame.winfo_width() - 24)),
+        )
+        top = self.playlist_list.winfo_y() + bbox[1]
+        proposed = top + bbox[3] + 4
+        wanted = self.row_tooltip.winfo_reqheight()
+        if proposed + wanted > self.list_frame.winfo_height() - 3:
+            proposed = top - wanted - 4
+        self.row_tooltip.place(
+            x=self.playlist_list.winfo_x() + 5,
+            y=max(3, proposed),
+        )
+        self.row_tooltip.lift()
+
+    def hide_row_tooltip(self):
+        if self._tooltip_job is not None:
+            try:
+                self.after_cancel(self._tooltip_job)
+            except tk.TclError:
+                pass
+            self._tooltip_job = None
+        self._tooltip_index = None
+        if hasattr(self, "row_tooltip"):
+            self.row_tooltip.place_forget()
+
+    def on_list_mouse_move(self, event):
+        if self.list_mode == "categories":
+            self.hide_row_tooltip()
+            return
+        index = self.playlist_list.nearest(event.y)
+        if (index >= self.playlist_list.size()
+                or index >= len(self._row_full_names)):
+            self.hide_row_tooltip()
+            return
+        bbox = self.playlist_list.bbox(index)
+        if (bbox is None or event.y < bbox[1]
+                or event.y >= bbox[1] + bbox[3]
+                or self.playlist_list.get(index) == self._row_full_names[index]):
+            self.hide_row_tooltip()
+            return
+        if index == self._tooltip_index:
+            return
+        self.hide_row_tooltip()
+        self._tooltip_index = index
+        self._tooltip_job = self.after(
+            450, lambda i=index: self.show_full_row_tooltip(i),
+        )
+
     def on_list_scroll(self, first, last):
-        """Sincroniza los botones de cada fila con el desplazamiento."""
+        """Actualiza los botones y la barra oscura al desplazarse."""
         self.playlist_scroll.set(first, last)
+        self.hide_row_tooltip()
         self.schedule_row_actions()
 
     def schedule_row_actions(self):
@@ -1417,8 +1513,11 @@ class TVViewer(tk.Frame):
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_rows(self, names, keep_position=False):
-        """Inserta por bloques sin congelar Tk, y conserva el scroll si procede."""
+        """Lista por bloques; los nombres largos muestran puntos suspensivos."""
+        names = list(names)
         old_index = self.playlist_list.nearest(0) if keep_position else 0
+        self.hide_row_tooltip()
+        self._row_full_names = names
         self.list_render_token += 1
         token = self.list_render_token
         self.playlist_list.delete(0, tk.END)
@@ -1429,6 +1528,16 @@ class TVViewer(tk.Frame):
                 return
             chunk = names[start:start + 250]
             if chunk:
+                if self.list_mode in (
+                    "channels", "favorites", "trash", "search_results"
+                ):
+                    width = self.playlist_list.winfo_width() - 10
+                    chunk = [
+                        self.ellipsize(value, width, self._list_font)
+                        if start + offset < len(self.current_channels)
+                        else value
+                        for offset, value in enumerate(chunk)
+                    ]
                 self.playlist_list.insert(tk.END, *chunk)
             if start + 250 < len(names):
                 self.after(1, lambda: add_rows(start + 250))
