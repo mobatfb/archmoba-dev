@@ -137,22 +137,27 @@ class TVViewer(tk.Frame):
         self.video.pack(side="top", fill="x")
         self.video.pack_propagate(False)
 
-        # Dos encabezados compactos, centrados, sin iconos ni adornos.
-        # Se conectaran a favoritos y busqueda en una siguiente etapa.
+        # Pestanas de texto, centradas y con linea blanca inferior.
+        self.active_tab = "Favoritos"
+        self.tab_labels = {}
         self.sections = tk.Frame(self, bg=BG, bd=0, highlightthickness=0)
         self.sections.pack(side="top", fill="x", pady=(5, 0))
         self.sections.columnconfigure(0, weight=1, uniform="tabs")
         self.sections.columnconfigure(1, weight=1, uniform="tabs")
-        tk.Label(
-            self.sections, text="Favoritos", bg=BG, fg="#ffd000",
-            font=("Segoe UI", 14, "bold"), anchor="center",
-            bd=0, highlightthickness=0, pady=4,
-        ).grid(row=0, column=0, sticky="ew")
-        tk.Label(
-            self.sections, text="Buscar", bg=BG, fg=WHITE,
-            font=("Segoe UI", 14), anchor="center",
-            bd=0, highlightthickness=0, pady=4,
-        ).grid(row=0, column=1, sticky="ew")
+        for column, name in enumerate(("Favoritos", "Buscar")):
+            tab = tk.Label(
+                self.sections, text=name, bg=BG,
+                fg="#ffd000" if name == self.active_tab else "#ffffff",
+                font=("Segoe UI", 14, "bold" if name == self.active_tab else "normal"),
+                anchor="center", cursor="hand2",
+                bd=0, highlightthickness=0, pady=4,
+            )
+            tab.grid(row=0, column=column, sticky="ew")
+            tab.bind("<Button-1>", lambda _event, tab_name=name: self.select_tab(tab_name))
+            self.tab_labels[name] = tab
+        tk.Frame(self.sections, bg="#ffffff", height=1).grid(
+            row=1, column=0, columnspan=2, sticky="ew", pady=(1, 0)
+        )
 
         # VLC dibuja sobre su propia superficie; el indicador es un widget
         # hermano y queda encima sin interferir con la reproduccion.
@@ -183,6 +188,18 @@ class TVViewer(tk.Frame):
 
         self.bind("<Destroy>", self.on_destroy, add="+")
         self.after(125, self.poll_events)
+
+    def select_tab(self, name):
+        """Resalta en amarillo la pestana seleccionada, sin cambiar el video."""
+        if name not in self.tab_labels:
+            return
+        self.active_tab = name
+        for tab_name, label in self.tab_labels.items():
+            selected = tab_name == name
+            label.configure(
+                fg="#ffd000" if selected else "#ffffff",
+                font=("Segoe UI", 14, "bold" if selected else "normal"),
+            )
 
     def show_loading(self):
         """Muestra el anillo animado en el centro del area de video."""
