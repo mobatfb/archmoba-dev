@@ -658,6 +658,13 @@ class TVViewer(tk.Frame):
         self.playlists_request = 0
         self.playlists_loading = False
         self.playlist_catalog = None
+        self.providers = []
+        self.providers_ready = False
+        self.providers_loading = False
+        self.providers_error = None
+        self.providers_request = 0
+        self.active_provider = None
+        self.provider_catalog_cache = {}
         self.m3u_request = 0
         self.m3u_cache = {}
         self.current_category = None
@@ -2194,6 +2201,7 @@ class TVViewer(tk.Frame):
             pass  # El widget puede estar destruido al cerrar o recargar la vista.
 
     def startup(self):
+        self.load_providers()
         self.reload_catalog()
 
     def finish_splash(self):
@@ -2449,8 +2457,39 @@ class TVViewer(tk.Frame):
             os.environ.setdefault("PYTHON_VLC_MODULE_PATH", str(folder / "plugins"))
             break
 
+    def resolve_stream_url(self, channel):
+        """Resuelve un canal premium sin persistir las credenciales en JSON."""
+        link = channel.get("url", "")
+        if not link.startswith("xtream://"):
+            return link
+        parts = urlsplit(link)
+        provider_id = parts.netloc
+        stream = parts.path.lstrip("/")
+        if not re.fullmatch(r"[0-9]{1,20}\.(ts|m3u8|mp4)", stream):
+            raise ValueError("El identificador del canal IPTV no es valido.")
+        provider = next((
+            item for item in self.providers
+            if item.get("id") == provider_id
+        ), None)
+        if (provider is None or provider_kind(provider) != "xtream"):
+            raise ValueError("El proveedor IPTV no esta disponible.")
+        server = provider["server"].strip().rstrip("/")
+        if server.endswith("/player_api.php"):
+            server = server[:-len("/player_api.php")]
+        return (
+            server + "/live/"
+            + quote(provider["username"], safe="") + "/"
+            + quote(provider["password"], safe="") + "/"
+            + stream
+        )
+
     def play_current(self):
         if self.dead or self.channel is None or not self.splash_finished:
+            return
+        if (self.channel.get("url", "").startswith("xtream://")
+                and not self.providers_ready):
+            self.show_loading()
+            self.status.set("Cargando proveedores para el ultimo canal...")
             return
         self.request_id += 1
         token = self.request_id
@@ -2498,7 +2537,7 @@ class TVViewer(tk.Frame):
             if instance is None:
                 raise RuntimeError("No se pudo inicializar libVLC.")
             player = instance.media_player_new()
-            media = instance.media_new(self.channel["url"])
+            media = instance.media_new(self.resolve_stream_url(self.channel))
             for key, value in self.channel.get("headers", {}).items():
                 if not isinstance(value, str):
                     continue
@@ -2681,6 +2720,7 @@ class TVViewer(tk.Frame):
                     pass
                 setattr(self, name, None)
         self.global_search_request += 1
+        self.providers_request += 1
         self.release_player()
         self.close_preview()
         for handle in self.dll_handles:
