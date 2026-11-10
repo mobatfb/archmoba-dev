@@ -30,6 +30,10 @@ CHANNELS_URL = f"{RAW_BASE}/initial.json"
 CHANNELS_FILE = BASE_DIR / "initial.json"
 PLAYLISTS_URL = f"{RAW_BASE}/channels.json"
 PLAYLISTS_FILE = BASE_DIR / "channels.json"
+USER_DATA_DIR = (Path(os.environ.get("LOCALAPPDATA") or
+                      (Path.home() / ".local" / "share")) / "ARCHMOBA" / "TVAPP")
+FAVORITES_FILE = USER_DATA_DIR / "favorites.json"
+TRASH_FILE = USER_DATA_DIR / "trash.json"
 SPLASH_MIN_MS = 3000
 SPLASH_MAX_MS = 5400
 VIDEO_START_TIMEOUT_S = 15
@@ -225,8 +229,37 @@ def download_m3u_channels(url):
     return channels
 
 
+def read_saved_channels(path):
+    """Compatible con favoritos de las versiones anteriores de MINGA TV."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        items = raw.values() if isinstance(raw, dict) else raw
+        if not isinstance(items, (list, type({}.values()))):
+            return {}
+        return {
+            item["url"]: item for item in items
+            if isinstance(item, dict)
+            and isinstance(item.get("url"), str)
+            and item["url"].startswith(("https://", "http://"))
+            and isinstance(item.get("name"), str)
+        }
+    except (OSError, ValueError, UnicodeError, TypeError, KeyError):
+        return {}
+
+
+def save_saved_channels(path, channels):
+    """Guardado atomico local; nunca modifica channels.json de GitHub."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(channels, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
 class TVViewer(tk.Frame):
-    """Visor VLC panoramico, con explorador de listas M3U bajo el video."""
+    """Visor VLC panoramico con Favoritos, Buscar y Papelera."""
 
     def __init__(self, parent):
         super().__init__(parent, bg=BG, highlightthickness=0)
@@ -252,6 +285,13 @@ class TVViewer(tk.Frame):
         self.list_mode = "categories"
         self.list_render_token = 0
         self.failed_channel_ids = set()
+        self.favorites = read_saved_channels(FAVORITES_FILE)
+        self.trash = read_saved_channels(TRASH_FILE)
+        # Un canal enviado a papelera no debe mostrarse en favoritos.
+        for url in self.trash:
+            self.favorites.pop(url, None)
+        self._row_action_job = None
+        self._row_action_widgets = []
         self.video_started_at = None
         self.video_ready = False
         self.stall_since = None
@@ -341,14 +381,20 @@ class TVViewer(tk.Frame):
         self.playlist_scroll = tk.Scrollbar(
             self.list_frame, orient="vertical", command=self.playlist_list.yview
         )
-        self.playlist_list.configure(yscrollcommand=self.playlist_scroll.set)
+        self.playlist_list.configure(yscrollcommand=self.on_list_scroll)
         self.playlist_list.pack(
             side="left", fill="both", expand=True, padx=(12, 0), pady=(8, 6)
         )
         self.playlist_scroll.pack(
             side="right", fill="y", padx=(0, 5), pady=(8, 6)
         )
+        # Los botones se reutilizan para las filas visibles (M3U muy grandes).
+        self.row_actions = tk.Frame(self.list_frame, bg=BG, width=66)
+        self.row_actions.pack_propagate(False)
         self.playlist_list.bind("<<ListboxSelect>>", self.on_list_select)
+        self.playlist_list.bind(
+            "<Configure>", lambda _event: self.schedule_row_actions(), add="+"
+        )
 
         # VLC dibuja sobre su propia superficie; el indicador es un widget
         # hermano y queda encima sin interferir con la reproduccion.
@@ -390,6 +436,7 @@ class TVViewer(tk.Frame):
         self.channel_name = tk.StringVar(value="")
         self.channel_group = tk.StringVar(value="")
 
+        self.show_favorites()
         self.bind("<Destroy>", self.on_destroy, add="+")
         self.after(125, self.poll_events)
         if self._preview_mouse_api is not None:
