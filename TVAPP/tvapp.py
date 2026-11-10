@@ -1730,8 +1730,12 @@ class TVViewer(tk.Frame):
                 video_available = "playing" in state
 
             if "playing" in state and video_available:
+                just_started = not self.video_ready
                 self.video_ready = True
                 self.stall_since = None
+                if just_started:
+                    # VLC puede reiniciar el mute al empezar un flujo nuevo.
+                    self.sync_player_audio()
                 self.set_playing_marker(self.channel.get("url"))
                 self.hide_loading()
                 self.status.set("En vivo · " + self.channel["name"])
