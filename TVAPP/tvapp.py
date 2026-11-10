@@ -526,6 +526,72 @@ class TVViewer(tk.Frame):
         if not self.dead:
             self.after(25, self._poll_preview_click)
 
+    def clear_general_search(self):
+        """La X de la barra vuelve al listado de categorias."""
+        if self.search_query.get():
+            self.search_query.set("")
+        elif self.active_tab == "Buscar":
+            self.show_categories()
+
+    def on_global_search_changed(self):
+        """Aplica la busqueda tras una pausa breve de escritura."""
+        if self.dead or self._ignore_search_change:
+            return
+        if self.search_job is not None:
+            try:
+                self.after_cancel(self.search_job)
+            except tk.TclError:
+                pass
+            self.search_job = None
+        if self.active_tab != "Buscar":
+            return
+        if not self.search_query.get().strip():
+            self.show_categories(clear_search=False)
+        else:
+            self.search_job = self.after(280, self.run_global_search)
+
+    def run_global_search(self):
+        """Busca en el indice Todos, sin limitarse a la categoria abierta."""
+        self.search_job = None
+        if self.dead or self.active_tab != "Buscar":
+            return
+        if not self.search_query.get().strip():
+            self.show_categories(clear_search=False)
+            return
+        self.list_mode = "search_results"
+        self.current_category = None
+        self.back_button.pack(side="top", fill="x", before=self.list_frame)
+        self.set_row_actions_visible(True)
+        self.refresh_channel_view()
+        self.ensure_global_catalog()
+
+    def ensure_global_catalog(self):
+        """Descarga Todos en un hilo; solo una solicitud simultanea."""
+        self.global_search_url = next((
+            item["url"] for item in (self.playlist_catalog or [])
+            if item["name"].casefold() == "todos"
+        ), GLOBAL_M3U_URL)
+        url = self.global_search_url
+        if url in self.m3u_cache:
+            self.refresh_channel_view()
+            return
+        if self.global_search_loading:
+            return
+        self.global_search_loading = True
+        self.global_search_error = None
+        self.global_search_request += 1
+        token = self.global_search_request
+        self.refresh_channel_view()
+
+        def worker():
+            try:
+                channels = download_m3u_channels(url)
+                self.events.put(("global_m3u", token, channels, url))
+            except Exception as exc:
+                self.events.put(("global_m3u_error", token, str(exc), url))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def on_list_scroll(self, first, last):
         """Sincroniza los botones de cada fila con el desplazamiento."""
         self.playlist_scroll.set(first, last)
@@ -639,8 +705,10 @@ class TVViewer(tk.Frame):
             self.trash.pop(url, None)  # Favorito desde Papelera: restaurar.
             self.favorites[url] = channel
         self.save_collections()
-        # En Buscar reordenar y mostrar el comienzo, donde aparecen los favoritos.
-        self.refresh_channel_view(keep_position=self.list_mode != "channels")
+        # En categorias y resultados generales, mostrar favoritos arriba.
+        self.refresh_channel_view(
+            keep_position=self.list_mode not in ("channels", "search_results")
+        )
 
     def toggle_trash(self, url):
         if url in self.trash:
@@ -670,6 +738,38 @@ class TVViewer(tk.Frame):
             names = [item["name"] for item in self.current_channels]
             if not names:
                 names = ["La Papelera está vacía."]
+        elif self.list_mode == "search_results":
+            query = normalized_search(self.search_query.get().strip())
+            terms = query.split()
+            available = {}
+            # Incluye favoritos locales y listas abiertas, incluso sin red.
+            sources = [self.favorites.values()]
+            if self.global_search_url in self.m3u_cache:
+                sources.append(self.m3u_cache[self.global_search_url])
+            else:
+                sources.extend(self.m3u_cache.values())
+            for source in sources:
+                for item in source:
+                    url = item.get("url", "")
+                    if url in self.trash or url in available:
+                        continue
+                    if all(term in normalized_search(item.get("name", ""))
+                           for term in terms):
+                        available[url] = item
+            self.current_channels = sorted(
+                available.values(), key=lambda item: (
+                    item["url"] not in self.favorites,
+                    item["name"].casefold(), item["url"],
+                )
+            )
+            names = [item["name"] for item in self.current_channels]
+            if not names:
+                if self.global_search_loading:
+                    names = ["Buscando en todos los canales..."]
+                elif self.global_search_error:
+                    names = ["No se pudo descargar el catálogo general."]
+                else:
+                    names = ["No se encontraron canales."]
         elif self.list_mode == "channels" and self.current_category:
             base = self.m3u_cache.get(
                 self.current_category["url"], self.current_channels
@@ -695,6 +795,7 @@ class TVViewer(tk.Frame):
         self.list_mode = "favorites"
         self.current_category = None
         self.back_button.pack_forget()
+        self.search_bar.pack_forget()
         if not self.search_panel.winfo_manager():
             self.search_panel.pack(fill="both", expand=True)
         self.set_row_actions_visible(True)
@@ -720,8 +821,18 @@ class TVViewer(tk.Frame):
             )
         self.search_panel.pack(fill="both", expand=True)
         if name == "Buscar":
+            if not self.search_bar.winfo_manager():
+                self.search_bar.pack(
+                    side="top", fill="x", padx=10, pady=(8, 0),
+                    before=(self.back_button
+                            if self.back_button.winfo_manager()
+                            else self.list_frame),
+                )
             if self.list_mode == "favorites":
-                self.show_categories()
+                if self.search_query.get().strip():
+                    self.run_global_search()
+                else:
+                    self.show_categories()
             if self.playlist_catalog is None and not self.playlists_loading:
                 self.load_playlist_catalog()
         else:
@@ -734,8 +845,8 @@ class TVViewer(tk.Frame):
         self.playlists_loading = True
         self.playlists_request += 1
         token = self.playlists_request
-        self.playlist_list.delete(0, tk.END)
-        self.playlist_list.insert(tk.END, "Cargando listas M3U...")
+        if self.list_mode == "categories":
+            self.show_categories(clear_search=False)
 
         def worker():
             try:
@@ -771,11 +882,24 @@ class TVViewer(tk.Frame):
     def on_playlist_catalog(self, playlists):
         self.playlists_loading = False
         self.playlist_catalog = playlists
-        if self.active_tab == "Buscar" and self.list_mode == "categories":
-            self.show_categories()
+        if (self.active_tab == "Buscar" and self.list_mode == "categories"
+                and not self.search_query.get().strip()):
+            self.show_categories(clear_search=False)
 
-    def show_categories(self):
-        """Regresa a los nombres de las listas guardadas en channels.json."""
+    def show_categories(self, clear_search=True):
+        """Regresa a las categorias y limpia la busqueda activa."""
+        if clear_search and self.search_query.get():
+            self._ignore_search_change = True
+            try:
+                self.search_query.set("")
+            finally:
+                self._ignore_search_change = False
+        if self.search_job is not None:
+            try:
+                self.after_cancel(self.search_job)
+            except tk.TclError:
+                pass
+            self.search_job = None
         self.m3u_request += 1  # Descarta respuestas de categorias abandonadas.
         self.list_mode = "categories"
         self.current_category = None
@@ -799,7 +923,7 @@ class TVViewer(tk.Frame):
                 self.show_trash()
             elif index < len(entries):
                 self.open_category(entries[index])
-        elif self.list_mode in ("channels", "favorites", "trash"):
+        elif self.list_mode in ("channels", "favorites", "trash", "search_results"):
             if index < len(self.current_channels):
                 self.play_from_search(self.current_channels[index])
 
@@ -1300,6 +1424,17 @@ class TVViewer(tk.Frame):
                     self.playlists_loading = False
                     if self.active_tab == "Buscar" and self.list_mode == "categories":
                         self.show_categories()
+                elif event == "global_m3u" and token == self.global_search_request:
+                    self.global_search_loading = False
+                    self.global_search_error = None
+                    self.m3u_cache[extra] = value
+                    if self.active_tab == "Buscar" and self.list_mode == "search_results":
+                        self.refresh_channel_view()
+                elif event == "global_m3u_error" and token == self.global_search_request:
+                    self.global_search_loading = False
+                    self.global_search_error = str(value)
+                    if self.active_tab == "Buscar" and self.list_mode == "search_results":
+                        self.refresh_channel_view()
                 elif event == "m3u" and token == self.m3u_request:
                     if self.current_category and extra == self.current_category["url"]:
                         self.m3u_cache[extra] = value
@@ -1330,6 +1465,13 @@ class TVViewer(tk.Frame):
         self.playlists_request += 1
         self.m3u_request += 1
         self.list_render_token += 1
+        if self.search_job is not None:
+            try:
+                self.after_cancel(self.search_job)
+            except tk.TclError:
+                pass
+            self.search_job = None
+        self.global_search_request += 1
         self.release_player()
         self.close_preview()
         for handle in self.dll_handles:
