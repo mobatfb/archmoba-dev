@@ -350,12 +350,6 @@ class TVViewer(tk.Frame):
             self.video, bg=BG, bd=0, highlightthickness=0,
         )
         self.preview_surface.bind("<Button-1>", lambda _event: self.restore_previous())
-        self.preview_return = tk.Button(
-            self.video, text="↶", command=self.restore_previous,
-            bg="#111111", fg="#ffffff", activebackground="#333333",
-            activeforeground="#ffffff", font=("Segoe UI Symbol", 13, "bold"),
-            relief="flat", bd=0, highlightthickness=0, cursor="hand2",
-        )
         self.preview_close = tk.Button(
             self.video, text="×", command=self.close_preview,
             bg="#111111", fg="#ffffff", activebackground="#a32020",
@@ -585,18 +579,13 @@ class TVViewer(tk.Frame):
                     relwidth=0, relheight=0,
                 )
                 self.preview_surface.lift()
-                self.preview_return.place(
-                    x=PREVIEW_X + 2, y=PREVIEW_Y + 2, width=24, height=23
-                )
                 self.preview_close.place(
                     x=PREVIEW_X + PREVIEW_WIDTH - 25, y=PREVIEW_Y + 2,
                     width=23, height=23,
                 )
-                self.preview_return.lift()
                 self.preview_close.lift()
             else:
                 self.preview_surface.place_forget()
-                self.preview_return.place_forget()
                 self.preview_close.place_forget()
             if self.spinner_visible:
                 self.loading.tk.call("raise", str(self.loading))
