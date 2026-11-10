@@ -6,6 +6,13 @@
       "server": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/TVAPP/channels.json",
       "username": "",
       "password": ""
+    },
+    {
+      "id": "premium1",
+      "name": "Premium1",
+      "server": "",
+      "username": "",
+      "password": ""
     }
   ]
 }
