@@ -527,14 +527,12 @@ class TVViewer(tk.Frame):
             self.after(25, self._poll_preview_click)
 
     def clear_general_search(self):
-        """La X de la barra vuelve al listado de categorias."""
+        """Borra el texto sin salir de la categoria actual."""
         if self.search_query.get():
             self.search_query.set("")
-        elif self.active_tab == "Buscar":
-            self.show_categories()
 
     def on_global_search_changed(self):
-        """Aplica la busqueda tras una pausa breve de escritura."""
+        """Filtra la categoria abierta o busca globalmente desde las categorias."""
         if self.dead or self._ignore_search_change:
             return
         if self.search_job is not None:
@@ -546,17 +544,28 @@ class TVViewer(tk.Frame):
         if self.active_tab != "Buscar":
             return
         if not self.search_query.get().strip():
-            self.show_categories(clear_search=False)
+            if self.list_mode in ("channels", "trash"):
+                # Al borrar el texto, conservar la categoria en pantalla.
+                self.refresh_channel_view()
+            else:
+                self.show_categories(clear_search=False)
         else:
             self.search_job = self.after(280, self.run_global_search)
 
     def run_global_search(self):
-        """Busca en el indice Todos, sin limitarse a la categoria abierta."""
+        """Busqueda contextual: local en una categoria, general fuera de ella."""
         self.search_job = None
         if self.dead or self.active_tab != "Buscar":
             return
         if not self.search_query.get().strip():
-            self.show_categories(clear_search=False)
+            if self.list_mode in ("channels", "trash"):
+                self.refresh_channel_view()
+            else:
+                self.show_categories(clear_search=False)
+            return
+        if self.list_mode in ("channels", "trash"):
+            # No descargar "Todos" ni salir de la categoria seleccionada.
+            self.refresh_channel_view()
             return
         self.list_mode = "search_results"
         self.current_category = None
@@ -732,12 +741,26 @@ class TVViewer(tk.Frame):
             if not names:
                 names = ["No tienes canales favoritos."]
         elif self.list_mode == "trash":
+            terms = (
+                normalized_search(self.search_query.get().strip()).split()
+                if self.active_tab == "Buscar" else []
+            )
             self.current_channels = sorted(
-                self.trash.values(), key=lambda item: item["name"].casefold()
+                (
+                    item for item in self.trash.values()
+                    if all(
+                        term in normalized_search(item["name"])
+                        for term in terms
+                    )
+                ),
+                key=lambda item: item["name"].casefold(),
             )
             names = [item["name"] for item in self.current_channels]
             if not names:
-                names = ["La Papelera está vacía."]
+                names = [
+                    "No hay canales en la Papelera que coincidan."
+                    if terms else "La Papelera está vacía."
+                ]
         elif self.list_mode == "search_results":
             query = normalized_search(self.search_query.get().strip())
             terms = query.split()
@@ -774,10 +797,18 @@ class TVViewer(tk.Frame):
             base = self.m3u_cache.get(
                 self.current_category["url"], self.current_channels
             )
-            # Favoritos activos primero, el resto despues; cada bloque por nombre.
-            # Se aplica a todas las categorias y tambien al volver a abrirlas.
+            terms = normalized_search(self.search_query.get().strip()).split()
+            # Dentro de una categoria, filtrar SOLO su propia lista M3U.
+            # Favoritos activos primero; despues el resto por nombre.
             self.current_channels = sorted(
-                (item for item in base if item["url"] not in self.trash),
+                (
+                    item for item in base
+                    if item["url"] not in self.trash
+                    and all(
+                        term in normalized_search(item["name"])
+                        for term in terms
+                    )
+                ),
                 key=lambda item: (
                     item["url"] not in self.favorites,
                     item["name"].casefold(),
@@ -786,7 +817,12 @@ class TVViewer(tk.Frame):
             )
             names = [item["name"] for item in self.current_channels]
             if not names:
-                names = ["No hay canales disponibles en esta categoría."]
+                if self.current_category["url"] not in self.m3u_cache:
+                    names = ["Cargando canales de esta categoría..."]
+                elif terms:
+                    names = ["No se encontraron canales en esta categoría."]
+                else:
+                    names = ["No hay canales disponibles en esta categoría."]
         else:
             return
         self._show_rows(names, keep_position=keep_position)
