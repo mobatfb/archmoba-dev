@@ -308,6 +308,8 @@ class TVViewer(tk.Frame):
             self.favorites.pop(url, None)
         self._row_action_job = None
         self._row_action_widgets = []
+        self._row_playing_widgets = []
+        self._playing_marker_url = None
         self.video_started_at = None
         self.video_ready = False
         self.stall_since = None
@@ -449,7 +451,7 @@ class TVViewer(tk.Frame):
         )
         self.playlist_list.configure(yscrollcommand=self.on_list_scroll)
         self.playlist_list.pack(
-            side="left", fill="both", expand=True, padx=(12, 0), pady=(8, 6)
+            side="left", fill="both", expand=True, padx=(4, 0), pady=(8, 6)
         )
         self.playlist_scroll.pack(
             side="right", fill="y", padx=(0, 5), pady=(8, 6)
@@ -457,6 +459,10 @@ class TVViewer(tk.Frame):
         # Los botones se reutilizan para las filas visibles (M3U muy grandes).
         self.row_actions = tk.Frame(self.list_frame, bg=BG, width=66)
         self.row_actions.pack_propagate(False)
+        # Reserva la misma columna a la izquierda de TODOS los nombres.
+        # El triangulo solo aparece para el canal que reproduce VLC en grande.
+        self.playing_gutter = tk.Frame(self.list_frame, bg=BG, width=24)
+        self.playing_gutter.pack_propagate(False)
         self.playlist_list.bind("<<ListboxSelect>>", self.on_list_select)
         self.playlist_list.bind(
             "<Configure>", lambda _event: self.schedule_row_actions(), add="+"
@@ -672,27 +678,43 @@ class TVViewer(tk.Frame):
             return
         self._row_action_job = self.after_idle(self.draw_row_actions)
 
+    def set_playing_marker(self, url=None):
+        """Actualiza el indicador solo si cambia el canal realmente activo."""
+        if self._playing_marker_url != url:
+            self._playing_marker_url = url
+            self.schedule_row_actions()
+
     def set_row_actions_visible(self, visible):
         if visible:
+            if not self.playing_gutter.winfo_manager():
+                self.playing_gutter.pack(
+                    side="left", fill="y", padx=(8, 0), pady=(8, 6),
+                    before=self.playlist_list,
+                )
             if not self.row_actions.winfo_manager():
                 self.row_actions.pack(
                     side="right", fill="y", padx=(0, 3), pady=(8, 6)
                 )
         else:
+            self.playing_gutter.pack_forget()
             self.row_actions.pack_forget()
         self.schedule_row_actions()
 
     def draw_row_actions(self):
-        """Dibuja dos botones reales solo en las filas visibles del Listbox."""
+        """Dibuja estrella, papelera y ▶ solo en las filas visibles."""
         self._row_action_job = None
         if self.dead:
             return
-        if not self.row_actions.winfo_manager() or self.list_mode not in (
-            "channels", "favorites", "trash"
-        ):
+        if (not self.row_actions.winfo_manager()
+                or not self.playing_gutter.winfo_manager()
+                or self.list_mode not in (
+                    "channels", "favorites", "trash", "search_results"
+                )):
             for star, bin_button in self._row_action_widgets:
                 star.place_forget()
                 bin_button.place_forget()
+            for marker in self._row_playing_widgets:
+                marker.place_forget()
             return
 
         height = self.playlist_list.winfo_height()
@@ -724,6 +746,16 @@ class TVViewer(tk.Frame):
                 self._row_action_widgets.append((star, bin_button))
             star, bin_button = self._row_action_widgets[slot]
             url = self.current_channels[index]["url"]
+            if slot == len(self._row_playing_widgets):
+                self._row_playing_widgets.append(tk.Label(
+                    self.playing_gutter, bg=BG, fg="#ffd000",
+                    font=("Segoe UI Symbol", 13, "bold"),
+                    anchor="center", bd=0, highlightthickness=0,
+                ))
+            marker = self._row_playing_widgets[slot]
+            marker.configure(
+                text="▶" if url == self._playing_marker_url else ""
+            )
             marked = url in self.favorites
             star.configure(
                 text="★" if marked else "☆",
@@ -737,12 +769,15 @@ class TVViewer(tk.Frame):
                 command=lambda link=url: self.toggle_trash(link),
             )
             row_height = max(20, row_height)
+            marker.place(x=0, y=y, width=24, height=row_height)
             star.place(x=0, y=y, width=31, height=row_height)
             bin_button.place(x=33, y=y, width=31, height=row_height)
             slot += 1
         for star, bin_button in self._row_action_widgets[slot:]:
             star.place_forget()
             bin_button.place_forget()
+        for marker in self._row_playing_widgets[slot:]:
+            marker.place_forget()
 
     def save_collections(self):
         for path, items in (
@@ -1166,6 +1201,8 @@ class TVViewer(tk.Frame):
         )
         self.layout_video_layers()
         self.sync_player_audio()
+        # El canal anterior ahora esta solo en la miniatura, no en grande.
+        self.set_playing_marker(None)
 
     def restore_previous(self):
         """Abre el canal anclado a pantalla completa y retira la miniatura."""
@@ -1198,6 +1235,9 @@ class TVViewer(tk.Frame):
         )
         self.layout_video_layers()
         self.sync_player_audio()
+        self.set_playing_marker(
+            self.channel.get("url") if self.video_ready else None
+        )
         self.channel_name.set(self.channel["name"])
         self.channel_group.set(self.channel.get("group", "Canal anterior"))
         self.status.set("En vivo · " + self.channel["name"])
@@ -1464,9 +1504,11 @@ class TVViewer(tk.Frame):
             if "playing" in state and video_available:
                 self.video_ready = True
                 self.stall_since = None
+                self.set_playing_marker(self.channel.get("url"))
                 self.hide_loading()
                 self.status.set("En vivo · " + self.channel["name"])
             elif not self.video_ready:
+                self.set_playing_marker(None)
                 self.show_loading()
                 if (self.video_started_at is not None
                         and now - self.video_started_at >= VIDEO_START_TIMEOUT_S):
@@ -1474,6 +1516,7 @@ class TVViewer(tk.Frame):
                     return
                 self.status.set("Cargando señal en directo...")
             else:
+                self.set_playing_marker(None)
                 self.show_loading()
                 if self.stall_since is None:
                     self.stall_since = now
@@ -1496,6 +1539,7 @@ class TVViewer(tk.Frame):
     def release_player(self):
         player, media, instance = self.player, self.media, self.instance
         self.player = self.media = self.instance = None
+        self.set_playing_marker(None)
         self.video_started_at = None
         self.video_ready = False
         self.stall_since = None
