@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {
+      "id": "tv_en_vivo",
+      "name": "TV en vivo",
+      "server": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/TVAPP/channels.json",
+      "username": "",
+      "password": ""
+    }
+  ]
+}
