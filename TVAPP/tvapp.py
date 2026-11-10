@@ -35,6 +35,8 @@ VIDEO_STALL_TIMEOUT_S = 12
 RETRY_ALL_CHANNELS_MS = 60000
 PLAYER_MONITOR_MS = 1000
 MAX_M3U_BYTES = 35 * 1024 * 1024
+PREVIEW_X, PREVIEW_Y = 9, 9
+PREVIEW_WIDTH, PREVIEW_HEIGHT = 116, 72
 BG = "#000000"
 WHITE = "#f3f7ff"
 MUTED = "#a2acc0"
@@ -251,6 +253,15 @@ class TVViewer(tk.Frame):
         self.video_started_at = None
         self.video_ready = False
         self.stall_since = None
+        self.manual_playback = False
+        self.preview_player = None
+        self.preview_media = None
+        self.preview_instance = None
+        self.preview_channel = None
+        self.preview_manual_playback = False
+        self.preview_started_at = None
+        self.preview_video_ready = False
+        self.preview_stall_since = None
 
         # Solo el video, sin barra de titulo, detalles ni controles visibles.
         # 380 x 214: visor panoramico 16:9 en la parte superior.
@@ -312,6 +323,25 @@ class TVViewer(tk.Frame):
             self.video, bg=BG, bd=0, highlightthickness=0,
         )
         self.video_surface.place(x=0, y=0, relwidth=1, relheight=1)
+
+        # Segunda superficie VLC: conserva en vivo el canal anterior.
+        # Al cambiar canales intercambiamos superficies, no ventanas VLC.
+        self.preview_surface = tk.Frame(
+            self.video, bg=BG, bd=0, highlightthickness=0,
+        )
+        self.preview_surface.bind("<Button-1>", lambda _event: self.restore_previous())
+        self.preview_return = tk.Button(
+            self.video, text="↶", command=self.restore_previous,
+            bg="#111111", fg="#ffffff", activebackground="#333333",
+            activeforeground="#ffffff", font=("Segoe UI Symbol", 13, "bold"),
+            relief="flat", bd=0, highlightthickness=0, cursor="hand2",
+        )
+        self.preview_close = tk.Button(
+            self.video, text="×", command=self.close_preview,
+            bg="#111111", fg="#ffffff", activebackground="#a32020",
+            activeforeground="#ffffff", font=("Segoe UI", 13, "bold"),
+            relief="flat", bd=0, highlightthickness=0, cursor="hand2",
+        )
         self.loading = tk.Canvas(
             self.video, width=68, height=68, bg=BG,
             bd=0, highlightthickness=0,
@@ -417,8 +447,28 @@ class TVViewer(tk.Frame):
         if self.list_mode == "categories":
             if self.playlist_catalog and index < len(self.playlist_catalog):
                 self.open_category(self.playlist_catalog[index])
-        elif self.list_mode == "channels" and index == 0:
-            self.show_categories()
+        elif self.list_mode == "channels":
+            if index == 0:
+                self.show_categories()
+            elif index - 1 < len(self.current_channels):
+                self.play_from_search(self.current_channels[index - 1])
+
+    def play_from_search(self, stream):
+        """Abre el canal elegido y mantiene el anterior en miniatura."""
+        if self.dead or not isinstance(stream, dict):
+            return
+        if self.channel and self.channel.get("url") == stream.get("url"):
+            return
+        if self.player is not None:
+            self.keep_current_as_preview()
+        self.channel = dict(stream)
+        self.manual_playback = True
+        self.channel_name.set(self.channel["name"])
+        self.channel_group.set(
+            self.current_category["name"] if self.current_category else "Buscar"
+        )
+        if self.splash_finished:
+            self.play_current()
 
     def open_category(self, category):
         """Al pulsar una categoria, muestra sus canales sin parar el video."""
@@ -452,6 +502,136 @@ class TVViewer(tk.Frame):
         names = ["← Volver a categorías"]
         names.extend(item["name"] for item in channels)
         self._show_rows(names)
+
+    def layout_video_layers(self):
+        """Coloca la miniatura por encima del reproductor principal."""
+        if self.dead:
+            return
+        try:
+            self.video_surface.place(x=0, y=0, relwidth=1, relheight=1)
+            self.video_surface.lift()
+            if self.preview_player is not None:
+                self.preview_surface.place(
+                    x=PREVIEW_X, y=PREVIEW_Y,
+                    width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT,
+                )
+                self.preview_surface.lift()
+                self.preview_return.place(
+                    x=PREVIEW_X + 2, y=PREVIEW_Y + 2, width=24, height=23
+                )
+                self.preview_close.place(
+                    x=PREVIEW_X + PREVIEW_WIDTH - 25, y=PREVIEW_Y + 2,
+                    width=23, height=23,
+                )
+                self.preview_return.lift()
+                self.preview_close.lift()
+            else:
+                self.preview_surface.place_forget()
+                self.preview_return.place_forget()
+                self.preview_close.place_forget()
+            if self.spinner_visible:
+                self.loading.tk.call("raise", str(self.loading))
+        except tk.TclError:
+            pass
+
+    def sync_player_audio(self):
+        """Solo el canal principal tiene sonido; la miniatura esta silenciada."""
+        for player, muted in ((self.player, False), (self.preview_player, True)):
+            if player is not None:
+                try:
+                    player.audio_set_mute(muted)
+                except (OSError, AttributeError, RuntimeError):
+                    pass
+
+    def close_preview(self):
+        """Cierra la miniatura y libera el reproductor secundario."""
+        player, media, instance = (
+            self.preview_player, self.preview_media, self.preview_instance
+        )
+        self.preview_player = self.preview_media = self.preview_instance = None
+        self.preview_channel = None
+        self.preview_manual_playback = False
+        self.preview_started_at = None
+        self.preview_video_ready = False
+        self.preview_stall_since = None
+        for resource, method in (
+            (player, "stop"), (player, "release"),
+            (media, "release"), (instance, "release"),
+        ):
+            if resource is not None:
+                try:
+                    getattr(resource, method)()
+                except Exception:
+                    pass
+        if not self.dead:
+            self.layout_video_layers()
+
+    def keep_current_as_preview(self):
+        """Mueve el canal actual a la miniatura sin reiniciar su señal."""
+        if self.player is None:
+            return
+        self.close_preview()  # Solo se conserva una miniatura anterior.
+        self.preview_channel = self.channel
+        self.preview_manual_playback = self.manual_playback
+        self.preview_player, self.preview_media, self.preview_instance = (
+            self.player, self.media, self.instance,
+        )
+        self.preview_started_at = self.video_started_at
+        self.preview_video_ready = self.video_ready
+        self.preview_stall_since = self.stall_since
+        self.player = self.media = self.instance = None
+        self.video_started_at = None
+        self.video_ready = False
+        self.stall_since = None
+        self.video_surface, self.preview_surface = (
+            self.preview_surface, self.video_surface,
+        )
+        self.layout_video_layers()
+        self.sync_player_audio()
+
+    def restore_previous(self):
+        """Intercambia el video grande y el pequeno conservando ambas señales."""
+        if self.dead or self.preview_player is None:
+            return
+        self.request_id += 1
+        token = self.request_id
+        main = (
+            self.channel, self.manual_playback,
+            self.player, self.media, self.instance,
+            self.video_started_at, self.video_ready, self.stall_since,
+        )
+        self.channel, self.manual_playback = (
+            self.preview_channel, self.preview_manual_playback
+        )
+        self.player, self.media, self.instance = (
+            self.preview_player, self.preview_media, self.preview_instance,
+        )
+        self.video_started_at, self.video_ready, self.stall_since = (
+            self.preview_started_at, self.preview_video_ready,
+            self.preview_stall_since,
+        )
+        (
+            self.preview_channel, self.preview_manual_playback,
+            self.preview_player, self.preview_media, self.preview_instance,
+            self.preview_started_at, self.preview_video_ready,
+            self.preview_stall_since,
+        ) = main
+        self.video_surface, self.preview_surface = (
+            self.preview_surface, self.video_surface,
+        )
+        if self.preview_player is None:
+            self.close_preview()
+        else:
+            self.layout_video_layers()
+        self.sync_player_audio()
+        self.channel_name.set(self.channel["name"])
+        self.channel_group.set(self.channel.get("group", "Canal anterior"))
+        self.status.set("En vivo · " + self.channel["name"])
+        if self.video_ready:
+            self.hide_loading()
+        else:
+            self.show_loading()
+        self.after(PLAYER_MONITOR_MS, lambda: self.monitor_player(token))
 
     def show_loading(self):
         """Muestra el anillo animado en el centro del area de video."""
@@ -511,8 +691,10 @@ class TVViewer(tk.Frame):
         threading.Thread(target=worker, daemon=True).start()
 
     def on_catalog(self, data, offline):
-        old_id = self.channel["id"] if self.channel else None
+        old_id = self.channel.get("id") if self.channel else None
         self.data = data
+        if self.manual_playback:
+            return  # La recarga inicial no reemplaza una elección del usuario.
         self.failed_channel_ids.clear()  # Un catalogo nuevo permite reintentar canales anteriores.
         self.channel = choose_channel(data, previous_id=old_id if data["selected_id"] == 0 else None)
         self.channel_name.set(self.channel["name"])
@@ -545,11 +727,18 @@ class TVViewer(tk.Frame):
             self.play_current()
 
     def channel_failed(self, reason):
-        """Cambia a otro canal aleatorio sin repetir los fallidos en la ronda."""
+        """Reintenta el canal automatico o devuelve el anterior si era manual."""
         failed = self.channel
         self.release_player()
         self.show_loading()
         self.status.set(reason)
+        if self.manual_playback:
+            if self.preview_player is not None:
+                self.restore_previous()
+                self.status.set("Se restauro el canal anterior: " + self.channel["name"])
+            else:
+                self.hide_loading()
+            return
         if self.dead or failed is None or self.data is None:
             self.hide_loading()
             return
@@ -675,6 +864,7 @@ class TVViewer(tk.Frame):
             self.stall_since = None
             if player.play() == -1:
                 raise RuntimeError("VLC no pudo iniciar la transmisión.")
+            self.sync_player_audio()
             self.status.set("Conectando a la señal de video...")
             self.after(PLAYER_MONITOR_MS, lambda: self.monitor_player(token))
         except Exception as exc:
@@ -792,6 +982,7 @@ class TVViewer(tk.Frame):
         self.m3u_request += 1
         self.list_render_token += 1
         self.release_player()
+        self.close_preview()
         for handle in self.dll_handles:
             try:
                 handle.close()
