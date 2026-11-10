@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 import unicodedata
 from urllib.request import Request, urlopen
 
@@ -286,6 +287,72 @@ def read_last_played_channel():
     return None
 
 
+class SlimScrollbar(tk.Canvas):
+    """Barra vertical fina y oscura, sin el aspecto gris del control nativo."""
+
+    def __init__(self, parent, command):
+        super().__init__(
+            parent, width=11, bg="#0a0b0e", bd=0,
+            highlightthickness=0, relief="flat",
+        )
+        self.command = command
+        self.first, self.last = 0.0, 1.0
+        self.drag_offset = None
+        self.thumb = self.create_rectangle(
+            2, 0, 9, 25, fill="#505965", outline="", tags="thumb",
+        )
+        self.bind("<Configure>", lambda _event: self.draw_thumb())
+        self.bind("<ButtonPress-1>", self.begin_drag)
+        self.bind("<B1-Motion>", self.drag_thumb)
+        self.bind("<ButtonRelease-1>", lambda _event: setattr(
+            self, "drag_offset", None
+        ))
+        self.bind("<MouseWheel>", self.scroll_wheel)
+        self.bind("<Button-4>", lambda _event: self.command("scroll", -3, "units"))
+        self.bind("<Button-5>", lambda _event: self.command("scroll", 3, "units"))
+
+    def set(self, first, last):
+        try:
+            self.first = max(0.0, min(1.0, float(first)))
+            self.last = max(self.first, min(1.0, float(last)))
+        except (TypeError, ValueError):
+            return
+        self.draw_thumb()
+
+    def geometry_thumb(self):
+        height = max(1, self.winfo_height())
+        span = self.last - self.first
+        length = min(height, max(25, int(height * span)))
+        top = round(self.first / max(1e-9, 1.0 - span) * (height - length))
+        return top, length
+
+    def draw_thumb(self):
+        top, length = self.geometry_thumb()
+        self.coords(self.thumb, 2, top, 9, top + length)
+
+    def begin_drag(self, event):
+        top, length = self.geometry_thumb()
+        if top <= event.y <= top + length:
+            self.drag_offset = event.y - top
+        else:
+            self.drag_offset = length / 2
+            self.drag_thumb(event)
+
+    def drag_thumb(self, event):
+        if self.drag_offset is None:
+            return
+        _, length = self.geometry_thumb()
+        total = max(1, self.winfo_height() - length)
+        span = self.last - self.first
+        top = max(0, min(total, event.y - self.drag_offset))
+        self.command("moveto", max(0.0, (top / total) * (1.0 - span)))
+
+    def scroll_wheel(self, event):
+        steps = -int(event.delta / 120) if event.delta else 0
+        if steps:
+            self.command("scroll", steps * 3, "units")
+
+
 class TVViewer(tk.Frame):
     """Visor VLC panoramico con Favoritos, Buscar y Papelera."""
 
@@ -339,6 +406,15 @@ class TVViewer(tk.Frame):
         self._row_action_widgets = []
         self._row_playing_widgets = []
         self._playing_marker_url = None
+        self._video_controls_hover = False
+        self._pip_hover = False
+        self._row_full_names = []
+        self._list_reflow_job = None
+        self._last_list_width = 0
+        self._tooltip_job = None
+        self._tooltip_index = None
+        self._list_font = tkfont.Font(root=self, family="Segoe UI", size=13)
+        self._now_font = tkfont.Font(root=self, family="Segoe UI", size=9)
         self.is_muted = False
         self.fullscreen_active = False
         self._fullscreen_saved = None
@@ -404,16 +480,25 @@ class TVViewer(tk.Frame):
             ("trash", "🗑", self.toggle_current_trash, "Segoe UI Emoji"),
         )
         self.quick_buttons = {}
+        self.quick_frames = {}
         for key, glyph, action, font_name in quick_actions:
+            slot = tk.Frame(self.now_actions, bg=BG, width=30, height=30)
+            slot.pack_propagate(False)
             button = tk.Button(
-                self.now_actions, text=glyph, command=action,
-                bg=BG, fg="#ffffff", activebackground="#252525",
+                slot, text=glyph, command=action,
+                bg="#17191d", fg="#ffffff", activebackground="#30353f",
                 activeforeground="#ffd000", relief="flat",
                 bd=0, highlightthickness=0, cursor="hand2",
                 font=(font_name, 12), padx=0, pady=0,
-                width=2,
             )
-            button.pack(side="left", padx=0, fill="y")
+            button.place(x=1, y=1, width=28, height=28)
+            button.bind(
+                "<Enter>", lambda _event, w=button: w.configure(bg="#292e38"),
+            )
+            button.bind(
+                "<Leave>", lambda _event, w=button: w.configure(bg="#17191d"),
+            )
+            self.quick_frames[key] = slot
             self.quick_buttons[key] = button
         self.now_indicator = tk.Label(
             self.now_playing, text="", bg=BG, fg="#ffd000",
@@ -428,6 +513,13 @@ class TVViewer(tk.Frame):
         )
         self.now_label.pack(side="left", fill="both", expand=True)
         self.now_playing.update_idletasks()
+        # El titulo permanece visible; los botones se muestran al acercar
+        # el cursor al video o a esta barra, para aprovechar el espacio.
+        self.video.bind("<Enter>", lambda _event: self.set_controls_hover(True), add="+")
+        self.video.bind("<Leave>", lambda _event: self.maybe_hide_controls(), add="+")
+        self.now_playing.bind("<Enter>", lambda _event: self.set_controls_hover(True), add="+")
+        self.now_playing.bind("<Leave>", lambda _event: self.maybe_hide_controls(), add="+")
+        self.now_label.bind("<Enter>", lambda _event: self.set_controls_hover(True), add="+")
 
         # Pestanas de texto, centradas y con linea blanca inferior.
         self.active_tab = "Favoritos"
@@ -520,20 +612,26 @@ class TVViewer(tk.Frame):
         self.list_frame.pack(side="top", fill="both", expand=True)
         self.playlist_list = tk.Listbox(
             self.list_frame, bg=BG, fg=WHITE,
-            font=("Segoe UI", 12), bd=0, relief="flat",
+            font=self._list_font, bd=0, relief="flat",
             highlightthickness=0, selectbackground="#1d2630",
             selectforeground="#ffd000", activestyle="none",
             exportselection=False,
         )
-        self.playlist_scroll = tk.Scrollbar(
-            self.list_frame, orient="vertical", command=self.playlist_list.yview
+        self.playlist_scroll = SlimScrollbar(
+            self.list_frame, command=self.playlist_list.yview,
         )
         self.playlist_list.configure(yscrollcommand=self.on_list_scroll)
         self.playlist_list.pack(
             side="left", fill="both", expand=True, padx=(4, 0), pady=(8, 6)
         )
         self.playlist_scroll.pack(
-            side="right", fill="y", padx=(0, 5), pady=(8, 6)
+            side="right", fill="y", padx=(1, 3), pady=(8, 6)
+        )
+        self.row_tooltip = tk.Label(
+            self.list_frame, bg="#252a33", fg=WHITE,
+            font=("Segoe UI", 10), justify="left",
+            anchor="w", padx=9, pady=6, relief="solid",
+            bd=1, highlightthickness=0,
         )
         # Los botones se reutilizan para las filas visibles (M3U muy grandes).
         self.row_actions = tk.Frame(self.list_frame, bg=BG, width=66)
@@ -544,8 +642,11 @@ class TVViewer(tk.Frame):
         self.playing_gutter.pack_propagate(False)
         self.playlist_list.bind("<<ListboxSelect>>", self.on_list_select)
         self.playlist_list.bind(
-            "<Configure>", lambda _event: self.schedule_row_actions(), add="+"
+            "<Configure>", self.on_listbox_resize, add="+",
         )
+        self.playlist_list.bind("<Motion>", self.on_list_mouse_move, add="+")
+        self.playlist_list.bind("<Leave>", lambda _event: self.hide_row_tooltip(), add="+")
+        self.playlist_list.bind("<ButtonPress-1>", lambda _event: self.hide_row_tooltip(), add="+")
 
         # VLC dibuja sobre su propia superficie; el indicador es un widget
         # hermano y queda encima sin interferir con la reproduccion.
@@ -560,6 +661,15 @@ class TVViewer(tk.Frame):
             self.video, bg=BG, bd=0, highlightthickness=0,
         )
         self.preview_surface.bind("<Button-1>", lambda _event: self.restore_previous())
+        self.preview_border = tk.Frame(
+            self.video, bg="#3c434d", bd=0, highlightthickness=0,
+        )
+        self.preview_surface.bind(
+            "<Enter>", lambda _event: self.set_preview_hover(True), add="+"
+        )
+        self.preview_surface.bind(
+            "<Leave>", lambda _event: self.set_preview_hover(False), add="+"
+        )
         self.preview_close = tk.Button(
             self.video, text="×", command=self.close_preview,
             bg="#111111", fg="#ffffff", activebackground="#a32020",
