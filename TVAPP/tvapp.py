@@ -310,6 +310,10 @@ class TVViewer(tk.Frame):
         self._row_action_widgets = []
         self._row_playing_widgets = []
         self._playing_marker_url = None
+        self.is_muted = False
+        self.fullscreen_active = False
+        self._fullscreen_saved = None
+        self._fullscreen_escape_down = False
         self.video_started_at = None
         self.video_ready = False
         self.stall_since = None
@@ -349,6 +353,45 @@ class TVViewer(tk.Frame):
         )
         self.video.pack(side="top", fill="x")
         self.video.pack_propagate(False)
+
+        # Informacion del canal principal y acciones rapidas.
+        self.now_playing = tk.Frame(self, bg=BG, height=34)
+        self.now_playing.pack(side="top", fill="x", padx=3, pady=(2, 0))
+        self.now_playing.pack_propagate(False)
+        self.now_title = tk.StringVar(value="Sin reproducción")
+        self.now_actions = tk.Frame(self.now_playing, bg=BG)
+        self.now_actions.pack(side="right", padx=(2, 2))
+        quick_actions = (
+            ("mute", "🔊", self.toggle_mute, "Segoe UI Emoji"),
+            ("fullscreen", "⛶", self.toggle_fullscreen, "Segoe UI Symbol"),
+            ("favorite", "☆", self.toggle_current_favorite, "Segoe UI Symbol"),
+            ("trash", "🗑", self.toggle_current_trash, "Segoe UI Emoji"),
+        )
+        self.quick_buttons = {}
+        for key, glyph, action, font_name in quick_actions:
+            button = tk.Button(
+                self.now_actions, text=glyph, command=action,
+                bg=BG, fg="#ffffff", activebackground="#252525",
+                activeforeground="#ffd000", relief="flat",
+                bd=0, highlightthickness=0, cursor="hand2",
+                font=(font_name, 12), padx=0, pady=0,
+                width=2,
+            )
+            button.pack(side="left", padx=0, fill="y")
+            self.quick_buttons[key] = button
+        self.now_indicator = tk.Label(
+            self.now_playing, text="", bg=BG, fg="#ffd000",
+            font=("Segoe UI Symbol", 11, "bold"),
+            width=2, anchor="center",
+        )
+        self.now_indicator.pack(side="left")
+        self.now_label = tk.Label(
+            self.now_playing, textvariable=self.now_title,
+            bg=BG, fg=WHITE, font=("Segoe UI", 9),
+            anchor="w", justify="left", width=1,
+        )
+        self.now_label.pack(side="left", fill="both", expand=True)
+        self.now_playing.update_idletasks()
 
         # Pestanas de texto, centradas y con linea blanca inferior.
         self.active_tab = "Favoritos"
