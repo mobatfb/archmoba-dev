@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import unicodedata
 from urllib.request import Request, urlopen
 
 VERSION = "1.0.17"
@@ -41,6 +42,7 @@ VIDEO_STALL_TIMEOUT_S = 12
 RETRY_ALL_CHANNELS_MS = 60000
 PLAYER_MONITOR_MS = 1000
 MAX_M3U_BYTES = 35 * 1024 * 1024
+GLOBAL_M3U_URL = "https://iptv-org.github.io/iptv/index.m3u"
 PREVIEW_X, PREVIEW_Y = 9, 9
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 116, 72
 BG = "#000000"
@@ -229,6 +231,14 @@ def download_m3u_channels(url):
     return channels
 
 
+def normalized_search(text):
+    """Ignora mayusculas y tildes en la busqueda de canales."""
+    return "".join(
+        char for char in unicodedata.normalize("NFKD", text.casefold())
+        if not unicodedata.combining(char)
+    )
+
+
 def read_saved_channels(path):
     """Compatible con favoritos de las versiones anteriores de MINGA TV."""
     try:
@@ -284,6 +294,12 @@ class TVViewer(tk.Frame):
         self.current_channels = []
         self.list_mode = "categories"
         self.list_render_token = 0
+        self.global_search_url = GLOBAL_M3U_URL
+        self.global_search_loading = False
+        self.global_search_request = 0
+        self.global_search_error = None
+        self.search_job = None
+        self._ignore_search_change = False
         self.failed_channel_ids = set()
         self.favorites = read_saved_channels(FAVORITES_FILE)
         self.trash = read_saved_channels(TRASH_FILE)
@@ -367,6 +383,37 @@ class TVViewer(tk.Frame):
             font=("Segoe UI", 11, "bold"), anchor="w",
             cursor="hand2", relief="flat", bd=0,
             highlightthickness=0, padx=12, pady=8,
+        )
+        # Busqueda general, fija por encima de las categorias y los canales.
+        self.search_query = tk.StringVar()
+        self.search_bar = tk.Frame(
+            self.search_panel, bg="#181818", highlightthickness=1,
+            highlightbackground="#373737", bd=0,
+        )
+        tk.Label(
+            self.search_bar, text="⌕", bg="#181818", fg="#ffd000",
+            font=("Segoe UI Symbol", 17), padx=7,
+        ).pack(side="left")
+        self.search_entry = tk.Entry(
+            self.search_bar, textvariable=self.search_query,
+            bg="#181818", fg="#ffffff", insertbackground="#ffffff",
+            selectbackground="#385a6c", relief="flat", bd=0,
+            highlightthickness=0, font=("Segoe UI", 11),
+        )
+        self.search_entry.pack(
+            side="left", fill="both", expand=True, ipady=7,
+        )
+        self.search_clear = tk.Button(
+            self.search_bar, text="×", command=self.clear_general_search,
+            bg="#181818", fg="#b8bbc4", activebackground="#2a2a2a",
+            activeforeground="#ffffff", font=("Segoe UI", 14),
+            relief="flat", bd=0, highlightthickness=0, cursor="hand2",
+            padx=8, pady=0,
+        )
+        self.search_clear.pack(side="right")
+        self.search_bar.pack(side="top", fill="x", padx=10, pady=(8, 0))
+        self.search_query.trace_add(
+            "write", lambda *_: self.on_global_search_changed()
         )
         # Oculto al inicio: solo aparece al abrir una categoria.
         self.list_frame = tk.Frame(self.search_panel, bg=BG)
