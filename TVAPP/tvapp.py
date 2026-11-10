@@ -27,7 +27,7 @@ CHANNELS_URL = f"{RAW_BASE}/initial.json"
 CHANNELS_FILE = BASE_DIR / "initial.json"
 SPLASH_MIN_MS = 3000
 SPLASH_MAX_MS = 5400
-BG = "#171820"
+BG = "#000000"
 WHITE = "#f3f7ff"
 MUTED = "#a2acc0"
 CYAN = "#11a8ff"
@@ -362,8 +362,10 @@ class TVViewer(tk.Frame):
 
 def render(parent):
     """Devuelve el visor y superpone la bienvenida original de MINGA TV."""
-    screen = TVViewer(parent)
+    parent.configure(bg=BG)
     window = parent.winfo_toplevel()
+    window.configure(bg=BG)
+    screen = TVViewer(parent)
     previous = getattr(window, "_minga_tv_splash", None)
     if previous is not None:
         try:
