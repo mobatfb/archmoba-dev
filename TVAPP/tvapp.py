@@ -1407,13 +1407,29 @@ class TVViewer(tk.Frame):
             pass
 
     def sync_player_audio(self):
-        """Solo el canal principal tiene sonido; la miniatura esta silenciada."""
-        for player, muted in ((self.player, self.is_muted), (self.preview_player, True)):
-            if player is not None:
-                try:
-                    player.audio_set_mute(muted)
-                except (OSError, AttributeError, RuntimeError):
-                    pass
+        """Audio exclusivo del video grande, siempre que no este silenciado.
+
+        VLC puede restablecer el audio al crear una salida nueva. Ademas del
+        estado mute, ponemos volumen 0 a la miniatura y recuperamos 100 al
+        devolverla al reproductor grande. Nunca silenciamos el video en si.
+        """
+        # Prioridad a silenciar la miniatura para evitar dos sonidos a la vez.
+        if self.preview_player is not None:
+            try:
+                self.preview_player.audio_set_mute(True)
+                self.preview_player.audio_set_volume(0)
+            except (OSError, AttributeError, RuntimeError):
+                pass
+        if self.player is not None:
+            try:
+                if self.is_muted:
+                    self.player.audio_set_mute(True)
+                    self.player.audio_set_volume(0)
+                else:
+                    self.player.audio_set_volume(100)
+                    self.player.audio_set_mute(False)
+            except (OSError, AttributeError, RuntimeError):
+                pass
 
     def close_preview(self):
         """Cierra la miniatura y libera el reproductor secundario."""
@@ -1442,6 +1458,12 @@ class TVViewer(tk.Frame):
         """Fija el canal actual una sola vez; no reemplaza una miniatura abierta."""
         if self.player is None or self.preview_player is not None:
             return
+        # Silenciar ANTES de mover el player a la miniatura.
+        try:
+            self.player.audio_set_mute(True)
+            self.player.audio_set_volume(0)
+        except (OSError, AttributeError, RuntimeError):
+            pass
         self.preview_channel = self.channel
         self.preview_manual_playback = self.manual_playback
         self.preview_player, self.preview_media, self.preview_instance = (
@@ -1876,6 +1898,9 @@ class TVViewer(tk.Frame):
         if self.dead or token != self.request_id or self.player is None:
             return
         try:
+            # VLC puede restablecer el volumen mientras conecta o cambia pista.
+            # Volvemos a imponer miniatura muda; sonido solo en video grande.
+            self.sync_player_audio()
             now = time.monotonic()
             state = str(self.player.get_state()).lower()
             if any(value in state for value in ("error", "ended", "stopped")):
