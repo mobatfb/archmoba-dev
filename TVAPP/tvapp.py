@@ -374,56 +374,67 @@ class TVViewer(tk.Frame):
         self.tab_content = tk.Frame(self, bg=BG, bd=0, highlightthickness=0)
         self.tab_content.pack(side="top", fill="both", expand=True)
         self.search_panel = tk.Frame(self.tab_content, bg=BG)
-        # Boton fijo: queda visible aun cuando se desplazan miles de canales.
+        # Cabecera en una sola fila: volver a la izquierda y buscar a la derecha.
+        self.search_header = tk.Frame(self.search_panel, bg=BG)
+        self.search_header.pack(side="top", fill="x", padx=8, pady=(7, 0))
+        self.search_header.columnconfigure(1, weight=1)
         self.back_button = tk.Button(
-            self.search_panel, text="← Volver a categorías",
+            self.search_header, text="← Volver a categorías",
             command=self.show_categories,
             bg=BG, fg="#ffd000", activebackground=BG,
             activeforeground="#ffffff",
-            font=("Segoe UI", 11, "bold"), anchor="w",
+            font=("Segoe UI", 10, "bold"), anchor="w",
             cursor="hand2", relief="flat", bd=0,
-            highlightthickness=0, padx=12, pady=8,
+            highlightthickness=0, padx=0, pady=5,
         )
-        # Busqueda general, fija por encima de las categorias y los canales.
+        self.back_button.grid(row=0, column=0, sticky="w", padx=(0, 12))
+        self.back_button.grid_remove()  # Oculto en la portada de categorias.
+
         self.search_query = tk.StringVar()
-        # Canvas permite un contorno realmente redondeado (Entry no lo admite).
+        # Canvas dibuja bordes redondos sin depender de librerias externas.
         self.search_bar = tk.Canvas(
-            self.search_panel, bg=BG, height=46, bd=0,
-            highlightthickness=0, relief="flat",
+            self.search_header, bg=BG, height=42, width=140,
+            bd=0, highlightthickness=0, relief="flat",
         )
+        self.search_bar.grid(row=0, column=1, sticky="ew")
         self.search_inner = tk.Frame(self.search_bar, bg="#181818", bd=0)
         self.search_window = self.search_bar.create_window(
-            16, 23, anchor="w", window=self.search_inner,
+            14, 21, anchor="w", window=self.search_inner,
         )
         tk.Label(
             self.search_inner, text="⌕", bg="#181818", fg="#ffd000",
-            font=("Segoe UI Symbol", 17), padx=5,
+            font=("Segoe UI Symbol", 17), padx=4,
         ).pack(side="left")
         self.search_entry = tk.Entry(
             self.search_inner, textvariable=self.search_query,
             bg="#181818", fg="#ffffff", insertbackground="#ffffff",
             selectbackground="#385a6c", relief="flat", bd=0,
-            highlightthickness=0, font=("Segoe UI", 11),
+            highlightthickness=0, font=("Segoe UI", 11), width=1,
         )
         self.search_entry.pack(
             side="left", fill="both", expand=True, ipady=5,
         )
         self.search_clear = tk.Button(
             self.search_inner, text="×", command=self.clear_general_search,
-            bg="#181818", fg="#b8bbc4", activebackground="#2a2a2a",
+            bg="#181818", fg="#9ec3ff", activebackground="#2a2a2a",
             activeforeground="#ffffff", font=("Segoe UI", 14),
             relief="flat", bd=0, highlightthickness=0, cursor="hand2",
-            padx=6, pady=0,
+            padx=5, pady=0,
         )
         self.search_clear.pack(side="right")
         self.search_bar.bind(
             "<Configure>", self.draw_rounded_search_bar, add="+",
         )
-        self.search_bar.pack(side="top", fill="x", padx=10, pady=(8, 0))
         self.search_query.trace_add(
             "write", lambda *_: self.on_global_search_changed()
         )
-        # Oculto al inicio: solo aparece al abrir una categoria.
+        # Fina linea inferior como en el modelo.
+        self.search_header_line = tk.Frame(
+            self.search_panel, bg="#494949", height=1,
+        )
+        self.search_header_line.pack(
+            side="top", fill="x", padx=4, pady=(6, 0),
+        )
         self.list_frame = tk.Frame(self.search_panel, bg=BG)
         self.list_frame.pack(side="top", fill="both", expand=True)
         self.playlist_list = tk.Listbox(
@@ -619,7 +630,7 @@ class TVViewer(tk.Frame):
             return
         self.list_mode = "search_results"
         self.current_category = None
-        self.back_button.pack(side="top", fill="x", before=self.search_bar)
+        self.back_button.grid()
         self.set_row_actions_visible(True)
         self.refresh_channel_view()
         self.ensure_global_catalog()
@@ -880,8 +891,9 @@ class TVViewer(tk.Frame):
     def show_favorites(self):
         self.list_mode = "favorites"
         self.current_category = None
-        self.back_button.pack_forget()
-        self.search_bar.pack_forget()
+        self.back_button.grid_remove()
+        self.search_header.pack_forget()
+        self.search_header_line.pack_forget()
         if not self.search_panel.winfo_manager():
             self.search_panel.pack(fill="both", expand=True)
         self.set_row_actions_visible(True)
@@ -890,7 +902,7 @@ class TVViewer(tk.Frame):
     def show_trash(self):
         self.list_mode = "trash"
         self.current_category = {"name": "Papelera"}
-        self.back_button.pack(side="top", fill="x", before=self.search_bar)
+        self.back_button.grid()
         self.set_row_actions_visible(True)
         self.refresh_channel_view()
 
@@ -907,12 +919,15 @@ class TVViewer(tk.Frame):
             )
         self.search_panel.pack(fill="both", expand=True)
         if name == "Buscar":
-            if not self.search_bar.winfo_manager():
-                self.search_bar.pack(
-                    side="top", fill="x", padx=10, pady=(8, 0),
-                    before=(self.back_button
-                            if self.back_button.winfo_manager()
-                            else self.list_frame),
+            if not self.search_header.winfo_manager():
+                self.search_header.pack(
+                    side="top", fill="x", padx=8, pady=(7, 0),
+                    before=self.list_frame,
+                )
+            if not self.search_header_line.winfo_manager():
+                self.search_header_line.pack(
+                    side="top", fill="x", padx=4, pady=(6, 0),
+                    before=self.list_frame,
                 )
             if self.list_mode == "favorites":
                 if self.search_query.get().strip():
@@ -990,7 +1005,7 @@ class TVViewer(tk.Frame):
         self.list_mode = "categories"
         self.current_category = None
         self.current_channels = []
-        self.back_button.pack_forget()
+        self.back_button.grid_remove()
         self.set_row_actions_visible(False)
         names = [item["name"] for item in (self.playlist_catalog or [])]
         names.append("Papelera")  # Siempre al final, incluso sin conexion.
@@ -1043,7 +1058,7 @@ class TVViewer(tk.Frame):
         self.current_category = category
         self.current_channels = []
         self.list_mode = "channels"
-        self.back_button.pack(side="top", fill="x", before=self.search_bar)
+        self.back_button.grid()
         self.set_row_actions_visible(True)
         self.m3u_request += 1
         token = self.m3u_request
