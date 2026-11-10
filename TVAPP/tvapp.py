@@ -592,7 +592,8 @@ class TVViewer(tk.Frame):
             self.trash.pop(url, None)  # Favorito desde Papelera: restaurar.
             self.favorites[url] = channel
         self.save_collections()
-        self.refresh_channel_view(keep_position=True)
+        # En Buscar reordenar y mostrar el comienzo, donde aparecen los favoritos.
+        self.refresh_channel_view(keep_position=self.list_mode != "channels")
 
     def toggle_trash(self, url):
         if url in self.trash:
@@ -626,9 +627,16 @@ class TVViewer(tk.Frame):
             base = self.m3u_cache.get(
                 self.current_category["url"], self.current_channels
             )
-            self.current_channels = [
-                item for item in base if item["url"] not in self.trash
-            ]
+            # Favoritos activos primero, el resto despues; cada bloque por nombre.
+            # Se aplica a todas las categorias y tambien al volver a abrirlas.
+            self.current_channels = sorted(
+                (item for item in base if item["url"] not in self.trash),
+                key=lambda item: (
+                    item["url"] not in self.favorites,
+                    item["name"].casefold(),
+                    item["url"],
+                ),
+            )
             names = [item["name"] for item in self.current_channels]
             if not names:
                 names = ["No hay canales disponibles en esta categoría."]
