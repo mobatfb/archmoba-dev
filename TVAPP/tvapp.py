@@ -1623,6 +1623,26 @@ class TVViewer(tk.Frame):
             else:
                 self.hide_loading()
             return
+        # Durante la primera reproduccion probar los demas favoritos, en
+        # orden aleatorio, si la señal inicial no funciona.
+        if self.first_run_random_active and failed is not None:
+            self.first_run_failed_urls.add(failed["url"])
+            if isinstance(failed.get("id"), int):
+                self.failed_channel_ids.add(failed["id"])
+            candidates = [
+                item for item in self.favorites.values()
+                if item["url"] not in self.first_run_failed_urls
+            ]
+            if candidates:
+                self.channel = random.choice(candidates)
+                self.channel_name.set(self.channel["name"])
+                self.channel_group.set(
+                    self.channel.get("group", "General")
+                    + "  ·  Favorito aleatorio (primera vez)"
+                )
+                self.play_current()
+                return
+            self.first_run_random_active = False
         if self.dead or failed is None or self.data is None:
             self.hide_loading()
             return
@@ -1777,6 +1797,10 @@ class TVViewer(tk.Frame):
                 just_started = not self.video_ready
                 self.video_ready = True
                 self.stall_since = None
+                if self.first_run_random_active:
+                    # La primera seleccion aleatoria ya encontro señal.
+                    self.first_run_random_active = False
+                    self.first_run_failed_urls.clear()
                 if just_started:
                     # VLC puede reiniciar el mute al empezar un flujo nuevo.
                     self.sync_player_audio()
