@@ -205,7 +205,7 @@ class TVAppManager:
         pos_y = max(0, (self.root.winfo_screenheight() - WINDOW_HEIGHT) // 2)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{pos_x}+{pos_y}")
         lock_mobile_window(self.root)
-        self.root.configure(bg="#ffffff")
+        self.root.configure(bg="#171820")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
 
@@ -232,13 +232,11 @@ class TVAppManager:
         )
         self.update_button.pack(side="right", padx=(1, 10), pady=4)
 
-        # El contenido de tvapp.py utiliza todo el espacio restante.
-        self.body = tk.Frame(root, bg="#ffffff")
+        # El actualizador sigue funcionando, pero su barra no se muestra.
+        # El area visible queda reservada exclusivamente al visor.
+        topbar.pack_forget()
+        self.body = tk.Frame(root, bg="#171820", bd=0, highlightthickness=0)
         self.body.pack(side="top", fill="both", expand=True)
-        tk.Label(
-            self.body, text="Cargando TVAPP...", bg="#ffffff",
-            fg="#667085", font=("Segoe UI", 15)
-        ).place(relx=0.5, rely=0.5, anchor="center")
 
         self.root.after(100, self._process_events)
         self._start("startup")

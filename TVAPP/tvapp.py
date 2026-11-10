@@ -1,4 +1,4 @@
-"""MINGA TV: bienvenida y reproductor IPTV integrado para Windows.
+"""MINGA TV: bienvenida y visor IPTV sin controles visibles para Windows.
 
 El catalogo initial.json se consulta desde GitHub al abrir; si no hay
 conexion se utiliza la ultima copia local valida. No incluye canales fijos.
@@ -103,7 +103,7 @@ def read_initial_json():
 
 
 class TVViewer(tk.Frame):
-    """Visor VLC embebido, sin bloquear la interfaz de Tkinter."""
+    """Visor VLC panoramico, sin interfaz adicional ni bloqueo Tk."""
 
     def __init__(self, parent):
         super().__init__(parent, bg=BG, highlightthickness=0)
@@ -120,68 +120,19 @@ class TVViewer(tk.Frame):
         self.request_id = 0
         self.catalog_request = 0
 
-        title = tk.Frame(self, bg=BG)
-        title.pack(fill="x", padx=15, pady=(14, 9))
-        tk.Label(title, text="MINGA TV", bg=BG, fg=WHITE,
-                 font=("Segoe UI", 15, "bold")).pack(side="left")
-        tk.Label(title, text="● EN VIVO", bg=BG, fg=CYAN,
-                 font=("Segoe UI", 9, "bold")).pack(side="right")
-
-        border = tk.Frame(self, bg="#315971", padx=2, pady=2)
-        border.pack(fill="x", padx=12, pady=(0, 12))
-        self.video = tk.Frame(border, bg="#000000", height=205, highlightthickness=0)
-        self.video.pack(fill="x")
+        # Solo el video, sin barra de titulo, detalles ni controles visibles.
+        # 380 x 214: visor panoramico 16:9 en la parte superior.
+        self.video = tk.Frame(
+            self, bg="#000000", height=214, highlightthickness=0,
+            borderwidth=0,
+        )
+        self.video.pack(side="top", fill="x")
         self.video.pack_propagate(False)
-        self.waiting = tk.Label(
-            self.video, text="▶\nPreparando reproductor...", bg="#000000",
-            fg="#b6c3d5", font=("Segoe UI", 12), justify="center",
-        )
-        self.waiting.place(relx=0.5, rely=0.5, anchor="center")
 
-        details = tk.Frame(self, bg=BG)
-        details.pack(fill="x", padx=17)
-        self.channel_name = tk.StringVar(value="Buscando canales...")
-        tk.Label(details, textvariable=self.channel_name, bg=BG, fg=WHITE,
-                 font=("Segoe UI", 12, "bold"), anchor="w",
-                 wraplength=335, justify="left").pack(fill="x")
-        self.channel_group = tk.StringVar(value="Catálogo: initial.json")
-        tk.Label(details, textvariable=self.channel_group, bg=BG, fg=CYAN,
-                 font=("Segoe UI", 9), anchor="w").pack(fill="x", pady=(5, 0))
-
-        self.status = tk.StringVar(value="Consultando canales...")
-        tk.Label(self, textvariable=self.status, bg=BG, fg=MUTED,
-                 font=("Segoe UI", 10), anchor="w", justify="left",
-                 wraplength=335).pack(fill="x", padx=17, pady=(15, 10))
-
-        actions = tk.Frame(self, bg=BG)
-        actions.pack(fill="x", padx=13, pady=(4, 0))
-        self.replay = tk.Button(
-            actions, text="▶ Reproducir", command=self.replay_current,
-            bg="#168cbd", fg="white", activebackground="#2c9bc7",
-            relief="flat", bd=0, padx=10, pady=9, cursor="hand2",
-            font=("Segoe UI", 9, "bold"), state="disabled",
-        )
-        self.replay.pack(side="left", padx=(0, 6))
-        tk.Button(
-            actions, text="■ Detener", command=self.stop_current,
-            bg="#343845", fg=WHITE, activebackground="#444c5d",
-            relief="flat", bd=0, padx=8, pady=9, cursor="hand2",
-            font=("Segoe UI", 9),
-        ).pack(side="left", padx=(0, 6))
-        self.more = tk.Button(
-            actions, text="↻ Otro canal", command=self.another_channel,
-            bg="#343845", fg=WHITE, activebackground="#444c5d",
-            relief="flat", bd=0, padx=8, pady=9, cursor="hand2",
-            font=("Segoe UI", 9), state="disabled",
-        )
-        self.more.pack(side="left")
-
-        tk.Button(
-            self, text="Actualizar lista de canales", command=self.reload_catalog,
-            bg=BG, fg="#94cff3", activebackground=BG,
-            activeforeground=WHITE, bd=0, relief="flat", padx=0, pady=9,
-            cursor="hand2", font=("Segoe UI", 9),
-        ).pack(anchor="w", padx=13, pady=(7, 0))
+        # Estado interno no visible; los errores no agregan elementos al visor.
+        self.status = tk.StringVar(value="")
+        self.channel_name = tk.StringVar(value="")
+        self.channel_group = tk.StringVar(value="")
 
         self.bind("<Destroy>", self.on_destroy, add="+")
         self.after(125, self.poll_events)
@@ -223,8 +174,6 @@ class TVViewer(tk.Frame):
         if offline:
             label += "  ·  Copia local"
         self.channel_group.set(label)
-        self.replay.config(state="normal")
-        self.more.config(state="normal" if data["selected_id"] == 0 and len(data["channels"]) > 1 else "disabled")
         if self.splash_finished:
             self.play_current()
         else:
@@ -272,8 +221,6 @@ class TVViewer(tk.Frame):
         self.request_id += 1
         token = self.request_id
         self.release_player()
-        self.waiting.config(text="▶\nConectando con el canal...")
-        self.waiting.place(relx=0.5, rely=0.5, anchor="center")
         self.status.set("Preparando reproducción de " + self.channel["name"] + "...")
         self._prepare_vlc_windows()
 
@@ -332,15 +279,12 @@ class TVViewer(tk.Frame):
             else:
                 player.set_xwindow(self.video.winfo_id())
             self.instance, self.player, self.media = instance, player, media
-            self.waiting.place_forget()
             if player.play() == -1:
                 raise RuntimeError("VLC no pudo iniciar la transmisión.")
             self.status.set("Conectando a la señal de video...")
             self.after(1300, lambda: self.monitor_player(token))
         except Exception as exc:
             self.release_player()
-            self.waiting.config(text="No se pudo abrir el canal")
-            self.waiting.place(relx=0.5, rely=0.5, anchor="center")
             self.status.set("VLC no disponible: " + str(exc)[:120] + ". Instala VLC Desktop.")
 
     def monitor_player(self, token):
@@ -350,14 +294,10 @@ class TVViewer(tk.Frame):
             state = str(self.player.get_state()).lower()
             if "error" in state:
                 self.release_player()
-                self.waiting.config(text="Señal no disponible")
-                self.waiting.place(relx=0.5, rely=0.5, anchor="center")
                 self.status.set("Error de la transmisión. Prueba Reproducir u Otro canal.")
                 return
             if "ended" in state:
                 self.release_player()
-                self.waiting.config(text="Transmisión finalizada")
-                self.waiting.place(relx=0.5, rely=0.5, anchor="center")
                 self.status.set("La transmisión finalizó. Puedes volver a reproducirla.")
                 return
             if "playing" in state:
@@ -372,8 +312,6 @@ class TVViewer(tk.Frame):
         self.request_id += 1
         self.release_player()
         if not self.dead:
-            self.waiting.config(text="▶\nReproducción detenida")
-            self.waiting.place(relx=0.5, rely=0.5, anchor="center")
             self.status.set("Reproducción detenida.")
 
     def release_player(self):
@@ -400,8 +338,6 @@ class TVViewer(tk.Frame):
                     self.channel_name.set("No se pudo abrir initial.json")
                 elif event == "vlc" and token == self.request_id:
                     if value is None:
-                        self.waiting.config(text="VLC no disponible")
-                        self.waiting.place(relx=0.5, rely=0.5, anchor="center")
                         self.status.set("Instala VLC Desktop en Windows. " + str(extra)[:110])
                     else:
                         self.start_embedded(value, token)
