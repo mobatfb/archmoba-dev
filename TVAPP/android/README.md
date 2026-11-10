@@ -27,3 +27,14 @@ Desde GitHub, el workflow "MINGA TV Android APK" genera un artefacto **MINGA-TV-
 **Seguridad:** La guia de descifrado forma parte del cliente, y cualquiera con acceso al APK puede extraerla. No utilizar este mecanismo como unica proteccion de credenciales sensibles. El servidor Premium1 debe utilizar HTTPS y contenido autorizado.
 
 **Nota:** La APK de depuracion esta firmada automaticamente con una clave de desarrollo. Para distribuir en tiendas, crear una clave privada de produccion y configurar la firma de release.
+
+## Icono de la APK (v1.0.1)
+
+El icono del lanzador utiliza exactamente el logo del splash de Windows:
+`TVAPP/assets/minga_tv_logo.png`.
+La misma imagen se reutiliza dentro de Android (sin transformaciones del archivo original),
+centrada sobre fondo negro en una mascara adaptativa, para soportar lanzadores modernos.
+
+La compilacion de pruebas usa firma debug generada por GitHub Actions. Si tenias una
+compilacion anterior instalada y Android indica un conflicto de firmas, desinstala
+esa version antes de instalar la nueva (guarda cualquier preferencia que necesites).
