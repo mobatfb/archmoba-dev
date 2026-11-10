@@ -1793,14 +1793,6 @@ class TVViewer(tk.Frame):
                         channels for key, channels in self.m3u_cache.items()
                         if key in urls
                     ]
-                    # Tambien permitir buscar en favoritos desde esta fuente.
-                    if self.global_search_url in urls:
-                        sources.append([
-                            item for item in self.favorites.values()
-                            if item["url"] in self.m3u_cache.get(
-                                self.global_search_url, []
-                            )
-                        ])
             else:
                 sources = [self.favorites.values()]
                 if self.global_search_url in self.m3u_cache:
