@@ -570,6 +570,18 @@ class TVViewer(tk.Frame):
             return
         try:
             api = self._preview_mouse_api
+            # Esc debe funcionar tambien cuando VLC captura el teclado.
+            esc_pressed = bool(api.GetAsyncKeyState(0x1B) & 0x8000)
+            if (esc_pressed and not self._fullscreen_escape_down
+                    and self.fullscreen_active):
+                foreground_pid = wintypes.DWORD(0)
+                foreground = api.GetForegroundWindow()
+                api.GetWindowThreadProcessId(
+                    foreground, ctypes.byref(foreground_pid)
+                )
+                if foreground_pid.value == os.getpid():
+                    self.exit_fullscreen()
+            self._fullscreen_escape_down = esc_pressed
             pressed = bool(api.GetAsyncKeyState(0x01) & 0x8000)
             if pressed and not self._preview_mouse_down and self.preview_player is not None:
                 cursor = wintypes.POINT()
@@ -598,6 +610,7 @@ class TVViewer(tk.Frame):
             self._preview_mouse_down = pressed
         except (OSError, AttributeError, ValueError, tk.TclError):
             self._preview_mouse_down = False
+            self._fullscreen_escape_down = False
         if not self.dead:
             self.after(25, self._poll_preview_click)
 
