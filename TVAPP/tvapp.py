@@ -35,6 +35,7 @@ USER_DATA_DIR = (Path(os.environ.get("LOCALAPPDATA") or
                       (Path.home() / ".local" / "share")) / "ARCHMOBA" / "TVAPP")
 FAVORITES_FILE = USER_DATA_DIR / "favorites.json"
 TRASH_FILE = USER_DATA_DIR / "trash.json"
+LAST_CHANNEL_FILE = USER_DATA_DIR / "last_channel.json"
 SPLASH_MIN_MS = 3000
 SPLASH_MAX_MS = 5400
 VIDEO_START_TIMEOUT_S = 15
@@ -268,6 +269,23 @@ def save_saved_channels(path, channels):
     os.replace(temporary, path)
 
 
+def read_last_played_channel():
+    """Recupera el ultimo canal reproducido correctamente, si es valido."""
+    try:
+        record = json.loads(LAST_CHANNEL_FILE.read_text(encoding="utf-8-sig"))
+        channel = record.get("channel") if isinstance(record, dict) else None
+        if (isinstance(channel, dict)
+                and isinstance(channel.get("url"), str)
+                and channel["url"].startswith(("https://", "http://"))
+                and isinstance(channel.get("name"), str)
+                and channel["name"].strip()
+                and isinstance(channel.get("headers", {}), dict)):
+            return dict(channel)
+    except (OSError, ValueError, TypeError, UnicodeError):
+        pass
+    return None
+
+
 class TVViewer(tk.Frame):
     """Visor VLC panoramico con Favoritos, Buscar y Papelera."""
 
@@ -305,12 +323,15 @@ class TVViewer(tk.Frame):
         # Un favorites.json vacio cuenta como configuracion existente para
         # no volver a agregar canales que el usuario elimino voluntariamente.
         self.first_run_pending = (
-            not FAVORITES_FILE.exists() and not TRASH_FILE.exists()
+            not FAVORITES_FILE.exists()
+            and not TRASH_FILE.exists()
+            and not LAST_CHANNEL_FILE.exists()
         )
-        self.first_run_random_active = False
-        self.first_run_failed_urls = set()
+        self.startup_auto_active = False
+        self.startup_failed_urls = set()
         self.favorites = read_saved_channels(FAVORITES_FILE)
         self.trash = read_saved_channels(TRASH_FILE)
+        self.last_played_channel = read_last_played_channel()
         # Un canal enviado a papelera no debe mostrarse en favoritos.
         for url in self.trash:
             self.favorites.pop(url, None)
