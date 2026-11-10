@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import queue
 import random
+import re
 import subprocess
 import sys
 import threading
@@ -33,6 +34,7 @@ VIDEO_START_TIMEOUT_S = 15
 VIDEO_STALL_TIMEOUT_S = 12
 RETRY_ALL_CHANNELS_MS = 60000
 PLAYER_MONITOR_MS = 1000
+MAX_M3U_BYTES = 35 * 1024 * 1024
 BG = "#000000"
 WHITE = "#f3f7ff"
 MUTED = "#a2acc0"
@@ -160,6 +162,65 @@ def read_playlist_catalog():
             raise RuntimeError("No se pudo cargar channels.json de GitHub.") from exc
 
 
+def parse_m3u_streams(text):
+    """Extrae nombres y URLs de canales desde un M3U extendido."""
+    if not text.lstrip("\ufeff \t\r\n").startswith("#EXTM3U"):
+        raise ValueError("El enlace no contiene una lista M3U valida.")
+    channels = []
+    pending = None
+    headers = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("#EXTINF:"):
+            # Encontrar la coma fuera de comillas para respetar nombres y atributos.
+            in_quotes = False
+            comma = -1
+            for pos, char in enumerate(line):
+                if char == '"':
+                    in_quotes = not in_quotes
+                elif char == "," and not in_quotes:
+                    comma = pos
+                    break
+            if comma < 0:
+                pending = None
+                headers = {}
+                continue
+            attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', line[:comma]))
+            pending = (line[comma + 1:].strip()
+                       or attrs.get("tvg-name") or "Canal sin nombre")
+            headers = {}
+        elif line.startswith("#EXTVLCOPT:") and pending:
+            key, sep, value = line[11:].partition("=")
+            if sep and key.strip().lower() in (
+                "http-user-agent", "http-referrer", "user-agent", "referer"
+            ):
+                headers[key.strip()] = value.strip()
+        elif pending and line.startswith(("http://", "https://")):
+            channels.append({
+                "name": pending[:240],
+                "url": line,
+                "headers": headers.copy(),
+            })
+            pending = None
+            headers = {}
+    return sorted(channels, key=lambda item: item["name"].casefold())
+
+
+def download_m3u_channels(url):
+    """Descarga y analiza un M3U sin tocar la interfaz Tkinter."""
+    request = Request(
+        url, headers={"User-Agent": "MINGA-TV/1.0", "Cache-Control": "no-cache"}
+    )
+    with urlopen(request, timeout=14) as response:
+        payload = response.read(MAX_M3U_BYTES + 1)
+    if len(payload) > MAX_M3U_BYTES:
+        raise ValueError("La lista M3U supera 35 MB.")
+    channels = parse_m3u_streams(payload.decode("utf-8-sig", errors="replace"))
+    if not channels:
+        raise ValueError("La lista M3U no contiene canales validos.")
+    return channels
+
+
 class TVViewer(tk.Frame):
     """Visor VLC panoramico, con explorador de listas M3U bajo el video."""
 
@@ -180,6 +241,12 @@ class TVViewer(tk.Frame):
         self.playlists_request = 0
         self.playlists_loading = False
         self.playlist_catalog = None
+        self.m3u_request = 0
+        self.m3u_cache = {}
+        self.current_category = None
+        self.current_channels = []
+        self.list_mode = "categories"
+        self.list_render_token = 0
         self.failed_channel_ids = set()
         self.video_started_at = None
         self.video_ready = False
@@ -237,6 +304,7 @@ class TVViewer(tk.Frame):
         self.playlist_scroll.pack(
             side="right", fill="y", padx=(0, 5), pady=(8, 6)
         )
+        self.playlist_list.bind("<<ListboxSelect>>", self.on_list_select)
 
         # VLC dibuja sobre su propia superficie; el indicador es un widget
         # hermano y queda encima sin interferir con la reproduccion.
@@ -305,12 +373,85 @@ class TVViewer(tk.Frame):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _show_rows(self, names):
+        """Rellena la lista por bloques para que miles de canales no congelen Tk."""
+        self.list_render_token += 1
+        token = self.list_render_token
+        self.playlist_list.delete(0, tk.END)
+        self.playlist_list.yview_moveto(0)
+
+        def add_rows(start=0):
+            if self.dead or token != self.list_render_token:
+                return
+            chunk = names[start:start + 250]
+            if chunk:
+                self.playlist_list.insert(tk.END, *chunk)
+            if start + 250 < len(names):
+                self.after(1, lambda: add_rows(start + 250))
+
+        add_rows()
+
     def on_playlist_catalog(self, playlists):
         self.playlists_loading = False
         self.playlist_catalog = playlists
-        self.playlist_list.delete(0, tk.END)
-        for item in playlists:
-            self.playlist_list.insert(tk.END, item["name"])
+        self.show_categories()
+
+    def show_categories(self):
+        """Regresa a los nombres de las listas guardadas en channels.json."""
+        self.m3u_request += 1  # Descarta respuestas de categorias abandonadas.
+        self.list_mode = "categories"
+        self.current_category = None
+        self.current_channels = []
+        if self.playlist_catalog is None:
+            self._show_rows(["No hay categorias disponibles."])
+            return
+        self._show_rows([item["name"] for item in self.playlist_catalog])
+
+    def on_list_select(self, _event):
+        if self.dead or self.active_tab != "Buscar":
+            return
+        selection = self.playlist_list.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        if self.list_mode == "categories":
+            if self.playlist_catalog and index < len(self.playlist_catalog):
+                self.open_category(self.playlist_catalog[index])
+        elif self.list_mode == "channels" and index == 0:
+            self.show_categories()
+
+    def open_category(self, category):
+        """Al pulsar una categoria, muestra sus canales sin parar el video."""
+        self.current_category = category
+        self.current_channels = []
+        self.list_mode = "channels"
+        self.m3u_request += 1
+        token = self.m3u_request
+        self._show_rows([
+            "← Volver a categorías",
+            "Cargando canales de " + category["name"] + "...",
+        ])
+        url = category["url"]
+        if url in self.m3u_cache:
+            self.on_category_channels(self.m3u_cache[url])
+            return
+
+        def worker():
+            try:
+                channels = download_m3u_channels(url)
+                self.events.put(("m3u", token, channels, url))
+            except Exception as exc:
+                self.events.put(("m3u_error", token, str(exc), url))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_category_channels(self, channels):
+        if self.current_category is None or self.list_mode != "channels":
+            return
+        self.current_channels = channels
+        names = ["← Volver a categorías"]
+        names.extend(item["name"] for item in channels)
+        self._show_rows(names)
 
     def show_loading(self):
         """Muestra el anillo animado en el centro del area de video."""
@@ -618,8 +759,18 @@ class TVViewer(tk.Frame):
                     self.on_playlist_catalog(value)
                 elif event == "playlists_error" and token == self.playlists_request:
                     self.playlists_loading = False
-                    self.playlist_list.delete(0, tk.END)
-                    self.playlist_list.insert(tk.END, "Error al cargar. Pulsa Buscar otra vez.")
+                    self._show_rows(["Error al cargar las categorias."])
+                elif event == "m3u" and token == self.m3u_request:
+                    if self.current_category and extra == self.current_category["url"]:
+                        self.m3u_cache[extra] = value
+                        self.on_category_channels(value)
+                elif event == "m3u_error" and token == self.m3u_request:
+                    if self.current_category and extra == self.current_category["url"]:
+                        self._show_rows([
+                            "← Volver a categorías",
+                            "No se pudieron cargar los canales.",
+                            str(value)[:100],
+                        ])
                 elif event == "vlc" and token == self.request_id:
                     if value is None:
                         self.hide_loading()
@@ -638,6 +789,8 @@ class TVViewer(tk.Frame):
         self.request_id += 1
         self.catalog_request += 1
         self.playlists_request += 1
+        self.m3u_request += 1
+        self.list_render_token += 1
         self.release_player()
         for handle in self.dll_handles:
             try:
