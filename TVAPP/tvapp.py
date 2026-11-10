@@ -4,6 +4,8 @@ El catalogo initial.json se consulta desde GitHub al abrir; si no hay
 conexion se utiliza la ultima copia local valida. No incluye canales fijos.
 """
 
+import ctypes
+from ctypes import wintypes
 import importlib
 import json
 import os
@@ -262,6 +264,24 @@ class TVViewer(tk.Frame):
         self.preview_started_at = None
         self.preview_video_ready = False
         self.preview_stall_since = None
+        self._preview_mouse_down = False
+        self._preview_mouse_api = None
+        if os.name == "nt":
+            try:
+                api = ctypes.WinDLL("user32", use_last_error=True)
+                api.GetAsyncKeyState.argtypes = (ctypes.c_int,)
+                api.GetAsyncKeyState.restype = ctypes.c_short
+                api.GetCursorPos.argtypes = (ctypes.POINTER(wintypes.POINT),)
+                api.GetCursorPos.restype = wintypes.BOOL
+                api.GetForegroundWindow.argtypes = ()
+                api.GetForegroundWindow.restype = wintypes.HWND
+                api.GetWindowThreadProcessId.argtypes = (
+                    wintypes.HWND, ctypes.POINTER(wintypes.DWORD),
+                )
+                api.GetWindowThreadProcessId.restype = wintypes.DWORD
+                self._preview_mouse_api = api
+            except (OSError, AttributeError):
+                pass
 
         # Solo el video, sin barra de titulo, detalles ni controles visibles.
         # 380 x 214: visor panoramico 16:9 en la parte superior.
@@ -365,6 +385,45 @@ class TVViewer(tk.Frame):
 
         self.bind("<Destroy>", self.on_destroy, add="+")
         self.after(125, self.poll_events)
+        if self._preview_mouse_api is not None:
+            self.after(25, self._poll_preview_click)
+
+    def _poll_preview_click(self):
+        """Detecta clics sobre video VLC, que absorbe eventos Tk en Windows."""
+        if self.dead or self._preview_mouse_api is None:
+            return
+        try:
+            api = self._preview_mouse_api
+            pressed = bool(api.GetAsyncKeyState(0x01) & 0x8000)
+            if pressed and not self._preview_mouse_down and self.preview_player is not None:
+                cursor = wintypes.POINT()
+                if api.GetCursorPos(ctypes.byref(cursor)):
+                    # Solo reaccionar cuando MINGA TV es la ventana activa.
+                    foreground_pid = wintypes.DWORD(0)
+                    foreground = api.GetForegroundWindow()
+                    api.GetWindowThreadProcessId(
+                        foreground, ctypes.byref(foreground_pid)
+                    )
+                    x = cursor.x - self.video.winfo_rootx()
+                    y = cursor.y - self.video.winfo_rooty()
+                    over_preview = (
+                        PREVIEW_X <= x < PREVIEW_X + PREVIEW_WIDTH
+                        and PREVIEW_Y <= y < PREVIEW_Y + PREVIEW_HEIGHT
+                    )
+                    # La X tiene prioridad: jamas debe abrir el video.
+                    over_close = (
+                        PREVIEW_X + PREVIEW_WIDTH - 25 <= x
+                        < PREVIEW_X + PREVIEW_WIDTH - 2
+                        and PREVIEW_Y + 2 <= y < PREVIEW_Y + 25
+                    )
+                    if (foreground_pid.value == os.getpid()
+                            and over_preview and not over_close):
+                        self.restore_previous()
+            self._preview_mouse_down = pressed
+        except (OSError, AttributeError, ValueError, tk.TclError):
+            self._preview_mouse_down = False
+        if not self.dead:
+            self.after(25, self._poll_preview_click)
 
     def select_tab(self, name):
         """Cambia de pestana sin interrumpir el video en directo."""
