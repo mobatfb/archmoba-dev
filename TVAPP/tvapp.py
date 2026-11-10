@@ -330,7 +330,9 @@ def read_provider_categories(provider):
                 payload = response.read(2 * 1024 * 1024 + 1)
             if len(payload) > 2 * 1024 * 1024:
                 raise ValueError("Catalogo JSON demasiado grande.")
-            return parse_playlist_catalog(payload.decode("utf-8-sig"))
+            return parse_direct_json_categories(
+                payload.decode("utf-8-sig"), provider["id"]
+            )
         except Exception as exc:
             raise RuntimeError("No se pudo cargar el catalogo JSON.") from exc
     if kind == "unconfigured":
@@ -405,6 +407,74 @@ def read_initial_json():
             return parse_channels(CHANNELS_FILE.read_text(encoding="utf-8-sig")), True
         except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
             raise RuntimeError("No se pudo obtener initial.json de GitHub ni leer una copia local valida.") from exc
+
+
+def parse_direct_json_categories(text, provider_id):
+    """Soporta JSON con listas M3U o categorias con canales directos.
+
+    Formato de canales directos:
+      {"categories": [{"name": "XXX", "channels": [
+          {"name": "Canal", "url": "https://.../live.m3u8"}
+      ]}]}
+    Los enlaces HLS se reproducen directamente; no se descargan como M3U.
+    """
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("El catalogo del proveedor debe ser un objeto JSON.")
+    if "playlists" in data:
+        return parse_playlist_catalog(text)
+    categories = data.get("categories")
+    if not isinstance(categories, list) or not categories:
+        raise ValueError(
+            "El catalogo JSON debe contener playlists o categories."
+        )
+    result, seen_names = [], set()
+    for index, group in enumerate(categories):
+        if not isinstance(group, dict):
+            continue
+        name = group.get("name")
+        items = group.get("channels")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if not isinstance(items, list):
+            continue
+        key = name.strip().casefold()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        streams, seen_urls = [], set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            label, url = item.get("name"), item.get("url")
+            if (not isinstance(label, str) or not label.strip()
+                    or not isinstance(url, str)
+                    or not url.startswith(("https://", "http://"))
+                    or url in seen_urls):
+                continue
+            headers = item.get("headers", {})
+            if not isinstance(headers, dict):
+                headers = {}
+            seen_urls.add(url)
+            streams.append({
+                "name": label.strip()[:240],
+                "url": url,
+                "headers": headers,
+                "logo": item.get("logo", ""),
+                "language": item.get("language", ""),
+                "group": item.get("group") or name.strip(),
+            })
+        result.append({
+            "name": name.strip(),
+            "url": "inline://" + provider_id + "/" + str(index),
+            "loader": "inline",
+            "inline_channels": sorted(
+                streams, key=lambda item: item["name"].casefold()
+            ),
+        })
+    if not result:
+        raise ValueError("El catalogo JSON no contiene categorias validas.")
+    return sorted(result, key=lambda item: item["name"].casefold())
 
 
 def parse_playlist_catalog(text):
@@ -2195,6 +2265,11 @@ class TVViewer(tk.Frame):
         self._show_rows(["Cargando canales de " + category["name"] + "..."])
         url = category["url"]
         provider = self.active_provider
+        if category.get("loader") == "inline":
+            channels = category.get("inline_channels", [])
+            self.m3u_cache[url] = channels
+            self.on_category_channels(channels)
+            return
         if url in self.m3u_cache:
             self.on_category_channels(self.m3u_cache[url])
             return
