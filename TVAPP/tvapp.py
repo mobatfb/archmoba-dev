@@ -25,6 +25,8 @@ LOGO_URL = f"{RAW_BASE}/assets/minga_tv_logo.png"
 LOGO_FILE = BASE_DIR / "assets" / "minga_tv_logo.png"
 CHANNELS_URL = f"{RAW_BASE}/initial.json"
 CHANNELS_FILE = BASE_DIR / "initial.json"
+PLAYLISTS_URL = f"{RAW_BASE}/channels.json"
+PLAYLISTS_FILE = BASE_DIR / "channels.json"
 SPLASH_MIN_MS = 3000
 SPLASH_MAX_MS = 5400
 VIDEO_START_TIMEOUT_S = 15
@@ -106,8 +108,60 @@ def read_initial_json():
             raise RuntimeError("No se pudo obtener initial.json de GitHub ni leer una copia local valida.") from exc
 
 
+def parse_playlist_catalog(text):
+    """Lee las listas M3U configuradas en channels.json, ordenadas por nombre."""
+    data = json.loads(text)
+    playlists = data.get("playlists") if isinstance(data, dict) else None
+    if not isinstance(playlists, list) or not playlists:
+        raise ValueError("channels.json no contiene listas M3U.")
+    result, seen = [], set()
+    for item in playlists:
+        if not isinstance(item, dict):
+            raise ValueError("Hay una lista M3U con formato incorrecto.")
+        name, url = item.get("name"), item.get("url")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Una lista M3U no tiene nombre.")
+        if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+            raise ValueError("Una lista M3U no tiene URL valida.")
+        key = name.strip().casefold()
+        if key in seen:
+            raise ValueError("Hay nombres de listas M3U duplicados.")
+        seen.add(key)
+        result.append({"name": name.strip(), "url": url})
+    return sorted(result, key=lambda item: item["name"].casefold())
+
+
+def read_playlist_catalog():
+    """Obtiene channels.json en segundo plano y guarda una copia local util."""
+    try:
+        request = Request(
+            f"{PLAYLISTS_URL}?v={time.time_ns()}",
+            headers={"User-Agent": "MINGA-TV/1.0", "Cache-Control": "no-cache"},
+        )
+        with urlopen(request, timeout=8) as response:
+            payload = response.read(128 * 1024 + 1)
+        if len(payload) > 128 * 1024:
+            raise ValueError("channels.json es demasiado grande.")
+        source = payload.decode("utf-8-sig")
+        playlists = parse_playlist_catalog(source)
+        try:
+            temp = PLAYLISTS_FILE.with_suffix(".json.tmp")
+            temp.write_text(source, encoding="utf-8")
+            temp.replace(PLAYLISTS_FILE)
+        except OSError:
+            pass
+        return playlists, False
+    except (OSError, TimeoutError, ValueError, UnicodeError):
+        try:
+            return parse_playlist_catalog(
+                PLAYLISTS_FILE.read_text(encoding="utf-8-sig")
+            ), True
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise RuntimeError("No se pudo cargar channels.json de GitHub.") from exc
+
+
 class TVViewer(tk.Frame):
-    """Visor VLC panoramico, sin interfaz adicional ni bloqueo Tk."""
+    """Visor VLC panoramico, con explorador de listas M3U bajo el video."""
 
     def __init__(self, parent):
         super().__init__(parent, bg=BG, highlightthickness=0)
@@ -123,6 +177,9 @@ class TVViewer(tk.Frame):
         self.splash_finished = False
         self.request_id = 0
         self.catalog_request = 0
+        self.playlists_request = 0
+        self.playlists_loading = False
+        self.playlist_catalog = None
         self.failed_channel_ids = set()
         self.video_started_at = None
         self.video_ready = False
@@ -159,6 +216,28 @@ class TVViewer(tk.Frame):
             row=1, column=0, columnspan=2, sticky="ew", pady=(1, 0)
         )
 
+        # El contenido de Buscar aparece solo cuando se elige esa pestana.
+        self.tab_content = tk.Frame(self, bg=BG, bd=0, highlightthickness=0)
+        self.tab_content.pack(side="top", fill="both", expand=True)
+        self.search_panel = tk.Frame(self.tab_content, bg=BG)
+        self.playlist_list = tk.Listbox(
+            self.search_panel, bg=BG, fg=WHITE,
+            font=("Segoe UI", 12), bd=0, relief="flat",
+            highlightthickness=0, selectbackground="#1d2630",
+            selectforeground="#ffd000", activestyle="none",
+            exportselection=False,
+        )
+        self.playlist_scroll = tk.Scrollbar(
+            self.search_panel, orient="vertical", command=self.playlist_list.yview
+        )
+        self.playlist_list.configure(yscrollcommand=self.playlist_scroll.set)
+        self.playlist_list.pack(
+            side="left", fill="both", expand=True, padx=(12, 0), pady=(8, 6)
+        )
+        self.playlist_scroll.pack(
+            side="right", fill="y", padx=(0, 5), pady=(8, 6)
+        )
+
         # VLC dibuja sobre su propia superficie; el indicador es un widget
         # hermano y queda encima sin interferir con la reproduccion.
         self.video_surface = tk.Frame(
@@ -190,7 +269,7 @@ class TVViewer(tk.Frame):
         self.after(125, self.poll_events)
 
     def select_tab(self, name):
-        """Resalta en amarillo la pestana seleccionada, sin cambiar el video."""
+        """Cambia de pestana sin interrumpir el video en directo."""
         if name not in self.tab_labels:
             return
         self.active_tab = name
@@ -200,6 +279,38 @@ class TVViewer(tk.Frame):
                 fg="#ffd000" if selected else "#ffffff",
                 font=("Segoe UI", 14, "bold" if selected else "normal"),
             )
+        if name == "Buscar":
+            self.search_panel.pack(fill="both", expand=True)
+            if self.playlist_catalog is None and not self.playlists_loading:
+                self.load_playlist_catalog()
+        else:
+            self.search_panel.pack_forget()
+
+    def load_playlist_catalog(self):
+        """Descarga las listas M3U solo al entrar en Buscar."""
+        if self.dead or self.playlists_loading:
+            return
+        self.playlists_loading = True
+        self.playlists_request += 1
+        token = self.playlists_request
+        self.playlist_list.delete(0, tk.END)
+        self.playlist_list.insert(tk.END, "Cargando listas M3U...")
+
+        def worker():
+            try:
+                playlists, offline = read_playlist_catalog()
+                self.events.put(("playlists", token, playlists, offline))
+            except Exception as exc:
+                self.events.put(("playlists_error", token, str(exc), False))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_playlist_catalog(self, playlists):
+        self.playlists_loading = False
+        self.playlist_catalog = playlists
+        self.playlist_list.delete(0, tk.END)
+        for item in playlists:
+            self.playlist_list.insert(tk.END, item["name"])
 
     def show_loading(self):
         """Muestra el anillo animado en el centro del area de video."""
@@ -503,6 +614,12 @@ class TVViewer(tk.Frame):
                     self.hide_loading()
                     self.status.set(value)
                     self.channel_name.set("No se pudo abrir initial.json")
+                elif event == "playlists" and token == self.playlists_request:
+                    self.on_playlist_catalog(value)
+                elif event == "playlists_error" and token == self.playlists_request:
+                    self.playlists_loading = False
+                    self.playlist_list.delete(0, tk.END)
+                    self.playlist_list.insert(tk.END, "Error al cargar. Pulsa Buscar otra vez.")
                 elif event == "vlc" and token == self.request_id:
                     if value is None:
                         self.hide_loading()
@@ -520,6 +637,7 @@ class TVViewer(tk.Frame):
         self.dead = True
         self.request_id += 1
         self.catalog_request += 1
+        self.playlists_request += 1
         self.release_player()
         for handle in self.dll_handles:
             try:
