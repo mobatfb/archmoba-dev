@@ -454,12 +454,18 @@ class TVViewer(tk.Frame):
                 self.play_from_search(self.current_channels[index - 1])
 
     def play_from_search(self, stream):
-        """Abre el canal elegido y mantiene el anterior en miniatura."""
+        """Abre el canal y conserva fija la miniatura mientras este visible."""
         if self.dead or not isinstance(stream, dict):
             return
         if self.channel and self.channel.get("url") == stream.get("url"):
             return
-        if self.player is not None:
+        # Si seleccionan el canal anclado, lo abrimos y cerramos su miniatura.
+        if (self.preview_player is not None and self.preview_channel
+                and self.preview_channel.get("url") == stream.get("url")):
+            self.restore_previous()
+            return
+        # Solo capturar el canal actual si no existe una miniatura anclada.
+        if self.player is not None and self.preview_player is None:
             self.keep_current_as_preview()
         self.channel = dict(stream)
         self.manual_playback = True
@@ -571,10 +577,9 @@ class TVViewer(tk.Frame):
             self.layout_video_layers()
 
     def keep_current_as_preview(self):
-        """Mueve el canal actual a la miniatura sin reiniciar su señal."""
-        if self.player is None:
+        """Fija el canal actual una sola vez; no reemplaza una miniatura abierta."""
+        if self.player is None or self.preview_player is not None:
             return
-        self.close_preview()  # Solo se conserva una miniatura anterior.
         self.preview_channel = self.channel
         self.preview_manual_playback = self.manual_playback
         self.preview_player, self.preview_media, self.preview_instance = (
@@ -594,19 +599,16 @@ class TVViewer(tk.Frame):
         self.sync_player_audio()
 
     def restore_previous(self):
-        """Intercambia el video grande y el pequeno conservando ambas señales."""
+        """Abre el canal anclado a pantalla completa y retira la miniatura."""
         if self.dead or self.preview_player is None:
             return
         self.request_id += 1
         token = self.request_id
-        main = (
-            self.channel, self.manual_playback,
-            self.player, self.media, self.instance,
-            self.video_started_at, self.video_ready, self.stall_since,
-        )
-        self.channel, self.manual_playback = (
-            self.preview_channel, self.preview_manual_playback
-        )
+
+        # Cerramos solamente el video grande; el de la miniatura sigue vivo.
+        self.release_player()
+        self.channel = self.preview_channel
+        self.manual_playback = self.preview_manual_playback
         self.player, self.media, self.instance = (
             self.preview_player, self.preview_media, self.preview_instance,
         )
@@ -614,19 +616,18 @@ class TVViewer(tk.Frame):
             self.preview_started_at, self.preview_video_ready,
             self.preview_stall_since,
         )
-        (
-            self.preview_channel, self.preview_manual_playback,
-            self.preview_player, self.preview_media, self.preview_instance,
-            self.preview_started_at, self.preview_video_ready,
-            self.preview_stall_since,
-        ) = main
+        self.preview_player = self.preview_media = self.preview_instance = None
+        self.preview_channel = None
+        self.preview_manual_playback = False
+        self.preview_started_at = None
+        self.preview_video_ready = False
+        self.preview_stall_since = None
+
+        # La superficie de la miniatura pasa al visor principal. Ya no queda PiP.
         self.video_surface, self.preview_surface = (
             self.preview_surface, self.video_surface,
         )
-        if self.preview_player is None:
-            self.close_preview()
-        else:
-            self.layout_video_layers()
+        self.layout_video_layers()
         self.sync_player_audio()
         self.channel_name.set(self.channel["name"])
         self.channel_group.set(self.channel.get("group", "Canal anterior"))
