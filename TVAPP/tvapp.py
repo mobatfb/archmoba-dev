@@ -23,6 +23,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 import unicodedata
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 VERSION = "1.0.17"
@@ -35,11 +36,13 @@ CHANNELS_URL = f"{RAW_BASE}/initial.json"
 CHANNELS_FILE = BASE_DIR / "initial.json"
 PLAYLISTS_URL = f"{RAW_BASE}/channels.json"
 PLAYLISTS_FILE = BASE_DIR / "channels.json"
+PROVIDERS_URL = f"{RAW_BASE}/providers.json"
 USER_DATA_DIR = (Path(os.environ.get("LOCALAPPDATA") or
                       (Path.home() / ".local" / "share")) / "ARCHMOBA" / "TVAPP")
 FAVORITES_FILE = USER_DATA_DIR / "favorites.json"
 TRASH_FILE = USER_DATA_DIR / "trash.json"
 LAST_CHANNEL_FILE = USER_DATA_DIR / "last_channel.json"
+PROVIDERS_CACHE_FILE = USER_DATA_DIR / "providers.json"
 
 # La misma guia y formato que utiliza generador_cifrado_minga_tv.py.
 # IMPORTANTE: al distribuir tvapp.py, esta guia no es un secreto.
@@ -112,6 +115,227 @@ def decode_provider_entry(provider):
         if field in decoded:
             decoded[field] = decrypt_provider_value(decoded[field])
     return decoded
+
+
+def parse_provider_catalog(text):
+    """Lee las categorias padre y descifra sus campos en memoria."""
+    config = json.loads(text)
+    entries = config.get("providers") if isinstance(config, dict) else None
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("providers.json debe contener una lista providers.")
+    result, seen = [], set()
+    for index, raw in enumerate(entries, 1):
+        if not isinstance(raw, dict):
+            continue
+        provider_id = raw.get("id")
+        if (not isinstance(provider_id, str)
+                or not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", provider_id)
+                or provider_id in seen):
+            continue
+        seen.add(provider_id)
+        try:
+            item = decode_provider_entry(raw)
+            name = item.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("El proveedor no tiene un nombre valido.")
+            for field in ("server", "username", "password"):
+                item.setdefault(field, "")
+                if not isinstance(item[field], str):
+                    raise ValueError("Campo invalido en el proveedor.")
+            server = item["server"].strip()
+            if server:
+                parts = urlsplit(server)
+                if parts.scheme not in ("http", "https") or not parts.netloc:
+                    raise ValueError("La direccion del proveedor no es HTTP(S).")
+            item["name"] = name.strip()
+        except (ImportError, UnicodeError, TypeError, ValueError):
+            # Nunca mostrar tokens cifrados ni credenciales por un error.
+            item = {
+                "id": provider_id,
+                "name": raw.get("name", "") if (
+                    isinstance(raw.get("name"), str)
+                    and not raw["name"].startswith(PROVIDER_CIPHER_PREFIX)
+                ) else "Proveedor " + str(index),
+                "server": "", "username": "", "password": "",
+                "error": "No se pudieron descifrar o validar sus datos.",
+            }
+        result.append(item)
+    if not result:
+        raise ValueError("providers.json no contiene proveedores validos.")
+    return result
+
+
+def read_providers():
+    """Actualiza desde GitHub; conserva solo la copia CIFRADA en disco."""
+    try:
+        request = Request(
+            f"{PROVIDERS_URL}?v={time.time_ns()}",
+            headers={"User-Agent": "MINGA-TV/1.0", "Cache-Control": "no-cache"},
+        )
+        with urlopen(request, timeout=10) as response:
+            payload = response.read(512 * 1024 + 1)
+        if len(payload) > 512 * 1024:
+            raise ValueError("providers.json es demasiado grande.")
+        text = payload.decode("utf-8-sig")
+        providers = parse_provider_catalog(text)
+        try:
+            PROVIDERS_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            temp = PROVIDERS_CACHE_FILE.with_suffix(".json.tmp")
+            temp.write_text(text, encoding="utf-8")
+            temp.replace(PROVIDERS_CACHE_FILE)
+        except OSError:
+            pass
+        return providers, False
+    except (OSError, TimeoutError, UnicodeError, ValueError):
+        for path in (PROVIDERS_CACHE_FILE, BASE_DIR / "providers.json"):
+            try:
+                return parse_provider_catalog(
+                    path.read_text(encoding="utf-8-sig")
+                ), True
+            except (OSError, UnicodeError, ValueError):
+                continue
+        raise RuntimeError("No se pudo cargar providers.json de GitHub.")
+
+
+def provider_kind(provider):
+    """JSON directo, lista M3U o servidor IPTV autenticado."""
+    server = provider.get("server", "").strip()
+    if not server:
+        return "unconfigured"
+    path = urlsplit(server).path.lower()
+    if path.endswith(".json"):
+        return "json"
+    if path.endswith((".m3u", ".m3u8")):
+        return "m3u"
+    if provider.get("username") and provider.get("password"):
+        return "xtream"
+    return "unknown"
+
+
+def _read_json_url(url, maximum=6 * 1024 * 1024):
+    request = Request(
+        url, headers={"User-Agent": "MINGA-TV/1.0",
+                      "Cache-Control": "no-cache"},
+    )
+    with urlopen(request, timeout=14) as response:
+        payload = response.read(maximum + 1)
+    if len(payload) > maximum:
+        raise ValueError("El servidor devolvio un catalogo demasiado grande.")
+    return json.loads(payload.decode("utf-8-sig"))
+
+
+def _xtream_api_url(provider, action, category_id=None):
+    """URL de API solo en memoria; no guardarla ni mostrarla al usuario."""
+    base = provider["server"].strip().rstrip("/")
+    if not base.endswith("/player_api.php"):
+        base += "/player_api.php"
+    params = {
+        "username": provider["username"],
+        "password": provider["password"],
+        "action": action,
+    }
+    if category_id is not None:
+        params["category_id"] = str(category_id)
+    return base + "?" + urlencode(params)
+
+
+def read_xtream_categories(provider):
+    """Categorias en vivo de Xtream Codes (sin mostrar credenciales)."""
+    try:
+        data = _read_json_url(
+            _xtream_api_url(provider, "get_live_categories")
+        )
+    except Exception as exc:
+        raise RuntimeError("No se pudo conectar con el servidor IPTV.") from exc
+    if not isinstance(data, list):
+        raise ValueError("El servidor no devolvio categorias IPTV validas.")
+    result = [{
+        "name": "Todos", "provider_id": provider["id"],
+        "url": "xtream://" + provider["id"] + "/category/all",
+        "loader": "xtream", "category_id": None,
+    }]
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        name, category_id = entry.get("category_name"), entry.get("category_id")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if category_id is None:
+            continue
+        value = str(category_id)
+        if not re.fullmatch(r"[0-9]{1,20}", value):
+            continue
+        result.append({
+            "name": name.strip(),
+            "provider_id": provider["id"],
+            "url": "xtream://" + provider["id"] + "/category/" + value,
+            "loader": "xtream", "category_id": value,
+        })
+    return [result[0]] + sorted(
+        result[1:], key=lambda item: item["name"].casefold()
+    )
+
+
+def read_xtream_channels(provider, category_id=None):
+    """Canales Xtream con IDs virtuales, nunca URLs con credenciales."""
+    try:
+        entries = _read_json_url(
+            _xtream_api_url(provider, "get_live_streams", category_id),
+            maximum=35 * 1024 * 1024,
+        )
+    except Exception as exc:
+        raise RuntimeError("No se pudieron obtener los canales IPTV.") from exc
+    if not isinstance(entries, list):
+        raise ValueError("El servidor no devolvio una lista de canales valida.")
+    result = []
+    seen = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        name, stream_id = item.get("name"), item.get("stream_id")
+        stream_id = str(stream_id)
+        if (not isinstance(name, str) or not name.strip()
+                or not re.fullmatch(r"[0-9]{1,20}", stream_id)):
+            continue
+        extension = str(item.get("container_extension") or "ts").lower()
+        if extension not in ("ts", "m3u8", "mp4"):
+            extension = "ts"
+        url = "xtream://" + provider["id"] + "/" + stream_id + "." + extension
+        if url in seen:
+            continue
+        seen.add(url)
+        result.append({
+            "name": name.strip()[:240], "url": url,
+            "group": provider["name"], "headers": {},
+        })
+    return sorted(result, key=lambda item: item["name"].casefold())
+
+
+def read_provider_categories(provider):
+    """Selecciona la fuente segun el contenido de providers.json."""
+    kind = provider_kind(provider)
+    if kind == "xtream":
+        return read_xtream_categories(provider)
+    if kind == "m3u":
+        return [{"name": "Todos", "url": provider["server"]}]
+    if kind == "json":
+        if provider["server"] == PLAYLISTS_URL:
+            return read_playlist_catalog()[0]
+        try:
+            request = Request(
+                provider["server"],
+                headers={"User-Agent": "MINGA-TV/1.0"},
+            )
+            with urlopen(request, timeout=12) as response:
+                payload = response.read(2 * 1024 * 1024 + 1)
+            if len(payload) > 2 * 1024 * 1024:
+                raise ValueError("Catalogo JSON demasiado grande.")
+            return parse_playlist_catalog(payload.decode("utf-8-sig"))
+        except Exception as exc:
+            raise RuntimeError("No se pudo cargar el catalogo JSON.") from exc
+    if kind == "unconfigured":
+        raise ValueError("Este proveedor aun no tiene servidor configurado.")
+    raise ValueError("Formato de servidor no reconocido en providers.json.")
 
 
 def parse_channels(text):
@@ -313,7 +537,7 @@ def read_saved_channels(path):
             item["url"]: item for item in items
             if isinstance(item, dict)
             and isinstance(item.get("url"), str)
-            and item["url"].startswith(("https://", "http://"))
+            and item["url"].startswith(("https://", "http://", "xtream://"))
             and isinstance(item.get("name"), str)
         }
     except (OSError, ValueError, UnicodeError, TypeError, KeyError):
@@ -338,7 +562,7 @@ def read_last_played_channel():
         channel = record.get("channel") if isinstance(record, dict) else None
         if (isinstance(channel, dict)
                 and isinstance(channel.get("url"), str)
-                and channel["url"].startswith(("https://", "http://"))
+                and channel["url"].startswith(("https://", "http://", "xtream://"))
                 and isinstance(channel.get("name"), str)
                 and channel["name"].strip()
                 and isinstance(channel.get("headers", {}), dict)):
