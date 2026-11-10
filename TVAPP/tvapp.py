@@ -301,6 +301,14 @@ class TVViewer(tk.Frame):
         self.search_job = None
         self._ignore_search_change = False
         self.failed_channel_ids = set()
+        # Solo se importa initial.json cuando NO existen colecciones locales.
+        # Un favorites.json vacio cuenta como configuracion existente para
+        # no volver a agregar canales que el usuario elimino voluntariamente.
+        self.first_run_pending = (
+            not FAVORITES_FILE.exists() and not TRASH_FILE.exists()
+        )
+        self.first_run_random_active = False
+        self.first_run_failed_urls = set()
         self.favorites = read_saved_channels(FAVORITES_FILE)
         self.trash = read_saved_channels(TRASH_FILE)
         # Un canal enviado a papelera no debe mostrarse en favoritos.
@@ -1530,22 +1538,58 @@ class TVViewer(tk.Frame):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def import_initial_favorites_once(self, data):
+        """Primera instalacion: guarda TODOS los canales del initial.json."""
+        if not self.first_run_pending:
+            return False
+        self.first_run_pending = False
+        imported = False
+        for item in data["channels"]:
+            url = item["url"]
+            if url not in self.trash:
+                self.favorites.setdefault(url, dict(item))
+                imported = True
+        if not imported:
+            return False
+        try:
+            save_saved_channels(FAVORITES_FILE, self.favorites)
+        except (OSError, TypeError, ValueError) as exc:
+            # Se puede reproducir aunque Windows bloquee el guardado.
+            self.status.set("No se pudieron guardar los favoritos iniciales: " + str(exc))
+        if self.list_mode == "favorites":
+            self.refresh_channel_view()
+        self.update_now_playing()
+        return True
+
     def on_catalog(self, data, offline):
         old_id = self.channel.get("id") if self.channel else None
         self.data = data
+        first_run = self.import_initial_favorites_once(data)
         if self.manual_playback:
-            return  # La recarga inicial no reemplaza una elección del usuario.
-        self.failed_channel_ids.clear()  # Un catalogo nuevo permite reintentar canales anteriores.
-        self.channel = choose_channel(data, previous_id=old_id if data["selected_id"] == 0 else None)
+            return  # No reemplazar un canal elegido por el usuario.
+        self.failed_channel_ids.clear()
+        self.first_run_failed_urls.clear()
+        if first_run and self.favorites:
+            # No usar selected_id la primera vez: escoger entre Favoritos.
+            self.first_run_random_active = True
+            self.channel = random.choice(list(self.favorites.values()))
+        else:
+            self.first_run_random_active = False
+            self.channel = choose_channel(
+                data, previous_id=old_id if data["selected_id"] == 0 else None
+            )
         self.channel_name.set(self.channel["name"])
         label = self.channel.get("group", "General")
-        if data["selected_id"] == 0:
+        if first_run:
+            label += "  ·  Favorito aleatorio (primera vez)"
+        elif data["selected_id"] == 0:
             label += "  ·  Selección aleatoria"
         else:
             label += f"  ·  Canal #{data['selected_id']}"
         if offline:
             label += "  ·  Copia local"
         self.channel_group.set(label)
+        self.update_now_playing()
         if self.splash_finished:
             self.play_current()
         else:
