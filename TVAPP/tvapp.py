@@ -328,7 +328,7 @@ class TVViewer(tk.Frame):
             cursor="hand2", relief="flat", bd=0,
             highlightthickness=0, padx=12, pady=8,
         )
-        self.back_button.pack(side="top", fill="x")
+        # Oculto al inicio: solo aparece al abrir una categoria.
         self.list_frame = tk.Frame(self.search_panel, bg=BG)
         self.list_frame.pack(side="top", fill="both", expand=True)
         self.playlist_list = tk.Listbox(
@@ -498,6 +498,7 @@ class TVViewer(tk.Frame):
         self.list_mode = "categories"
         self.current_category = None
         self.current_channels = []
+        self.back_button.pack_forget()
         if self.playlist_catalog is None:
             self._show_rows(["No hay categorias disponibles."])
             return
@@ -545,6 +546,7 @@ class TVViewer(tk.Frame):
         self.current_category = category
         self.current_channels = []
         self.list_mode = "channels"
+        self.back_button.pack(side="top", fill="x", before=self.list_frame)
         self.m3u_request += 1
         token = self.m3u_request
         self._show_rows(["Cargando canales de " + category["name"] + "..."])
