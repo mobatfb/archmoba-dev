@@ -569,7 +569,7 @@ class TVViewer(tk.Frame):
             return
         self.list_mode = "search_results"
         self.current_category = None
-        self.back_button.pack(side="top", fill="x", before=self.list_frame)
+        self.back_button.pack(side="top", fill="x", before=self.search_bar)
         self.set_row_actions_visible(True)
         self.refresh_channel_view()
         self.ensure_global_catalog()
@@ -840,7 +840,7 @@ class TVViewer(tk.Frame):
     def show_trash(self):
         self.list_mode = "trash"
         self.current_category = {"name": "Papelera"}
-        self.back_button.pack(side="top", fill="x", before=self.list_frame)
+        self.back_button.pack(side="top", fill="x", before=self.search_bar)
         self.set_row_actions_visible(True)
         self.refresh_channel_view()
 
@@ -993,7 +993,7 @@ class TVViewer(tk.Frame):
         self.current_category = category
         self.current_channels = []
         self.list_mode = "channels"
-        self.back_button.pack(side="top", fill="x", before=self.list_frame)
+        self.back_button.pack(side="top", fill="x", before=self.search_bar)
         self.set_row_actions_visible(True)
         self.m3u_request += 1
         token = self.m3u_request
