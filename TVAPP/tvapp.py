@@ -732,7 +732,7 @@ class TVViewer(tk.Frame):
         self._show_rows(names)
 
     def on_list_select(self, _event):
-        if self.dead or self.active_tab != "Buscar":
+        if self.dead or self.active_tab not in ("Buscar", "Favoritos"):
             return
         selection = self.playlist_list.curselection()
         if not selection:
