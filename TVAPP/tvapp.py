@@ -173,7 +173,7 @@ class TVViewer(tk.Frame):
             return
         self.spinner_visible = True
         self.loading.place(relx=0.5, rely=0.5, anchor="center")
-        self.loading.lift()
+        self.loading.tk.call("raise", str(self.loading))
         if self.spinner_job is None:
             self.animate_loading()
 
