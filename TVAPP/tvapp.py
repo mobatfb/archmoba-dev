@@ -194,7 +194,10 @@ class TVViewer(tk.Frame):
             except tk.TclError:
                 pass
             self.spinner_job = None
-        self.loading.place_forget()
+        try:
+            self.loading.place_forget()
+        except tk.TclError:
+            pass  # El widget puede estar destruido al cerrar o recargar la vista.
 
     def startup(self):
         self.reload_catalog()
