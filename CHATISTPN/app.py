@@ -32,7 +32,7 @@ DB = CACHE_DIR / 'respuestas_cache.json'
 MAX_JSON_BYTES = 8 * 1024 * 1024
 ACTUALIZAR_CADA_MS = 15 * 60 * 1000
 STOP = set('a al algo algunas algunos ante como con cual cuales cuando de del desde donde el ella ellas ellos en entre era es esa esas ese esos esta estas este estos hacia hay la las le les lo los mas me mi mis muy no o para pero por porque que quien quienes se sea ser si sin sobre son su sus te tiene tienen tu un una unas unos y ya puedo podrian quiero saber necesito dime favor informacion instituto istpn isupol chat'.split())
-ALIASES = {'carreras':'carrera', 'cursos':'curso', 'estudios':'estudio', 'modalidades':'modalidad', 'requisitos':'requisito', 'inscripciones':'inscripcion', 'matriculas':'matricula', 'admisiones':'admision', 'reglamentos':'reglamento', 'noticias':'noticia', 'telefonos':'telefono', 'contactos':'contacto', 'docentes':'docente', 'estudiantes':'estudiante', 'graduados':'graduado', 'titulaciones':'titulacion'}
+ALIASES = {'carreras':'carrera', 'cursos':'curso', 'estudios':'estudio', 'modalidades':'modalidad', 'requisitos':'requisito', 'inscripciones':'inscripcion', 'matriculas':'matricula', 'admisiones':'admision', 'reglamentos':'reglamento', 'noticias':'noticia', 'telefonos':'telefono', 'contactos':'contacto', 'docentes':'docente', 'estudiantes':'estudiante', 'graduados':'graduado', 'titulaciones':'titulacion', 'becas':'beca', 'solicito':'solicitar', 'solicitando':'solicitar', 'documentos':'documento', 'calificaciones':'calificacion', 'sugerencias':'sugerencia', 'tramites':'tramite', 'salarios':'salario', 'sueldos':'sueldo'}
 
 
 def norm(text):
@@ -42,6 +42,19 @@ def norm(text):
 
 def tokens(text):
     return {ALIASES.get(w, w) for w in norm(text).split() if len(w) > 2 and w not in STOP}
+
+
+def es_fuente_institucional(url):
+    # No se aceptan hosts que solo terminan con el nombre del dominio.
+    if not isinstance(url, str):
+        return False
+    try:
+        partes = urlsplit(url)
+        host = (partes.hostname or '').lower()
+        return (partes.scheme == 'https' and not partes.username and not partes.password
+                and (host == 'isupol.edu.ec' or host.endswith('.isupol.edu.ec')))
+    except ValueError:
+        return False
 
 
 def out_of_scope(q):
@@ -161,7 +174,17 @@ class Motor:
                     score += 6
             if r.get('origen') == 'verificado':
                 score += .6
-            if score >= 2.9 and (coverage >= .33 or len(common) >= 2):
+            # Un titulo de reglamento SOLO acredita que el enlace existe.
+            # No debe adelantar una respuesta descriptiva sobre un tema amplio.
+            navigation = bool(re.search(r'\b(donde|descarg|consul|archivo|documento|reglamento|resolucion|normativa|manual|oficio|plan operativo|ley)\b', qnorm))
+            if r.get('alcance_verificacion', '').startswith('titulo_y_enlace') and not navigation:
+                score -= 5.0
+            if (len(words) == 1 and len(common) == 1):
+                # Las coincidencias de un solo termino necesitan mayor peso.
+                score -= 0.25
+            # Reduce respuestas accidentales para preguntas que comparten
+            # una sola palabra con una ficha que trata otro asunto.
+            if score >= (3.1 if len(words) <= 1 else 4.0) and (coverage >= .5 or len(common) >= 2):
                 results.append((score, r))
         results.sort(key=lambda s: (-s[0], s[1].get('id', '')))
         return results[:limite]
@@ -187,14 +210,30 @@ class Motor:
                 related.append(other.get('titulo','Información relacionada'))
         sources = []
         seen = set()
-        for record in [item] + [x[1] for x in matches[1:]]:
-            urls = record.get('fuentes') or ([record['fuente']] if record.get('fuente') else [])
-            for u in urls:
-                if isinstance(u, str) and u.startswith('https://home.isupol.edu.ec/') and u not in seen:
-                    sources.append({'titulo':record.get('titulo','Fuente oficial'), 'url':u})
-                    seen.add(u)
-            if len(sources) >= 3:
+        # Primero mostrar TODAS las fuentes principales de la ficha
+        # (por ejemplo, 8 carreras), sin mezclar paginas menos pertinentes.
+        main_urls = item.get('fuentes') or ([item['fuente']] if item.get('fuente') else [])
+        for u in main_urls:
+            if es_fuente_institucional(u) and u not in seen:
+                sources.append({'titulo': item.get('titulo', 'Fuente oficial'), 'url': u})
+                seen.add(u)
+            if len(sources) >= 12:
                 break
+        # Solo agregar complementos muy pertinentes si la respuesta principal
+        # tiene pocos enlaces y el otro registro comparte casi toda la consulta.
+        if len(sources) < 3:
+            for score_other, record in matches[1:]:
+                if score_other < best * 0.85:
+                    continue
+                urls = record.get('fuentes') or ([record['fuente']] if record.get('fuente') else [])
+                for u in urls:
+                    if es_fuente_institucional(u) and u not in seen:
+                        sources.append({'titulo': record.get('titulo', 'Fuente oficial'), 'url': u})
+                        seen.add(u)
+                    if len(sources) >= 3:
+                        break
+                if len(sources) >= 3:
+                    break
         if item.get('historico'):
             answer += '\n\nAviso: esta información corresponde a una publicación histórica; verifica si existe una convocatoria o actualización vigente.'
         return {'respuesta': answer[:1300], 'fuentes': sources, 'modo': 'local', 'tema': item.get('tema',''), 'coincidencia': round(best,2)}
