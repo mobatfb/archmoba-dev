@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name: ISTPNCHAT - Asistente institucional sin API de pago
- * Description: Chat institucional basado en respuestas.json de GitHub, sin servicios de IA, claves ni tokens. Incluye respaldo local, enlaces y panel de administracion.
- * Version: 2.0.1
+ * Plugin Name: ISTPNCHAT - Asistente institucional
+ * Description: Chat institucional sobre carreras, admisiones, normativa y servicios del ISTPN. Respuestas con enlaces oficiales y panel de administracion.
+ * Version: 2.0.2
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Proyecto ISTPNCHAT
@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'ISTPNCHAT_VERSION', '2.0.1' );
+define( 'ISTPNCHAT_VERSION', '2.0.2' );
 define( 'ISTPNCHAT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ISTPNCHAT_URL', plugin_dir_url( __FILE__ ) );
 require_once ISTPNCHAT_PATH . 'includes/class-istpnchat-knowledge.php';
@@ -149,7 +149,6 @@ function istpnchat_local_render() {
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 14-8-4 16-4-7-6-1Z"/><path d="m11 13 8-9"/></svg>
                 </button>
             </form>
-            <div class="istpnchat-footer">Respuestas desde GitHub, sin API pagada. No compartas contraseñas ni datos personales.</div>
         </section>
     </div>
     <?php
