@@ -14,12 +14,39 @@ final class ISTPNCHAT_Search {
         'telefonos' => 'telefono', 'tramites' => 'tramite',
         'docentes' => 'docente', 'calificaciones' => 'calificacion',
         'hibridas' => 'hibrida', 'virtuales' => 'virtual',
+        // Vocabulario frecuente sobre duracion y errores comunes de escritura.
+        'tiempo' => 'duracion', 'dura' => 'duracion', 'duran' => 'duracion',
+        'durar' => 'duracion', 'tarda' => 'duracion', 'tardar' => 'duracion',
+        'demora' => 'duracion', 'demoran' => 'duracion',
+        'ciberdelito' => 'ciberdelitos',
     );
 
     public static function normalize( $str ) {
         $str = strtolower( remove_accents( (string) $str ) );
         $str = preg_replace( '/[^a-z0-9 ]+/', ' ', $str );
         return trim( preg_replace( '/\s+/', ' ', (string) $str ) );
+    }
+
+    /**
+     * Corrige equivocaciones pequenas SOLO en nombres de carreras conocidos.
+     * Dos cambios como criminalisitca -> criminalistica son habituales.
+     * Se exige el mismo prefijo inicial para evitar falsos positivos.
+     */
+    private static function keyword( $word ) {
+        if ( isset( self::$aliases[ $word ] ) ) { return self::$aliases[ $word ]; }
+        if ( strlen( $word ) < 7 ) { return $word; }
+        foreach ( array(
+            'criminalistica', 'ciberdelitos', 'accidentologia',
+            'acondicionamiento', 'procesamiento', 'financieros',
+            'seguridad', 'analisis', 'transito',
+        ) as $known ) {
+            if ( $word === $known ) { return $known; }
+            if ( substr( $word, 0, 4 ) !== substr( $known, 0, 4 ) ) { continue; }
+            if ( abs( strlen( $word ) - strlen( $known ) ) > 2 ) { continue; }
+            $max_edits = strlen( $known ) >= 11 ? 2 : 1;
+            if ( levenshtein( $word, $known ) <= $max_edits ) { return $known; }
+        }
+        return $word;
     }
 
     public static function tokens( $str ) {
@@ -29,7 +56,7 @@ final class ISTPNCHAT_Search {
         $out = array();
         foreach ( explode( ' ', self::normalize( $str ) ) as $w ) {
             if ( strlen( $w ) <= 2 || isset( self::$stop[ $w ] ) ) { continue; }
-            $w = self::$aliases[ $w ] ?? $w;
+            $w = self::keyword( $w );
             $out[ $w ] = true;
         }
         return $out;
@@ -104,6 +131,57 @@ final class ISTPNCHAT_Search {
             return $a[0] > $b[0] ? -1 : 1;
         } );
         return array_slice( $scored, 0, 4 );
+    }
+
+    /**
+     * Interpreta peticiones de duracion de una carrera especifica antes
+     * de la busqueda general. No escoge una carrera al azar si la pregunta
+     * no identifica ninguna de las ocho fichas oficiales.
+     */
+    private static function career_duration( $question, $records ) {
+        $norm = self::normalize( $question );
+        if ( ! preg_match( '/\b(duracion|tiempo|dura|duran|durar|tarda|tardar|demora|demoran|semestres|periodos|anos|meses)\b/', $norm ) ) { return null; }
+        $query = self::tokens( $question );
+        // No confundimos preguntas sobre la cantidad de carreras con su duracion.
+        if ( preg_match( '/\b(cuantas|numero|cantidad|total)\b/', $norm ) && preg_match( '/\b(carrera|carreras)\b/', $norm ) ) { return null; }
+        $career_keys = array(
+            'carrera-acondicionamiento' => array( 'acondicionamiento' ),
+            'carrera-analisis' => array( 'analisis' ),
+            'carrera-ciberdelito' => array( 'ciberdelitos' ),
+            'carrera-criminalistica' => array( 'criminalistica' ),
+            'carrera-financieros' => array( 'financieros' ),
+            'carrera-transito' => array( 'accidentologia' ),
+            'carrera-procesamiento' => array( 'procesamiento' ),
+            'carrera-seguridad' => array( 'seguridad' ),
+        );
+        $hits = array();
+        foreach ( $career_keys as $id => $keys ) {
+            foreach ( $keys as $term ) {
+                if ( isset( $query[ $term ] ) ) { $hits[] = $id; break; }
+            }
+        }
+        if ( count( $hits ) === 1 ) {
+            $record = self::match_id( $records, $hits[0] );
+            if ( ! $record || ! ISTPNCHAT_Knowledge::trusted_url( $record['fuente'] ?? '' ) ) { return null; }
+            $text = (string) ( $record['respuesta'] ?? '' );
+            if ( ! preg_match( '/duraci[oó]n\s*[,;:]?\s*([^;\.\n]+)/iu', $text, $match ) ) { return null; }
+            $name = preg_replace( '/^Carrera de /u', '', (string) ( $record['titulo'] ?? '' ) );
+            return array(
+                'respuesta' => 'La carrera de ' . $name . ' tiene una duración de ' . trim( $match[1] ) . ', según la información publicada por el ISTPN. Puedes consultar su ficha académica en el enlace.',
+                'fuentes' => array( array( 'titulo' => $name, 'url' => $record['fuente'] ) ),
+                'modo' => 'local', 'tema' => 'Oferta académica', 'contexto' => (string) $record['id'],
+            );
+        }
+        // Si no se reconoce ninguna carrera de forma especifica, pedir
+        // el nombre en vez de responder con la duracion de otra carrera.
+        if ( count( $hits ) === 0 && ( isset( $query['duracion'] ) || preg_match( '/\b(cuanto|cuantos)\b.*\b(anos|semestres|periodos)\b/', $norm ) ) ) {
+            return array(
+                'respuesta' => 'Para darte un dato preciso, ¿puedes decirme el nombre de la carrera o trámite que te interesa? Si buscas la duración de una carrera, también puedes consultar la oferta académica del ISTPN.',
+                'fuentes' => array( array( 'titulo' => 'Oferta académica del ISTPN', 'url' => 'https://home.isupol.edu.ec/oferta-academica/' ) ),
+                'modo' => 'aclaracion',
+            );
+        }
+        return null;
     }
 
     private static function source_titles( $records ) {
@@ -190,7 +268,7 @@ final class ISTPNCHAT_Search {
             return array( 'respuesta' => '¡Hola! Soy ISTPNCHAT. Puedes consultarme sobre carreras, modalidades, admisiones, normativa, noticias y servicios del ISTPN.', 'fuentes' => array(), 'modo' => 'local' );
         }
         $records = is_array( $data ) ? ( $data['respuestas'] ?? array() ) : array();
-        if ( ! is_array( $records ) || ! $records ) { return array( 'respuesta' => 'La base institucional no esta disponible. Intentalo nuevamente.', 'fuentes' => array(), 'modo' => 'sin_datos' ); }
+        if ( ! is_array( $records ) || ! $records ) { return array( 'respuesta' => 'En este momento no puedo consultar la información institucional. Intenta nuevamente en unos momentos. También puedes visitar el portal oficial del ISTPN.', 'fuentes' => array(), 'modo' => 'sin_datos' ); }
         // El usuario puede decir «otras» sin repetir «carreras» ni «Criminalística».
         // Solo se utiliza el ID de la ultima respuesta, nunca texto arbitrario del cliente.
         $context_id = is_string( $context_id ) && strlen( $context_id ) <= 80 && preg_match( '/^[a-z0-9-]+$/', $context_id ) ? $context_id : '';
@@ -203,9 +281,11 @@ final class ISTPNCHAT_Search {
         if ( preg_match( '/^(?:y )?(?:las |los )?(?:otra|otras|otro|otros|demas|restantes)(?: carreras| opciones)?$/', self::normalize( $question ) ) ) {
             return array( 'respuesta' => '¿Te refieres a otras carreras del ISTPN? Pregúntame por las carreras disponibles o consulta primero una carrera en particular.', 'fuentes' => array(), 'modo' => 'aclaracion' );
         }
+        $duration = self::career_duration( $question, $records );
+        if ( null !== $duration ) { return $duration; }
         $matches = self::search( $question, $records );
         if ( ! $matches ) { return array(
-            'respuesta' => 'No encontre informacion suficiente en la base institucional. Puedes consultar el portal oficial del ISTPN.',
+            'respuesta' => 'Todavía no tengo una respuesta confirmada para esa consulta. ¿Puedes hacer la pregunta de otra manera o contarme qué carrera, trámite o documento necesitas? Con gusto intentaré orientarte. También puedes consultar la información publicada en el portal oficial del ISTPN.',
             'fuentes' => array( array( 'titulo' => 'Portal del ISTPN', 'url' => 'https://home.isupol.edu.ec/' ) ),
             'modo' => 'sin_resultado',
         ); }
