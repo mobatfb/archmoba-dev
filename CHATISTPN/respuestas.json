@@ -11,7 +11,7 @@
     "respuesta_anteriores": 44,
     "respuestas_ampliadas": 176,
     "respuestas_totales": 221,
-    "preguntas_total": 964,
+    "preguntas_total": 976,
     "fuentes_unicas": 40,
     "documentos_solo_titulo": 74,
     "documentos_internos_revisados": false,
@@ -4207,26 +4207,49 @@
     {
       "id": "respuesta-sobre-rector",
       "tema": "Institucional",
-      "titulo": "Nombre del rector vigente",
+      "titulo": "Rector del ISTPN: Juan Carlos Moya Román",
       "preguntas": [
         "¿Quién es el rector actualmente?",
         "¿Quién es el rector del ISTPN en 2026?",
         "¿Cuál es el nombre del rector?",
         "¿Quién dirige el ISUPOL?",
         "¿Cómo se llama el rector de ISUPOL?",
-        "Rector vigente ISTPN"
+        "Rector vigente ISTPN",
+        "¿Quién es el señor rector del ISTPN?",
+        "¿Quién es el rector del Instituto Superior Tecnológico Policía Nacional?",
+        "¿Quién es el rector de ISUPOL?",
+        "¿Quién es Juan Carlos Moya Román?",
+        "¿Qué grado tiene el rector del ISTPN?",
+        "¿Cuál es el mensaje del rector?",
+        "¿Dónde está el mensaje del señor rector?",
+        "¿Dónde encuentro el mensaje del rector del ISTPN?",
+        "¿Cómo se llama el señor rector?",
+        "Nombre y grado del rector del ISTPN",
+        "Mensaje del Sr. Rector",
+        "Rector actual del Instituto Superior Tecnológico Policía Nacional"
       ],
-      "respuesta": "La página «Nuestras Autoridades» revisada publica cargos de vicerrector y coordinadores, pero no permite confirmar con seguridad el nombre del rector vigente. Para usar un nombre en un documento o gestión, solicita confirmación institucional actualizada.",
-      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "respuesta": "De acuerdo con la página oficial «Mensaje del Rector» del Instituto Superior Tecnológico Policía Nacional (ISTPN/ISUPOL), el rector que figura publicado es el señor Teniente Coronel de Policía Juan Carlos Moya Román. Puedes leer su mensaje institucional y consultar la información oficial en el enlace correspondiente.",
+      "fuente": "https://home.isupol.edu.ec/mensaje-rector/",
       "origen": "verificado",
       "revision": "2026-11-11",
       "etiquetas": [
         "rector",
+        "señor rector",
+        "tcnl",
+        "teniente coronel",
+        "Juan Carlos Moya Román",
+        "Juan Carlos Moya Roman",
+        "rectoría",
         "autoridades",
-        "actualmente",
-        "nombre"
+        "mensaje del rector"
       ],
-      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada",
+      "fuentes": [
+        "https://home.isupol.edu.ec/mensaje-rector/"
+      ],
+      "titulos_fuentes": {
+        "https://home.isupol.edu.ec/mensaje-rector/": "Mensaje del Rector — Juan Carlos Moya Román"
+      }
     },
     {
       "id": "aranceles-actuales",
