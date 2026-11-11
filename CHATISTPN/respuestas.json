@@ -1,5 +1,5 @@
 {
-  "version": "0.4.0",
+  "version": "0.4.1",
   "proyecto": "CHATISTPN",
   "dominio": "home.isupol.edu.ec",
   "tipo": "FAQ documentada y buscador offline; sin IA generativa ni consumo de tokens",
@@ -10,8 +10,8 @@
     "exhaustivo_confirmado": false,
     "respuesta_anteriores": 44,
     "respuestas_ampliadas": 176,
-    "respuestas_totales": 220,
-    "preguntas_total": 949,
+    "respuestas_totales": 221,
+    "preguntas_total": 964,
     "fuentes_unicas": 40,
     "documentos_solo_titulo": 74,
     "documentos_internos_revisados": false,
@@ -154,7 +154,7 @@
         "¿Qué estudios se pueden cursar en el ISTPN?",
         "Listado de ocho carreras del ISTPN"
       ],
-      "respuesta": "El portal publica estas ofertas académicas: Acondicionamiento Físico Aplicado a la Función Policial (presencial); Análisis de la Información (en línea); Investigación en Ciberdelitos (en línea); Criminalística (presencial); Investigación en Delitos Financieros y Económicos (en línea); Accidentología Vial y Gestión del Tránsito (híbrida); Procesamiento de la Información (en línea); y Seguridad Ciudadana y Orden Público (híbrida). La disponibilidad de cupos y convocatorias debe verificarse en Admisiones.",
+      "respuesta": "El ISTPN tiene 8 carreras publicadas, distribuidas en tres modalidades:\n\nPRESENCIAL (2)\n1. Acondicionamiento Físico Aplicado a la Función Policial.\n2. Criminalística.\n\nEN LÍNEA (4)\n3. Análisis de la Información.\n4. Investigación en Ciberdelitos.\n5. Investigación en Delitos Financieros y Económicos.\n6. Procesamiento de la Información.\n\nHÍBRIDA (2)\n7. Accidentología Vial y Gestión del Tránsito.\n8. Seguridad Ciudadana y Orden Público.\n\nPuedes abrir el enlace individual de cada carrera que aparece debajo. La oferta publicada no confirma inscripciones abiertas; verifica la convocatoria vigente.",
       "fuente": "https://home.isupol.edu.ec/oferta-academica/",
       "origen": "verificado",
       "revision": "2026-11-11",
@@ -167,7 +167,17 @@
         "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
         "https://home.isupol.edu.ec/procesamiento-de-la-informacion/",
         "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/"
-      ]
+      ],
+      "titulos_fuentes": {
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/": "Acondicionamiento Físico Aplicado a la Función Policial",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/": "Análisis de la Información",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/": "Investigación en Ciberdelitos",
+        "https://home.isupol.edu.ec/carrera-criminalistica/": "Criminalística",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/": "Investigación en Delitos Financieros y Económicos",
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/": "Accidentología Vial y Gestión del Tránsito",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/": "Procesamiento de la Información",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/": "Seguridad Ciudadana y Orden Público"
+      }
     },
     {
       "id": "numero-carreras-istpn",
@@ -190,7 +200,7 @@
         "¿Cuántas carreras son virtuales?",
         "¿Cuántas carreras son híbridas?"
       ],
-      "respuesta": "En el portal oficial del ISTPN se encuentran publicadas 8 carreras: 2 en modalidad presencial, 4 en línea y 2 en modalidad híbrida. Consulta la sección Oferta Académica para conocer sus nombres, características y requisitos. Esta cifra corresponde a la oferta publicada en el sitio; no significa que todas tengan inscripciones abiertas.",
+      "respuesta": "El ISTPN tiene 8 carreras publicadas, distribuidas en tres modalidades:\n\nPRESENCIAL (2)\n1. Acondicionamiento Físico Aplicado a la Función Policial.\n2. Criminalística.\n\nEN LÍNEA (4)\n3. Análisis de la Información.\n4. Investigación en Ciberdelitos.\n5. Investigación en Delitos Financieros y Económicos.\n6. Procesamiento de la Información.\n\nHÍBRIDA (2)\n7. Accidentología Vial y Gestión del Tránsito.\n8. Seguridad Ciudadana y Orden Público.\n\nPuedes abrir el enlace individual de cada carrera que aparece debajo. La oferta publicada no confirma inscripciones abiertas; verifica la convocatoria vigente.",
       "fuente": "https://home.isupol.edu.ec/oferta-academica/",
       "fuentes": [
         "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/",
@@ -213,7 +223,17 @@
         "carrera",
         "oferta academica",
         "modalidades"
-      ]
+      ],
+      "titulos_fuentes": {
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/": "Acondicionamiento Físico Aplicado a la Función Policial",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/": "Análisis de la Información",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/": "Investigación en Ciberdelitos",
+        "https://home.isupol.edu.ec/carrera-criminalistica/": "Criminalística",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/": "Investigación en Delitos Financieros y Económicos",
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/": "Accidentología Vial y Gestión del Tránsito",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/": "Procesamiento de la Información",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/": "Seguridad Ciudadana y Orden Público"
+      }
     },
     {
       "id": "carrera-acondicionamiento",
@@ -1765,7 +1785,11 @@
       "fuentes": [
         "https://home.isupol.edu.ec/carrera-criminalistica/",
         "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/"
-      ]
+      ],
+      "titulos_fuentes": {
+        "https://home.isupol.edu.ec/carrera-criminalistica/": "Criminalística",
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/": "Acondicionamiento Físico Aplicado a la Función Policial"
+      }
     },
     {
       "id": "carreras-online",
@@ -1791,7 +1815,13 @@
         "https://home.isupol.edu.ec/carrera-ciberdelito/",
         "https://home.isupol.edu.ec/carrera-delitos-financieros/",
         "https://home.isupol.edu.ec/procesamiento-de-la-informacion/"
-      ]
+      ],
+      "titulos_fuentes": {
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/": "Análisis de la Información",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/": "Investigación en Ciberdelitos",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/": "Investigación en Delitos Financieros y Económicos",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/": "Procesamiento de la Información"
+      }
     },
     {
       "id": "carreras-hibridas",
@@ -1815,7 +1845,11 @@
       "fuentes": [
         "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
         "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/"
-      ]
+      ],
+      "titulos_fuentes": {
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/": "Accidentología Vial y Gestión del Tránsito",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/": "Seguridad Ciudadana y Orden Público"
+      }
     },
     {
       "id": "carreras-titulacion",
