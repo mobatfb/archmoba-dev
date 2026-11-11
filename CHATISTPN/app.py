@@ -1,18 +1,15 @@
-"""ISTPNCHAT - prototipo local, sin APIs, tokens ni dependencias externas.
+"""ISTPNCHAT: aplicación de escritorio con ventana Python nativa.
 Ejecutar: python app.py   |   python app.py --cli
+No inicia servidores ni necesita navegador, API externa o paquetes pip.
 """
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import re
-import threading
-import time
 import unicodedata
 import webbrowser
-from collections import Counter, defaultdict, deque
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -130,70 +127,220 @@ class Motor:
         return {'respuesta': answer[:1300], 'fuentes': sources, 'modo': 'local', 'tema': item.get('tema',''), 'coincidencia': round(best,2)}
 
 
-HTML = r'''<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ISTPNCHAT · Prototipo</title><style>
-:root{font-family:system-ui,-apple-system,Segoe UI,Arial;color:#172944;background:#eef3f9}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.shell{width:min(800px,100%);height:min(800px,90vh);display:flex;flex-direction:column;background:white;border-radius:20px;overflow:hidden;box-shadow:0 14px 50px #05255226}.head{background:linear-gradient(110deg,#06285a,#1266b9);color:#fff;padding:18px 24px}.head h1{margin:0;font-size:1.18rem}.head small{opacity:.8}.messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}.bub{max-width:86%;padding:12px 14px;border-radius:16px;white-space:pre-wrap;line-height:1.52;font-size:14px}.user{align-self:flex-end;background:#0865c2;color:white;border-bottom-right-radius:3px}.bot{align-self:flex-start;background:#f0f5fa;border:1px solid #e4ebf3;border-bottom-left-radius:3px}.links{margin-top:10px;display:grid;gap:6px}.links a{color:#075aa9;overflow-wrap:anywhere}.hint{color:#637287;font-size:12px;padding:0 20px 10px}form{display:flex;gap:8px;padding:16px;border-top:1px solid #e3e8ef}input{flex:1;border:1px solid #c9d5e3;border-radius:12px;padding:13px;font-size:14px;min-width:0}button{border:none;background:#0d58a8;color:white;padding:0 20px;border-radius:12px;cursor:pointer}button:disabled{opacity:.6}.qs{display:flex;flex-wrap:wrap;gap:7px;padding:0 20px 12px}.qs button{font-size:12px;padding:8px 10px;background:#e3effc;color:#11446f}
-</style></head><body><main class="shell"><header class="head"><h1>💬 ISTPNCHAT</h1><small>Prototipo local · Información pública del ISTPN · Sin API de pago</small></header>
-<div class="messages" id="messages" aria-live="polite"></div><div class="qs" id="qs"><button data-q="¿Qué carreras y modalidades ofrece el ISTPN?">Carreras</button><button data-q="¿Cuál es la misión del ISTPN?">Misión</button><button data-q="¿Dónde está la normativa?">Normativa</button><button data-q="¿Cómo contacto al instituto?">Contacto</button></div><div class="hint">Las respuestas provienen de respuestas.json. Pueden requerir actualización y verificación.</div><form id="form"><input id="q" maxlength="700" placeholder="Escribe una consulta institucional..." aria-label="Pregunta" autocomplete="off" required><button id="send" type="submit">Enviar</button></form></main><script>
-const messages=document.getElementById('messages'),input=document.getElementById('q'),button=document.getElementById('send');
-function bubble(text,who,links=[]){const el=document.createElement('div');el.className='bub '+who;el.textContent=text;if(links.length){const box=document.createElement('div');box.className='links';for(const item of links){try{const u=new URL(item.url);if(u.protocol!=='https:'||u.hostname!=='home.isupol.edu.ec')continue;const a=document.createElement('a');a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='↗ '+(item.titulo||u.href);box.appendChild(a)}catch{}}el.appendChild(box)}messages.appendChild(el);messages.scrollTop=messages.scrollHeight;return el}
-bubble('¡Hola! Soy ISTPNCHAT. ¿Qué deseas saber sobre el Instituto Superior Tecnológico Policía Nacional?','bot');
-async function ask(q){if(!q.trim())return;bubble(q,'user');input.value='';button.disabled=true;try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pregunta:q})});const data=await r.json();bubble(data.respuesta||'No se obtuvo respuesta.','bot',data.fuentes||[])}catch(e){bubble('No pude conectar con el servicio local.','bot')}finally{button.disabled=false;input.focus()}}
-document.getElementById('form').addEventListener('submit',e=>{e.preventDefault();ask(input.value)});document.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>ask(b.dataset.q)));
-</script></body></html>'''
 
 
-def serve(host, port, browser=True):
-    engine = Motor()
-    hits = defaultdict(deque)
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.path != '/':
-                self.send_error(404); return
-            b = HTML.encode('utf-8')
-            self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'");self.send_header('Content-Length',str(len(b)));self.end_headers();self.wfile.write(b)
-        def do_POST(self):
-            if self.path != '/api/chat':
-                self.send_error(404);return
-            try: length=int(self.headers.get('Content-Length','0'))
-            except ValueError: length=0
-            if length<1 or length>4000:
-                self.send_error(413);return
-            now=time.monotonic();ip=self.client_address[0];recent=hits[ip]
-            while recent and now-recent[0]>60:recent.popleft()
-            if len(recent)>=25:
-                self.send_error(429, 'Demasiadas consultas');return
-            recent.append(now)
-            try:
-                content=json.loads(self.rfile.read(length).decode('utf-8'))
-                result=engine.responder(content.get('pregunta',''))
-                data=json.dumps(result,ensure_ascii=False).encode('utf-8')
-                self.send_response(200);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
-            except (json.JSONDecodeError,UnicodeDecodeError,AttributeError):self.send_error(400)
-            except Exception as exc:print('Error:',str(exc));self.send_error(500)
-        def log_message(self, fmt,*args):pass
-    srv=ThreadingHTTPServer((host,port),Handler)
-    url=f'http://{host}:{port}/'
-    print(f'ISTPNCHAT funcionando en {url} (Ctrl+C para cerrar)')
-    if browser:threading.Timer(.6,lambda:webbrowser.open(url)).start()
-    try:srv.serve_forever()
-    except KeyboardInterrupt:pass
-    finally:srv.server_close()
+def ejecutar_escritorio():
+    """Abre una ventana de escritorio REAL (Tkinter), sin HTTP ni navegador."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+    except ImportError as exc:
+        raise RuntimeError('Python necesita el componente estándar Tkinter para mostrar la ventana.') from exc
 
-if __name__=='__main__':
-    p=argparse.ArgumentParser(description='ISTPNCHAT local sin consumo de tokens')
-    p.add_argument('--cli',action='store_true');p.add_argument('--no-browser',action='store_true');p.add_argument('--port',type=int,default=8765)
-    p.add_argument('--test',type=str,help='Prueba una consulta sin abrir ventana')
-    args=p.parse_args()
-    engine=Motor()
-    if args.test:print(json.dumps(engine.responder(args.test),ensure_ascii=False,indent=2))
+    AZUL_OSCURO = '#002F6C'
+    AZUL = '#0757AF'
+    FONDO = '#F0F4F8'
+    BLANCO = '#FFFFFF'
+    TEXTO = '#1A2A42'
+    GRIS = '#6B7788'
+    BORDE = '#D8E2EE'
+    BURBUJA_BOT = '#EAF1F9'
+
+    motor = Motor()
+    root = tk.Tk()
+    root.title('ISTPNCHAT | Asistente institucional')
+    root.configure(bg=FONDO)
+    root.geometry('840x700')
+    root.minsize(520, 480)
+
+    header = tk.Frame(root, bg=AZUL_OSCURO, padx=23, pady=17)
+    header.pack(fill='x')
+    tk.Label(header, text='ISTPNCHAT', bg=AZUL_OSCURO, fg=BLANCO,
+             font=('Segoe UI', 18, 'bold'), anchor='w').pack(anchor='w')
+    tk.Label(header, text='Instituto Superior Tecnológico Policía Nacional  •  Asistente local sin API',
+             bg=AZUL_OSCURO, fg='#C9DDF6', font=('Segoe UI', 9), anchor='w').pack(anchor='w', pady=(3, 0))
+
+    toolbar = tk.Frame(root, bg=FONDO, padx=20, pady=10)
+    toolbar.pack(fill='x')
+    info = tk.StringVar()
+
+    def estado_base():
+        registros = motor.registros
+        formulaciones = sum(len(r.get('preguntas', [])) for r in registros)
+        info.set(f'Base local: {len(registros)} respuestas · {formulaciones} formas de preguntar  •  Tokens: 0')
+
+    estado_base()
+    tk.Label(toolbar, textvariable=info, fg=GRIS, bg=FONDO,
+             font=('Segoe UI', 9), anchor='w').pack(side='left', fill='x', expand=True)
+
+    area = tk.Frame(root, bg=BLANCO, highlightbackground=BORDE, highlightthickness=1)
+    area.pack(fill='both', expand=True, padx=16, pady=(0, 8))
+    scroll = tk.Scrollbar(area)
+    scroll.pack(side='right', fill='y')
+    canvas = tk.Canvas(area, bg=BLANCO, bd=0, highlightthickness=0,
+                       yscrollcommand=scroll.set)
+    canvas.pack(side='left', fill='both', expand=True)
+    scroll.configure(command=canvas.yview)
+    interior = tk.Frame(canvas, bg=BLANCO)
+    interior_id = canvas.create_window((0, 0), window=interior, anchor='nw')
+    etiquetas = []
+
+    def actualizar_scroll(_evento=None):
+        canvas.configure(scrollregion=canvas.bbox('all'))
+
+    def ajustar_ancho(evento):
+        canvas.itemconfigure(interior_id, width=evento.width)
+        largo = max(240, int(evento.width * 0.71))
+        for etiqueta in etiquetas:
+            etiqueta.configure(wraplength=largo)
+        actualizar_scroll()
+
+    interior.bind('<Configure>', actualizar_scroll)
+    canvas.bind('<Configure>', ajustar_ancho)
+
+    def rueda(evento):
+        if evento.num == 4:
+            desplazamiento = -3
+        elif evento.num == 5:
+            desplazamiento = 3
+        else:
+            desplazamiento = -int(evento.delta / 120) * 3
+        canvas.yview_scroll(desplazamiento, 'units')
+
+    canvas.bind_all('<MouseWheel>', rueda)
+    canvas.bind_all('<Button-4>', rueda)
+    canvas.bind_all('<Button-5>', rueda)
+
+    def ir_final():
+        root.update_idletasks()
+        canvas.yview_moveto(1.0)
+
+    def enlace_valido(url):
+        try:
+            p = urlsplit(str(url))
+            return p.scheme == 'https' and p.hostname == 'home.isupol.edu.ec'
+        except ValueError:
+            return False
+
+    def mensaje(texto, emisor='bot', enlaces=None):
+        fila = tk.Frame(interior, bg=BLANCO)
+        fila.pack(fill='x', padx=16, pady=7)
+        usuario = emisor == 'usuario'
+        fondo = AZUL if usuario else BURBUJA_BOT
+        color = BLANCO if usuario else TEXTO
+        tarjeta = tk.Frame(fila, bg=fondo, padx=13, pady=11)
+        tarjeta.pack(side='right' if usuario else 'left', anchor='e' if usuario else 'w')
+        lbl = tk.Label(tarjeta, text=texto, bg=fondo, fg=color,
+                       font=('Segoe UI', 10), justify='left', anchor='w',
+                       wraplength=max(240, int(canvas.winfo_width() * .71)))
+        lbl.pack(anchor='w')
+        etiquetas.append(lbl)
+        enlaces_mostrados = set()
+        for fuente in enlaces or []:
+            if not isinstance(fuente, dict):
+                continue
+            url = fuente.get('url', '')
+            if not enlace_valido(url) or url in enlaces_mostrados:
+                continue
+            enlaces_mostrados.add(url)
+            titulo = fuente.get('titulo') or url
+            tk.Button(tarjeta, text='↗ ' + titulo, bg=fondo, fg='#0757AF',
+                      activebackground=fondo, activeforeground='#003A78',
+                      relief='flat', bd=0, padx=0, pady=3,
+                      cursor='hand2', anchor='w', justify='left',
+                      font=('Segoe UI', 9, 'underline'),
+                      command=lambda u=url: webbrowser.open(u, new=2)).pack(anchor='w', fill='x')
+        root.after_idle(ir_final)
+
+    def recargar():
+        try:
+            motor.mtime = -1
+            motor.reload()
+            estado_base()
+            messagebox.showinfo('ISTPNCHAT', 'Base de conocimientos recargada correctamente.')
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            messagebox.showerror('No se pudo recargar', str(exc))
+
+    tk.Button(toolbar, text='↻ Recargar JSON', bg=BLANCO, fg=AZUL_OSCURO,
+              bd=1, relief='solid', padx=10, pady=6, cursor='hand2',
+              font=('Segoe UI', 9), command=recargar).pack(side='right')
+
+    sugerencias = tk.Frame(root, bg=FONDO, padx=16, pady=6)
+    sugerencias.pack(fill='x')
+
+    entrada_bar = tk.Frame(root, bg=BLANCO, padx=15, pady=12)
+    entrada_bar.pack(fill='x', padx=16, pady=(0, 16))
+    entrada = tk.Entry(entrada_bar, font=('Segoe UI', 11), bg=BLANCO,
+                       fg=TEXTO, relief='flat', highlightthickness=0)
+    entrada.pack(side='left', fill='x', expand=True, padx=(4, 10), ipady=7)
+    enviar_boton = tk.Button(entrada_bar, text='Enviar', bg=AZUL, fg=BLANCO,
+                             activebackground=AZUL_OSCURO, activeforeground=BLANCO,
+                             relief='flat', bd=0, padx=20, pady=9,
+                             font=('Segoe UI', 10, 'bold'), cursor='hand2')
+    enviar_boton.pack(side='right')
+
+    def preguntar(pregunta=None):
+        consulta = (pregunta if pregunta is not None else entrada.get()).strip()
+        if not consulta:
+            return
+        entrada.delete(0, 'end')
+        mensaje(consulta, 'usuario')
+        enviar_boton.configure(state='disabled')
+        try:
+            resultado = motor.responder(consulta)
+            mensaje(resultado.get('respuesta', 'No se obtuvo respuesta.'),
+                    'bot', resultado.get('fuentes', []))
+            estado_base()
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            mensaje('No pude leer respuestas.json. Verifica que esté en la misma carpeta que app.py.\n'
+                    + str(exc), 'bot')
+        finally:
+            enviar_boton.configure(state='normal')
+            entrada.focus_set()
+
+    enviar_boton.configure(command=preguntar)
+    entrada.bind('<Return>', lambda _e: preguntar())
+
+    for nombre, consulta in [
+        ('Carreras', '¿Qué carreras y modalidades ofrece el ISTPN?'),
+        ('Admisiones', '¿Dónde encuentro información de admisiones?'),
+        ('Normativa', '¿Dónde está la normativa del ISTPN?'),
+        ('Contacto', '¿Cómo contacto al ISTPN?'),
+    ]:
+        tk.Button(sugerencias, text=nombre, fg=AZUL_OSCURO, bg='#DCE9F8',
+                  relief='flat', bd=0, padx=12, pady=6, cursor='hand2',
+                  font=('Segoe UI', 9),
+                  command=lambda q=consulta: preguntar(q)).pack(side='left', padx=(0, 7))
+
+    mensaje('¡Hola! Soy ISTPNCHAT. Pregúntame por las carreras, modalidades, admisiones, normativa o servicios publicados del ISTPN.\n\nMis respuestas provienen del archivo respuestas.json y no consumen tokens.', 'bot')
+    entrada.focus_set()
+    root.mainloop()
+
+
+def main():
+    p = argparse.ArgumentParser(description='ISTPNCHAT de escritorio, sin servidor ni API')
+    p.add_argument('--cli', action='store_true', help='Usar únicamente consola de texto')
+    p.add_argument('--test', type=str, help='Probar una pregunta y finalizar')
+    args = p.parse_args()
+    motor = Motor()
+    if args.test is not None:
+        print(json.dumps(motor.responder(args.test), ensure_ascii=False, indent=2))
     elif args.cli:
         print('ISTPNCHAT - escribe salir para cerrar')
         while True:
-            try:question=input('Tú> ').strip()
-            except (EOFError,KeyboardInterrupt):break
-            if norm(question) in ('salir','exit','quit'):break
-            response=engine.responder(question)
-            print('ISTPNCHAT>',response['respuesta'])
-            for link in response.get('fuentes',[]):print('Fuente:',link['url'])
-    else:serve('127.0.0.1',args.port,not args.no_browser)
+            try:
+                pregunta = input('Tú> ').strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if norm(pregunta) in ('salir', 'exit', 'quit'):
+                break
+            resultado = motor.responder(pregunta)
+            print('ISTPNCHAT>', resultado['respuesta'])
+            for fuente in resultado.get('fuentes', []):
+                print('Fuente:', fuente['url'])
+    else:
+        ejecutar_escritorio()
+
+
+if __name__ == '__main__':
+    main()
