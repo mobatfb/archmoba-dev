@@ -1,85 +1,83 @@
-# CHATISTPN — prototipo Python gratuito
+# CHATISTPN v0.4 — prototipo Python sin consumo de tokens
 
-Asistente local de información institucional de **https://home.isupol.edu.ec/**.
+Asistente de escritorio para consultar información pública del [Instituto Superior Tecnológico Policía Nacional](https://home.isupol.edu.ec/), usando solamente datos revisados y enlaces oficiales.
 
-- **Costo de API: USD 0.** No utiliza OpenAI, Cloudflare ni otra IA remota.
-- Solo responde con **datos contenidos en `respuestas.json`** y enlaces públicos al portal.
-- La primera base incluye **44 respuestas revisadas / 200 formulaciones de pregunta / 21 URL de referencia principales**.
-- Incluye un **rastreador** que añade fragmentos localizables de páginas, publicaciones y (opcionalmente) PDF del portal.
-- A diferencia de un modelo generativo, esta primera versión es un buscador conversacional: no improvisa respuestas ni razona sobre documentos extensos.
+**No utiliza OpenAI ni otra API de inteligencia artificial**. Es un buscador local de preguntas y respuestas: no genera explicaciones nuevas a partir de una IA, y no accede a datos privados de estudiantes o docentes.
 
-## Archivos
+## Ejecución (un solo archivo)
 
-| Archivo | Función |
-|---|---|
-| `app.py` | Chat en ventana nativa de Python (Tkinter), sin navegador ni servidor. |
-| `respuestas.json` | Respuestas, formas de preguntar, URL de origen y estado de cobertura. |
-| `crawler.py` | Recorrido de sitemap, REST WordPress y enlaces públicos; enriquece el JSON. |
-| `README.md` | Instalación y uso. |
+El único archivo necesario en la PC para abrir la interfaz es `app.py`. Necesitas Python 3.10+ con Tkinter (normalmente instalado en Windows):
 
-## 1. Ejecutar el chat en Windows
-
-1. Instala **Python 3.10+** si aún no lo tienes.
-2. Descarga la carpeta `CHATISTPN` completa.
-3. Abre una consola dentro de la carpeta.
-4. Ejecuta:
-
-```bash
+```powershell
 python app.py
 ```
 
-Se abrirá **una ventana directamente en Windows**. No se inicia un servidor, no se monta una página web y no se abre un navegador. El programa lee `respuestas.json` desde la misma carpeta y muestra enlaces oficiales clicables.
+Abre directamente una ventana del escritorio **sin navegador ni servidor HTTP**. Al iniciar, `app.py` descarga el archivo `CHATISTPN/respuestas.json` de la rama `main` del repositorio `mobatfb/archmoba-dev` y guarda una copia de respaldo en el equipo. Puedes pulsar **Actualizar desde GitHub** para obtener cambios nuevos. Si no hay conexión, usa la última copia descargada previamente.
 
-Otras pruebas:
+Para probar preguntas sin abrir ventana:
 
-```bash
-python app.py --cli
-python app.py --test "¿Qué carreras y modalidades ofrece el ISTPN?"
+```powershell
+python app.py --test "¿Cuáles son las líneas de investigación del ISTPN?"
 ```
 
-Cierra la ventana para terminar. También puedes abrir `app.py` con doble clic en Windows, siempre que Python esté asociado con archivos `.py`. Requiere Python con **Tkinter**, que viene normalmente con las instalaciones oficiales de Windows.
+## Contenido de la edición 0.4
 
-## 2. Actualizar la base de conocimientos desde la web
+- **220 fichas de respuestas** y **949 formulaciones de preguntas**; estos números corresponden a la base preparada el 11/11/2026, antes de rastreos posteriores.
+- 40 direcciones de origen o navegación (incluyendo páginas de carreras y sistemas del dominio institucional).
+- Oferta académica, modalidades, admisiones, requisitos publicados, carreras y datos de contacto.
+- Bienestar Estudiantil, biblioteca, guías EVA/SGA/SIG/DOCPOL, trámites y servicios institucionales.
+- Siete líneas y principios de investigación, noticias fechadas, rendiciones de cuentas, actividades institucionales.
+- **74 documentos normativos localizables**: se verificó su **título en el índice**, pero **no se analizaron sus PDF** ni se confirmó su vigencia jurídica.
 
-La primera base está precargada, pero **no equivale a un escaneo absoluto**. El entorno desde el cual se elaboró no consiguió acceder al sitemap/REST del WordPress. Ejecuta el crawler desde tu PC o servidor si tienes conectividad al portal:
+La base incluye `cobertura` con los límites del muestreo y cada registro incluye URL de origen. Nunca debe anunciarse una convocatoria de 2024/2025 como abierta en 2026.
 
-```bash
-python crawler.py --max-pages 600
+## ¿Se ha examinado toda la web?
+
+**No.** La consulta programática desde el entorno de preparación no consiguió resolver/acceder por HTTP a `home.isupol.edu.ec`; las fichas se basan en páginas públicas examinadas mediante el índice web, no en una descarga completa de WordPress. No se revisaron todos los PDF, archivos no enlazados, páginas privadas ni los contenidos de plataformas protegidas. El número real de URLs públicas pendientes no puede confirmarse sin ejecutar el rastreador sobre la conexión del portal.
+
+El archivo `crawler.py` ofrece un recorrido adicional de las páginas públicas: sitemaps, entradas de WordPress REST cuando están abiertas y enlaces internos, respetando `robots.txt` y una pausa entre peticiones. Se debe ejecutar desde una computadora con acceso al dominio:
+
+```powershell
+python crawler.py --max-pages 600 --delay 1
 ```
 
-Para incluir PDF descargables (solo documentos públicos y con texto extraíble):
+Si quieres seguir los enlaces públicos sin un límite fijo de páginas (sigue existiendo el límite conservador de fragmentos para no sobrepasar la capacidad del cliente):
 
-```bash
+```powershell
+python crawler.py --max-pages 0 --delay 1
+```
+
+Para indexar PDF descargables con texto (opcional):
+
+```powershell
 python -m pip install pypdf
 python crawler.py --max-pages 0 --pdf --delay 1
 ```
 
-`--max-pages 0` significa sin límite de páginas; **puede tardar y generar tráfico al sitio**. Emplea una demora de cortesía (al menos 0,5 segundos) y ejecuta el rastreo fuera de horas de mayor uso. `--pdf` puede consumir memoria y tiempo según el volumen de documentos. Algunos PDF escaneados necesitan OCR, que este prototipo no incluye.
+Generará `cobertura.json` con URLs visitadas, errores, páginas pendientes, contenidos excluidos y cantidad de fragmentos. Lee ese informe antes de declarar que el rastreo se ha completado.
 
-El rastreador intenta localizar:
+## Protección de calidad de las respuestas
 
-- `wp-sitemap.xml`, `sitemap_index.xml` y `sitemap.xml`.
-- Entradas publicadas desde `/wp-json/wp/v2/pages` y `/wp-json/wp/v2/posts`, si están accesibles.
-- Enlaces internos de cada página pública, con comprobación de `robots.txt`.
-- PDF públicos, si `--pdf` está activado y `pypdf` está instalado.
+En la revisión se detectó **contenido publicitario ajeno a la institución** en determinadas páginas públicas. El rastreador actualizado aparta páginas con indicadores conocidos de contenido no institucional para revisión humana, en lugar de incorporarlas automáticamente a la base. Este filtro es básico y **no sustituye una auditoría de seguridad del sitio** ni garantiza encontrar todas las formas de contaminación.
 
-**Genera `cobertura.json`** con cantidades, errores y páginas pendientes. Si algunas áreas requieren inicio de sesión, están bloqueadas o no se vinculan desde páginas públicas, **no pueden considerarse rastreadas**. No recoge contenidos privados ni intenta saltarse restricciones.
+Recomendación para el administrador WordPress: revisar las páginas afectadas y sus revisiones, usuarios, plugins, archivos y registros de seguridad, respaldar el sitio y eliminar únicamente contenido confirmado como no autorizado. No publicar respuestas basadas en esos fragmentos hasta resolver el problema.
 
-Al actualizar, conserva las respuestas manualmente verificadas y sustituye los fragmentos del rastreo anterior. El chat recarga el JSON cuando cambia el archivo. Haz copia del JSON antes de cambios masivos.
+Las respuestas de documentos normativos solo confirman que el archivo aparece enlazado; no sustituyen una interpretación legal ni la lectura de la última versión aprobada. La información de personas, ofertas y procesos puede cambiar sin que el JSON se actualice automáticamente.
 
-## 3. Ejemplos
+## Archivos del repositorio
 
-- «¿Qué carreras y modalidades ofrece el ISTPN?»
-- «¿Cuánto dura Criminalística?»
-- «¿Dónde está el Reglamento de Bienestar Estudiantil?»
-- «¿Cómo presento un oficio en línea?»
-- «¿Cómo consultar mis notas en el SGA?»
-- «¿Dónde encuentro las noticias?»
+| Archivo | Uso |
+|---|---|
+| `app.py` | Programa de escritorio; descarga el JSON del repositorio. |
+| `respuestas.json` | Base institucional de respuestas y enlaces. |
+| `crawler.py` | Rastreo público opcional, con informe de cobertura y controles de calidad. |
+| `test_chat.py` | Pruebas sin red ni pagos. |
+| `README.md` | Documentación del proyecto. |
 
-## Límites y seguridad
+Ejecuta las pruebas desde la carpeta `CHATISTPN`:
 
-Este es un **prototipo de escritorio** y **no debe publicarse directamente como endpoint WordPress**. No abre ningún puerto ni recibe conexiones, no guarda conversaciones, rechaza instrucciones evidentemente ajenas al ISTPN y valida los enlaces antes de mostrarlos. El filtrado por vocabulario puede equivocarse; no sustituye una moderación exhaustiva.
+```powershell
+python -m unittest -v test_chat.py
+```
 
-El contenido del portal puede estar desactualizado (por ejemplo, convocatorias 2024/2025). Las fuentes se enlazan para contrastarlas; las respuestas de admisiones históricas incluyen advertencias. El rastreador no determina jurídicamente vigencias de reglamentos ni garantiza precisión de extracción en páginas complejas.
-
-**Cobertura inicial:** ver `respuestas.json → cobertura`. Después de ejecutar `crawler.py`, revisar `cobertura.json` y las páginas pendientes antes de afirmar que el corpus está completo.
+**Uso previsto:** prototipo local. No exponer el proceso como servicio público de WordPress sin un diseño adicional de seguridad, escalabilidad y administración de fuentes.
