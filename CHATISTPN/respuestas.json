@@ -1,17 +1,26 @@
 {
-  "version": "0.1.0",
+  "version": "0.4.0",
   "proyecto": "CHATISTPN",
   "dominio": "home.isupol.edu.ec",
-  "tipo": "buscador institucional offline; no usa IA generativa",
+  "tipo": "FAQ documentada y buscador offline; sin IA generativa ni consumo de tokens",
   "fecha_revision": "2026-11-11",
   "politica": "Respuestas restringidas a paginas publicas del ISTPN; no inventar hechos ni anunciar convocatorias historicas como vigentes",
   "cobertura": {
-    "metodo": "seleccion de paginas publicas consultadas e indexadas por busqueda web; crawler pendiente de ejecucion desde equipo con acceso",
+    "metodo": "Revisión de contenidos publicos accesibles e indexados: navegacion, carreras, admisiones, noticias, bienestar, biblioteca, guias, investigacion, normativa y transparencia.",
     "exhaustivo_confirmado": false,
+    "respuesta_anteriores": 44,
+    "respuestas_ampliadas": 176,
+    "respuestas_totales": 220,
+    "preguntas_total": 949,
+    "fuentes_unicas": 40,
+    "documentos_solo_titulo": 74,
+    "documentos_internos_revisados": false,
     "urls_visitadas": null,
     "urls_pendientes": null,
     "fragmentos_generados": 0,
-    "limitaciones": "No se pudo acceder desde este entorno al sitemap ni a la API REST; ejecutar crawler.py desde un equipo con acceso a Internet."
+    "sitemap_api_confirmado": false,
+    "alerta_calidad": "Varias páginas publicas consultadas incluyen texto publicitario ajeno a la temática institucional; revisar WordPress. No se incluyó este texto en respuestas.",
+    "limitaciones": "Sin acceso programatico a URL del sitio desde el entorno actual (DNS/timeout): no se pudo recorrer absolutamente todas las paginas ni analizar todos los PDF. Ejecutar crawler.py desde PC con acceso, revisar cobertura.json y validar cada fuente."
   },
   "respuestas": [
     {
@@ -22,7 +31,8 @@
         "¿Qué es el ISTPN?",
         "¿Qué es ISUPOL?",
         "¿Qué institución es esta?",
-        "¿Qué hace el instituto?"
+        "¿Qué hace el instituto?",
+        "¿A qué se dedica el Instituto Superior Tecnológico Policía Nacional?"
       ],
       "respuesta": "El Instituto Superior Tecnológico Policía Nacional (ISTPN/ISUPOL) ofrece formación técnica y tecnológica orientada a la prevención, la investigación del delito y la inteligencia antidelincuencial. Puedes consultar su información institucional en el portal oficial.",
       "fuente": "https://home.isupol.edu.ec/acerca/",
@@ -109,7 +119,7 @@
         "¿Quién es el vicerrector administrativo?",
         "Coordinadores de carrera"
       ],
-      "respuesta": "El portal publica una sección de autoridades y coordinadores. Entre las autoridades que aparecen figuran el Vicerrector Administrativo, Mg. Mauricio Xavier Vallejo Moncayo, y el Vicerrector Académico, Mg. Paulo Alejandro Mollocana Lara. Los nombramientos pueden cambiar; consulta siempre la página oficial.",
+      "respuesta": "La página «Nuestras Autoridades» identifica como Vicerrector Administrativo a Mg. Mauricio Xavier Vallejo Moncayo y como Vicerrector Académico a Mg. Paulo Alejandro Mollocana Lara. También publica coordinadores de carreras. Los cargos y designaciones pueden cambiar, por lo que conviene verificar la página oficial antes de un trámite.",
       "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
       "origen": "verificado",
       "revision": "2026-11-11"
@@ -139,10 +149,13 @@
         "¿Cuáles son todas las carreras?",
         "Oferta académica del instituto",
         "¿Qué carreras presenciales, híbridas y en línea existen?",
-        "Todas las carreras y modalidades"
+        "Todas las carreras y modalidades",
+        "¿Ofrecen carreras técnicas y tecnológicas?",
+        "¿Qué estudios se pueden cursar en el ISTPN?",
+        "Listado de ocho carreras del ISTPN"
       ],
       "respuesta": "El portal publica estas ofertas académicas: Acondicionamiento Físico Aplicado a la Función Policial (presencial); Análisis de la Información (en línea); Investigación en Ciberdelitos (en línea); Criminalística (presencial); Investigación en Delitos Financieros y Económicos (en línea); Accidentología Vial y Gestión del Tránsito (híbrida); Procesamiento de la Información (en línea); y Seguridad Ciudadana y Orden Público (híbrida). La disponibilidad de cupos y convocatorias debe verificarse en Admisiones.",
-      "fuente": "https://home.isupol.edu.ec/sig/",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
       "origen": "verificado",
       "revision": "2026-11-11",
       "fuentes": [
@@ -393,7 +406,7 @@
         "¿Cuáles son los pasos de inscripción?",
         "¿Dónde descargar el formulario de inscripción?"
       ],
-      "respuesta": "La sección Admisiones contiene avisos de preinscripción y un formulario descargable. El aviso disponible indica que una fase de preinscripción culminó y que se verificarían los cupos habilitados ante Senescyt. Consulta allí nuevas convocatorias y la vigencia de cada instrucción; no se debe asumir que el proceso histórico sigue abierto.",
+      "respuesta": "El portal mantiene una sección Admisiones con aviso de fase de preinscripción concluida y un proceso identificado como 2025. No hay confirmación, en el contenido revisado, de una nueva convocatoria abierta en noviembre de 2026; verifica allí los avisos actuales antes de inscribirte.",
       "fuente": "https://home.isupol.edu.ec/admisiones/",
       "origen": "verificado",
       "revision": "2026-11-11",
@@ -453,9 +466,11 @@
         "¿Dónde están los reglamentos?",
         "¿Dónde consultar la normativa del ISTPN?",
         "¿Qué reglamentos tiene el instituto?",
-        "Enlace de normativa"
+        "Enlace de normativa",
+        "¿Cuáles son los documentos normativos del ISTPN?",
+        "¿Hay resoluciones del órgano colegiado superior?"
       ],
-      "respuesta": "La sección Normativa reúne disposiciones internas y externas, resoluciones del Órgano Colegiado Superior, reglamentos académicos y de bienestar estudiantil, códigos de ética, planes institucionales y manuales. Puedes localizar y descargar los documentos desde la página oficial.",
+      "respuesta": "En «Normativa» se publican reglamentos, manuales, instructivos, planes, actas y resoluciones institucionales, además de normativa externa. La presencia de un documento en la página no prueba por sí sola que sea la versión jurídica vigente; revisa el archivo oficial y cualquier reforma posterior.",
       "fuente": "https://home.isupol.edu.ec/normativa/",
       "origen": "verificado",
       "revision": "2026-11-11"
@@ -468,7 +483,8 @@
         "¿Dónde encuentro Reglamento de Bienestar Estudiantil?",
         "¿Dónde está bienestar estudiantil?",
         "¿Dónde está reglamento bienestar?",
-        "¿Dónde está apoyo a estudiantes?"
+        "¿Dónde está apoyo a estudiantes?",
+        "¿Dónde está publicada la normativa de Bienestar Estudiantil?"
       ],
       "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamento de bienestar estudiantil. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
       "fuente": "https://home.isupol.edu.ec/normativa/",
@@ -725,7 +741,9 @@
       "preguntas": [
         "¿Dónde veo las noticias del ISTPN?",
         "¿Qué actividades publica el instituto?",
-        "¿Cuáles son las últimas noticias?"
+        "¿Cuáles son las últimas noticias?",
+        "¿Qué novedades publicaron en 2026?",
+        "¿Hay noticias de graduaciones?"
       ],
       "respuesta": "El portal reúne noticias y reportes sobre ceremonias académicas, minutos cívicos, capacitación, titulación y otras actividades institucionales. Para información reciente, consulta directamente la sección Noticias, ya que este JSON es una copia local y puede quedar desactualizada.",
       "fuente": "https://home.isupol.edu.ec/noticias/",
@@ -809,6 +827,3564 @@
         "https://home.isupol.edu.ec/revista-2/",
         "https://home.isupol.edu.ec/revista-4/"
       ]
+    },
+    {
+      "id": "admisiones-vigencia",
+      "tema": "Admisiones",
+      "titulo": "¿Hay inscripciones abiertas ahora?",
+      "preguntas": [
+        "¿Las inscripciones al ISTPN están abiertas?",
+        "¿Hay convocatoria vigente en el ISUPOL?",
+        "¿Puedo inscribirme ahora?",
+        "¿Hay cupos disponibles para 2026?",
+        "¿Cuándo abren inscripciones 2026?",
+        "¿Hasta cuándo puedo inscribirme?"
+      ],
+      "respuesta": "La página de Admisiones consultada muestra una fase de preinscripción finalizada y una convocatoria identificada como 2025. No permite confirmar una inscripción abierta en noviembre de 2026. Comprueba los comunicados oficiales más recientes de la sección Admisiones.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "inscripciones",
+        "cupos",
+        "2026",
+        "convocatoria",
+        "vigencia"
+      ]
+    },
+    {
+      "id": "admisiones-preinscripcion",
+      "tema": "Admisiones",
+      "titulo": "Preinscripción y registro",
+      "preguntas": [
+        "¿Qué ocurre después de preinscribirme?",
+        "¿Cómo funciona la preinscripción del ISUPOL?",
+        "¿Qué es el registro nacional de preinscripción?",
+        "¿Cómo se verifica el cupo habilitado?"
+      ],
+      "respuesta": "Según la página de Admisiones, luego de culminar una fase de preinscripción se remite el listado de preinscritos a SENESCYT para verificar la habilitación de cupos y posteriormente notificar la fase de inscripción. La página contiene información histórica: no debe interpretarse como cronograma vigente.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "senescyt",
+        "preinscripción",
+        "cupo"
+      ],
+      "historico": true
+    },
+    {
+      "id": "admisiones-procedimiento",
+      "tema": "Admisiones",
+      "titulo": "Instrucciones publicadas para la inscripción",
+      "preguntas": [
+        "¿Cómo lleno el formulario de inscripción?",
+        "¿Cómo entrego los documentos de inscripción?",
+        "¿Hay que imprimir el formulario del ISUPOL?",
+        "¿Cómo se presenta la inscripción?",
+        "¿Dónde descargo el formulario de inscripción?"
+      ],
+      "respuesta": "El instructivo publicado en Admisiones indica descargar el formulario, leer sus instrucciones, llenar los campos obligatorios, imprimirlo, presentarlo con la documentación en Secretaría Académica y remitirlo al correo indicado en la propia página. Estas instrucciones pertenecen a un proceso publicado previamente; revisa si existe una convocatoria vigente.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "formulario",
+        "inscripción",
+        "secretaría académica"
+      ],
+      "historico": true
+    },
+    {
+      "id": "admisiones-correo",
+      "tema": "Admisiones",
+      "titulo": "Correo indicado en la página de Admisiones",
+      "preguntas": [
+        "¿Cuál es el correo para inscripción?",
+        "¿Dónde enviar el formulario de admisión por email?",
+        "Correo de admisiones del ISUPOL",
+        "¿A qué correo se manda la inscripción?"
+      ],
+      "respuesta": "En la página de Admisiones aparece la dirección adminisiones@isupol.edu.ec para remitir formularios y documentos en el proceso publicado. El nombre se reproduce tal como figura allí; confirma su uso actual antes de enviar datos personales.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "adminisiones",
+        "email",
+        "formulario",
+        "correo"
+      ],
+      "historico": true
+    },
+    {
+      "id": "admisiones-requisitos-2023",
+      "tema": "Admisiones",
+      "titulo": "Requisitos publicados para tecnólogos (referencia histórica)",
+      "preguntas": [
+        "¿Cuáles eran los requisitos para tecnólogos?",
+        "¿Qué documentos piden para Criminalística?",
+        "¿Piden hoja de vida SIINPE 3W?",
+        "¿Exigen credencial policial para la inscripción?",
+        "¿Piden certificado del jefe de unidad para inscribirse?"
+      ],
+      "respuesta": "La página de requisitos para Análisis Delictual, Criminalística e Investigación de Accidentes de Tránsito menciona formulario impreso, evaluación de acceso 2023, título o acta de bachiller, identificación y credencial policial, hoja de vida SIINPE 3W, certificación de la unidad y condiciones de servicio. Es material histórico: consulta los requisitos específicos de la próxima convocatoria antes de reunir o entregar documentos.",
+      "fuente": "https://home.isupol.edu.ec/admintecnologo-2/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "requisitos",
+        "crimimalistica",
+        "2023",
+        "evaluación"
+      ],
+      "historico": true
+    },
+    {
+      "id": "admisiones-dmq-2023",
+      "tema": "Admisiones",
+      "titulo": "Requisito histórico de laborar en Quito",
+      "preguntas": [
+        "¿Debo trabajar en Quito para estudiar?",
+        "¿Piden dos años de servicio efectivo?",
+        "¿Puedo estudiar si trabajo fuera del DMQ?",
+        "¿Exigen trabajar en el Distrito Metropolitano de Quito?"
+      ],
+      "respuesta": "En un listado histórico de requisitos para determinadas carreras se solicita laborar en el Distrito Metropolitano de Quito y acreditar un mínimo de dos años de servicio efectivo. No se puede asegurar que esas condiciones correspondan a todas las carreras o convocatorias actuales.",
+      "fuente": "https://home.isupol.edu.ec/admintecnologo-2/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "servicio",
+        "dmq",
+        "policia",
+        "quito"
+      ],
+      "historico": true
+    },
+    {
+      "id": "bienestar-funciones",
+      "tema": "Bienestar estudiantil",
+      "titulo": "Funciones del Departamento de Bienestar Estudiantil",
+      "preguntas": [
+        "¿Qué hace Bienestar Estudiantil?",
+        "¿En qué me puede ayudar Bienestar Estudiantil?",
+        "¿Existe atención psicológica en el ISTPN?",
+        "¿Qué servicios tiene el departamento de Bienestar?"
+      ],
+      "respuesta": "El portal señala que Bienestar Estudiantil promueve el respeto a los valores éticos y la integridad física, psicológica y sexual del estudiantado. Se relaciona con orientación vocacional y profesional, apoyo en situaciones que afectan derechos y gestiones de ayuda o becas conforme al marco aplicable.",
+      "fuente": "https://home.isupol.edu.ec/bienestar/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "bienestar",
+        "estudiante",
+        "orientación",
+        "apoyo"
+      ]
+    },
+    {
+      "id": "bienestar-objetivo",
+      "tema": "Bienestar estudiantil",
+      "titulo": "Objetivo de Bienestar Estudiantil",
+      "preguntas": [
+        "¿Cuál es el objetivo de Bienestar Estudiantil?",
+        "¿Promueven salud mental en el instituto?",
+        "¿El ISTPN tiene programa de bienestar psicológico?"
+      ],
+      "respuesta": "La sección Bienestar Estudiantil indica que su objetivo es contribuir a la salud mental y la calidad de vida de las y los estudiantes mediante planificación, programas, convenios y proyectos, dentro del marco constitucional e institucional.",
+      "fuente": "https://home.isupol.edu.ec/bienestar/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "salud mental",
+        "bienestar",
+        "orientación"
+      ]
+    },
+    {
+      "id": "bienestar-datos-graduados",
+      "tema": "Bienestar estudiantil",
+      "titulo": "Actualización de datos de graduados",
+      "preguntas": [
+        "¿Cómo actualizo mis datos de graduado?",
+        "¿Hay un formulario para graduados?",
+        "Actualización de datos de egresados",
+        "¿Qué hacen con los datos de graduados?"
+      ],
+      "respuesta": "La página de Bienestar Estudiantil contiene un proyecto de actualización de datos de graduados. Indica que la información proporcionada será confidencial y útil para procesos de actualización de carreras y áreas de conocimiento. Verifica el formulario directamente en el portal antes de ingresar datos personales.",
+      "fuente": "https://home.isupol.edu.ec/bienestar/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "graduados",
+        "datos",
+        "formulario"
+      ]
+    },
+    {
+      "id": "biblioteca-manuela",
+      "tema": "Biblioteca",
+      "titulo": "Biblioteca Manuela Sáenz",
+      "preguntas": [
+        "¿Cómo se llama la biblioteca del ISTPN?",
+        "¿Dónde está la Biblioteca Manuela Sáenz?",
+        "¿Existe reglamento de biblioteca?",
+        "¿Dónde consultar el reglamento de biblioteca?"
+      ],
+      "respuesta": "La biblioteca institucional figura en el portal como «Biblioteca Manuela Sáenz». Su página incluye la referencia a la normativa de uso y al Reglamento de Biblioteca. Para consultar recursos digitales puedes acceder al apartado Biblioteca y a los enlaces institucionales del menú.",
+      "fuente": "https://home.isupol.edu.ec/biblio/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "biblioteca",
+        "manuela saenz",
+        "libros"
+      ]
+    },
+    {
+      "id": "biblioteca-catalogo",
+      "tema": "Biblioteca",
+      "titulo": "Catálogo digital de libros",
+      "preguntas": [
+        "¿Dónde busco libros por catálogo?",
+        "¿Dónde está el catálogo digital?",
+        "¿Cómo accedo a la biblioteca virtual?",
+        "¿Cómo buscar libros del ISTPN?"
+      ],
+      "respuesta": "El menú Enlaces → Biblioteca Virtual y Catálogo ofrece un acceso al «Catálogo Digital» del ISTPN. En el momento de esta revisión no se confirmó la disponibilidad técnica del subdominio; consulta el menú del portal si el acceso no carga.",
+      "fuente": "https://home.isupol.edu.ec/biblio/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "bvirtual.isupol.edu.ec",
+        "catálogo",
+        "biblioteca"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/biblio/",
+        "https://bvirtual.isupol.edu.ec/"
+      ]
+    },
+    {
+      "id": "biblioteca-repositorio",
+      "tema": "Biblioteca",
+      "titulo": "Repositorio digital institucional",
+      "preguntas": [
+        "¿Dónde está el repositorio digital?",
+        "¿Cómo busco tesis del ISTPN?",
+        "¿Hay trabajos de titulación en el repositorio?",
+        "¿Dónde consultar investigaciones académicas?"
+      ],
+      "respuesta": "En Enlaces → Biblioteca Virtual y Catálogo se publica la opción «Repositorio Digital», que dirige al repositorio institucional. Puede contener materiales académicos; comprueba su disponibilidad desde el portal.",
+      "fuente": "https://home.isupol.edu.ec/biblio/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "repositorio.isupol.edu.ec",
+        "repositorio",
+        "tesis"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/biblio/",
+        "https://repositorio.isupol.edu.ec/"
+      ]
+    },
+    {
+      "id": "biblioteca-inventario",
+      "tema": "Biblioteca",
+      "titulo": "Inventario de libros",
+      "preguntas": [
+        "¿Dónde está el inventario de libros?",
+        "¿Cómo consulto los libros físicos?",
+        "¿Qué libros tiene la biblioteca?"
+      ],
+      "respuesta": "El ISTPN publica una sección «Inventario Libros» enlazada desde su menú Biblioteca Virtual y Catálogo. Puedes consultar allí el listado difundido; la disponibilidad actual de préstamo debe verificarse con la biblioteca.",
+      "fuente": "https://home.isupol.edu.ec/inventario-libros/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "inventario",
+        "biblioteca"
+      ]
+    },
+    {
+      "id": "biblioteca-adquisiciones-2021",
+      "tema": "Biblioteca",
+      "titulo": "Bibliografía adquirida en 2021",
+      "preguntas": [
+        "¿Dónde encuentro la bibliografía adquirida en 2021?",
+        "¿Qué libros se compraron en 2021?",
+        "Bibliografía adquirida ISUPOL 2021"
+      ],
+      "respuesta": "La web incluye una página denominada «Bibliografía Adquirida 2021». Se trata de un registro histórico de adquisiciones bibliográficas, no de un inventario actualizado de disponibilidad.",
+      "fuente": "https://home.isupol.edu.ec/bibliografia-adquirida-2021/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "2021",
+        "bibliografía",
+        "adquisiciones"
+      ],
+      "historico": true
+    },
+    {
+      "id": "guias-sga-administrativo",
+      "tema": "Guías y sistemas",
+      "titulo": "Guía SGA para personal administrativo",
+      "preguntas": [
+        "¿Dónde está el manual del SGA para administrativos?",
+        "¿Cómo se usa el SGA desde administración?",
+        "Guía administrativa del sistema académico"
+      ],
+      "respuesta": "En «Guías para usuarios» existe el apartado Sistema de Gestión Académico (SGA) con una guía para personal administrativo. El recurso está publicado junto a los tutoriales para docentes y estudiantes.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "sga",
+        "administrativo",
+        "manual"
+      ]
+    },
+    {
+      "id": "guias-sga-docente",
+      "tema": "Guías y sistemas",
+      "titulo": "Guía SGA para docentes",
+      "preguntas": [
+        "¿Dónde encuentro el manual SGA para docentes?",
+        "¿Cómo uso el sistema académico como docente?",
+        "Tutorial SGA docentes"
+      ],
+      "respuesta": "La página «Guías para usuarios» contiene una guía del SGA para personal docente. Para procedimientos específicos, consulta esa guía y el Sistema Académico indicado en el menú institucional.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "sga",
+        "docentes",
+        "manual"
+      ]
+    },
+    {
+      "id": "guias-sga-notas",
+      "tema": "Guías y sistemas",
+      "titulo": "Consulta de calificaciones en SGA",
+      "preguntas": [
+        "¿Cómo consulto mis notas?",
+        "¿Dónde veo mis calificaciones?",
+        "¿Cómo consultar notas del SGA?",
+        "¿Dónde revisar mis notas académicas?"
+      ],
+      "respuesta": "En «Guías para usuarios» → «Sistema de Gestión Académico (SGA)» → «Guía para el estudiante» figura la opción «Consulta de notas». La página ofrece orientación para consultar tus calificaciones; no permite a ISTPNCHAT acceder a notas privadas.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "sga",
+        "notas",
+        "calificaciones"
+      ]
+    },
+    {
+      "id": "guias-sga-matricula",
+      "tema": "Guías y sistemas",
+      "titulo": "Matriculación en el SGA",
+      "preguntas": [
+        "¿Cómo me matriculo en el SGA?",
+        "¿Dónde está el tutorial de matrícula?",
+        "Manual de matriculación del ISUPOL"
+      ],
+      "respuesta": "La guía estudiantil del SGA incluye un apartado «Matriculación». Puedes encontrarlo en la sección de guías del ISTPN. Las fechas y condiciones deben verificarse en los avisos oficiales de cada período.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "sga",
+        "matriculación",
+        "estudiantes"
+      ]
+    },
+    {
+      "id": "guias-sga-evaldoc",
+      "tema": "Guías y sistemas",
+      "titulo": "Evaluación docente desde el SGA",
+      "preguntas": [
+        "¿Cómo evalúo a mis docentes?",
+        "¿Dónde está la evaluación docente del estudiante?",
+        "¿Cómo se hace la evaluación de profesores en SGA?"
+      ],
+      "respuesta": "En la guía del SGA para estudiantes figura la opción «Evaluación docente». Consulta «Guías para usuarios» para localizar el material. ISTPNCHAT no recibe ni administra evaluaciones personales.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "evaluación",
+        "docentes",
+        "sga"
+      ]
+    },
+    {
+      "id": "guias-eva-ingreso",
+      "tema": "Guías y sistemas",
+      "titulo": "Acceso al aula virtual EVA",
+      "preguntas": [
+        "¿Cómo ingreso al EVA?",
+        "¿Dónde está el aula virtual?",
+        "¿Cómo puedo entrar a mis cursos?",
+        "¿Hay video para entrar al EVA?"
+      ],
+      "respuesta": "El apartado EVA de «Guías para usuarios» incluye un tutorial para acceder al aula virtual y al contenido de un curso. El menú del portal también enlaza al aula virtual; el acceso a cuentas requiere credenciales institucionales.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "eva",
+        "aula virtual",
+        "ingreso"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/guias-para-usuarios/",
+        "https://eva.isupol.edu.ec/"
+      ]
+    },
+    {
+      "id": "guias-eva-docente",
+      "tema": "Guías y sistemas",
+      "titulo": "Tutorial para docentes de EVA",
+      "preguntas": [
+        "¿Dónde está el tutorial docente para EVA?",
+        "¿Cómo se maneja EVA como profesor?",
+        "¿Hay manual del aula virtual para docentes?"
+      ],
+      "respuesta": "El ISTPN publica un «Tutorial para docentes» en el apartado EVA de las guías de usuario. Desde esa sección también se encuentran recursos sobre tareas, calificaciones y preguntas.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "eva",
+        "docente",
+        "tutorial"
+      ]
+    },
+    {
+      "id": "guias-eva-preguntas",
+      "tema": "Guías y sistemas",
+      "titulo": "Banco de preguntas del EVA",
+      "preguntas": [
+        "¿Cómo subir preguntas al banco EVA?",
+        "¿Cómo crear un cuestionario en el aula virtual?",
+        "¿Hay instructivo del banco de preguntas?",
+        "Subir preguntas EVA"
+      ],
+      "respuesta": "El portal incluye recursos para crear preguntas y subirlas al banco de preguntas del EVA, tanto en video como en instructivo. Busca ese material en «Guías para usuarios» → «EVA».",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "eva",
+        "preguntas",
+        "cuestionario"
+      ]
+    },
+    {
+      "id": "guias-eva-tareas",
+      "tema": "Guías y sistemas",
+      "titulo": "Tareas y calificaciones en EVA",
+      "preguntas": [
+        "¿Cómo crear tareas en EVA?",
+        "¿Cómo asignar calificaciones en Excel?",
+        "¿Hay tutorial para tareas Moodle?"
+      ],
+      "respuesta": "Entre los recursos EVA publicados en «Guías para usuarios» se encuentra «Asignar tarea y calificaciones en formato Excel». El mismo apartado enlaza a tutoriales de gestión académica.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "eva",
+        "tareas",
+        "calificaciones",
+        "excel"
+      ]
+    },
+    {
+      "id": "guias-eva-foros",
+      "tema": "Guías y sistemas",
+      "titulo": "Uso de foros en EVA",
+      "preguntas": [
+        "¿Cómo utilizar foros en el EVA?",
+        "¿Dónde está el tutorial de foros Moodle?",
+        "Uso de foros educativos"
+      ],
+      "respuesta": "La página de guías incluye el recurso «Uso de foros» para EVA. Consulta ese enlace cuando necesites instrucciones sobre participación o manejo de foros en el aula.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "eva",
+        "foros",
+        "tutorial"
+      ]
+    },
+    {
+      "id": "guias-eva-notas",
+      "tema": "Guías y sistemas",
+      "titulo": "Descarga y cálculo de notas en EVA",
+      "preguntas": [
+        "¿Cómo descargar calificaciones desde EVA?",
+        "¿Cómo calcular notas parcial y final?",
+        "¿Dónde está la matriz final de calificaciones?",
+        "¿Tienen plantilla Excel de notas?"
+      ],
+      "respuesta": "El apartado EVA ofrece materiales titulados «Descargar calificaciones», «Calcular notas parcial y final» y una «Plantilla de matriz final de calificaciones Excel». Consulta las guías publicadas para seguir los procedimientos.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "eva",
+        "notas",
+        "calificaciones",
+        "plantilla"
+      ]
+    },
+    {
+      "id": "guias-sig-acceso",
+      "tema": "Guías y sistemas",
+      "titulo": "Acceso al Sistema Integral de Gestión SIG",
+      "preguntas": [
+        "¿Dónde está el tutorial SIG?",
+        "¿Cómo ingresar al Sistema Integral de Gestión?",
+        "Manual introductorio SIG"
+      ],
+      "respuesta": "En «Guías para usuarios» está publicado el recurso «Introducción y acceso al Sistema Integral de Gestión – SIG (versión inicial)». Es una referencia de ayuda; consulta su versión actual en los canales institucionales.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "sig",
+        "sistema integral de gestión"
+      ]
+    },
+    {
+      "id": "guias-docpol",
+      "tema": "Guías y sistemas",
+      "titulo": "Ayuda del Sistema de Gestión Documental DOCPOL",
+      "preguntas": [
+        "¿Dónde está el manual DOCPOL?",
+        "¿Cómo usar el sistema de gestión documental?",
+        "¿Hay tutorial de DOCPOL?"
+      ],
+      "respuesta": "La página «Guías para usuarios» incluye el título «Sistema de Gestión Documental DOCPOL». En el contenido visible consultado no se encontró un instructivo detallado activo; para problemas de acceso contacta a la dependencia de soporte correspondiente.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "docpol",
+        "gestión documental"
+      ]
+    },
+    {
+      "id": "guias-zoom",
+      "tema": "Guías y sistemas",
+      "titulo": "Videoconferencias Zoom",
+      "preguntas": [
+        "¿Dónde están las guías de Zoom?",
+        "¿Hay manual de videoconferencias?",
+        "¿Cómo usar Zoom para clases del ISTPN?"
+      ],
+      "respuesta": "El índice de «Guías para usuarios» contiene un apartado «Sistema de Videoconferencia Zoom». Su contenido visible no ofrece pasos detallados; revisa las instrucciones institucionales actualizadas o consulta a soporte.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "zoom",
+        "videoconferencia"
+      ]
+    },
+    {
+      "id": "tramites-formato",
+      "tema": "Trámites",
+      "titulo": "Formato de oficio para trámites en línea",
+      "preguntas": [
+        "¿Dónde descargo el formato de oficio del ISTPN?",
+        "¿Cómo hago una solicitud institucional?",
+        "¿Hay plantilla para trámites?",
+        "¿Cómo adjuntar mi oficio en PDF?"
+      ],
+      "respuesta": "Para la recepción de documentos en línea, la sección Trámites pide preparar una solicitud conforme a la plantilla oficial, firmarla, generar el documento PDF y adjuntarlo en el formulario de recepción. El enlace «Descargue aquí el formato de oficio» está en esa página.",
+      "fuente": "https://home.isupol.edu.ec/tramites/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "oficio",
+        "PDF",
+        "trámite",
+        "plantilla"
+      ]
+    },
+    {
+      "id": "tramites-confirmacion",
+      "tema": "Trámites",
+      "titulo": "Confirmación del envío de documentos",
+      "preguntas": [
+        "¿Cómo sé si llegó mi trámite?",
+        "¿El portal envía confirmación?",
+        "¿Recibo correo al enviar el oficio?",
+        "¿Cuánto tarda la respuesta a mi trámite?"
+      ],
+      "respuesta": "La sección Trámites indica que, después de completar y enviar el formulario de recepción de documentos con el PDF firmado, se recibe un correo electrónico de confirmación del envío. No se publica en esa página un plazo de respuesta administrativa.",
+      "fuente": "https://home.isupol.edu.ec/tramites/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "confirmación",
+        "correo",
+        "trámites"
+      ]
+    },
+    {
+      "id": "investigacion-politicas",
+      "tema": "Investigación",
+      "titulo": "Políticas de investigación del ISTPN",
+      "preguntas": [
+        "¿Qué investiga el ISTPN?",
+        "¿Cuáles son las políticas de investigación?",
+        "¿En qué dominios investiga el ISUPOL?",
+        "¿Qué finalidad tiene la investigación institucional?"
+      ],
+      "respuesta": "La página de Políticas de Investigación explica que esta función busca aportar a la seguridad ciudadana, la protección de derechos y libertades, el orden público, la administración de justicia y el desarrollo institucional. Sus dominios son prevención, investigación, inteligencia y educación, desarrollo e identidad.",
+      "fuente": "https://home.isupol.edu.ec/politicas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "investigación",
+        "políticas",
+        "dominios"
+      ]
+    },
+    {
+      "id": "investigacion-niveles",
+      "tema": "Investigación",
+      "titulo": "Niveles de investigación",
+      "preguntas": [
+        "¿Qué niveles de investigación existen?",
+        "¿Qué es investigación formativa?",
+        "¿En qué consiste la investigación académica y científica?"
+      ],
+      "respuesta": "La institución distingue la investigación formativa, desarrollada en el proceso enseñanza-aprendizaje, de la investigación académica y científica, orientada a producir nuevos conocimientos y fortalecer líneas y proyectos de seguridad integral.",
+      "fuente": "https://home.isupol.edu.ec/politicas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "investigación formativa",
+        "investigación académica"
+      ]
+    },
+    {
+      "id": "investigacion-principios",
+      "tema": "Investigación",
+      "titulo": "Principios de investigación",
+      "preguntas": [
+        "¿Cuáles son los principios de investigación?",
+        "¿Qué significa pertinencia en investigación?",
+        "¿La investigación tiene principios de ética?"
+      ],
+      "respuesta": "La página «Principios de investigación» identifica tres ejes: integridad y ética; pertinencia; y calidad e innovación. Los presenta como principios para generar conocimiento responsable, útil a los desafíos de seguridad y sujeto a mejoramiento continuo.",
+      "fuente": "https://home.isupol.edu.ec/principios-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "integridad",
+        "ética",
+        "pertinencia",
+        "calidad",
+        "innovación"
+      ]
+    },
+    {
+      "id": "investigacion-lineas",
+      "tema": "Investigación",
+      "titulo": "Líneas de investigación institucional",
+      "preguntas": [
+        "¿Cuáles son las siete líneas de investigación?",
+        "Enumera las líneas de investigación del ISTPN",
+        "¿Qué líneas tiene el dominio Prevención?",
+        "¿Qué líneas de investigación existen?",
+        "Dime todas las siete líneas de investigación",
+        "¿Cuáles son exactamente las siete líneas del ISTPN?",
+        "¿En qué temas se investiga en el instituto?",
+        "¿Qué investigación se realiza en el ISTPN?"
+      ],
+      "respuesta": "La sección enumera siete líneas: 1) Gestión Preventiva y Operativa; 2) Servicio a la Comunidad, Control y Evaluación Policial; 3) Investigación de la Infracción; 4) Inteligencia Antidelincuencial; 5) Contrainteligencia; 6) Investigación Histórica; y 7) Cultura de Paz y No Violencia.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "líneas",
+        "investigación",
+        "dominio"
+      ]
+    },
+    {
+      "id": "linea-gestion-preventiva",
+      "tema": "Investigación",
+      "titulo": "Línea 1: Gestión Preventiva y Operativa",
+      "preguntas": [
+        "¿Qué estudia la línea 1 de investigación?",
+        "¿En qué consiste Gestión Preventiva y Operativa?",
+        "¿Qué es Gestión Preventiva y Operativa en el ISTPN?"
+      ],
+      "respuesta": "La línea 1, Gestión Preventiva y Operativa, estudia procedimientos de orden público, protección interna, patrullaje, operaciones policiales y situaciones de violencia y discriminación, para proponer soluciones prácticas en seguridad integral.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Prevención",
+        "Gestión Preventiva y Operativa",
+        "línea 1"
+      ]
+    },
+    {
+      "id": "linea-servicio-comunidad",
+      "tema": "Investigación",
+      "titulo": "Línea 2: Servicio a la Comunidad, Control y Evaluación Policial",
+      "preguntas": [
+        "¿Qué estudia la línea 2 de investigación?",
+        "¿En qué consiste Servicio a la Comunidad, Control y Evaluación Policial?",
+        "¿Qué es Servicio a la Comunidad, Control y Evaluación Policial en el ISTPN?"
+      ],
+      "respuesta": "La línea 2 aborda la acción comunitaria y la convivencia pacífica, junto con la supervisión y evaluación de la conducta policial y la calidad de sus servicios.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Prevención",
+        "Servicio a la Comunidad, Control y Evaluación Policial",
+        "línea 2"
+      ]
+    },
+    {
+      "id": "linea-investigacion-infraccion",
+      "tema": "Investigación",
+      "titulo": "Línea 3: Investigación de la Infracción",
+      "preguntas": [
+        "¿Qué estudia la línea 3 de investigación?",
+        "¿En qué consiste Investigación de la Infracción?",
+        "¿Qué es Investigación de la Infracción en el ISTPN?"
+      ],
+      "respuesta": "La línea 3 se centra en la investigación operativa, técnica y científica de infracciones, elementos de convicción y análisis de información para mejorar los procesos de investigación.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Investigación",
+        "Investigación de la Infracción",
+        "línea 3"
+      ]
+    },
+    {
+      "id": "linea-inteligencia-antidelincuencial",
+      "tema": "Investigación",
+      "titulo": "Línea 4: Inteligencia Antidelincuencial",
+      "preguntas": [
+        "¿Qué estudia la línea 4 de investigación?",
+        "¿En qué consiste Inteligencia Antidelincuencial?",
+        "¿Qué es Inteligencia Antidelincuencial en el ISTPN?"
+      ],
+      "respuesta": "La línea 4 aborda la obtención, sistematización y análisis de información sobre amenazas y riesgos para apoyar decisiones de seguridad ciudadana.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Inteligencia",
+        "Inteligencia Antidelincuencial",
+        "línea 4"
+      ]
+    },
+    {
+      "id": "linea-contrainteligencia",
+      "tema": "Investigación",
+      "titulo": "Línea 5: Contrainteligencia",
+      "preguntas": [
+        "¿Qué estudia la línea 5 de investigación?",
+        "¿En qué consiste Contrainteligencia?",
+        "¿Qué es Contrainteligencia en el ISTPN?",
+        "¿Qué es Contrainteligencia en investigación?",
+        "¿Qué estudia la contrainteligencia dentro de las líneas del ISUPOL?"
+      ],
+      "respuesta": "La línea 5 examina vulnerabilidades, riesgos y amenazas internas o externas que afectan la seguridad integral y promueve propuestas para mejorar procesos de protección.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Inteligencia",
+        "Contrainteligencia",
+        "línea 5"
+      ]
+    },
+    {
+      "id": "linea-investigacion-historica",
+      "tema": "Investigación",
+      "titulo": "Línea 6: Investigación histórica",
+      "preguntas": [
+        "¿Qué estudia la línea 6 de investigación?",
+        "¿En qué consiste Investigación histórica?",
+        "¿Qué es Investigación histórica en el ISTPN?"
+      ],
+      "respuesta": "La línea 6 estudia hechos, personas e instituciones desde enfoques históricos y sociales relacionados con el ámbito de la seguridad.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Educación, Desarrollo e Identidad",
+        "Investigación histórica",
+        "línea 6"
+      ]
+    },
+    {
+      "id": "linea-cultura-paz",
+      "tema": "Investigación",
+      "titulo": "Línea 7: Cultura de paz y no violencia",
+      "preguntas": [
+        "¿Qué estudia la línea 7 de investigación?",
+        "¿En qué consiste Cultura de paz y no violencia?",
+        "¿Qué es Cultura de paz y no violencia en el ISTPN?"
+      ],
+      "respuesta": "La línea 7 estudia principios, valores y mecanismos de diálogo, negociación y resolución de conflictos para fortalecer la convivencia pacífica y los derechos humanos.",
+      "fuente": "https://home.isupol.edu.ec/lineas-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Educación, Desarrollo e Identidad",
+        "Cultura de paz y no violencia",
+        "línea 7"
+      ]
+    },
+    {
+      "id": "equipo-investigacion",
+      "tema": "Investigación",
+      "titulo": "Equipos de investigación del ISTPN",
+      "preguntas": [
+        "¿Cómo formar un equipo de investigación?",
+        "¿Cuántos integrantes mínimo debe tener un equipo investigador?",
+        "¿Qué hace el equipo de investigación?",
+        "¿Pueden participar estudiantes en investigaciones?"
+      ],
+      "respuesta": "La sección de Equipo de Investigación indica que pueden formarse equipos propios e interinstitucionales multidisciplinarios para proyectos, publicaciones, seminarios y titulación. Señala un mínimo de tres integrantes y al menos un docente del ISUPOL, entre otros criterios publicados.",
+      "fuente": "https://home.isupol.edu.ec/equipo-de-investigacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "equipos",
+        "investigadores",
+        "docentes"
+      ]
+    },
+    {
+      "id": "proyectos-investigacion",
+      "tema": "Investigación",
+      "titulo": "Proyectos de investigación",
+      "preguntas": [
+        "¿Dónde encuentro proyectos de investigación?",
+        "¿Qué proyectos tiene el ISUPOL?",
+        "¿Dónde revisar los trabajos de investigación?"
+      ],
+      "respuesta": "El portal tiene una sección «Proyectos ISUPOL» en el menú Investigación. Para conocer nombres, responsables o avances actualizados consulta directamente ese apartado; este asistente no atribuye proyectos específicos sin información verificable.",
+      "fuente": "https://home.isupol.edu.ec/proyectos/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "proyectos",
+        "investigación"
+      ]
+    },
+    {
+      "id": "carreras-presencial",
+      "tema": "Oferta académica",
+      "titulo": "Carreras publicadas en modalidad presencial",
+      "preguntas": [
+        "¿Cuáles carreras son presenciales?",
+        "¿Qué puedo estudiar presencialmente en el ISTPN?",
+        "Lista de carreras presenciales"
+      ],
+      "respuesta": "Según las páginas de oferta académica, la modalidad presencial figura en Criminalística y Acondicionamiento Físico Aplicado a la Función Policial. En Criminalística se menciona que está dirigida a servidores que laboran en el DMQ. La modalidad no confirma cupos abiertos.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "presencial",
+        "criminalística",
+        "acondicionamiento"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/carrera-criminalistica/",
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/"
+      ]
+    },
+    {
+      "id": "carreras-online",
+      "tema": "Oferta académica",
+      "titulo": "Carreras publicadas en modalidad en línea",
+      "preguntas": [
+        "¿Qué carreras puedo estudiar en línea?",
+        "¿Qué carreras son virtuales?",
+        "¿Hay tecnicaturas online en ISTPN?",
+        "¿Cuáles son las carreras a distancia?"
+      ],
+      "respuesta": "Las fichas académicas presentan en modalidad en línea: Análisis de la Información, Investigación en Ciberdelitos, Investigación en Delitos Financieros y Económicos y Procesamiento de la Información. Consulta cada ficha para la disponibilidad y requisitos.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "online",
+        "virtual",
+        "en línea"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/"
+      ]
+    },
+    {
+      "id": "carreras-hibridas",
+      "tema": "Oferta académica",
+      "titulo": "Carreras publicadas en modalidad híbrida",
+      "preguntas": [
+        "¿Cuáles carreras son híbridas?",
+        "¿Qué programas tienen modalidad híbrida?",
+        "Carreras semipresenciales del ISUPOL"
+      ],
+      "respuesta": "Las páginas de oferta académica publican modalidad híbrida para Accidentología Vial y Gestión del Tránsito y Seguridad Ciudadana y Orden Público. La modalidad publicada no equivale a una convocatoria abierta.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "híbrida",
+        "semipresencial",
+        "tránsito",
+        "seguridad"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/"
+      ]
+    },
+    {
+      "id": "carreras-titulacion",
+      "tema": "Oferta académica",
+      "titulo": "Títulos técnicos y tecnológicos",
+      "preguntas": [
+        "¿Qué título me otorga el ISTPN?",
+        "¿Ofrecen títulos de técnico superior?",
+        "¿Son licenciaturas o tecnologías?",
+        "¿Qué niveles de formación ofrece el instituto?"
+      ],
+      "respuesta": "La oferta académica del ISTPN publica programas que conducen a títulos de Técnico Superior y Tecnólogo/a Superior, según la carrera. Para conocer el título exacto de una formación consulta su ficha individual; no todas otorgan el mismo título.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "título",
+        "técnico",
+        "tecnólogo"
+      ]
+    },
+    {
+      "id": "carreras-credito",
+      "tema": "Oferta académica",
+      "titulo": "Créditos académicos por carrera",
+      "preguntas": [
+        "¿Cuántos créditos tienen las carreras?",
+        "¿Todas las carreras tienen los mismos créditos?",
+        "¿Dónde veo la carga académica?"
+      ],
+      "respuesta": "La cantidad de créditos depende de la carrera. Por ejemplo, Criminalística publica 90 créditos y Análisis de la Información publica 61 créditos. Consulta la ficha de cada oferta para los créditos, duración y metodología correspondientes.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "créditos",
+        "carrera"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/carrera-criminalistica/",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/"
+      ]
+    },
+    {
+      "id": "carreras-actividad-academica",
+      "tema": "Oferta académica",
+      "titulo": "Metodología y horas académicas",
+      "preguntas": [
+        "¿Cuántas horas académicas tienen las carreras?",
+        "¿Dónde veo la metodología de estudio?",
+        "¿Cuántas horas dura Criminalística?"
+      ],
+      "respuesta": "Las fichas de cada carrera publican el número de períodos académicos, los créditos y las horas de actividad. Por ejemplo, Criminalística menciona 4.320 horas; Análisis de la Información, 2.928 horas. Consulta la ficha específica para confirmar el dato de interés.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "metodología",
+        "horas académicas"
+      ],
+      "fuentes": [
+        "https://home.isupol.edu.ec/carrera-criminalistica/",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/"
+      ]
+    },
+    {
+      "id": "carrera-analisis-objetivo",
+      "tema": "Oferta académica",
+      "titulo": "Objetivo de la carrera Análisis de la Información",
+      "preguntas": [
+        "¿Para qué sirve la carrera de Análisis de la Información?",
+        "¿Qué aprende un estudiante de Análisis Delictual?",
+        "¿Cuál es el objetivo de Análisis de la Información?"
+      ],
+      "respuesta": "La carrera busca formar tecnólogos capaces de sistematizar, procesar y analizar información estratégica, operativa y táctica para apoyar la prevención, la investigación y la toma de decisiones en seguridad ciudadana.",
+      "fuente": "https://home.isupol.edu.ec/carrera-analisis-delictual/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "análisis delictual",
+        "datos",
+        "información"
+      ]
+    },
+    {
+      "id": "carrera-criminalistica-dmq",
+      "tema": "Oferta académica",
+      "titulo": "Criminalística presencial en Quito",
+      "preguntas": [
+        "¿Criminalística es solo para policías de Quito?",
+        "¿Dónde se estudia Criminalística?",
+        "¿En qué campus se imparte Criminalística?",
+        "¿La carrera Criminalística es presencial?"
+      ],
+      "respuesta": "La ficha de Criminalística indica modalidad presencial para servidores que laboran en el Distrito Metropolitano de Quito, con sede Matriz Quito – ISUPOL. Los requisitos definitivos deben verificarse en la convocatoria de admisión de cada período.",
+      "fuente": "https://home.isupol.edu.ec/carrera-criminalistica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "dmq",
+        "quito",
+        "presencial",
+        "campus"
+      ]
+    },
+    {
+      "id": "carrera-seguridad-perfil",
+      "tema": "Oferta académica",
+      "titulo": "Objetivo de Seguridad Ciudadana y Orden Público",
+      "preguntas": [
+        "¿Qué se aprende en Seguridad Ciudadana y Orden Público?",
+        "¿Cuál es el objetivo de esta carrera de Seguridad?",
+        "¿A qué se dedica un tecnólogo en Seguridad Ciudadana?"
+      ],
+      "respuesta": "La ficha de Seguridad Ciudadana y Orden Público describe una formación orientada a fortalecer capacidades de prevención, investigación e inteligencia en el trabajo policial y en el ámbito de la seguridad humana y los derechos humanos.",
+      "fuente": "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "seguridad ciudadana",
+        "orden público",
+        "prevención"
+      ]
+    },
+    {
+      "id": "carrera-acondicionamiento-perfil",
+      "tema": "Oferta académica",
+      "titulo": "Objetivo de Acondicionamiento Físico Policial",
+      "preguntas": [
+        "¿Qué aprenderé en Acondicionamiento Físico Policial?",
+        "¿Cuál es el objetivo de la carrera de defensa personal?",
+        "¿Incluye control físico e inmovilización?"
+      ],
+      "respuesta": "La página describe una formación para planificar acondicionamiento físico y aplicar técnicas de defensa personal policial, control físico e inmovilización dentro de la normativa aplicable y con respeto a los derechos humanos.",
+      "fuente": "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "defensa personal",
+        "educación física"
+      ]
+    },
+    {
+      "id": "organigrama-2025",
+      "tema": "Transparencia",
+      "titulo": "Organigrama institucional 2025",
+      "preguntas": [
+        "¿Dónde está el organigrama 2025?",
+        "¿Cuál es la estructura de la institución?",
+        "¿Descargo el organigrama institucional?"
+      ],
+      "respuesta": "La web contiene la sección Organigrama del ISTPN y archivos identificados como 2025 y de años anteriores. Puedes consultarlos para conocer la estructura publicada; verifica si existe una versión más reciente.",
+      "fuente": "https://home.isupol.edu.ec/organigrama/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "organigrama",
+        "2025",
+        "estructura"
+      ],
+      "historico": true
+    },
+    {
+      "id": "autoridades-coordinadores",
+      "tema": "Institucional",
+      "titulo": "Coordinadores académicos publicados",
+      "preguntas": [
+        "¿Quién coordina la carrera de Criminalística?",
+        "¿Quiénes son los coordinadores académicos?",
+        "¿Quién coordina Análisis de la Información?",
+        "¿Quién coordina Seguridad Ciudadana?",
+        "¿Quién es el coordinador de Tránsito?"
+      ],
+      "respuesta": "La página «Nuestras Autoridades» identifica coordinadores de Criminalística, Seguridad Ciudadana, Investigación de Accidentes de Tránsito y Análisis de la Información. Por tratarse de cargos susceptibles de cambios, verifica la página antes de dirigirte a un servidor específico.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "autoridades",
+        "coordinación",
+        "carreras"
+      ]
+    },
+    {
+      "id": "coordinador-criminalistica",
+      "tema": "Institucional",
+      "titulo": "Coordinación de Criminalística",
+      "preguntas": [
+        "¿Quién es el coordinador de Criminalística?",
+        "¿Quién coordina Criminalística?",
+        "¿Cuál es el responsable de la carrera de Criminalística?"
+      ],
+      "respuesta": "La página «Nuestras Autoridades» identifica a Ab. Vladimir Alejandro Tello Condor como responsable de la coordinación de Criminalística. Esta información puede cambiar por designaciones institucionales; verifica su vigencia antes de usarla en un trámite.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Criminalística",
+        "coordinador"
+      ]
+    },
+    {
+      "id": "coordinador-seguridad",
+      "tema": "Institucional",
+      "titulo": "Coordinación de Seguridad Ciudadana",
+      "preguntas": [
+        "¿Quién es el coordinador de Seguridad Ciudadana?",
+        "¿Quién coordina Seguridad Ciudadana?",
+        "¿Cuál es el responsable de la carrera de Seguridad Ciudadana?"
+      ],
+      "respuesta": "La página «Nuestras Autoridades» identifica a Lcda. Geovanna Elizabeth Lopez Guachamin como responsable de la coordinación de Seguridad Ciudadana. Esta información puede cambiar por designaciones institucionales; verifica su vigencia antes de usarla en un trámite.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Seguridad Ciudadana",
+        "coordinador"
+      ]
+    },
+    {
+      "id": "coordinador-transito",
+      "tema": "Institucional",
+      "titulo": "Coordinación de Investigación de Accidentes de Tránsito",
+      "preguntas": [
+        "¿Quién es el coordinador de Investigación de Accidentes de Tránsito?",
+        "¿Quién coordina Investigación de Accidentes de Tránsito?",
+        "¿Cuál es el responsable de la carrera de Investigación de Accidentes de Tránsito?"
+      ],
+      "respuesta": "La página «Nuestras Autoridades» identifica a Lcdo. Luis Andres Mantilla Huasco como responsable de la coordinación de Investigación de Accidentes de Tránsito. Esta información puede cambiar por designaciones institucionales; verifica su vigencia antes de usarla en un trámite.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Investigación de Accidentes de Tránsito",
+        "coordinador"
+      ]
+    },
+    {
+      "id": "coordinador-analisis",
+      "tema": "Institucional",
+      "titulo": "Coordinación de Análisis de la Información",
+      "preguntas": [
+        "¿Quién es el coordinador de Análisis de la Información?",
+        "¿Quién coordina Análisis de la Información?",
+        "¿Cuál es el responsable de la carrera de Análisis de la Información?"
+      ],
+      "respuesta": "La página «Nuestras Autoridades» identifica a Lcdo. Bryan Andres Niaupari Valenzuela como responsable de la coordinación de Análisis de la Información. Esta información puede cambiar por designaciones institucionales; verifica su vigencia antes de usarla en un trámite.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Análisis de la Información",
+        "coordinador"
+      ]
+    },
+    {
+      "id": "rendicion-2020",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas 2020",
+      "preguntas": [
+        "¿Dónde encuentro la rendición de cuentas 2020?",
+        "¿Cómo descargo el informe de gestión 2020?",
+        "¿Existe el formulario de rendición 2020?",
+        "¿Dónde ver la transmisión de rendición 2020?"
+      ],
+      "respuesta": "El menú Transparencia del ISTPN incluye materiales de rendición de cuentas correspondientes al período 2020 (según el año, informe, formulario o transmisión). Accede a esa información desde el portal y verifica qué archivos están disponibles.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "transparencia",
+        "rendición",
+        "informe",
+        "2020"
+      ],
+      "historico": true
+    },
+    {
+      "id": "rendicion-2021",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas 2021",
+      "preguntas": [
+        "¿Dónde encuentro la rendición de cuentas 2021?",
+        "¿Cómo descargo el informe de gestión 2021?",
+        "¿Existe el formulario de rendición 2021?",
+        "¿Dónde ver la transmisión de rendición 2021?"
+      ],
+      "respuesta": "El menú Transparencia del ISTPN incluye materiales de rendición de cuentas correspondientes al período 2021 (según el año, informe, formulario o transmisión). Accede a esa información desde el portal y verifica qué archivos están disponibles.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "transparencia",
+        "rendición",
+        "informe",
+        "2021"
+      ],
+      "historico": true
+    },
+    {
+      "id": "rendicion-2022",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas 2022",
+      "preguntas": [
+        "¿Dónde encuentro la rendición de cuentas 2022?",
+        "¿Cómo descargo el informe de gestión 2022?",
+        "¿Existe el formulario de rendición 2022?",
+        "¿Dónde ver la transmisión de rendición 2022?"
+      ],
+      "respuesta": "El menú Transparencia del ISTPN incluye materiales de rendición de cuentas correspondientes al período 2022 (según el año, informe, formulario o transmisión). Accede a esa información desde el portal y verifica qué archivos están disponibles.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "transparencia",
+        "rendición",
+        "informe",
+        "2022"
+      ],
+      "historico": true
+    },
+    {
+      "id": "rendicion-2023",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas 2023",
+      "preguntas": [
+        "¿Dónde encuentro la rendición de cuentas 2023?",
+        "¿Cómo descargo el informe de gestión 2023?",
+        "¿Existe el formulario de rendición 2023?",
+        "¿Dónde ver la transmisión de rendición 2023?"
+      ],
+      "respuesta": "El menú Transparencia del ISTPN incluye materiales de rendición de cuentas correspondientes al período 2023 (según el año, informe, formulario o transmisión). Accede a esa información desde el portal y verifica qué archivos están disponibles.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "transparencia",
+        "rendición",
+        "informe",
+        "2023"
+      ],
+      "historico": true
+    },
+    {
+      "id": "rendicion-2024",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas 2024",
+      "preguntas": [
+        "¿Dónde encuentro la rendición de cuentas 2024?",
+        "¿Cómo descargo el informe de gestión 2024?",
+        "¿Existe el formulario de rendición 2024?",
+        "¿Dónde ver la transmisión de rendición 2024?"
+      ],
+      "respuesta": "El menú Transparencia del ISTPN incluye materiales de rendición de cuentas correspondientes al período 2024 (según el año, informe, formulario o transmisión). Accede a esa información desde el portal y verifica qué archivos están disponibles.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "transparencia",
+        "rendición",
+        "informe",
+        "2024"
+      ],
+      "historico": true
+    },
+    {
+      "id": "rendicion-2025",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas 2025",
+      "preguntas": [
+        "¿Dónde encuentro la rendición de cuentas 2025?",
+        "¿Cómo descargo el informe de gestión 2025?",
+        "¿Existe el formulario de rendición 2025?",
+        "¿Dónde ver la transmisión de rendición 2025?"
+      ],
+      "respuesta": "La sección «Rendición de Cuentas 2025» está publicada en el portal del ISTPN; el menú de transparencia enlaza a materiales de informe, formulario y transmisión. El contenido corresponde al período 2025, no al año 2026.",
+      "fuente": "https://home.isupol.edu.ec/rendicion-de-cuentas-2025/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "transparencia",
+        "rendición",
+        "informe",
+        "2025"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-incorporacion-sept-2026",
+      "tema": "Noticias",
+      "titulo": "11 de septiembre de 2026: incorporación de profesionales",
+      "preguntas": [
+        "¿Qué pasó en 11 de septiembre de 2026: incorporación de profesionales?",
+        "Noticias de septiembre 2026 sobre graduación",
+        "¿Dónde está la noticia de incorporación 2026?"
+      ],
+      "respuesta": "La sección Noticias registra una ceremonia de incorporación el 11 de septiembre de 2026, en la que se reconoció a servidores policiales graduados como técnicos y tecnólogos superiores.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "septiembre 2026",
+        "graduación",
+        "incorporación"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-minuto-museo-2026",
+      "tema": "Noticias",
+      "titulo": "31 de agosto de 2026: minuto cívico sobre Museo Policial",
+      "preguntas": [
+        "¿Qué pasó en 31 de agosto de 2026: minuto cívico sobre Museo Policial?",
+        "Noticias de agosto 2026 sobre museo policial",
+        "¿Dónde está la noticia de minuto cívico 2026?"
+      ],
+      "respuesta": "El ISTPN publicó información sobre un minuto cívico realizado el 31 de agosto de 2026, con una intervención sobre el Museo Policial y la conservación del legado histórico institucional.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "agosto 2026",
+        "museo policial",
+        "minuto cívico"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-borja-2026",
+      "tema": "Noticias",
+      "titulo": "11 de mayo de 2026: minuto cívico en la Unidad Educativa Borja Nro. 3",
+      "preguntas": [
+        "¿Qué pasó en 11 de mayo de 2026: minuto cívico en la Unidad Educativa Borja Nro. 3?",
+        "Noticias de mayo 2026 sobre Borja 3",
+        "¿Dónde está la noticia de cívico 2026?"
+      ],
+      "respuesta": "En Noticias se reseña la participación de estudiantes de Acondicionamiento Físico en un minuto cívico realizado el 11 de mayo de 2026 en la Unidad Educativa Borja Nro. 3.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "mayo 2026",
+        "Borja 3",
+        "cívico"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-rendicion-2025-evento",
+      "tema": "Noticias",
+      "titulo": "Rendición de cuentas período 2025",
+      "preguntas": [
+        "¿Qué pasó en Rendición de cuentas período 2025?",
+        "Noticias de abril 2026 sobre rendición de cuentas",
+        "¿Dónde está la noticia de transparencia 2026?"
+      ],
+      "respuesta": "Noticias difunde una actividad de rendición de cuentas del período 2025 de la Dirección Nacional de Educación de la Policía Nacional y enlaza una transmisión. Es un informe sobre un período anterior.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "abril 2026",
+        "rendición de cuentas",
+        "transparencia"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-protocolo-2026",
+      "tema": "Noticias",
+      "titulo": "6 de abril de 2026: costumbres, tradiciones y protocolo",
+      "preguntas": [
+        "¿Qué pasó en 6 de abril de 2026: costumbres, tradiciones y protocolo?",
+        "Noticias de abril 2026 sobre protocolo",
+        "¿Dónde está la noticia de tradiciones 2026?"
+      ],
+      "respuesta": "La sección Noticias describe un minuto cívico del 6 de abril de 2026 dedicado a costumbres, tradiciones y protocolo en la Policía Nacional, con participación de un discente de Acondicionamiento Físico.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "abril 2026",
+        "protocolo",
+        "tradiciones"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-kickboxing-2026",
+      "tema": "Noticias",
+      "titulo": "30 de marzo de 2026: ascenso en kickboxing",
+      "preguntas": [
+        "¿Qué pasó en 30 de marzo de 2026: ascenso en kickboxing?",
+        "Noticias de marzo 2026 sobre kickboxing",
+        "¿Dónde está la noticia de certificados 2026?"
+      ],
+      "respuesta": "El portal reseña el minuto cívico del 30 de marzo de 2026, en el que se entregaron certificados por ascenso a cinturón amarillo de kickboxing a estudiantes de Acondicionamiento Físico.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "marzo 2026",
+        "kickboxing",
+        "certificados"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-legado-servidoras-2026",
+      "tema": "Noticias",
+      "titulo": "2 de marzo de 2026: reconocimiento a servidoras policiales",
+      "preguntas": [
+        "¿Qué pasó en 2 de marzo de 2026: reconocimiento a servidoras policiales?",
+        "Noticias de marzo 2026 sobre reconocimiento",
+        "¿Dónde está la noticia de servicio 2026?"
+      ],
+      "respuesta": "Noticias publica un reconocimiento a dos servidoras policiales que culminaron 20 años de servicio, destacando su vocación y compromiso. El evento se presenta en la sección de marzo de 2026.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "marzo 2026",
+        "reconocimiento",
+        "servicio"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-vocacion-2026",
+      "tema": "Noticias",
+      "titulo": "23 de febrero de 2026: minuto cívico de vocación policial",
+      "preguntas": [
+        "¿Qué pasó en 23 de febrero de 2026: minuto cívico de vocación policial?",
+        "Noticias de febrero 2026 sobre vocación policial",
+        "¿Dónde está la noticia de cívico 2026?"
+      ],
+      "respuesta": "Noticias incluye un minuto cívico del 23 de febrero de 2026 dedicado a la vocación de servicio y al significado de ser policía.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "febrero 2026",
+        "vocación policial",
+        "cívico"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-inauguracion-feb-2026",
+      "tema": "Noticias",
+      "titulo": "Inicio del período académico febrero-agosto 2026",
+      "preguntas": [
+        "¿Qué pasó en Inicio del período académico febrero-agosto 2026?",
+        "Noticias de febrero 2026 sobre período académico",
+        "¿Dónde está la noticia de inauguración 2026?"
+      ],
+      "respuesta": "Noticias publica una inauguración del período académico febrero-agosto de 2026. El texto visible contiene un campo de ejemplo sin completar respecto a una autoridad; por ello, ISTPNCHAT no atribuye ese dato a una persona concreta.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "febrero 2026",
+        "período académico",
+        "inauguración"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-examen-complexivo-2026",
+      "tema": "Noticias",
+      "titulo": "20 de enero de 2026: examen complexivo tercer grupo",
+      "preguntas": [
+        "¿Qué pasó en 20 de enero de 2026: examen complexivo tercer grupo?",
+        "Noticias de enero 2026 sobre examen complexivo",
+        "¿Dónde está la noticia de homologación 2026?"
+      ],
+      "respuesta": "El 20 de enero de 2026, la sección Noticias informó sobre la toma del examen complexivo correspondiente al tercer grupo de homologación de servidores policiales, conforme a la planificación académica reseñada.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "enero 2026",
+        "examen complexivo",
+        "homologación"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-redes-mentales-2026",
+      "tema": "Noticias",
+      "titulo": "19 de enero de 2026: redes sociales y salud mental",
+      "preguntas": [
+        "¿Qué pasó en 19 de enero de 2026: redes sociales y salud mental?",
+        "Noticias de enero 2026 sobre salud mental",
+        "¿Dónde está la noticia de redes sociales 2026?"
+      ],
+      "respuesta": "El portal señala que un minuto cívico del 19 de enero de 2026 abordó el impacto de las redes sociales en la salud mental y el uso responsable de plataformas digitales.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "enero 2026",
+        "salud mental",
+        "redes sociales"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-docentes-civiles-2026",
+      "tema": "Noticias",
+      "titulo": "Convocatoria de docentes civiles invitados 2026",
+      "preguntas": [
+        "¿Qué pasó en Convocatoria de docentes civiles invitados 2026?",
+        "Noticias de febrero 2026 sobre docentes civiles",
+        "¿Dónde está la noticia de selección 2026?"
+      ],
+      "respuesta": "La noticia publicada el 22 de febrero de 2026 informa que la recepción de carpetas de postulantes a docentes civiles invitados se desarrolló y concluyó. No debe interpretarse como convocatoria abierta actualmente.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "febrero 2026",
+        "docentes civiles",
+        "selección"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-formadores-2025",
+      "tema": "Noticias",
+      "titulo": "18 de agosto de 2025: clausura del curso de formadores",
+      "preguntas": [
+        "¿Qué pasó en 18 de agosto de 2025: clausura del curso de formadores?",
+        "Noticias de agosto 2025 sobre formador de formadores",
+        "¿Dónde está la noticia de curso 2025?"
+      ],
+      "respuesta": "Noticias registra la clausura del I Curso de Formación de Formadores Aplicado a la Docencia Superior Policial, realizada en agosto de 2025. Se destacó la formación pedagógica y el compromiso de los cursantes.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "agosto 2025",
+        "formador de formadores",
+        "curso"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-dinero-2025",
+      "tema": "Noticias",
+      "titulo": "5 de junio de 2025: medidas de seguridad del papel moneda",
+      "preguntas": [
+        "¿Qué pasó en 5 de junio de 2025: medidas de seguridad del papel moneda?",
+        "Noticias de junio 2025 sobre papel moneda",
+        "¿Dónde está la noticia de vinculación 2025?"
+      ],
+      "respuesta": "El portal reseña una actividad de vinculación de estudiantes de Criminalística en el Mercado Municipal Santa Clara, donde compartieron conocimientos sobre medidas de seguridad de billetes y falsificaciones.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "junio 2025",
+        "papel moneda",
+        "vinculación"
+      ],
+      "historico": true
+    },
+    {
+      "id": "noticia-graduacion-junio-2025",
+      "tema": "Noticias",
+      "titulo": "19 de junio de 2025: graduación de la sexta cohorte",
+      "preguntas": [
+        "¿Qué pasó en 19 de junio de 2025: graduación de la sexta cohorte?",
+        "Noticias de junio 2025 sobre graduación",
+        "¿Dónde está la noticia de cohorte 2025?"
+      ],
+      "respuesta": "Noticias informa sobre una ceremonia de graduación de estudiantes de la sexta cohorte del ISTPN el 19 de junio de 2025. Esta es información histórica sobre un evento realizado.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "junio 2025",
+        "graduación",
+        "cohorte"
+      ],
+      "historico": true
+    },
+    {
+      "id": "seccion-educacion-ambiental",
+      "tema": "Institucional",
+      "titulo": "Educación Ambiental y Desarrollo Sostenible",
+      "preguntas": [
+        "¿Dónde está Educación Ambiental y Desarrollo Sostenible?",
+        "¿Cómo accedo a Educación Ambiental y Desarrollo Sostenible?",
+        "¿Qué información publica Educación Ambiental y Desarrollo Sostenible?"
+      ],
+      "respuesta": "La web incluye una sección específica sobre Educación Ambiental y Desarrollo Sostenible. Consulta esa página para el material institucional publicado.",
+      "fuente": "https://home.isupol.edu.ec/educacion-ambiental-y-desarrollo-sostenible/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Educación Ambiental y Desarrollo Sostenible"
+      ]
+    },
+    {
+      "id": "seccion-evento-seminarios",
+      "tema": "Eventos",
+      "titulo": "Eventos y seminarios internacionales",
+      "preguntas": [
+        "¿Dónde está Eventos y seminarios internacionales?",
+        "¿Cómo accedo a Eventos y seminarios internacionales?",
+        "¿Qué información publica Eventos y seminarios internacionales?"
+      ],
+      "respuesta": "La sección Eventos incluye el II Seminario Internacional Virtual y el III Seminario Internacional Virtual sobre educación superior, seguridad ciudadana y ciencias policiales, con enlaces a exposiciones grabadas.",
+      "fuente": "https://home.isupol.edu.ec/normativa-2/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Eventos y seminarios internacionales"
+      ]
+    },
+    {
+      "id": "seccion-boletines",
+      "tema": "Comunicación",
+      "titulo": "Boletines institucionales",
+      "preguntas": [
+        "¿Dónde está Boletines institucionales?",
+        "¿Cómo accedo a Boletines institucionales?",
+        "¿Qué información publica Boletines institucionales?"
+      ],
+      "respuesta": "En el menú del portal, Instituto → Boletines ISTPN incluye Boletín 1, Boletín 2 y Boletín 3. Consulta los enlaces del menú para acceder a cada publicación.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Boletines institucionales"
+      ]
+    },
+    {
+      "id": "seccion-revistas",
+      "tema": "Investigación",
+      "titulo": "Revista Innovación & Saber",
+      "preguntas": [
+        "¿Dónde está Revista Innovación & Saber?",
+        "¿Cómo accedo a Revista Innovación & Saber?",
+        "¿Qué información publica Revista Innovación & Saber?"
+      ],
+      "respuesta": "La web vincula publicaciones de la revista institucional «Innovación & Saber» con ediciones accesibles desde Instituto → Revista Institucional. Consulta el enlace al número de tu interés.",
+      "fuente": "https://home.isupol.edu.ec/revista-4/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Revista Innovación & Saber"
+      ]
+    },
+    {
+      "id": "seccion-biblioteca-reglamento",
+      "tema": "Biblioteca",
+      "titulo": "Normas de uso de la biblioteca",
+      "preguntas": [
+        "¿Dónde está Normas de uso de la biblioteca?",
+        "¿Cómo accedo a Normas de uso de la biblioteca?",
+        "¿Qué información publica Normas de uso de la biblioteca?"
+      ],
+      "respuesta": "La página «Biblioteca Manuela Sáenz» indica que existe un Reglamento de Biblioteca, disponible desde la normativa publicada en el sitio.",
+      "fuente": "https://home.isupol.edu.ec/biblio/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normas de uso de la biblioteca"
+      ]
+    },
+    {
+      "id": "seccion-seguimiento-graduados",
+      "tema": "Graduados",
+      "titulo": "Seguimiento a graduados",
+      "preguntas": [
+        "¿Dónde está Seguimiento a graduados?",
+        "¿Cómo accedo a Seguimiento a graduados?",
+        "¿Qué información publica Seguimiento a graduados?"
+      ],
+      "respuesta": "El sitio tiene una sección denominada «Seguimiento a Graduados», aunque el contenido visible de esa página también muestra noticias. Para formularios específicos, consulta Bienestar Estudiantil y su apartado de actualización de datos.",
+      "fuente": "https://home.isupol.edu.ec/seguimiento_graduados/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Seguimiento a graduados"
+      ]
+    },
+    {
+      "id": "seccion-buzon",
+      "tema": "Servicios",
+      "titulo": "Buzón de sugerencias institucional",
+      "preguntas": [
+        "¿Dónde está Buzón de sugerencias institucional?",
+        "¿Cómo accedo a Buzón de sugerencias institucional?",
+        "¿Qué información publica Buzón de sugerencias institucional?"
+      ],
+      "respuesta": "En el índice de páginas del sitio se incluye un «Buzón de Sugerencias». El enlace no pudo revisarse completamente desde este entorno; verifica su disponibilidad y funcionamiento en WordPress.",
+      "fuente": "https://home.isupol.edu.ec/buzon-de-sugerencias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Buzón de sugerencias institucional"
+      ]
+    },
+    {
+      "id": "seccion-convenios",
+      "tema": "Institucional",
+      "titulo": "Convenios y cooperación institucional",
+      "preguntas": [
+        "¿Dónde está Convenios y cooperación institucional?",
+        "¿Cómo accedo a Convenios y cooperación institucional?",
+        "¿Qué información publica Convenios y cooperación institucional?"
+      ],
+      "respuesta": "El menú Instituto incluye un apartado Convenios con referencias a la Dirección Nacional de Educación y varias instituciones. Los documentos específicos y su vigencia deben confirmarse en la sección institucional correspondiente.",
+      "fuente": "https://home.isupol.edu.ec/acerca/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Convenios y cooperación institucional"
+      ]
+    },
+    {
+      "id": "seccion-sistema-academico",
+      "tema": "Guías y sistemas",
+      "titulo": "Sistema Académico SGA",
+      "preguntas": [
+        "¿Dónde está Sistema Académico SGA?",
+        "¿Cómo accedo a Sistema Académico SGA?",
+        "¿Qué información publica Sistema Académico SGA?"
+      ],
+      "respuesta": "El portal enlaza un Sistema Académico SGA para la gestión académica y publica guías de personal administrativo, docente y estudiante. No es posible consultar calificaciones o matrículas personales desde ISTPNCHAT.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Sistema Académico SGA"
+      ]
+    },
+    {
+      "id": "seccion-alumni",
+      "tema": "Graduados",
+      "titulo": "Plataforma de egresados Alumni",
+      "preguntas": [
+        "¿Dónde está Plataforma de egresados Alumni?",
+        "¿Cómo accedo a Plataforma de egresados Alumni?",
+        "¿Qué información publica Plataforma de egresados Alumni?"
+      ],
+      "respuesta": "El menú institucional enlaza una plataforma Alumni para graduados. Para acceder, utiliza el enlace publicado desde el portal y, si corresponde, tus credenciales autorizadas.",
+      "fuente": "https://home.isupol.edu.ec/seguimiento_graduados/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plataforma de egresados Alumni"
+      ]
+    },
+    {
+      "id": "seccion-evaluacion-docente-plataforma",
+      "tema": "Guías y sistemas",
+      "titulo": "Sistema de Evaluación Docente",
+      "preguntas": [
+        "¿Dónde está Sistema de Evaluación Docente?",
+        "¿Cómo accedo a Sistema de Evaluación Docente?",
+        "¿Qué información publica Sistema de Evaluación Docente?"
+      ],
+      "respuesta": "El menú del instituto identifica un «Sistema de Evaluación Docente» externo al portal principal. ISTPNCHAT solo orienta al enlace; no consulta evaluaciones privadas ni confirma la disponibilidad del servicio.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Sistema de Evaluación Docente"
+      ]
+    },
+    {
+      "id": "documento-indice-001",
+      "tema": "Normativa documental",
+      "titulo": "POA 2026",
+      "preguntas": [
+        "¿Dónde descargo POA 2026?",
+        "¿Existe POA 2026?",
+        "Consultar POA 2026",
+        "Documento POA 2026",
+        "Necesito POA 2026 del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «POA 2026». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "POA 2026"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-002",
+      "tema": "Normativa documental",
+      "titulo": "Resolución Décima Quinta Cohorte",
+      "preguntas": [
+        "¿Dónde descargo Resolución Décima Quinta Cohorte?",
+        "¿Existe Resolución Décima Quinta Cohorte?",
+        "Consultar Resolución Décima Quinta Cohorte",
+        "Documento Resolución Décima Quinta Cohorte",
+        "Necesito Resolución Décima Quinta Cohorte del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución Décima Quinta Cohorte». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución Décima Quinta Cohorte"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-003",
+      "tema": "Normativa documental",
+      "titulo": "Manual de uso de la página web del ISTPN",
+      "preguntas": [
+        "¿Dónde descargo Manual de uso de la página web del ISTPN?",
+        "¿Existe Manual de uso de la página web del ISTPN?",
+        "Consultar Manual de uso de la página web del ISTPN",
+        "Documento Manual de uso de la página web del ISTPN",
+        "Necesito Manual de uso de la página web del ISTPN del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual de uso de la página web del ISTPN». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual de uso de la página web del ISTPN"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-004",
+      "tema": "Normativa documental",
+      "titulo": "Instructivo para la selección y designación de docentes policiales en el ISTPN",
+      "preguntas": [
+        "¿Dónde descargo Instructivo para la selección y designación de docentes policiales en el ISTPN?",
+        "¿Existe Instructivo para la selección y designación de docentes policiales en el ISTPN?",
+        "Consultar Instructivo para la selección y designación de docentes policiales en el ISTPN",
+        "Documento Instructivo para la selección y designación de docentes policiales en el ISTPN",
+        "Necesito Instructivo para la selección y designación de docentes policiales en el ISTPN del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Instructivo para la selección y designación de docentes policiales en el ISTPN». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Instructivo para la selección y designación de docentes policiales en el ISTPN"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-005",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Unidad de Titulación Especial del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Unidad de Titulación Especial del ISUPOL?",
+        "¿Existe Reglamento de Unidad de Titulación Especial del ISUPOL?",
+        "Consultar Reglamento de Unidad de Titulación Especial del ISUPOL",
+        "Documento Reglamento de Unidad de Titulación Especial del ISUPOL",
+        "Necesito Reglamento de Unidad de Titulación Especial del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Unidad de Titulación Especial del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Unidad de Titulación Especial del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-006",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento del Sistema Integral de Gestión del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento del Sistema Integral de Gestión del ISUPOL?",
+        "¿Existe Reglamento del Sistema Integral de Gestión del ISUPOL?",
+        "Consultar Reglamento del Sistema Integral de Gestión del ISUPOL",
+        "Documento Reglamento del Sistema Integral de Gestión del ISUPOL",
+        "Necesito Reglamento del Sistema Integral de Gestión del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento del Sistema Integral de Gestión del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento del Sistema Integral de Gestión del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-007",
+      "tema": "Normativa documental",
+      "titulo": "Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas",
+      "preguntas": [
+        "¿Dónde descargo Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas?",
+        "¿Existe Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas?",
+        "Consultar Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas",
+        "Documento Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas",
+        "Necesito Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Modelo de Adaptación Curricular para Estudiantes con Necesidades Educativas Específicas"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-008",
+      "tema": "Normativa documental",
+      "titulo": "Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL?",
+        "¿Existe Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL?",
+        "Consultar Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL",
+        "Documento Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL",
+        "Necesito Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normativa Interna para la Formación en Valores y Desarrollo de Habilidades Blandas del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-009",
+      "tema": "Normativa documental",
+      "titulo": "Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género",
+      "preguntas": [
+        "¿Dónde descargo Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género?",
+        "¿Existe Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género?",
+        "Consultar Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género",
+        "Documento Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género",
+        "Necesito Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Proyecto Rutas y Protocolos de Prevención y Atención en Casos de Conflicto, Violencia, Acoso y Discriminación Basada en Género"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-010",
+      "tema": "Normativa documental",
+      "titulo": "Manual de Procesos Académicos del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Manual de Procesos Académicos del ISUPOL?",
+        "¿Existe Manual de Procesos Académicos del ISUPOL?",
+        "Consultar Manual de Procesos Académicos del ISUPOL",
+        "Documento Manual de Procesos Académicos del ISUPOL",
+        "Necesito Manual de Procesos Académicos del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual de Procesos Académicos del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual de Procesos Académicos del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-011",
+      "tema": "Normativa documental",
+      "titulo": "Acta No. 009-2025-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Acta No. 009-2025-OCS-ISUPOL?",
+        "¿Existe Acta No. 009-2025-OCS-ISUPOL?",
+        "Consultar Acta No. 009-2025-OCS-ISUPOL",
+        "Documento Acta No. 009-2025-OCS-ISUPOL",
+        "Necesito Acta No. 009-2025-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Acta No. 009-2025-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Acta No. 009-2025-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-012",
+      "tema": "Normativa documental",
+      "titulo": "Acta No. 019-2024-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Acta No. 019-2024-OCS-ISUPOL?",
+        "¿Existe Acta No. 019-2024-OCS-ISUPOL?",
+        "Consultar Acta No. 019-2024-OCS-ISUPOL",
+        "Documento Acta No. 019-2024-OCS-ISUPOL",
+        "Necesito Acta No. 019-2024-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Acta No. 019-2024-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Acta No. 019-2024-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-013",
+      "tema": "Normativa documental",
+      "titulo": "Acta No. 023-2023-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Acta No. 023-2023-OCS-ISUPOL?",
+        "¿Existe Acta No. 023-2023-OCS-ISUPOL?",
+        "Consultar Acta No. 023-2023-OCS-ISUPOL",
+        "Documento Acta No. 023-2023-OCS-ISUPOL",
+        "Necesito Acta No. 023-2023-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Acta No. 023-2023-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Acta No. 023-2023-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-014",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. RPC-SO-11-No.167-2025",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. RPC-SO-11-No.167-2025?",
+        "¿Existe Resolución No. RPC-SO-11-No.167-2025?",
+        "Consultar Resolución No. RPC-SO-11-No.167-2025",
+        "Documento Resolución No. RPC-SO-11-No.167-2025",
+        "Necesito Resolución No. RPC-SO-11-No.167-2025 del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. RPC-SO-11-No.167-2025». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. RPC-SO-11-No.167-2025"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-015",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 009-2025-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 009-2025-OCS-ISUPOL?",
+        "¿Existe Resolución No. 009-2025-OCS-ISUPOL?",
+        "Consultar Resolución No. 009-2025-OCS-ISUPOL",
+        "Documento Resolución No. 009-2025-OCS-ISUPOL",
+        "Necesito Resolución No. 009-2025-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 009-2025-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 009-2025-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-016",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 010-2025-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 010-2025-OCS-ISUPOL?",
+        "¿Existe Resolución No. 010-2025-OCS-ISUPOL?",
+        "Consultar Resolución No. 010-2025-OCS-ISUPOL",
+        "Documento Resolución No. 010-2025-OCS-ISUPOL",
+        "Necesito Resolución No. 010-2025-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 010-2025-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 010-2025-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-017",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 011-2025-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 011-2025-OCS-ISUPOL?",
+        "¿Existe Resolución No. 011-2025-OCS-ISUPOL?",
+        "Consultar Resolución No. 011-2025-OCS-ISUPOL",
+        "Documento Resolución No. 011-2025-OCS-ISUPOL",
+        "Necesito Resolución No. 011-2025-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 011-2025-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 011-2025-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-018",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 020-2024-OCS-ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 020-2024-OCS-ISUPOL?",
+        "¿Existe Resolución No. 020-2024-OCS-ISUPOL?",
+        "Consultar Resolución No. 020-2024-OCS-ISUPOL",
+        "Documento Resolución No. 020-2024-OCS-ISUPOL",
+        "Necesito Resolución No. 020-2024-OCS-ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 020-2024-OCS-ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 020-2024-OCS-ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-019",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 013-2023-OCS-ISUPOL – Código de Ética",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 013-2023-OCS-ISUPOL – Código de Ética?",
+        "¿Existe Resolución No. 013-2023-OCS-ISUPOL – Código de Ética?",
+        "Consultar Resolución No. 013-2023-OCS-ISUPOL – Código de Ética",
+        "Documento Resolución No. 013-2023-OCS-ISUPOL – Código de Ética",
+        "Necesito Resolución No. 013-2023-OCS-ISUPOL – Código de Ética del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 013-2023-OCS-ISUPOL – Código de Ética». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 013-2023-OCS-ISUPOL – Código de Ética"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-020",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos?",
+        "¿Existe Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos?",
+        "Consultar Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos",
+        "Documento Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos",
+        "Necesito Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 022-2023-OCS-ISUPOL – Manual de Procesos Académicos"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-021",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil?",
+        "¿Existe Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil?",
+        "Consultar Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil",
+        "Documento Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil",
+        "Necesito Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 023-2023-OCS-ISUPOL – Reglamento de Bienestar Estudiantil"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-022",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados?",
+        "¿Existe Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados?",
+        "Consultar Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados",
+        "Documento Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados",
+        "Necesito Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 024-2023-OCS-ISUPOL – Seguimiento a Graduados"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-023",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica?",
+        "¿Existe Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica?",
+        "Consultar Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica",
+        "Documento Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica",
+        "Necesito Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 026-2023-OCS-ISUPOL – Formación Práctica"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-024",
+      "tema": "Normativa documental",
+      "titulo": "Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes",
+      "preguntas": [
+        "¿Dónde descargo Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes?",
+        "¿Existe Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes?",
+        "Consultar Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes",
+        "Documento Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes",
+        "Necesito Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Resolución No. 028-2023-OCS-ISUPOL – Acompañamiento de Estudiantes"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-025",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento Interno de Educación Virtual",
+      "preguntas": [
+        "¿Dónde descargo Reglamento Interno de Educación Virtual?",
+        "¿Existe Reglamento Interno de Educación Virtual?",
+        "Consultar Reglamento Interno de Educación Virtual",
+        "Documento Reglamento Interno de Educación Virtual",
+        "Necesito Reglamento Interno de Educación Virtual del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento Interno de Educación Virtual». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento Interno de Educación Virtual"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-026",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento del Sistema de Planificación",
+      "preguntas": [
+        "¿Dónde descargo Reglamento del Sistema de Planificación?",
+        "¿Existe Reglamento del Sistema de Planificación?",
+        "Consultar Reglamento del Sistema de Planificación",
+        "Documento Reglamento del Sistema de Planificación",
+        "Necesito Reglamento del Sistema de Planificación del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento del Sistema de Planificación». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento del Sistema de Planificación"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-027",
+      "tema": "Normativa documental",
+      "titulo": "Plan Estratégico de Desarrollo Institucional PEDI 2021-2025",
+      "preguntas": [
+        "¿Dónde descargo Plan Estratégico de Desarrollo Institucional PEDI 2021-2025?",
+        "¿Existe Plan Estratégico de Desarrollo Institucional PEDI 2021-2025?",
+        "Consultar Plan Estratégico de Desarrollo Institucional PEDI 2021-2025",
+        "Documento Plan Estratégico de Desarrollo Institucional PEDI 2021-2025",
+        "Necesito Plan Estratégico de Desarrollo Institucional PEDI 2021-2025 del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan Estratégico de Desarrollo Institucional PEDI 2021-2025». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan Estratégico de Desarrollo Institucional PEDI 2021-2025"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-028",
+      "tema": "Normativa documental",
+      "titulo": "Estudio de Seguridad ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Estudio de Seguridad ISUPOL?",
+        "¿Existe Estudio de Seguridad ISUPOL?",
+        "Consultar Estudio de Seguridad ISUPOL",
+        "Documento Estudio de Seguridad ISUPOL",
+        "Necesito Estudio de Seguridad ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Estudio de Seguridad ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Estudio de Seguridad ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-029",
+      "tema": "Normativa documental",
+      "titulo": "Código de Ética del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Código de Ética del ISUPOL?",
+        "¿Existe Código de Ética del ISUPOL?",
+        "Consultar Código de Ética del ISUPOL",
+        "Documento Código de Ética del ISUPOL",
+        "Necesito Código de Ética del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Código de Ética del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Código de Ética del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-030",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL?",
+        "¿Existe Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL?",
+        "Consultar Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL",
+        "Documento Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL",
+        "Necesito Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Cobro de Matrículas y Aranceles de las Carreras de Grado ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-031",
+      "tema": "Normativa documental",
+      "titulo": "Normativa para las Relaciones Interinstitucionales ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Normativa para las Relaciones Interinstitucionales ISUPOL?",
+        "¿Existe Normativa para las Relaciones Interinstitucionales ISUPOL?",
+        "Consultar Normativa para las Relaciones Interinstitucionales ISUPOL",
+        "Documento Normativa para las Relaciones Interinstitucionales ISUPOL",
+        "Necesito Normativa para las Relaciones Interinstitucionales ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Normativa para las Relaciones Interinstitucionales ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normativa para las Relaciones Interinstitucionales ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-032",
+      "tema": "Normativa documental",
+      "titulo": "Políticas y Protocolos de Seguridad ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Políticas y Protocolos de Seguridad ISUPOL?",
+        "¿Existe Políticas y Protocolos de Seguridad ISUPOL?",
+        "Consultar Políticas y Protocolos de Seguridad ISUPOL",
+        "Documento Políticas y Protocolos de Seguridad ISUPOL",
+        "Necesito Políticas y Protocolos de Seguridad ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Políticas y Protocolos de Seguridad ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Políticas y Protocolos de Seguridad ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-033",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Formación y Capacitación del Docente del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan de Formación y Capacitación del Docente del ISUPOL?",
+        "¿Existe Plan de Formación y Capacitación del Docente del ISUPOL?",
+        "Consultar Plan de Formación y Capacitación del Docente del ISUPOL",
+        "Documento Plan de Formación y Capacitación del Docente del ISUPOL",
+        "Necesito Plan de Formación y Capacitación del Docente del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Formación y Capacitación del Docente del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Formación y Capacitación del Docente del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-034",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL?",
+        "¿Existe Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL?",
+        "Consultar Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL",
+        "Documento Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL",
+        "Necesito Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Evaluación de Desempeño del Personal Académico, Administrativo y Directivo del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-035",
+      "tema": "Normativa documental",
+      "titulo": "Código de Ética de Investigación del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Código de Ética de Investigación del ISUPOL?",
+        "¿Existe Código de Ética de Investigación del ISUPOL?",
+        "Consultar Código de Ética de Investigación del ISUPOL",
+        "Documento Código de Ética de Investigación del ISUPOL",
+        "Necesito Código de Ética de Investigación del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Código de Ética de Investigación del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Código de Ética de Investigación del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-036",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL?",
+        "¿Existe Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL?",
+        "Consultar Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL",
+        "Documento Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL",
+        "Necesito Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Políticas y Procedimientos de Acción Afirmativa del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-037",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento para el Aseguramiento de la Calidad del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento para el Aseguramiento de la Calidad del ISUPOL?",
+        "¿Existe Reglamento para el Aseguramiento de la Calidad del ISUPOL?",
+        "Consultar Reglamento para el Aseguramiento de la Calidad del ISUPOL",
+        "Documento Reglamento para el Aseguramiento de la Calidad del ISUPOL",
+        "Necesito Reglamento para el Aseguramiento de la Calidad del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento para el Aseguramiento de la Calidad del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento para el Aseguramiento de la Calidad del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-038",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento Interno de Régimen Académico del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento Interno de Régimen Académico del ISUPOL?",
+        "¿Existe Reglamento Interno de Régimen Académico del ISUPOL?",
+        "Consultar Reglamento Interno de Régimen Académico del ISUPOL",
+        "Documento Reglamento Interno de Régimen Académico del ISUPOL",
+        "Necesito Reglamento Interno de Régimen Académico del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento Interno de Régimen Académico del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento Interno de Régimen Académico del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-039",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Bienestar Estudiantil del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Bienestar Estudiantil del ISUPOL?",
+        "¿Existe Reglamento de Bienestar Estudiantil del ISUPOL?",
+        "Consultar Reglamento de Bienestar Estudiantil del ISUPOL",
+        "Documento Reglamento de Bienestar Estudiantil del ISUPOL",
+        "Necesito Reglamento de Bienestar Estudiantil del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Bienestar Estudiantil del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Bienestar Estudiantil del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-040",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento Interno del Sistema de la Biblioteca",
+      "preguntas": [
+        "¿Dónde descargo Reglamento Interno del Sistema de la Biblioteca?",
+        "¿Existe Reglamento Interno del Sistema de la Biblioteca?",
+        "Consultar Reglamento Interno del Sistema de la Biblioteca",
+        "Documento Reglamento Interno del Sistema de la Biblioteca",
+        "Necesito Reglamento Interno del Sistema de la Biblioteca del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento Interno del Sistema de la Biblioteca». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento Interno del Sistema de la Biblioteca"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-041",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL?",
+        "¿Existe Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL?",
+        "Consultar Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL",
+        "Documento Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL",
+        "Necesito Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Prácticas Preprofesionales en el Entorno Laboral del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-042",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento para la Contratación de Docentes e Investigadores del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento para la Contratación de Docentes e Investigadores del ISUPOL?",
+        "¿Existe Reglamento para la Contratación de Docentes e Investigadores del ISUPOL?",
+        "Consultar Reglamento para la Contratación de Docentes e Investigadores del ISUPOL",
+        "Documento Reglamento para la Contratación de Docentes e Investigadores del ISUPOL",
+        "Necesito Reglamento para la Contratación de Docentes e Investigadores del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento para la Contratación de Docentes e Investigadores del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento para la Contratación de Docentes e Investigadores del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-043",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL?",
+        "¿Existe Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL?",
+        "Consultar Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL",
+        "Documento Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL",
+        "Necesito Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento Interno de Seguridad e Higiene del Trabajo del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-044",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Coordinación de Investigación del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Coordinación de Investigación del ISUPOL?",
+        "¿Existe Reglamento de Coordinación de Investigación del ISUPOL?",
+        "Consultar Reglamento de Coordinación de Investigación del ISUPOL",
+        "Documento Reglamento de Coordinación de Investigación del ISUPOL",
+        "Necesito Reglamento de Coordinación de Investigación del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Coordinación de Investigación del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Coordinación de Investigación del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-045",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Investigación del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Investigación del ISUPOL?",
+        "¿Existe Reglamento de Investigación del ISUPOL?",
+        "Consultar Reglamento de Investigación del ISUPOL",
+        "Documento Reglamento de Investigación del ISUPOL",
+        "Necesito Reglamento de Investigación del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Investigación del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Investigación del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-046",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Innovación y Capacidad de Absorción del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Innovación y Capacidad de Absorción del ISUPOL?",
+        "¿Existe Reglamento de Innovación y Capacidad de Absorción del ISUPOL?",
+        "Consultar Reglamento de Innovación y Capacidad de Absorción del ISUPOL",
+        "Documento Reglamento de Innovación y Capacidad de Absorción del ISUPOL",
+        "Necesito Reglamento de Innovación y Capacidad de Absorción del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Innovación y Capacidad de Absorción del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Innovación y Capacidad de Absorción del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-047",
+      "tema": "Normativa documental",
+      "titulo": "Reglamento de Vinculación con la Sociedad del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Reglamento de Vinculación con la Sociedad del ISUPOL?",
+        "¿Existe Reglamento de Vinculación con la Sociedad del ISUPOL?",
+        "Consultar Reglamento de Vinculación con la Sociedad del ISUPOL",
+        "Documento Reglamento de Vinculación con la Sociedad del ISUPOL",
+        "Necesito Reglamento de Vinculación con la Sociedad del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Reglamento de Vinculación con la Sociedad del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Reglamento de Vinculación con la Sociedad del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-048",
+      "tema": "Normativa documental",
+      "titulo": "Remuneración Docentes 2024",
+      "preguntas": [
+        "¿Dónde descargo Remuneración Docentes 2024?",
+        "¿Existe Remuneración Docentes 2024?",
+        "Consultar Remuneración Docentes 2024",
+        "Documento Remuneración Docentes 2024",
+        "Necesito Remuneración Docentes 2024 del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Remuneración Docentes 2024». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Remuneración Docentes 2024"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-049",
+      "tema": "Normativa documental",
+      "titulo": "Normativa de Formación Práctica en el Entorno Académico del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Normativa de Formación Práctica en el Entorno Académico del ISUPOL?",
+        "¿Existe Normativa de Formación Práctica en el Entorno Académico del ISUPOL?",
+        "Consultar Normativa de Formación Práctica en el Entorno Académico del ISUPOL",
+        "Documento Normativa de Formación Práctica en el Entorno Académico del ISUPOL",
+        "Necesito Normativa de Formación Práctica en el Entorno Académico del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Normativa de Formación Práctica en el Entorno Académico del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normativa de Formación Práctica en el Entorno Académico del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-050",
+      "tema": "Normativa documental",
+      "titulo": "Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL?",
+        "¿Existe Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL?",
+        "Consultar Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL",
+        "Documento Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL",
+        "Necesito Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normativa Interna de Acompañamiento de Estudiantes y Aplicación de Estímulos Positivos del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-051",
+      "tema": "Normativa documental",
+      "titulo": "Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL?",
+        "¿Existe Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL?",
+        "Consultar Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL",
+        "Documento Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL",
+        "Necesito Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normativa de Uso del Entorno Virtual de Enseñanza y Aprendizaje del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-052",
+      "tema": "Normativa documental",
+      "titulo": "Normativa Interna de Formación y Capacitación del Docente del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Normativa Interna de Formación y Capacitación del Docente del ISUPOL?",
+        "¿Existe Normativa Interna de Formación y Capacitación del Docente del ISUPOL?",
+        "Consultar Normativa Interna de Formación y Capacitación del Docente del ISUPOL",
+        "Documento Normativa Interna de Formación y Capacitación del Docente del ISUPOL",
+        "Necesito Normativa Interna de Formación y Capacitación del Docente del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Normativa Interna de Formación y Capacitación del Docente del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Normativa Interna de Formación y Capacitación del Docente del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-053",
+      "tema": "Normativa documental",
+      "titulo": "Instructivo de Seguimiento de Graduados del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Instructivo de Seguimiento de Graduados del ISUPOL?",
+        "¿Existe Instructivo de Seguimiento de Graduados del ISUPOL?",
+        "Consultar Instructivo de Seguimiento de Graduados del ISUPOL",
+        "Documento Instructivo de Seguimiento de Graduados del ISUPOL",
+        "Necesito Instructivo de Seguimiento de Graduados del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Instructivo de Seguimiento de Graduados del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Instructivo de Seguimiento de Graduados del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-054",
+      "tema": "Normativa documental",
+      "titulo": "Proyecto de Buenas Prácticas Ambientales en el ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Proyecto de Buenas Prácticas Ambientales en el ISUPOL?",
+        "¿Existe Proyecto de Buenas Prácticas Ambientales en el ISUPOL?",
+        "Consultar Proyecto de Buenas Prácticas Ambientales en el ISUPOL",
+        "Documento Proyecto de Buenas Prácticas Ambientales en el ISUPOL",
+        "Necesito Proyecto de Buenas Prácticas Ambientales en el ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Proyecto de Buenas Prácticas Ambientales en el ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Proyecto de Buenas Prácticas Ambientales en el ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-055",
+      "tema": "Normativa documental",
+      "titulo": "Manual Sakai – Estudiantes-I",
+      "preguntas": [
+        "¿Dónde descargo Manual Sakai – Estudiantes-I?",
+        "¿Existe Manual Sakai – Estudiantes-I?",
+        "Consultar Manual Sakai – Estudiantes-I",
+        "Documento Manual Sakai – Estudiantes-I",
+        "Necesito Manual Sakai – Estudiantes-I del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual Sakai – Estudiantes-I». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual Sakai – Estudiantes-I"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-056",
+      "tema": "Normativa documental",
+      "titulo": "Manual de Procesos Académicos ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Manual de Procesos Académicos ISUPOL?",
+        "¿Existe Manual de Procesos Académicos ISUPOL?",
+        "Consultar Manual de Procesos Académicos ISUPOL",
+        "Documento Manual de Procesos Académicos ISUPOL",
+        "Necesito Manual de Procesos Académicos ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual de Procesos Académicos ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual de Procesos Académicos ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-057",
+      "tema": "Normativa documental",
+      "titulo": "Manual Estudiantes SiAC",
+      "preguntas": [
+        "¿Dónde descargo Manual Estudiantes SiAC?",
+        "¿Existe Manual Estudiantes SiAC?",
+        "Consultar Manual Estudiantes SiAC",
+        "Documento Manual Estudiantes SiAC",
+        "Necesito Manual Estudiantes SiAC del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual Estudiantes SiAC». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual Estudiantes SiAC"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-058",
+      "tema": "Normativa documental",
+      "titulo": "Manual Administrativo SiAC",
+      "preguntas": [
+        "¿Dónde descargo Manual Administrativo SiAC?",
+        "¿Existe Manual Administrativo SiAC?",
+        "Consultar Manual Administrativo SiAC",
+        "Documento Manual Administrativo SiAC",
+        "Necesito Manual Administrativo SiAC del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual Administrativo SiAC». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual Administrativo SiAC"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-059",
+      "tema": "Normativa documental",
+      "titulo": "Manual Docentes SiAC",
+      "preguntas": [
+        "¿Dónde descargo Manual Docentes SiAC?",
+        "¿Existe Manual Docentes SiAC?",
+        "Consultar Manual Docentes SiAC",
+        "Documento Manual Docentes SiAC",
+        "Necesito Manual Docentes SiAC del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual Docentes SiAC». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual Docentes SiAC"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-060",
+      "tema": "Normativa documental",
+      "titulo": "Manual de Uso de Laboratorios del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Manual de Uso de Laboratorios del ISUPOL?",
+        "¿Existe Manual de Uso de Laboratorios del ISUPOL?",
+        "Consultar Manual de Uso de Laboratorios del ISUPOL",
+        "Documento Manual de Uso de Laboratorios del ISUPOL",
+        "Necesito Manual de Uso de Laboratorios del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual de Uso de Laboratorios del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual de Uso de Laboratorios del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-061",
+      "tema": "Normativa documental",
+      "titulo": "Manual de Estilo 3.1 del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Manual de Estilo 3.1 del ISUPOL?",
+        "¿Existe Manual de Estilo 3.1 del ISUPOL?",
+        "Consultar Manual de Estilo 3.1 del ISUPOL",
+        "Documento Manual de Estilo 3.1 del ISUPOL",
+        "Necesito Manual de Estilo 3.1 del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual de Estilo 3.1 del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual de Estilo 3.1 del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-062",
+      "tema": "Normativa documental",
+      "titulo": "Líneas y Sublíneas de Investigación del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Líneas y Sublíneas de Investigación del ISUPOL?",
+        "¿Existe Líneas y Sublíneas de Investigación del ISUPOL?",
+        "Consultar Líneas y Sublíneas de Investigación del ISUPOL",
+        "Documento Líneas y Sublíneas de Investigación del ISUPOL",
+        "Necesito Líneas y Sublíneas de Investigación del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Líneas y Sublíneas de Investigación del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Líneas y Sublíneas de Investigación del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-063",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Igualdad ISUPOL 2021-2023",
+      "preguntas": [
+        "¿Dónde descargo Plan de Igualdad ISUPOL 2021-2023?",
+        "¿Existe Plan de Igualdad ISUPOL 2021-2023?",
+        "Consultar Plan de Igualdad ISUPOL 2021-2023",
+        "Documento Plan de Igualdad ISUPOL 2021-2023",
+        "Necesito Plan de Igualdad ISUPOL 2021-2023 del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Igualdad ISUPOL 2021-2023». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Igualdad ISUPOL 2021-2023"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-064",
+      "tema": "Normativa documental",
+      "titulo": "Plan Operativo Anual 2025 del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan Operativo Anual 2025 del ISUPOL?",
+        "¿Existe Plan Operativo Anual 2025 del ISUPOL?",
+        "Consultar Plan Operativo Anual 2025 del ISUPOL",
+        "Documento Plan Operativo Anual 2025 del ISUPOL",
+        "Necesito Plan Operativo Anual 2025 del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan Operativo Anual 2025 del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan Operativo Anual 2025 del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-065",
+      "tema": "Normativa documental",
+      "titulo": "Plan Operativo Anual 2024 del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan Operativo Anual 2024 del ISUPOL?",
+        "¿Existe Plan Operativo Anual 2024 del ISUPOL?",
+        "Consultar Plan Operativo Anual 2024 del ISUPOL",
+        "Documento Plan Operativo Anual 2024 del ISUPOL",
+        "Necesito Plan Operativo Anual 2024 del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan Operativo Anual 2024 del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan Operativo Anual 2024 del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-066",
+      "tema": "Normativa documental",
+      "titulo": "Plan Operativo Anual 2023 del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan Operativo Anual 2023 del ISUPOL?",
+        "¿Existe Plan Operativo Anual 2023 del ISUPOL?",
+        "Consultar Plan Operativo Anual 2023 del ISUPOL",
+        "Documento Plan Operativo Anual 2023 del ISUPOL",
+        "Necesito Plan Operativo Anual 2023 del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan Operativo Anual 2023 del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan Operativo Anual 2023 del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-067",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Autoevaluación Institucional 2023",
+      "preguntas": [
+        "¿Dónde descargo Plan de Autoevaluación Institucional 2023?",
+        "¿Existe Plan de Autoevaluación Institucional 2023?",
+        "Consultar Plan de Autoevaluación Institucional 2023",
+        "Documento Plan de Autoevaluación Institucional 2023",
+        "Necesito Plan de Autoevaluación Institucional 2023 del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Autoevaluación Institucional 2023». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Autoevaluación Institucional 2023"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-068",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Emergencia de las Instalaciones del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan de Emergencia de las Instalaciones del ISUPOL?",
+        "¿Existe Plan de Emergencia de las Instalaciones del ISUPOL?",
+        "Consultar Plan de Emergencia de las Instalaciones del ISUPOL",
+        "Documento Plan de Emergencia de las Instalaciones del ISUPOL",
+        "Necesito Plan de Emergencia de las Instalaciones del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Emergencia de las Instalaciones del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Emergencia de las Instalaciones del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-069",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Difusión del Uso de la Biblioteca del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan de Difusión del Uso de la Biblioteca del ISUPOL?",
+        "¿Existe Plan de Difusión del Uso de la Biblioteca del ISUPOL?",
+        "Consultar Plan de Difusión del Uso de la Biblioteca del ISUPOL",
+        "Documento Plan de Difusión del Uso de la Biblioteca del ISUPOL",
+        "Necesito Plan de Difusión del Uso de la Biblioteca del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Difusión del Uso de la Biblioteca del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Difusión del Uso de la Biblioteca del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-070",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Reconocimiento de Méritos para Profesores del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan de Reconocimiento de Méritos para Profesores del ISUPOL?",
+        "¿Existe Plan de Reconocimiento de Méritos para Profesores del ISUPOL?",
+        "Consultar Plan de Reconocimiento de Méritos para Profesores del ISUPOL",
+        "Documento Plan de Reconocimiento de Méritos para Profesores del ISUPOL",
+        "Necesito Plan de Reconocimiento de Méritos para Profesores del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Reconocimiento de Méritos para Profesores del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Reconocimiento de Méritos para Profesores del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-071",
+      "tema": "Normativa documental",
+      "titulo": "Plan Institucional de Igualdad del ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan Institucional de Igualdad del ISUPOL?",
+        "¿Existe Plan Institucional de Igualdad del ISUPOL?",
+        "Consultar Plan Institucional de Igualdad del ISUPOL",
+        "Documento Plan Institucional de Igualdad del ISUPOL",
+        "Necesito Plan Institucional de Igualdad del ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan Institucional de Igualdad del ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan Institucional de Igualdad del ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-072",
+      "tema": "Normativa documental",
+      "titulo": "Plan de Investigación y Desarrollo de la Innovación ISUPOL",
+      "preguntas": [
+        "¿Dónde descargo Plan de Investigación y Desarrollo de la Innovación ISUPOL?",
+        "¿Existe Plan de Investigación y Desarrollo de la Innovación ISUPOL?",
+        "Consultar Plan de Investigación y Desarrollo de la Innovación ISUPOL",
+        "Documento Plan de Investigación y Desarrollo de la Innovación ISUPOL",
+        "Necesito Plan de Investigación y Desarrollo de la Innovación ISUPOL del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Plan de Investigación y Desarrollo de la Innovación ISUPOL». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Plan de Investigación y Desarrollo de la Innovación ISUPOL"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-073",
+      "tema": "Normativa documental",
+      "titulo": "Ley Orgánica de Educación Superior",
+      "preguntas": [
+        "¿Dónde descargo Ley Orgánica de Educación Superior?",
+        "¿Existe Ley Orgánica de Educación Superior?",
+        "Consultar Ley Orgánica de Educación Superior",
+        "Documento Ley Orgánica de Educación Superior",
+        "Necesito Ley Orgánica de Educación Superior del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Ley Orgánica de Educación Superior». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Ley Orgánica de Educación Superior"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "documento-indice-074",
+      "tema": "Normativa documental",
+      "titulo": "Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales",
+      "preguntas": [
+        "¿Dónde descargo Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales?",
+        "¿Existe Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales?",
+        "Consultar Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales",
+        "Documento Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales",
+        "Necesito Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales del ISTPN"
+      ],
+      "respuesta": "En la sección Normativa del portal ISTPN aparece listado «Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales». Abre esa sección para localizar el documento original. Esta respuesta confirma su presencia en el índice, pero NO valida el texto interno, su aplicación a un caso particular ni su vigencia jurídica actual.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "Manual de Derechos Humanos y Uso Legítimo de la Fuerza en Procedimientos Policiales"
+      ],
+      "alcance_verificacion": "titulo_y_enlace_en_indice; contenido_interno_no_revisado"
+    },
+    {
+      "id": "respuesta-sobre-rector",
+      "tema": "Institucional",
+      "titulo": "Nombre del rector vigente",
+      "preguntas": [
+        "¿Quién es el rector actualmente?",
+        "¿Quién es el rector del ISTPN en 2026?",
+        "¿Cuál es el nombre del rector?",
+        "¿Quién dirige el ISUPOL?",
+        "¿Cómo se llama el rector de ISUPOL?",
+        "Rector vigente ISTPN"
+      ],
+      "respuesta": "La página «Nuestras Autoridades» revisada publica cargos de vicerrector y coordinadores, pero no permite confirmar con seguridad el nombre del rector vigente. Para usar un nombre en un documento o gestión, solicita confirmación institucional actualizada.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "rector",
+        "autoridades",
+        "actualmente",
+        "nombre"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "aranceles-actuales",
+      "tema": "Admisiones",
+      "titulo": "Costos, matrículas y aranceles actuales",
+      "preguntas": [
+        "¿Cuánto cuesta estudiar en el ISTPN?",
+        "¿La matrícula es gratis?",
+        "¿Cuál es el precio de una carrera?",
+        "¿Qué valor pago de aranceles?",
+        "¿Cuánto cuesta el semestre?",
+        "¿Hay pensiones?",
+        "¿Qué precio tiene estudiar Criminalística?",
+        "¿Es gratuito estudiar en el ISUPOL?"
+      ],
+      "respuesta": "No encontré una tabla vigente de precios o aranceles específicos en las páginas de admisión y oferta revisadas. El portal sí enlaza un Reglamento de Cobro de Matrículas y Aranceles en Normativa, pero el contenido interno y los valores vigentes no fueron verificados. Consulta Admisiones o Secretaría Académica para un valor oficial.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "costo",
+        "matrícula",
+        "aranceles",
+        "precio",
+        "pago",
+        "pensiones"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "becas-procedimiento",
+      "tema": "Bienestar estudiantil",
+      "titulo": "Solicitud de becas o ayudas económicas",
+      "preguntas": [
+        "¿Dónde solicito becas?",
+        "¿Cómo obtengo una beca del ISTPN?",
+        "¿Qué ayudas económicas existen?",
+        "¿Hay becas para estudiantes?",
+        "¿Dónde encuentro requisitos para becas?",
+        "¿Cómo puedo solicitar becas?",
+        "¿Cómo solicitar beca estudiantil en el ISTPN?",
+        "¿Dónde puedo pedir una beca?",
+        "¿Hay becas disponibles actualmente?"
+      ],
+      "respuesta": "La página de Bienestar Estudiantil menciona orientación y ayudas económicas o becas en caso de requerirse, pero no publica en el texto revisado un trámite específico, monto, requisitos ni plazo. Consulta a la unidad de Bienestar Estudiantil para conocer la vía vigente.",
+      "fuente": "https://home.isupol.edu.ec/bienestar/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "becas",
+        "ayudas",
+        "económicas",
+        "estudiantes"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "carrera-sociedad-civil",
+      "tema": "Oferta académica",
+      "titulo": "Acceso a carreras para personas civiles",
+      "preguntas": [
+        "¿Pueden estudiar civiles en el ISTPN?",
+        "¿Las carreras son solo para policías?",
+        "¿Aceptan estudiantes de la sociedad civil?",
+        "¿Puedo matricularme si no soy policía?"
+      ],
+      "respuesta": "La misión institucional indica que el ISTPN forma a miembros de la Policía Nacional y de la sociedad civil. Sin embargo, algunas fichas de carreras incluyen perfiles de grados policiales; eso no confirma que todas las carreras estén disponibles para postulantes civiles. Verifica las condiciones de la convocatoria específica.",
+      "fuente": "https://home.isupol.edu.ec/acerca/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "civiles",
+        "policías",
+        "elegibilidad",
+        "postulantes"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "solicitudes-confidenciales",
+      "tema": "Servicios",
+      "titulo": "Consultas de datos académicos personales",
+      "preguntas": [
+        "¿Puedes mostrar mis calificaciones?",
+        "¿Puedes consultar mi matrícula con cédula?",
+        "¿Puedes revisar mi expediente académico?",
+        "¿Puedes ver mis datos personales?"
+      ],
+      "respuesta": "ISTPNCHAT funciona únicamente con información pública. No puede acceder a expedientes, calificaciones, matrículas individuales ni datos personales. Para gestiones de tu cuenta utiliza el SGA y los canales autorizados del Instituto.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "privacidad",
+        "datos",
+        "calificaciones",
+        "cédula",
+        "cuenta"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "proximo-curso",
+      "tema": "Admisiones",
+      "titulo": "Fechas del próximo curso y calendario",
+      "preguntas": [
+        "¿Cuándo empiezan las próximas clases?",
+        "¿Cuándo inicia el siguiente periodo académico?",
+        "¿Cuándo es el próximo curso?",
+        "¿Cuál es el calendario académico 2027?"
+      ],
+      "respuesta": "Las noticias consultadas reseñan actividades de períodos académicos anteriores, pero no permiten confirmar un cronograma futuro de inicio de clases. Revisa la sección Noticias y Admisiones para conocer fechas oficialmente publicadas.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "próximo",
+        "inicio",
+        "calendario",
+        "clases",
+        "2027"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "sistema-recontrasena",
+      "tema": "Guías y sistemas",
+      "titulo": "Recuperación de contraseña de plataformas académicas",
+      "preguntas": [
+        "¿Cómo recupero mi contraseña de EVA?",
+        "Olvidé la clave del aula virtual",
+        "¿Cómo recupero mi usuario SGA?",
+        "No puedo iniciar sesión en el aula virtual",
+        "¿Quién resetea mi contraseña institucional?"
+      ],
+      "respuesta": "El portal tiene guías de acceso a EVA y SGA, pero el texto revisado no ofrece un procedimiento universal verificado para recuperar contraseñas. Por seguridad, usa solo las opciones oficiales del sistema correspondiente o contacta con soporte institucional; no compartas tu clave en este chat.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "clave",
+        "contraseña",
+        "recuperar",
+        "EVA",
+        "SGA",
+        "soporte"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "denuncia-acoso",
+      "tema": "Bienestar estudiantil",
+      "titulo": "Orientación ante acoso, discriminación o violencia",
+      "preguntas": [
+        "¿Dónde reporto acoso en el ISTPN?",
+        "¿Existe un protocolo contra violencia o discriminación?",
+        "¿Qué hago si sufro acoso?",
+        "¿Cómo pido atención por violencia?"
+      ],
+      "respuesta": "El portal publica la unidad de Bienestar Estudiantil y, en Normativa, un documento de rutas y protocolos para prevención y atención de conflictos, violencia, acoso y discriminación basada en género. El detalle del procedimiento no fue verificado en esta revisión; solicita orientación a la unidad correspondiente y consulta el documento oficial.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "acoso",
+        "violencia",
+        "discriminación",
+        "protocolo",
+        "apoyo"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "noticias-proximos-eventos",
+      "tema": "Eventos",
+      "titulo": "Próximos eventos institucionales",
+      "preguntas": [
+        "¿Qué eventos se realizarán esta semana?",
+        "¿Hay alguna ceremonia próxima?",
+        "¿Cuál es el próximo evento académico?",
+        "¿Cuándo será la próxima graduación?"
+      ],
+      "respuesta": "La sección Noticias contiene reseñas de actividades ya realizadas. No se pudo verificar en el contenido revisado un calendario completo de eventos futuros. Para anuncios oficiales, revisa las noticias recientes o consulta a la institución.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "evento",
+        "próximo",
+        "ceremonia",
+        "graduación"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada"
+    },
+    {
+      "id": "horarios-secretaria",
+      "tema": "Contacto",
+      "titulo": "Horarios de atención de Secretaría Académica",
+      "preguntas": [
+        "¿Cuál es el horario de atención de Secretaría Académica?",
+        "¿A qué hora atienden en el ISTPN?",
+        "¿Puedo acudir a secretaría por la tarde?"
+      ],
+      "respuesta": "Una página histórica de requisitos menciona recepción de carpetas de 08:00 a 12:00 y de 14:00 a 17:00. Ese horario pertenece al proceso indicado y no permite confirmar el horario general actual de Secretaría Académica. Antes de acudir, contacta al Instituto.",
+      "fuente": "https://home.isupol.edu.ec/admintecnologo-2/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "horario",
+        "secretaría",
+        "atención"
+      ],
+      "alcance_verificacion": "orientacion_o_ausencia_de_dato_especifico_en_fuente_revisada",
+      "historico": true
+    },
+    {
+      "id": "remuneracion-individual",
+      "tema": "Transparencia",
+      "titulo": "Remuneraciones individuales del personal académico y coordinadores",
+      "preguntas": [
+        "¿Cuánto gana el coordinador de carrera?",
+        "¿Cuánto cobra un docente del ISTPN?",
+        "¿Cuánto gana un vicerrector?",
+        "¿Dónde consulto sueldos individuales del ISTPN?",
+        "¿Cuál es la remuneración de un coordinador académico?"
+      ],
+      "respuesta": "En Normativa aparece un documento titulado «Remuneración Docentes 2024», pero no se ha revisado su contenido interno ni se ha verificado una tabla actualizada de remuneraciones individuales. ISTPNCHAT no puede informar el salario de una persona específica sin una fuente pública vigente que lo respalde.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "remuneración",
+        "salario",
+        "docentes",
+        "coordinadores",
+        "sueldos"
+      ],
+      "historico": true
     }
   ]
 }
