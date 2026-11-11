@@ -1,10 +1,13 @@
-# ISTPNCHAT 2.0.0 — WordPress, sin API de pago
+# ISTPNCHAT 2.0.1 — WordPress, sin API de pago
 
 Plugin institucional para **home.isupol.edu.ec**, creado a partir de la base pública de preguntas y respuestas de `CHATISTPN`.
 
 ## Qué hace
 
 - Chat flotante en WordPress, compatible con computadora y móvil.
+- Mantiene el contexto del tema durante la visita: después de preguntar por Criminalística, «otras» enumera las 7 carreras restantes con su modalidad y enlace individual.
+- También entiende preguntas breves de seguimiento como «¿y cuánto dura?» cuando se habla de una carrera.
+- La referencia del tema es un ID local de la base y viaja con cada consulta; no se guardan conversaciones en el servidor.
 - Responde mediante búsqueda **local** en una copia de `respuestas.json`.
 - Muestra los nombres y enlaces **individuales** de las 8 carreras de la oferta registrada.
 - Incorpora inicialmente **221 respuestas y 964 formulaciones** (base JSON 0.4.1).
@@ -19,12 +22,13 @@ Plugin institucional para **home.isupol.edu.ec**, creado a partir de la base pú
 
 1. Crea copia de seguridad de WordPress.
 2. Entra en **WordPress → Plugins → Añadir plugin → Subir plugin**.
-3. Selecciona `ISTPNCHAT-WordPress-v2.0.0.zip`.
+3. Selecciona `ISTPNCHAT-WordPress-v2.0.1.zip`.
 4. Si ya tienes ISTPNCHAT 1.0.x instalado, utiliza **Reemplazar el actual con el subido**. **No desinstales** antes.
 5. Entra en **ISTPNCHAT**, pulsa **Actualizar respuestas desde GitHub** y revisa la versión y las cantidades.
 6. Abre tu portal iniciando sesión como administrador y prueba estas preguntas:
    - `¿Cuántas carreras tiene el ISTPN?`
    - `¿Qué carreras ofrece el ISTPN?`
+   - `Dime sobre la carrera de Criminalística` y luego `otras` (debe mostrar las 7 restantes con enlaces)
    - `¿Cuáles son las carreras en línea?`
    - `¿Dónde encuentro el Reglamento de Bienestar Estudiantil?`
    - `Créame un programa en Python` (debe indicar que solo atiende información institucional).
