@@ -3,7 +3,7 @@ Contributors: istpn
 Tags: assistant, chat, faq, institutional, education
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,3 +27,6 @@ ISTPNCHAT es un chat flotante especializado que busca respuestas en la base ofic
 * Elimina por completo llamadas a OpenAI y consumo de tokens.
 * Corrige los nombres de las ocho carreras y sus enlaces.
 * Sincronizacion cron y manual, panel de prueba, fallback y rate limit.
+
+== Version 2.0.1 ==
+- Comprende seguimiento conversacional corto, por ejemplo «otras» después de hablar de Criminalística.
