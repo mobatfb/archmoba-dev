@@ -52,3 +52,15 @@ transparentes) para que el lanzador de Android aplique su mascara de icono
 (redondeado, cuadrado redondeado, circular segun el dispositivo). El archivo se
 genera antes de Gradle mediante `tools/GenerateIcon.java`, que utiliza
 unicamente Java 17 y no modifica el PNG del splash.
+
+## Splash completo restaurado (v1.0.3)
+
+En Android 12+ el icono de la pantalla de lanzamiento del sistema se recorta
+con una mascara, por eso el logotipo rectangular aparecia ampliado y cortado.
+No debe asignarse `@drawable/minga_tv_logo` a
+`android:windowSplashScreenAnimatedIcon`.
+
+Ahora `SplashActivity` dibuja el **PNG original completo**, con
+`ImageView.ScaleType.FIT_CENTER`, proporcion original, centrado y margenes
+horizontales. El splash se muestra 2 segundos sobre fondo negro y luego abre
+`MainActivity`. Se conserva el icono cuadrado separado para el launcher.

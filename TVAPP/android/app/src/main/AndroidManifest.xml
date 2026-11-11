@@ -9,10 +9,18 @@
         android:theme="@style/Theme.MingaTV"
         android:icon="@drawable/ic_minga_square"
         android:roundIcon="@drawable/ic_minga_square">
+        <!-- MainActivity conserva intacta la interfaz y los reproductores. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true"
+            android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="unspecified" />
+
+        <!-- Splash real: ImageView FIT_CENTER, nunca icono del sistema. -->
+        <activity
+            android:name=".SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.MingaTV.Splash"
             android:screenOrientation="unspecified">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

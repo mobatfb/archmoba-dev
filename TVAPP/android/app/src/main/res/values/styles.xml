@@ -4,4 +4,5 @@
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <style name="Theme.MingaTV.Splash" parent="Theme.MingaTV" />
 </resources>

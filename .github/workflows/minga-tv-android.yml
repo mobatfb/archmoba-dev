@@ -52,6 +52,13 @@ jobs:
             TVAPP/assets/minga_tv_logo.png \
             TVAPP/android/app/src/main/res/drawable-nodpi/ic_minga_square.png
 
+      - name: Verificar separacion de icono y splash
+        run: |
+          grep -q 'ImageView.ScaleType.FIT_CENTER' TVAPP/android/app/src/main/java/com/archmoba/mingatv/SplashActivity.java
+          grep -q '@drawable/minga_tv_logo' TVAPP/android/app/src/main/java/com/archmoba/mingatv/SplashActivity.java
+          ! grep -q 'windowSplashScreenAnimatedIcon.*minga_tv_logo' TVAPP/android/app/src/main/res/values-v31/styles.xml
+          grep -q '@drawable/ic_minga_square' TVAPP/android/app/src/main/AndroidManifest.xml
+
       - name: Construir MINGA TV APK
         run: |
           gradle -p TVAPP/android :app:assembleDebug --no-daemon --stacktrace
