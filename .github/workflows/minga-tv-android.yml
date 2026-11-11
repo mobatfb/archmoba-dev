@@ -46,6 +46,12 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Crear icono cuadrado desde el logo original
+        run: |
+          java TVAPP/android/tools/GenerateIcon.java \
+            TVAPP/assets/minga_tv_logo.png \
+            TVAPP/android/app/src/main/res/drawable-nodpi/ic_minga_square.png
+
       - name: Construir MINGA TV APK
         run: |
           gradle -p TVAPP/android :app:assembleDebug --no-daemon --stacktrace

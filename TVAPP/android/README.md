@@ -38,3 +38,17 @@ centrada sobre fondo negro en una mascara adaptativa, para soportar lanzadores m
 La compilacion de pruebas usa firma debug generada por GitHub Actions. Si tenias una
 compilacion anterior instalada y Android indica un conflicto de firmas, desinstala
 esa version antes de instalar la nueva (guarda cualquier preferencia que necesites).
+
+
+## Icono corregido (v1.0.2)
+
+El splash permanece separado y usa exactamente `@drawable/minga_tv_logo`, copia
+del archivo original `TVAPP/assets/minga_tv_logo.png`, sin ninguna edicion.
+
+El icono se genera como **PNG opaco y cuadrado de 512 x 512 pixeles** a
+partir del mismo logo original. La figura y las letras mantienen sus proporciones.
+Se rellenan los espacios laterales con un fondo oscuro azulado (sin bandas
+transparentes) para que el lanzador de Android aplique su mascara de icono
+(redondeado, cuadrado redondeado, circular segun el dispositivo). El archivo se
+genera antes de Gradle mediante `tools/GenerateIcon.java`, que utiliza
+unicamente Java 17 y no modifica el PNG del splash.

@@ -6,9 +6,9 @@
         android:allowBackup="false"
         android:label="MINGA TV"
         android:usesCleartextTraffic="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher">
+        android:theme="@style/Theme.MingaTV"
+        android:icon="@drawable/ic_minga_square"
+        android:roundIcon="@drawable/ic_minga_square">
         <activity
             android:name=".MainActivity"
             android:exported="true"
