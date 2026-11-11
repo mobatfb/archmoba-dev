@@ -210,13 +210,33 @@ class Motor:
                 related.append(other.get('titulo','Información relacionada'))
         sources = []
         seen = set()
+        # Los enlaces que apuntan a fichas individuales deben mostrar el nombre
+        # de esa ficha, no repetir el titulo de la respuesta general.
+        titulos_por_url = {}
+        for ficha in self.registros:
+            url_ficha = ficha.get('fuente')
+            titulo_ficha = str(ficha.get('titulo') or '').strip()
+            if not es_fuente_institucional(url_ficha) or not titulo_ficha:
+                continue
+            # Priorizar la ficha de carrera cuando varias entradas comparten URL.
+            if url_ficha not in titulos_por_url or str(ficha.get('id', '')).startswith('carrera-'):
+                titulos_por_url[url_ficha] = re.sub(r'^Carrera de ', '', titulo_ficha)
+
+        def agregar_fuente(url, fallback, registro):
+            if not es_fuente_institucional(url) or url in seen:
+                return
+            # El JSON puede definir nombres especificos por enlace, por
+            # ejemplo, ocho carreras de una misma respuesta general.
+            etiquetas = registro.get('titulos_fuentes') or {}
+            etiqueta = etiquetas.get(url) if isinstance(etiquetas, dict) else None
+            sources.append({'titulo': etiqueta or titulos_por_url.get(url, fallback), 'url': url})
+            seen.add(url)
+
         # Primero mostrar TODAS las fuentes principales de la ficha
         # (por ejemplo, 8 carreras), sin mezclar paginas menos pertinentes.
         main_urls = item.get('fuentes') or ([item['fuente']] if item.get('fuente') else [])
         for u in main_urls:
-            if es_fuente_institucional(u) and u not in seen:
-                sources.append({'titulo': item.get('titulo', 'Fuente oficial'), 'url': u})
-                seen.add(u)
+            agregar_fuente(u, item.get('titulo', 'Fuente oficial'), item)
             if len(sources) >= 12:
                 break
         # Solo agregar complementos muy pertinentes si la respuesta principal
@@ -227,9 +247,7 @@ class Motor:
                     continue
                 urls = record.get('fuentes') or ([record['fuente']] if record.get('fuente') else [])
                 for u in urls:
-                    if es_fuente_institucional(u) and u not in seen:
-                        sources.append({'titulo': record.get('titulo', 'Fuente oficial'), 'url': u})
-                        seen.add(u)
+                    agregar_fuente(u, record.get('titulo', 'Fuente oficial'), record)
                     if len(sources) >= 3:
                         break
                 if len(sources) >= 3:
