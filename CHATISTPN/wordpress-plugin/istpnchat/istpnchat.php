@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ISTPNCHAT - Asistente institucional sin API de pago
  * Description: Chat institucional basado en respuestas.json de GitHub, sin servicios de IA, claves ni tokens. Incluye respaldo local, enlaces y panel de administracion.
- * Version: 2.0.0
+ * Version: 2.0.1
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Proyecto ISTPNCHAT
@@ -10,7 +10,7 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-define( 'ISTPNCHAT_VERSION', '2.0.0' );
+define( 'ISTPNCHAT_VERSION', '2.0.1' );
 define( 'ISTPNCHAT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ISTPNCHAT_URL', plugin_dir_url( __FILE__ ) );
 require_once ISTPNCHAT_PATH . 'includes/class-istpnchat-knowledge.php';
@@ -74,7 +74,10 @@ add_action( 'rest_api_init', function() {
         'methods' => 'POST',
         'callback' => 'istpnchat_local_rest_chat',
         'permission_callback' => function() { return istpnchat_local_visible(); },
-        'args' => array( 'pregunta' => array( 'required' => true, 'type' => 'string' ) ),
+        'args' => array(
+            'pregunta' => array( 'required' => true, 'type' => 'string' ),
+            'contexto' => array( 'required' => false, 'type' => 'string' ),
+        ),
     ) );
 } );
 
@@ -94,7 +97,9 @@ function istpnchat_local_rest_chat( $request ) {
         set_transient( $key, $used + 1, 10 * MINUTE_IN_SECONDS );
     }
     $question = sanitize_text_field( $question );
-    $payload = ISTPNCHAT_Search::answer( $question, ISTPNCHAT_Knowledge::current() );
+    $contexto = $request->get_param( 'contexto' );
+    $contexto = is_string( $contexto ) && strlen( $contexto ) <= 80 ? sanitize_text_field( $contexto ) : '';
+    $payload = ISTPNCHAT_Search::answer( $question, ISTPNCHAT_Knowledge::current(), $contexto );
     $response = rest_ensure_response( $payload );
     $response->header( 'Cache-Control', 'no-store' );
     return $response;
