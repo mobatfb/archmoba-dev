@@ -29,6 +29,19 @@ AGENT = 'ISTPNCHAT/0.1 (+rastreador institucional de contenido publico; sin aute
 SEEDS = ['/', '/acerca/', '/admisiones/', '/normativa/', '/noticias/', '/nuestras_autoridades/', '/guias-para-usuarios/', '/tramites/', '/organigrama/', '/vincula/']
 SKIP_EXT = ('.jpg','.png','.jpeg','.gif','.webp','.svg','.ico','.css','.js','.mp3','.mp4','.webm','.zip','.7z','.doc','.docx','.xls','.xlsx','.ppt','.pptx')
 
+# La web pública ha mostrado párrafos promocionales ajenos a la institución.
+# Una página con estos indicadores se aparta del índice AUTOMÁTICO para
+# revisión editorial. Los registros manuales previamente verificados siguen.
+INDICIOS_CONTENIDO_AJENO = ('ghostwriter', 'kaszinó', 'kaszino', 'ggbet',
+    'nvcasino', 'online casino', 'szerencsejáték', 'szerencsejatek',
+    'játékautomata', 'casino bonus', 'casino online', 'sportfogadás')
+MAX_FRAGMENTS = 3200  # Mantener respuestas.json por debajo del límite de 8 MB del cliente.
+
+
+def contenido_ajeno(texto):
+    texto = texto.lower()
+    return any(marcador in texto for marcador in INDICIOS_CONTENIDO_AJENO)
+
 
 def safe_url(raw, base=BASE):
     try:
@@ -128,6 +141,9 @@ def pdf_entries(url, raw, max_pdf_pages=150):
         chunks=[]
         for page,pg in enumerate(pdf.pages[:max_pdf_pages],1):
             text=' '.join((pg.extract_text() or '').split())
+            # No citar PDF con contenido aparentemente contaminado.
+            if contenido_ajeno(text):
+                continue
             for i in range(0,min(len(text),18000),850):
                 fragment=text[i:i+950].strip()
                 if len(fragment)<80:continue
@@ -161,7 +177,7 @@ def discover_api(fetch, add):
 def run(max_pages, delay, timeout, include_pdf):
     data=json.loads(DB.read_text(encoding='utf-8'))
     manual=[x for x in data.get('respuestas',[]) if x.get('origen')!='rastreo']
-    found=set();pending=deque();visited=set();failures=[];records=[];sitemaps=deque([BASE+'wp-sitemap.xml',BASE+'sitemap_index.xml',BASE+'sitemap.xml']);seen_maps=set()
+    found=set();pending=deque();visited=set();failures=[];records=[];excluded=[];sitemaps=deque([BASE+'wp-sitemap.xml',BASE+'sitemap_index.xml',BASE+'sitemap.xml']);seen_maps=set()
     def add(u):
         u=safe_url(u)
         if u and u not in found:
@@ -187,7 +203,7 @@ def run(max_pages, delay, timeout, include_pdf):
     try:discover_api(fetch,add)
     except Exception as e:failures.append({'url':'wp-json','error':str(e)[:150]})
     print(f'URLs descubiertas inicialmente: {len(pending)}')
-    while pending and (max_pages==0 or len(visited)<max_pages):
+    while pending and (max_pages==0 or len(visited)<max_pages) and len(records)<MAX_FRAGMENTS:
         url=pending.popleft()
         if url in visited:continue
         visited.add(url)
@@ -201,21 +217,31 @@ def run(max_pages, delay, timeout, include_pdf):
         if 'pdf' in typ or raw[:5]==b'%PDF-':
             if include_pdf:
                 chunks,err=pdf_entries(url,raw)
-                records.extend(chunks)
+                records.extend(chunks[:max(0,MAX_FRAGMENTS-len(records))])
                 if err:failures.append({'url':url,'error':err})
         elif 'html' in typ or raw.lstrip()[:15].lower().startswith((b'<!doctype html',b'<html')):
+            if contenido_ajeno(raw.decode('utf-8','replace')):
+                excluded.append(url)
+                failures.append({'url':url,'error':'Contenido publicitario ajeno a la institución; página excluida para revisión editorial.'})
+                continue
             title,chunks,links=html_entries(url,raw)
-            records.extend(chunks)
+            records.extend(chunks[:max(0,MAX_FRAGMENTS-len(records))])
             for link in links:add(urllib.parse.urljoin(url,link))
         if len(visited)%25==0:print(f'Visitadas: {len(visited)} | indexadas: {len(records)} | pendientes: {len(pending)}')
     # ids duplicados: quedarse con una entrada por fragmento.
     unique={r['id']:r for r in records}
     data['respuestas']=manual+list(unique.values())
     data['ultima_sincronizacion']=datetime.now(timezone.utc).isoformat()
-    data['cobertura']={'metodo':'Sitemaps + WP REST + enlaces internos públicos; no accede a contenido privado', 'urls_descubiertas':len(found),'urls_visitadas':len(visited),'fragmentos_generados':len(unique),'limite_alcanzado':bool(pending),'urls_pendientes':len(pending),'errores':len(failures),'pdf_incluido':include_pdf,'exhaustivo_confirmado':bool(not pending and not failures)}
+    data['cobertura']={'metodo':'Sitemaps + WP REST + enlaces internos públicos; no accede a contenido privado',
+        'urls_descubiertas':len(found),'urls_visitadas':len(visited),'fragmentos_generados':len(unique),
+        'limite_alcanzado':bool(pending),'urls_pendientes':len(pending),'errores':len(failures),
+        'paginas_excluidas_por_contenido_ajeno':len(excluded),
+        'capacidad_maxima_fragmentos':MAX_FRAGMENTS,
+        'pdf_incluido':include_pdf,'exhaustivo_confirmado':bool(not pending and not failures)}
     tmp=DB.with_suffix('.json.tmp')
     tmp.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8');tmp.replace(DB)
-    report={'fecha':data['ultima_sincronizacion'],'cobertura':data['cobertura'],'errores':failures[:500],'pendientes':list(pending)[:500]}
+    report={'fecha':data['ultima_sincronizacion'],'cobertura':data['cobertura'],'errores':failures[:500],
+        'excluidas_por_contenido_ajeno':excluded[:500],'pendientes':list(pending)[:500]}
     (HERE/'cobertura.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print('Escaneo finalizado. Repuestas verificadas:',len(manual),'Fragmentos web:',len(unique))
     print('Informe:',HERE/'cobertura.json')
