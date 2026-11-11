@@ -170,6 +170,52 @@
       ]
     },
     {
+      "id": "numero-carreras-istpn",
+      "tema": "Oferta académica",
+      "titulo": "Cantidad total de carreras del ISTPN",
+      "preguntas": [
+        "¿Cuántas carreras tiene el ISTPN?",
+        "¿Cuántas carreras ofrece el ISTPN?",
+        "¿Cuántas carreras hay?",
+        "¿Cuántas carreras son?",
+        "¿Cuántas carreras tiene ISUPOL?",
+        "¿Cuál es el número de carreras del ISTPN?",
+        "¿Cuál es el total de carreras?",
+        "Dime cuántas carreras hay en el instituto",
+        "Número de carreras ofertadas",
+        "¿Cuántas carreras publicadas tiene el ISTPN?",
+        "¿Cuántas carreras hay por modalidad?",
+        "¿Cuántas carreras son presenciales, en línea e híbridas?",
+        "¿Cuántas carreras son presenciales?",
+        "¿Cuántas carreras son virtuales?",
+        "¿Cuántas carreras son híbridas?"
+      ],
+      "respuesta": "En el portal oficial del ISTPN se encuentran publicadas 8 carreras: 2 en modalidad presencial, 4 en línea y 2 en modalidad híbrida. Consulta la sección Oferta Académica para conocer sus nombres, características y requisitos. Esta cifra corresponde a la oferta publicada en el sitio; no significa que todas tengan inscripciones abiertas.",
+      "fuente": "https://home.isupol.edu.ec/oferta-academica/",
+      "fuentes": [
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/",
+        "https://home.isupol.edu.ec/carrera-criminalistica/",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/",
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/"
+      ],
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "numero",
+        "cantidad",
+        "total",
+        "ocho",
+        "8",
+        "carrera",
+        "oferta academica",
+        "modalidades"
+      ]
+    },
+    {
       "id": "carrera-acondicionamiento",
       "tema": "Oferta académica",
       "titulo": "Carrera de Acondicionamiento Físico Aplicado a la Función Policial",
