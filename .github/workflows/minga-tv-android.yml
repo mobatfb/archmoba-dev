@@ -55,7 +55,7 @@ jobs:
       - name: Verificar separacion de icono y splash
         run: |
           grep -q 'ImageView.ScaleType.FIT_CENTER' TVAPP/android/app/src/main/java/com/archmoba/mingatv/SplashActivity.java
-          grep -q '@drawable/minga_tv_logo' TVAPP/android/app/src/main/java/com/archmoba/mingatv/SplashActivity.java
+          grep -q 'R.drawable.minga_tv_logo' TVAPP/android/app/src/main/java/com/archmoba/mingatv/SplashActivity.java
           ! grep -q 'windowSplashScreenAnimatedIcon.*minga_tv_logo' TVAPP/android/app/src/main/res/values-v31/styles.xml
           grep -q '@drawable/ic_minga_square' TVAPP/android/app/src/main/AndroidManifest.xml
 
