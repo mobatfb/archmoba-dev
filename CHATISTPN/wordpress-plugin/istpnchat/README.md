@@ -1,10 +1,13 @@
-# ISTPNCHAT 2.0.1 — WordPress, sin API de pago
+# ISTPNCHAT 2.0.2 — WordPress, sin API de pago
 
 Plugin institucional para **home.isupol.edu.ec**, creado a partir de la base pública de preguntas y respuestas de `CHATISTPN`.
 
 ## Qué hace
 
 - Chat flotante en WordPress, compatible con computadora y móvil.
+- Tolera pequeñas equivocaciones al escribir nombres de carreras y comprende consultas como «tiempo de la carrera criminalisitca».
+- Cuando falta información, solicita reformular la pregunta en lugar de dar una respuesta genérica.
+- Se eliminó el pie del chat referido a API y tokens.
 - Mantiene el contexto del tema durante la visita: después de preguntar por Criminalística, «otras» enumera las 7 carreras restantes con su modalidad y enlace individual.
 - También entiende preguntas breves de seguimiento como «¿y cuánto dura?» cuando se habla de una carrera.
 - La referencia del tema es un ID local de la base y viaja con cada consulta; no se guardan conversaciones en el servidor.
@@ -22,7 +25,7 @@ Plugin institucional para **home.isupol.edu.ec**, creado a partir de la base pú
 
 1. Crea copia de seguridad de WordPress.
 2. Entra en **WordPress → Plugins → Añadir plugin → Subir plugin**.
-3. Selecciona `ISTPNCHAT-WordPress-v2.0.1.zip`.
+3. Selecciona `ISTPNCHAT-WordPress-v2.0.2.zip`.
 4. Si ya tienes ISTPNCHAT 1.0.x instalado, utiliza **Reemplazar el actual con el subido**. **No desinstales** antes.
 5. Entra en **ISTPNCHAT**, pulsa **Actualizar respuestas desde GitHub** y revisa la versión y las cantidades.
 6. Abre tu portal iniciando sesión como administrador y prueba estas preguntas:
