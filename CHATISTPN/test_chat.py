@@ -25,6 +25,17 @@ class Pruebas(unittest.TestCase):
         self.assertIn('híbrida',r['respuesta'].lower())
         self.assertGreaterEqual(len(r['fuentes']),8)
 
+    def test_cantidad_carreras_con_nombres_y_enlaces(self):
+        r=self.ask('¿Cuántas carreras son?')
+        self.assertIn('8 carreras',r['respuesta'])
+        self.assertIn('Acondicionamiento Físico Aplicado',r['respuesta'])
+        self.assertIn('Seguridad Ciudadana y Orden Público',r['respuesta'])
+        self.assertEqual(len(r['fuentes']),8)
+        nombres=[x['titulo'] for x in r['fuentes']]
+        self.assertEqual(len(set(nombres)),8)
+        self.assertIn('Criminalística',nombres)
+        self.assertTrue(all('Cantidad total' not in x for x in nombres))
+
     def test_criminalistica(self):
         r=self.ask('¿Cuánto dura la carrera Criminalística?')
         self.assertIn('2 años',r['respuesta'])
