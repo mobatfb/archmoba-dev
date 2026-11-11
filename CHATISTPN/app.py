@@ -1,20 +1,36 @@
-"""ISTPNCHAT: aplicación de escritorio con ventana Python nativa.
-Ejecutar: python app.py   |   python app.py --cli
-No inicia servidores ni necesita navegador, API externa o paquetes pip.
+"""ISTPNCHAT: asistente de escritorio que lee respuestas desde GitHub.
+Ejecutar: python app.py
+Sin servidor web, navegador, servicios de IA de pago ni paquetes externos.
+La base se sincroniza desde CHATISTPN/respuestas.json del repositorio público.
+Si no hay conexión, utiliza la última copia guardada automáticamente.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import queue
 import re
+import sys
+import tempfile
+import threading
 import unicodedata
 import webbrowser
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
-BASE = Path(__file__).resolve().parent
-DB = BASE / 'respuestas.json'
+# Esta es la UNICA base de conocimiento oficial de este prototipo.
+REPO_JSON_URL = (
+    'https://raw.githubusercontent.com/mobatfb/archmoba-dev/'
+    'main/CHATISTPN/respuestas.json'
+)
+# Se usa solo como respaldo automatico; no hace falta guardar un JSON junto al .py.
+CACHE_DIR = Path(os.environ.get('LOCALAPPDATA') or (Path.home() / '.cache')) / 'CHATISTPN'
+DB = CACHE_DIR / 'respuestas_cache.json'
+MAX_JSON_BYTES = 8 * 1024 * 1024
+ACTUALIZAR_CADA_MS = 15 * 60 * 1000
 STOP = set('a al algo algunas algunos ante como con cual cuales cuando de del desde donde el ella ellas ellos en entre era es esa esas ese esos esta estas este estos hacia hay la las le les lo los mas me mi mis muy no o para pero por porque que quien quienes se sea ser si sin sobre son su sus te tiene tienen tu un una unas unos y ya puedo podrian quiero saber necesito dime favor informacion instituto istpn isupol chat'.split())
 ALIASES = {'carreras':'carrera', 'cursos':'curso', 'estudios':'estudio', 'modalidades':'modalidad', 'requisitos':'requisito', 'inscripciones':'inscripcion', 'matriculas':'matricula', 'admisiones':'admision', 'reglamentos':'reglamento', 'noticias':'noticia', 'telefonos':'telefono', 'contactos':'contacto', 'docentes':'docente', 'estudiantes':'estudiante', 'graduados':'graduado', 'titulaciones':'titulacion'}
 
@@ -43,17 +59,72 @@ class Motor:
         self.mtime = -1
         self.data = {}
         self.registros = []
-        self.reload()
+        self.origen = 'Sin datos'
+        self._lock = threading.RLock()
+        self.reload()  # La copia local es opcional.
+
+    @staticmethod
+    def validar(data):
+        if not isinstance(data, dict) or not isinstance(data.get('respuestas'), list):
+            raise ValueError('El JSON remoto no tiene el formato requerido.')
+        records = data['respuestas']
+        if not records:
+            raise ValueError('El repositorio devolvió una base de conocimiento vacía.')
+        if len(records) > 20000:
+            raise ValueError('La base de conocimiento es demasiado extensa.')
+        for item in records:
+            if not isinstance(item, dict) or not isinstance(item.get('respuesta'), str):
+                raise ValueError('La base contiene una respuesta con formato inválido.')
+        return records
 
     def reload(self):
-        stamp = self.ruta.stat().st_mtime_ns
-        if stamp == self.mtime:
-            return
-        data = json.loads(self.ruta.read_text(encoding='utf-8'))
-        records = data.get('respuestas', [])
-        if not isinstance(records, list):
-            raise ValueError('Formato incorrecto de respuestas.json')
-        self.data, self.registros, self.mtime = data, records, stamp
+        """Lee el respaldo local, si existe; no requiere un respuestas.json local."""
+        with self._lock:
+            try:
+                stamp = self.ruta.stat().st_mtime_ns
+            except FileNotFoundError:
+                return False
+            if stamp == self.mtime:
+                return False
+            data = json.loads(self.ruta.read_text(encoding='utf-8'))
+            records = self.validar(data)
+            self.data, self.registros, self.mtime = data, records, stamp
+            if self.origen == 'Sin datos':
+                self.origen = 'Copia sin conexión'
+            return True
+
+    def actualizar_desde_repo(self):
+        """Descarga desde GitHub, valida y reemplaza el respaldo de forma atómica."""
+        request = Request(
+            REPO_JSON_URL,
+            headers={'User-Agent': 'ISTPNCHAT-Desktop/0.3', 'Accept': 'application/json'},
+        )
+        with urlopen(request, timeout=12) as response:
+            payload = response.read(MAX_JSON_BYTES + 1)
+        if len(payload) > MAX_JSON_BYTES:
+            raise ValueError('El JSON remoto supera el tamaño permitido (8 MB).')
+        data = json.loads(payload.decode('utf-8-sig'))
+        records = self.validar(data)
+
+        self.ruta.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='wb', prefix='istpnchat-', suffix='.tmp',
+                dir=str(self.ruta.parent), delete=False,
+            ) as f:
+                temp_path = Path(f.name)
+                f.write(payload)
+            os.replace(temp_path, self.ruta)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+        with self._lock:
+            # Se utiliza la respuesta de GitHub validada; la copia ya se guardó.
+            self.data, self.registros = data, records
+            self.mtime = self.ruta.stat().st_mtime_ns
+            self.origen = 'GitHub sincronizado'
+        return len(records)
 
     def buscar(self, pregunta, limite=4):
         self.reload()
@@ -105,7 +176,9 @@ class Motor:
             return {'respuesta': '¡Hola! Soy ISTPNCHAT. Puedes preguntarme por carreras, modalidades, admisiones, normativa, noticias, trámites y servicios del ISTPN.', 'fuentes': [], 'modo': 'local'}
         matches = self.buscar(question)
         if not matches:
-            return {'respuesta': 'No encontré información verificada suficiente en mi base local. Consulta el portal oficial o actualiza respuestas.json con crawler.py.', 'fuentes': [{'titulo': 'Portal ISTPN', 'url':'https://home.isupol.edu.ec/'}], 'modo': 'sin_resultado'}
+            if not self.registros:
+                return {'respuesta': 'Todavía no se pudo cargar la base de conocimientos desde GitHub. Verifica tu conexión y pulsa Actualizar desde GitHub.', 'fuentes': [], 'modo': 'sin_datos'}
+            return {'respuesta': 'No encontré información suficiente en la base publicada en GitHub. Revisa la información en el portal oficial del ISTPN.', 'fuentes': [{'titulo': 'Portal ISTPN', 'url':'https://home.isupol.edu.ec/'}], 'modo': 'sin_resultado'}
         best, item = matches[0]
         answer = item.get('respuesta', '').strip()
         related = []
@@ -146,7 +219,9 @@ def ejecutar_escritorio():
     BORDE = '#D8E2EE'
     BURBUJA_BOT = '#EAF1F9'
 
-    motor = Motor()
+    motor = Motor()  # Arranca incluso sin conexión y sin archivo JSON local.
+    eventos = queue.Queue()
+    actualizando = False
     root = tk.Tk()
     root.title('ISTPNCHAT | Asistente institucional')
     root.configure(bg=FONDO)
@@ -167,7 +242,7 @@ def ejecutar_escritorio():
     def estado_base():
         registros = motor.registros
         formulaciones = sum(len(r.get('preguntas', [])) for r in registros)
-        info.set(f'Base local: {len(registros)} respuestas · {formulaciones} formas de preguntar  •  Tokens: 0')
+        info.set(f'{motor.origen}: {len(registros)} respuestas · {formulaciones} preguntas  •  Tokens: 0')
 
     estado_base()
     tk.Label(toolbar, textvariable=info, fg=GRIS, bg=FONDO,
@@ -252,18 +327,61 @@ def ejecutar_escritorio():
                       command=lambda u=url: webbrowser.open(u, new=2)).pack(anchor='w', fill='x')
         root.after_idle(ir_final)
 
-    def recargar():
-        try:
-            motor.mtime = -1
-            motor.reload()
-            estado_base()
-            messagebox.showinfo('ISTPNCHAT', 'Base de conocimientos recargada correctamente.')
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
-            messagebox.showerror('No se pudo recargar', str(exc))
+    def iniciar_actualizacion(manual=False):
+        nonlocal actualizando
+        if actualizando:
+            return
+        actualizando = True
+        boton_recarga.configure(state='disabled')
+        info.set('Conectando con GitHub y descargando respuestas.json…')
 
-    tk.Button(toolbar, text='↻ Recargar JSON', bg=BLANCO, fg=AZUL_OSCURO,
-              bd=1, relief='solid', padx=10, pady=6, cursor='hand2',
-              font=('Segoe UI', 9), command=recargar).pack(side='right')
+        def tarea():
+            try:
+                numero = motor.actualizar_desde_repo()
+                eventos.put(('ok', numero, manual))
+            except Exception as exc:
+                eventos.put(('error', str(exc), manual))
+
+        threading.Thread(target=tarea, daemon=True).start()
+
+    def revisar_eventos():
+        nonlocal actualizando
+        while True:
+            try:
+                tipo, detalle, manual = eventos.get_nowait()
+            except queue.Empty:
+                break
+            actualizando = False
+            boton_recarga.configure(state='normal')
+            estado_base()
+            if tipo == 'ok':
+                if manual:
+                    messagebox.showinfo('ISTPNCHAT',
+                        f'Base actualizada desde GitHub: {detalle} respuestas.')
+            else:
+                if motor.registros:
+                    aviso = ('No fue posible contactar GitHub. Se mantiene la última '
+                             'copia de respuestas descargada previamente.')
+                else:
+                    aviso = ('No fue posible descargar respuestas.json de GitHub. '
+                             'Conecta tu equipo a Internet y vuelve a intentarlo.')
+                info.set(aviso)
+                if manual:
+                    messagebox.showwarning('ISTPNCHAT · Sin conexión', aviso + '\n\n' + detalle)
+                elif not motor.registros:
+                    mensaje(aviso, 'bot')
+        if root.winfo_exists():
+            root.after(200, revisar_eventos)
+
+    def sincronizar_periodicamente():
+        iniciar_actualizacion()
+        root.after(ACTUALIZAR_CADA_MS, sincronizar_periodicamente)
+
+    boton_recarga = tk.Button(toolbar, text='↻ Actualizar desde GitHub', bg=BLANCO,
+              fg=AZUL_OSCURO, bd=1, relief='solid', padx=10, pady=6,
+              cursor='hand2', font=('Segoe UI', 9),
+              command=lambda: iniciar_actualizacion(manual=True))
+    boton_recarga.pack(side='right')
 
     sugerencias = tk.Frame(root, bg=FONDO, padx=16, pady=6)
     sugerencias.pack(fill='x')
@@ -292,7 +410,7 @@ def ejecutar_escritorio():
                     'bot', resultado.get('fuentes', []))
             estado_base()
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            mensaje('No pude leer respuestas.json. Verifica que esté en la misma carpeta que app.py.\n'
+            mensaje('No pude leer la copia de respuestas descargada desde GitHub.\n'
                     + str(exc), 'bot')
         finally:
             enviar_boton.configure(state='normal')
@@ -312,8 +430,10 @@ def ejecutar_escritorio():
                   font=('Segoe UI', 9),
                   command=lambda q=consulta: preguntar(q)).pack(side='left', padx=(0, 7))
 
-    mensaje('¡Hola! Soy ISTPNCHAT. Pregúntame por las carreras, modalidades, admisiones, normativa o servicios publicados del ISTPN.\n\nMis respuestas provienen del archivo respuestas.json y no consumen tokens.', 'bot')
+    mensaje('¡Hola! Soy ISTPNCHAT. Pregúntame por carreras, modalidades, admisiones, normativa y servicios institucionales.\n\nMis respuestas se descargan de GitHub y no consumen tokens de IA.', 'bot')
     entrada.focus_set()
+    root.after(200, revisar_eventos)
+    root.after(100, sincronizar_periodicamente)
     root.mainloop()
 
 
@@ -322,7 +442,12 @@ def main():
     p.add_argument('--cli', action='store_true', help='Usar únicamente consola de texto')
     p.add_argument('--test', type=str, help='Probar una pregunta y finalizar')
     args = p.parse_args()
-    motor = Motor()
+    if args.test is not None or args.cli:
+        motor = Motor()
+        try:
+            motor.actualizar_desde_repo()
+        except Exception as exc:
+            print(f'GitHub no disponible ({exc}). Usando respaldo local si existe.', file=sys.stderr)
     if args.test is not None:
         print(json.dumps(motor.responder(args.test), ensure_ascii=False, indent=2))
     elif args.cli:
