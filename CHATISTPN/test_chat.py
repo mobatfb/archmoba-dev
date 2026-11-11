@@ -75,7 +75,9 @@ class Pruebas(unittest.TestCase):
 
     def test_rector(self):
         r=self.ask('¿Quién es el rector actualmente?')
-        self.assertIn('no permite confirmar',r['respuesta'])
+        self.assertIn('Juan Carlos Moya Román',r['respuesta'])
+        self.assertIn('Teniente Coronel',r['respuesta'])
+        self.assertIn('mensaje-rector',r['fuentes'][0]['url'])
 
     def test_recuperar_eva(self):
         r=self.ask('¿Cómo recupero mi contraseña de EVA?')
