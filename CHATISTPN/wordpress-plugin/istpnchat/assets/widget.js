@@ -98,7 +98,7 @@
           if (typeof data.contexto === 'string' && /^[a-z0-9-]{1,80}$/.test(data.contexto)) {
             lastContext = data.contexto;
           }
-          addMessage(data.respuesta || 'No encontré información suficiente.', 'bot', data.fuentes || []);
+          addMessage(data.respuesta || 'Por ahora no tengo una respuesta confirmada para esa pregunta. ¿Puedes hacerla de otra forma?', 'bot', data.fuentes || []);
         }
       } catch (error) {
         thinking.remove();
