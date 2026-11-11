@@ -12,7 +12,7 @@ Asistente local de información institucional de **https://home.isupol.edu.ec/**
 
 | Archivo | Función |
 |---|---|
-| `app.py` | Chat en navegador + motor de búsqueda, sin dependencias externas. |
+| `app.py` | Chat en ventana nativa de Python (Tkinter), sin navegador ni servidor. |
 | `respuestas.json` | Respuestas, formas de preguntar, URL de origen y estado de cobertura. |
 | `crawler.py` | Recorrido de sitemap, REST WordPress y enlaces públicos; enriquece el JSON. |
 | `README.md` | Instalación y uso. |
@@ -28,17 +28,16 @@ Asistente local de información institucional de **https://home.isupol.edu.ec/**
 python app.py
 ```
 
-Se abrirá en el navegador **http://127.0.0.1:8765/**. Solo funciona en tu computadora; no expone el chat a Internet.
+Se abrirá **una ventana directamente en Windows**. No se inicia un servidor, no se monta una página web y no se abre un navegador. El programa lee `respuestas.json` desde la misma carpeta y muestra enlaces oficiales clicables.
 
 Otras pruebas:
 
 ```bash
 python app.py --cli
 python app.py --test "¿Qué carreras y modalidades ofrece el ISTPN?"
-python app.py --no-browser --port 8766
 ```
 
-Para terminar, usa **Ctrl+C** en la consola.
+Cierra la ventana para terminar. También puedes abrir `app.py` con doble clic en Windows, siempre que Python esté asociado con archivos `.py`. Requiere Python con **Tkinter**, que viene normalmente con las instalaciones oficiales de Windows.
 
 ## 2. Actualizar la base de conocimientos desde la web
 
@@ -79,7 +78,7 @@ Al actualizar, conserva las respuestas manualmente verificadas y sustituye los f
 
 ## Límites y seguridad
 
-Este es un **prototipo de escritorio** y **no debe publicarse directamente como endpoint WordPress**. Está enlazado a `127.0.0.1`, no guarda conversaciones, rechaza instrucciones evidentemente ajenas al ISTPN y valida los enlaces antes de mostrarlos. El filtrado por vocabulario puede equivocarse; no sustituye una moderación exhaustiva.
+Este es un **prototipo de escritorio** y **no debe publicarse directamente como endpoint WordPress**. No abre ningún puerto ni recibe conexiones, no guarda conversaciones, rechaza instrucciones evidentemente ajenas al ISTPN y valida los enlaces antes de mostrarlos. El filtrado por vocabulario puede equivocarse; no sustituye una moderación exhaustiva.
 
 El contenido del portal puede estar desactualizado (por ejemplo, convocatorias 2024/2025). Las fuentes se enlazan para contrastarlas; las respuestas de admisiones históricas incluyen advertencias. El rastreador no determina jurídicamente vigencias de reglamentos ni garantiza precisión de extracción en páginas complejas.
 
