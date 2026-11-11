@@ -17,6 +17,8 @@
     if (!launcher || !panel || !form || !input || !submit || !messages) return;
     let busy = false;
     let greeted = false;
+    // Solo se conserva el ID del ultimo tema durante esta visita. Sin cookies ni historial.
+    let lastContext = '';
 
     function show(isOpen) {
       panel.hidden = !isOpen;
@@ -85,7 +87,7 @@
         try {
           response = await fetch(config.endpoint, {
             method: 'POST', headers, credentials: 'same-origin',
-            body: JSON.stringify({pregunta: q}), signal: controller.signal
+            body: JSON.stringify({pregunta: q, contexto: lastContext}), signal: controller.signal
           });
         } finally { clearTimeout(timeout); }
         const data = await response.json();
@@ -93,6 +95,9 @@
         if (!response.ok) {
           addMessage(data.message || 'No se pudo completar la consulta.', 'bot', []);
         } else {
+          if (typeof data.contexto === 'string' && /^[a-z0-9-]{1,80}$/.test(data.contexto)) {
+            lastContext = data.contexto;
+          }
           addMessage(data.respuesta || 'No encontré información suficiente.', 'bot', data.fuentes || []);
         }
       } catch (error) {
