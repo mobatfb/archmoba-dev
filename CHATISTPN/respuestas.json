@@ -1,0 +1,814 @@
+{
+  "version": "0.1.0",
+  "proyecto": "CHATISTPN",
+  "dominio": "home.isupol.edu.ec",
+  "tipo": "buscador institucional offline; no usa IA generativa",
+  "fecha_revision": "2026-11-11",
+  "politica": "Respuestas restringidas a paginas publicas del ISTPN; no inventar hechos ni anunciar convocatorias historicas como vigentes",
+  "cobertura": {
+    "metodo": "seleccion de paginas publicas consultadas e indexadas por busqueda web; crawler pendiente de ejecucion desde equipo con acceso",
+    "exhaustivo_confirmado": false,
+    "urls_visitadas": null,
+    "urls_pendientes": null,
+    "fragmentos_generados": 0,
+    "limitaciones": "No se pudo acceder desde este entorno al sitemap ni a la API REST; ejecutar crawler.py desde un equipo con acceso a Internet."
+  },
+  "respuestas": [
+    {
+      "id": "bienvenida",
+      "tema": "Institucional",
+      "titulo": "Presentación del ISTPN",
+      "preguntas": [
+        "¿Qué es el ISTPN?",
+        "¿Qué es ISUPOL?",
+        "¿Qué institución es esta?",
+        "¿Qué hace el instituto?"
+      ],
+      "respuesta": "El Instituto Superior Tecnológico Policía Nacional (ISTPN/ISUPOL) ofrece formación técnica y tecnológica orientada a la prevención, la investigación del delito y la inteligencia antidelincuencial. Puedes consultar su información institucional en el portal oficial.",
+      "fuente": "https://home.isupol.edu.ec/acerca/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "mision",
+      "tema": "Institucional",
+      "titulo": "Misión",
+      "preguntas": [
+        "¿Cuál es la misión del ISTPN?",
+        "¿Cuál es el propósito del instituto?",
+        "Dime la misión institucional"
+      ],
+      "respuesta": "La misión publicada indica que el ISTPN forma y especializa a miembros de la Policía Nacional y de la sociedad civil en carreras de tercer nivel técnico y tecnológico, relacionadas con la prevención, la investigación del delito y la inteligencia antidelincuencial, promoviendo formación, investigación, innovación y vinculación con la sociedad.",
+      "fuente": "https://home.isupol.edu.ec/acerca/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "vision",
+      "tema": "Institucional",
+      "titulo": "Visión",
+      "preguntas": [
+        "¿Cuál es la visión del ISTPN?",
+        "¿A qué aspira el instituto?"
+      ],
+      "respuesta": "La visión publicada plantea ser una institución de educación superior líder en gestión del conocimiento en prevención, investigación del delito e inteligencia antidelincuencial, con reconocimiento nacional e internacional y enfoque en seguridad humana.",
+      "fuente": "https://home.isupol.edu.ec/acerca/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "direccion",
+      "tema": "Contacto",
+      "titulo": "Dirección del ISTPN",
+      "preguntas": [
+        "¿Dónde está ubicado el ISTPN?",
+        "¿Cuál es la dirección del instituto?",
+        "¿Cómo llegar al ISTPN?",
+        "Ubicación de ISUPOL"
+      ],
+      "respuesta": "La dirección publicada es Av. de la Prensa N42-233 y Juan Galarza, Quito, Ecuador. Verifica indicaciones de acceso antes de acudir.",
+      "fuente": "https://home.isupol.edu.ec/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "telefono",
+      "tema": "Contacto",
+      "titulo": "Teléfono institucional",
+      "preguntas": [
+        "¿Cuál es el número de teléfono del ISTPN?",
+        "Teléfono de contacto",
+        "¿A qué número puedo llamar?"
+      ],
+      "respuesta": "El número telefónico que muestra el sitio es (02) 2270140.",
+      "fuente": "https://home.isupol.edu.ec/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "correo",
+      "tema": "Contacto",
+      "titulo": "Correo institucional",
+      "preguntas": [
+        "¿Cuál es el correo electrónico del ISTPN?",
+        "Correo de contacto",
+        "¿A qué email escribo?"
+      ],
+      "respuesta": "El correo institucional publicado en el portal es isupol@policia.gob.ec.",
+      "fuente": "https://home.isupol.edu.ec/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "autoridades",
+      "tema": "Institucional",
+      "titulo": "Autoridades y coordinadores",
+      "preguntas": [
+        "¿Quiénes son las autoridades del ISTPN?",
+        "¿Quién es el vicerrector académico?",
+        "¿Quién es el vicerrector administrativo?",
+        "Coordinadores de carrera"
+      ],
+      "respuesta": "El portal publica una sección de autoridades y coordinadores. Entre las autoridades que aparecen figuran el Vicerrector Administrativo, Mg. Mauricio Xavier Vallejo Moncayo, y el Vicerrector Académico, Mg. Paulo Alejandro Mollocana Lara. Los nombramientos pueden cambiar; consulta siempre la página oficial.",
+      "fuente": "https://home.isupol.edu.ec/nuestras_autoridades/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "organigrama",
+      "tema": "Institucional",
+      "titulo": "Organigrama del ISTPN",
+      "preguntas": [
+        "¿Dónde descargo el organigrama?",
+        "Estructura organizacional",
+        "¿Cómo está organizado el instituto?"
+      ],
+      "respuesta": "El portal dispone de una sección «Organigrama del ISTPN», con un organigrama identificado como 2025 y un organigrama previo para descargar.",
+      "fuente": "https://home.isupol.edu.ec/organigrama/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "oferta",
+      "tema": "Oferta académica",
+      "titulo": "Carreras y modalidades de estudio",
+      "preguntas": [
+        "¿Qué carreras y modalidades ofrece el ISTPN?",
+        "Explícame cuáles son las carreras que ofrece el ISTPN y qué modalidades de estudio están publicadas.",
+        "¿Qué puedo estudiar en el ISTPN?",
+        "¿Cuáles son todas las carreras?",
+        "Oferta académica del instituto",
+        "¿Qué carreras presenciales, híbridas y en línea existen?",
+        "Todas las carreras y modalidades"
+      ],
+      "respuesta": "El portal publica estas ofertas académicas: Acondicionamiento Físico Aplicado a la Función Policial (presencial); Análisis de la Información (en línea); Investigación en Ciberdelitos (en línea); Criminalística (presencial); Investigación en Delitos Financieros y Económicos (en línea); Accidentología Vial y Gestión del Tránsito (híbrida); Procesamiento de la Información (en línea); y Seguridad Ciudadana y Orden Público (híbrida). La disponibilidad de cupos y convocatorias debe verificarse en Admisiones.",
+      "fuente": "https://home.isupol.edu.ec/sig/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "fuentes": [
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/",
+        "https://home.isupol.edu.ec/carrera-criminalistica/",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/",
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/"
+      ]
+    },
+    {
+      "id": "carrera-acondicionamiento",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Acondicionamiento Físico Aplicado a la Función Policial",
+      "preguntas": [
+        "¿Cuál es la modalidad de Acondicionamiento Físico Aplicado a la Función Policial?",
+        "¿Cuánto dura la carrera Acondicionamiento Físico Aplicado a la Función Policial?",
+        "¿Qué título otorga Acondicionamiento Físico Aplicado a la Función Policial?",
+        "¿Cuántos créditos tiene Acondicionamiento Físico Aplicado a la Función Policial?",
+        "Información sobre Acondicionamiento Físico Aplicado a la Función Policial",
+        "¿Puedo estudiar Acondicionamiento Físico Aplicado a la Función Policial?",
+        "¿Dónde está la carrera de acondicionamiento físico?",
+        "¿Dónde está la carrera de defensa personal policial?",
+        "¿Dónde está la carrera de actividad fisica?"
+      ],
+      "respuesta": "La página de Acondicionamiento Físico Aplicado a la Función Policial indica: título a obtener, Técnico Superior en Acondicionamiento Físico Aplicado a la Defensa Personal Policial; modalidad, Presencial; duración, 2 períodos académicos (1 año); créditos, 30. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "acondicionamiento físico",
+        "defensa personal policial",
+        "actividad fisica"
+      ]
+    },
+    {
+      "id": "carrera-analisis",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Análisis de la Información",
+      "preguntas": [
+        "¿Cuál es la modalidad de Análisis de la Información?",
+        "¿Cuánto dura la carrera Análisis de la Información?",
+        "¿Qué título otorga Análisis de la Información?",
+        "¿Cuántos créditos tiene Análisis de la Información?",
+        "Información sobre Análisis de la Información",
+        "¿Puedo estudiar Análisis de la Información?",
+        "¿Dónde está la carrera de análisis delictual?",
+        "¿Dónde está la carrera de análisis de la información?",
+        "¿Dónde está la carrera de informacion policial?"
+      ],
+      "respuesta": "La página de Análisis de la Información indica: título a obtener, Tecnólogo/a Superior en Análisis de la Información; modalidad, En línea; duración, 4 períodos académicos (2 años); créditos, 61. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/carrera-analisis-delictual/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "análisis delictual",
+        "análisis de la información",
+        "informacion policial"
+      ]
+    },
+    {
+      "id": "carrera-ciberdelito",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Investigación en Ciberdelitos",
+      "preguntas": [
+        "¿Cuál es la modalidad de Investigación en Ciberdelitos?",
+        "¿Cuánto dura la carrera Investigación en Ciberdelitos?",
+        "¿Qué título otorga Investigación en Ciberdelitos?",
+        "¿Cuántos créditos tiene Investigación en Ciberdelitos?",
+        "Información sobre Investigación en Ciberdelitos",
+        "¿Puedo estudiar Investigación en Ciberdelitos?",
+        "¿Dónde está la carrera de cibercrimen?",
+        "¿Dónde está la carrera de ciberdelitos?",
+        "¿Dónde está la carrera de ciberdelito?",
+        "¿Dónde está la carrera de investigación digital?"
+      ],
+      "respuesta": "La página de Investigación en Ciberdelitos indica: título a obtener, Técnico Superior en Investigación en Ciberdelitos; modalidad, En línea; duración, 2 períodos académicos (1 año); créditos, 30. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/carrera-ciberdelito/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "cibercrimen",
+        "ciberdelitos",
+        "ciberdelito",
+        "investigación digital"
+      ]
+    },
+    {
+      "id": "carrera-criminalistica",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Criminalística",
+      "preguntas": [
+        "¿Cuál es la modalidad de Criminalística?",
+        "¿Cuánto dura la carrera Criminalística?",
+        "¿Qué título otorga Criminalística?",
+        "¿Cuántos créditos tiene Criminalística?",
+        "Información sobre Criminalística",
+        "¿Puedo estudiar Criminalística?",
+        "¿Dónde está la carrera de criminalística?",
+        "¿Dónde está la carrera de criminalistica?",
+        "¿Dónde está la carrera de pericias?"
+      ],
+      "respuesta": "La página de Criminalística indica: título a obtener, Tecnólogo/a Superior en Criminalística; modalidad, Presencial (servidores que laboran en el DMQ); duración, 5 períodos académicos (2 años y 6 meses); créditos, 90. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/carrera-criminalistica/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "criminalística",
+        "criminalistica",
+        "pericias"
+      ]
+    },
+    {
+      "id": "carrera-financieros",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Investigación en Delitos Financieros y Económicos",
+      "preguntas": [
+        "¿Cuál es la modalidad de Investigación en Delitos Financieros y Económicos?",
+        "¿Cuánto dura la carrera Investigación en Delitos Financieros y Económicos?",
+        "¿Qué título otorga Investigación en Delitos Financieros y Económicos?",
+        "¿Cuántos créditos tiene Investigación en Delitos Financieros y Económicos?",
+        "Información sobre Investigación en Delitos Financieros y Económicos",
+        "¿Puedo estudiar Investigación en Delitos Financieros y Económicos?",
+        "¿Dónde está la carrera de delitos financieros?",
+        "¿Dónde está la carrera de delitos económicos?",
+        "¿Dónde está la carrera de economicos?",
+        "¿Dónde está la carrera de auditoria forense?"
+      ],
+      "respuesta": "La página de Investigación en Delitos Financieros y Económicos indica: título a obtener, Técnico Superior en Investigación en Delitos Financieros y Económicos; modalidad, En línea; duración, 2 períodos académicos (1 año); créditos, 30. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/carrera-delitos-financieros/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "delitos financieros",
+        "delitos económicos",
+        "economicos",
+        "auditoria forense"
+      ]
+    },
+    {
+      "id": "carrera-transito",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Accidentología Vial y Gestión del Tránsito",
+      "preguntas": [
+        "¿Cuál es la modalidad de Accidentología Vial y Gestión del Tránsito?",
+        "¿Cuánto dura la carrera Accidentología Vial y Gestión del Tránsito?",
+        "¿Qué título otorga Accidentología Vial y Gestión del Tránsito?",
+        "¿Cuántos créditos tiene Accidentología Vial y Gestión del Tránsito?",
+        "Información sobre Accidentología Vial y Gestión del Tránsito",
+        "¿Puedo estudiar Accidentología Vial y Gestión del Tránsito?",
+        "¿Dónde está la carrera de investigación de accidentes de tránsito?",
+        "¿Dónde está la carrera de accidentología vial?",
+        "¿Dónde está la carrera de transito?"
+      ],
+      "respuesta": "La página de Accidentología Vial y Gestión del Tránsito indica: título a obtener, Tecnólogo/a Superior en Accidentología Vial y Gestión del Tránsito; modalidad, Híbrida; duración, 5 períodos académicos (2 años y 6 meses); créditos, 90. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "investigación de accidentes de tránsito",
+        "accidentología vial",
+        "transito"
+      ]
+    },
+    {
+      "id": "carrera-procesamiento",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Procesamiento de la Información",
+      "preguntas": [
+        "¿Cuál es la modalidad de Procesamiento de la Información?",
+        "¿Cuánto dura la carrera Procesamiento de la Información?",
+        "¿Qué título otorga Procesamiento de la Información?",
+        "¿Cuántos créditos tiene Procesamiento de la Información?",
+        "Información sobre Procesamiento de la Información",
+        "¿Puedo estudiar Procesamiento de la Información?",
+        "¿Dónde está la carrera de procesamiento de datos?",
+        "¿Dónde está la carrera de procesamiento de informacion?"
+      ],
+      "respuesta": "La página de Procesamiento de la Información indica: título a obtener, Técnico Superior en Procesamiento de la Información; modalidad, En línea; duración, 2 períodos académicos (1 año); créditos, 30. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/procesamiento-de-la-informacion/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "procesamiento de datos",
+        "procesamiento de informacion"
+      ]
+    },
+    {
+      "id": "carrera-seguridad",
+      "tema": "Oferta académica",
+      "titulo": "Carrera de Seguridad Ciudadana y Orden Público",
+      "preguntas": [
+        "¿Cuál es la modalidad de Seguridad Ciudadana y Orden Público?",
+        "¿Cuánto dura la carrera Seguridad Ciudadana y Orden Público?",
+        "¿Qué título otorga Seguridad Ciudadana y Orden Público?",
+        "¿Cuántos créditos tiene Seguridad Ciudadana y Orden Público?",
+        "Información sobre Seguridad Ciudadana y Orden Público",
+        "¿Puedo estudiar Seguridad Ciudadana y Orden Público?",
+        "¿Dónde está la carrera de seguridad ciudadana?",
+        "¿Dónde está la carrera de orden público?",
+        "¿Dónde está la carrera de prevencion del delito?"
+      ],
+      "respuesta": "La página de Seguridad Ciudadana y Orden Público indica: título a obtener, Tecnólogo/a Superior en Seguridad Ciudadana y Orden Público; modalidad, Híbrida; duración, 2 períodos académicos (1 año); créditos, 30. Consulta la página de la carrera para el perfil, requisitos específicos y malla curricular.",
+      "fuente": "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "seguridad ciudadana",
+        "orden público",
+        "prevencion del delito"
+      ]
+    },
+    {
+      "id": "modalidades",
+      "tema": "Oferta académica",
+      "titulo": "Modalidades de estudio",
+      "preguntas": [
+        "¿Qué modalidades de estudio existen?",
+        "¿Hay carreras en línea?",
+        "¿Hay modalidad híbrida?",
+        "¿Hay carreras presenciales?"
+      ],
+      "respuesta": "El portal publica carreras en modalidades presencial, en línea e híbrida. Por ejemplo, Criminalística se presenta como presencial; Análisis de la Información, en línea; y Accidentología Vial y Gestión del Tránsito, híbrida. La modalidad depende de cada carrera.",
+      "fuente": "https://home.isupol.edu.ec/sig/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "fuentes": [
+        "https://home.isupol.edu.ec/acondicionamiento-fisico-aplicado-a-la-funcion-policial/",
+        "https://home.isupol.edu.ec/carrera-analisis-delictual/",
+        "https://home.isupol.edu.ec/carrera-ciberdelito/",
+        "https://home.isupol.edu.ec/carrera-criminalistica/",
+        "https://home.isupol.edu.ec/carrera-delitos-financieros/",
+        "https://home.isupol.edu.ec/carrera-investigacion-accidentes-transito/",
+        "https://home.isupol.edu.ec/procesamiento-de-la-informacion/",
+        "https://home.isupol.edu.ec/carrera-seguridad-ciudadana-orden-publico/"
+      ]
+    },
+    {
+      "id": "admisiones",
+      "tema": "Admisiones",
+      "titulo": "Proceso de admisiones",
+      "preguntas": [
+        "¿Cómo me inscribo en el ISTPN?",
+        "¿Dónde están las admisiones?",
+        "¿Cuáles son los pasos de inscripción?",
+        "¿Dónde descargar el formulario de inscripción?"
+      ],
+      "respuesta": "La sección Admisiones contiene avisos de preinscripción y un formulario descargable. El aviso disponible indica que una fase de preinscripción culminó y que se verificarían los cupos habilitados ante Senescyt. Consulta allí nuevas convocatorias y la vigencia de cada instrucción; no se debe asumir que el proceso histórico sigue abierto.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "historico": true
+    },
+    {
+      "id": "admisiones-2025",
+      "tema": "Admisiones",
+      "titulo": "Preinscripción anunciada para 2025",
+      "preguntas": [
+        "¿Cuáles fueron las fechas de preinscripción de 2025?",
+        "¿Puedo inscribirme con fechas de 2024?",
+        "Proceso de admisiones 2025"
+      ],
+      "respuesta": "La página muestra una convocatoria identificada como «Pre-inscripción Carreras ISUPOL 2025», con registro nacional del 30 de noviembre al 8 de diciembre de 2024. Es información histórica; no confirma que exista inscripción abierta actualmente.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "historico": true
+    },
+    {
+      "id": "formulario",
+      "tema": "Admisiones",
+      "titulo": "Formulario y envío de inscripción",
+      "preguntas": [
+        "¿Cómo envío el formulario de inscripción?",
+        "¿Dónde entrego los documentos de admisión?",
+        "Correo para admisiones"
+      ],
+      "respuesta": "Las instrucciones publicadas indican descargar y llenar el formulario, imprimirlo y entregarlo con requisitos en Secretaría Académica. También mencionan enviarlo por correo al contacto mostrado en la página. Verifica que corresponda a la convocatoria vigente antes de realizar cualquier trámite.",
+      "fuente": "https://home.isupol.edu.ec/admisiones/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "historico": true
+    },
+    {
+      "id": "requisitos-historicos",
+      "tema": "Admisiones",
+      "titulo": "Requisitos publicados para inscripción",
+      "preguntas": [
+        "¿Cuáles son los requisitos de inscripción?",
+        "¿Qué documentos necesito para inscribirme?",
+        "Requisitos para estudiar Criminalística",
+        "Requisitos para Análisis Delictual"
+      ],
+      "respuesta": "Existe una página histórica de requisitos para carreras de Análisis Delictual, Criminalística e Investigación de Accidentes de Tránsito, que incluye formulario, documentos de identidad, título de bachiller y acreditaciones policiales. También hace referencia a una evaluación de 2023. Estos requisitos podrían no ser aplicables a una convocatoria nueva; confirma la información oficial vigente.",
+      "fuente": "https://home.isupol.edu.ec/admintecnologo-2/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "historico": true
+    },
+    {
+      "id": "normativa",
+      "tema": "Normativa",
+      "titulo": "Normativa institucional",
+      "preguntas": [
+        "¿Dónde están los reglamentos?",
+        "¿Dónde consultar la normativa del ISTPN?",
+        "¿Qué reglamentos tiene el instituto?",
+        "Enlace de normativa"
+      ],
+      "respuesta": "La sección Normativa reúne disposiciones internas y externas, resoluciones del Órgano Colegiado Superior, reglamentos académicos y de bienestar estudiantil, códigos de ética, planes institucionales y manuales. Puedes localizar y descargar los documentos desde la página oficial.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "normativa-bienestar",
+      "tema": "Normativa",
+      "titulo": "Reglamento de Bienestar Estudiantil",
+      "preguntas": [
+        "¿Dónde encuentro Reglamento de Bienestar Estudiantil?",
+        "¿Dónde está bienestar estudiantil?",
+        "¿Dónde está reglamento bienestar?",
+        "¿Dónde está apoyo a estudiantes?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamento de bienestar estudiantil. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "bienestar estudiantil",
+        "reglamento bienestar",
+        "apoyo a estudiantes"
+      ]
+    },
+    {
+      "id": "normativa-academico",
+      "tema": "Normativa",
+      "titulo": "Reglamento Interno de Régimen Académico",
+      "preguntas": [
+        "¿Dónde encuentro Reglamento Interno de Régimen Académico?",
+        "¿Dónde está regimen academico?",
+        "¿Dónde está reglamento academico?",
+        "¿Dónde está asistencia academica?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamento interno de régimen académico. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "regimen academico",
+        "reglamento academico",
+        "asistencia academica"
+      ]
+    },
+    {
+      "id": "normativa-biblioteca",
+      "tema": "Normativa",
+      "titulo": "Reglamento Interno del Sistema de la Biblioteca",
+      "preguntas": [
+        "¿Dónde encuentro Reglamento Interno del Sistema de la Biblioteca?",
+        "¿Dónde está reglamento biblioteca?",
+        "¿Dónde está biblioteca reglamento?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamento interno del sistema de la biblioteca. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "reglamento biblioteca",
+        "biblioteca reglamento"
+      ]
+    },
+    {
+      "id": "normativa-etica",
+      "tema": "Normativa",
+      "titulo": "Código de Ética del ISUPOL",
+      "preguntas": [
+        "¿Dónde encuentro Código de Ética del ISUPOL?",
+        "¿Dónde está codigo de etica?",
+        "¿Dónde está etica institucional?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a código de ética del isupol. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "codigo de etica",
+        "etica institucional"
+      ]
+    },
+    {
+      "id": "normativa-docentes",
+      "tema": "Normativa",
+      "titulo": "Reglamentos e instructivos de docentes",
+      "preguntas": [
+        "¿Dónde encuentro Reglamentos e instructivos de docentes?",
+        "¿Dónde está contratación de docentes?",
+        "¿Dónde está designación de docentes?",
+        "¿Dónde está evaluación docente?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamentos e instructivos de docentes. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "contratación de docentes",
+        "designación de docentes",
+        "evaluación docente"
+      ]
+    },
+    {
+      "id": "normativa-titulacion",
+      "tema": "Normativa",
+      "titulo": "Reglamento de Titulación Especial",
+      "preguntas": [
+        "¿Dónde encuentro Reglamento de Titulación Especial?",
+        "¿Dónde está titulacion?",
+        "¿Dónde está unidad de titulacion?",
+        "¿Dónde está trabajo de titulación?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamento de titulación especial. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "titulacion",
+        "unidad de titulacion",
+        "trabajo de titulación"
+      ]
+    },
+    {
+      "id": "normativa-investigacion",
+      "tema": "Normativa",
+      "titulo": "Reglamentos de Investigación",
+      "preguntas": [
+        "¿Dónde encuentro Reglamentos de Investigación?",
+        "¿Dónde está reglamento de investigacion?",
+        "¿Dónde está coordinacion de investigacion?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a reglamentos de investigación. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "reglamento de investigacion",
+        "coordinacion de investigacion"
+      ]
+    },
+    {
+      "id": "normativa-planes",
+      "tema": "Normativa",
+      "titulo": "Planes y resoluciones institucionales",
+      "preguntas": [
+        "¿Dónde encuentro Planes y resoluciones institucionales?",
+        "¿Dónde está poa 2026?",
+        "¿Dónde está plan operativo anual?",
+        "¿Dónde está pedi?",
+        "¿Dónde está resoluciones ocs?"
+      ],
+      "respuesta": "El índice de Normativa del ISTPN incluye documentos relativos a planes y resoluciones institucionales. Puedes abrir el documento correspondiente en la página de normativa. Este prototipo no interpreta artículos concretos hasta que el PDF haya sido leído y verificado.",
+      "fuente": "https://home.isupol.edu.ec/normativa/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "etiquetas": [
+        "poa 2026",
+        "plan operativo anual",
+        "pedi",
+        "resoluciones ocs"
+      ]
+    },
+    {
+      "id": "guias",
+      "tema": "Servicios",
+      "titulo": "Guías de usuario de los sistemas",
+      "preguntas": [
+        "¿Dónde están las guías de usuarios?",
+        "Manual del sistema académico",
+        "Manual del aula virtual",
+        "Tutoriales para docentes"
+      ],
+      "respuesta": "La página «Guías para usuarios» ofrece enlaces de ayuda de SGA, EVA, SIG, DOCPOL y Zoom. Incluye tutoriales orientados a estudiantes, docentes y personal administrativo.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "sga",
+      "tema": "Servicios",
+      "titulo": "Sistema de Gestión Académico SGA",
+      "preguntas": [
+        "¿Cómo usar el SGA?",
+        "¿Dónde está el manual para estudiantes SGA?",
+        "¿Cómo consultar notas en el SGA?",
+        "¿Cómo matricularse en el SGA?"
+      ],
+      "respuesta": "La sección de guías del Sistema de Gestión Académico (SGA) tiene materiales para personal administrativo, docente y estudiantes; incluye matriculación, evaluación docente y consulta de notas.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "eva",
+      "tema": "Servicios",
+      "titulo": "Entorno Virtual de Aprendizaje EVA",
+      "preguntas": [
+        "¿Cómo ingresar al aula virtual?",
+        "¿Dónde está el tutorial de Moodle?",
+        "¿Cómo crear preguntas en EVA?",
+        "¿Cómo subir tareas?",
+        "¿Cómo descargar calificaciones de EVA?"
+      ],
+      "respuesta": "Las guías del Entorno Virtual de Aprendizaje (EVA) incluyen acceso al aula, tutorial docente, tareas, banco de preguntas, foros, descarga de calificaciones y cálculo de notas parciales y finales. Consulta el material del procedimiento concreto en la sección oficial.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "docpol",
+      "tema": "Servicios",
+      "titulo": "Sistema de Gestión Documental DOCPOL",
+      "preguntas": [
+        "¿Dónde está la guía DOCPOL?",
+        "¿Cómo utilizar DOCPOL?"
+      ],
+      "respuesta": "La página de guías contiene un apartado titulado «Sistema de Gestión Documental DOCPOL», pero el contenido visible consultado no explica un procedimiento detallado. Para soporte, utiliza los canales institucionales autorizados.",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "sig",
+      "tema": "Servicios",
+      "titulo": "Sistema Integral de Gestión SIG",
+      "preguntas": [
+        "¿Existe manual del SIG?",
+        "¿Cómo ingreso al SIG?",
+        "Guía SIG"
+      ],
+      "respuesta": "La sección Guías para usuarios presenta un material de «Introducción y acceso al Sistema Integral de Gestión – SIG» (versión inicial).",
+      "fuente": "https://home.isupol.edu.ec/guias-para-usuarios/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "tramites",
+      "tema": "Servicios",
+      "titulo": "Recepción de documentos en línea",
+      "preguntas": [
+        "¿Cómo presento un oficio por internet?",
+        "¿Cómo realizo un trámite?",
+        "¿Dónde entrego documentos en línea?",
+        "Formato de oficio"
+      ],
+      "respuesta": "La página de Trámites explica cómo generar una solicitud en PDF con firma de responsabilidad utilizando la plantilla del instituto, completar el formulario, adjuntar el documento firmado digitalmente y enviarlo. Indica que se recibe un correo de confirmación.",
+      "fuente": "https://home.isupol.edu.ec/tramites/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "vinculacion",
+      "tema": "Vinculación",
+      "titulo": "Vinculación con la sociedad",
+      "preguntas": [
+        "¿Qué es vinculación con la sociedad?",
+        "¿Cuántas horas de vinculación se requieren?",
+        "¿Cómo funcionan los proyectos de vinculación?"
+      ],
+      "respuesta": "La sección Vinculación con la Sociedad describe los proyectos formativos realizados con actores externos y señala un mínimo de 160 horas de participación estudiantil en los proyectos; también indica que las carreras y la coordinación de vinculación planifican conjuntamente estas actividades. Comprueba las reglas vigentes de tu carrera.",
+      "fuente": "https://home.isupol.edu.ec/vincula/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "noticias",
+      "tema": "Noticias",
+      "titulo": "Noticias del ISTPN",
+      "preguntas": [
+        "¿Dónde veo las noticias del ISTPN?",
+        "¿Qué actividades publica el instituto?",
+        "¿Cuáles son las últimas noticias?"
+      ],
+      "respuesta": "El portal reúne noticias y reportes sobre ceremonias académicas, minutos cívicos, capacitación, titulación y otras actividades institucionales. Para información reciente, consulta directamente la sección Noticias, ya que este JSON es una copia local y puede quedar desactualizada.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "graduacion-2026",
+      "tema": "Noticias",
+      "titulo": "Ceremonia de incorporación septiembre 2026",
+      "preguntas": [
+        "¿Qué pasó en septiembre de 2026?",
+        "¿Hubo ceremonia de graduación en 2026?",
+        "Incorporación de tecnólogos septiembre 2026"
+      ],
+      "respuesta": "En la sección Noticias aparece una ceremonia de incorporación fechada el 11 de septiembre de 2026, sobre nuevos técnicos y tecnólogos superiores que culminaron su formación académica y profesional.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "museo-policial",
+      "tema": "Noticias",
+      "titulo": "Minuto Cívico Museo Policial",
+      "preguntas": [
+        "¿Qué es el minuto cívico Museo Policial?",
+        "¿Qué actividad se realizó el 31 de agosto 2026?"
+      ],
+      "respuesta": "Noticias informa que el 31 de agosto de 2026 se realizó un Minuto Cívico dedicado al «Museo Policial», orientado a reforzar la identidad y memoria institucional; el sitio lo publica con fecha 1 de septiembre de 2026.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11"
+    },
+    {
+      "id": "rendicion",
+      "tema": "Transparencia",
+      "titulo": "Rendición de cuentas",
+      "preguntas": [
+        "¿Dónde está la rendición de cuentas?",
+        "¿Dónde ver el informe de rendición 2025?",
+        "¿Qué dice el informe de gestión?"
+      ],
+      "respuesta": "En Noticias se anuncia la rendición de cuentas del período 2025 y existe un informe público correspondiente en el portal. Consulta las publicaciones y documentos originales para las cifras y detalles.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "fuentes": [
+        "https://home.isupol.edu.ec/noticias/",
+        "https://home.isupol.edu.ec/wp-content/uploads/2026/03/INFORME-RENDICION-DE-CUENTAS.pdf"
+      ]
+    },
+    {
+      "id": "docentes-2026",
+      "tema": "Noticias",
+      "titulo": "Convocatoria de docentes civiles 2026",
+      "preguntas": [
+        "¿Existe convocatoria de docentes?",
+        "¿Qué pasó con docentes civiles invitados 2026?",
+        "Contratación de docentes 2026"
+      ],
+      "respuesta": "El portal publicó el 22 de febrero de 2026 una noticia sobre la recepción de carpetas del proceso de selección de docentes civiles invitados para el primer período académico de 2026. La noticia informa que esa fase se desarrolló; no debe interpretarse como una convocatoria actualmente abierta.",
+      "fuente": "https://home.isupol.edu.ec/noticias/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "historico": true
+    },
+    {
+      "id": "revista",
+      "tema": "Investigación",
+      "titulo": "Revista Innovación & Saber",
+      "preguntas": [
+        "¿Dónde encuentro la revista institucional?",
+        "Revista Innovación y Saber",
+        "Publicaciones científicas"
+      ],
+      "respuesta": "El portal dispone de publicaciones de la revista «Innovación & Saber», entre ellas páginas de la edición 2 y la edición 4 que enlazan a los respectivos PDF.",
+      "fuente": "https://home.isupol.edu.ec/revista-2/",
+      "origen": "verificado",
+      "revision": "2026-11-11",
+      "fuentes": [
+        "https://home.isupol.edu.ec/revista-2/",
+        "https://home.isupol.edu.ec/revista-4/"
+      ]
+    }
+  ]
+}
