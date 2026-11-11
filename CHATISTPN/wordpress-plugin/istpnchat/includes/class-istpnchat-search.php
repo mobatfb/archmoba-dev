@@ -119,7 +119,69 @@ final class ISTPNCHAT_Search {
         return $map;
     }
 
-    public static function answer( $question, $data ) {
+    /**
+     * Resuelve referencias breves al tema anterior sin enviar mensajes a terceros.
+     * El contexto recibido del cliente es solo un ID, validado contra la base oficial.
+     */
+    private static function follow_up_careers( $question, $context_id, $records ) {
+        $norm = self::normalize( $question );
+        $is_other = (bool) preg_match( '/\b(otra|otras|otro|otros|demas|restantes)\b/', $norm );
+        if ( ! $is_other || str_word_count( $norm ) > 12 ) { return null; }
+        // No se debe aplicar el seguimiento a temas distintos de la oferta academica.
+        $allowed = array( 'oferta', 'numero-carreras-istpn', 'carreras-presencial', 'carreras-online', 'carreras-hibridas' );
+        $previous = self::match_id( $records, $context_id );
+        if ( ! $previous || ( strpos( $context_id, 'carrera-' ) !== 0 && ! in_array( $context_id, $allowed, true ) ) ) { return null; }
+
+        // Estos ID son los de las ocho fichas individuales, no los de grupos o sumarios.
+        $ids = array(
+            'carrera-acondicionamiento', 'carrera-analisis', 'carrera-ciberdelito',
+            'carrera-criminalistica', 'carrera-financieros', 'carrera-transito',
+            'carrera-procesamiento', 'carrera-seguridad',
+        );
+        $found = array();
+        foreach ( $ids as $id ) {
+            if ( $id === $context_id ) { continue; }
+            $record = self::match_id( $records, $id );
+            if ( ! $record || ! ISTPNCHAT_Knowledge::trusted_url( $record['fuente'] ?? '' ) ) { continue; }
+            $name = preg_replace( '/^Carrera de /u', '', trim( (string) ( $record['titulo'] ?? '' ) ) );
+            if ( ! $name ) { continue; }
+            $detail = (string) ( $record['respuesta'] ?? '' );
+            $mode = '';
+            if ( preg_match( '/modalidad\s*[,;:]?\s*(Presencial|En l[ií]nea|H[ií]brida)/iu', $detail, $match ) ) {
+                $mode = trim( $match[1] );
+            }
+            $found[] = array( 'nombre' => $name, 'modalidad' => $mode, 'url' => $record['fuente'] );
+        }
+        if ( ! $found ) { return null; }
+        $is_one = $context_id !== 'oferta' && $context_id !== 'numero-carreras-istpn' && strpos( $context_id, 'carrera-' ) === 0;
+        $intro = $is_one ? 'Además de ' . preg_replace( '/^Carrera de /u', '', $previous['titulo'] ?? 'la anterior' ) . ', el ISTPN publica estas otras ' . count( $found ) . ' carreras:' : 'Estas son las carreras que el ISTPN publica en su portal:';
+        $lines = array( $intro, '' );
+        $sources = array();
+        foreach ( $found as $i => $course ) {
+            $lines[] = ( $i + 1 ) . '. ' . $course['nombre'] . ( $course['modalidad'] ? ' (' . $course['modalidad'] . ')' : '' );
+            $sources[] = array( 'titulo' => $course['nombre'], 'url' => $course['url'] );
+        }
+        $lines[] = '';
+        $lines[] = 'Selecciona cualquiera de sus enlaces para conocer más. La oferta publicada no confirma que las inscripciones estén abiertas.';
+        return array( 'respuesta' => implode( "\n", $lines ), 'fuentes' => $sources, 'modo' => 'seguimiento', 'tema' => 'Oferta académica', 'contexto' => 'oferta' );
+    }
+
+    private static function short_career_reference( $question, $context_id, $records ) {
+        if ( strpos( $context_id, 'carrera-' ) !== 0 ) { return null; }
+        $record = self::match_id( $records, $context_id );
+        if ( ! $record || ! ISTPNCHAT_Knowledge::trusted_url( $record['fuente'] ?? '' ) ) { return null; }
+        $norm = self::normalize( $question );
+        if ( str_word_count( $norm ) > 9 ) { return null; }
+        // Ej.: despues de Criminalistica: «¿Y cuanto dura?» o «¿Y su modalidad?».
+        if ( ! preg_match( '/\b(dura|duracion|anos|tiempo|creditos|modalidad|presencial|virtual|hibrida|titulo|titulacion)\b/', $norm ) ) { return null; }
+        if ( preg_match( '/\b(carrera|criminalistica|ciberdelito|analisis|financieros|seguridad|transito|acondicionamiento|procesamiento)\b/', $norm ) ) { return null; }
+        $name = preg_replace( '/^Carrera de /u', '', (string) ( $record['titulo'] ?? 'Carrera' ) );
+        return array( 'respuesta' => 'Sobre ' . $name . ': ' . (string) $record['respuesta'],
+            'fuentes' => array( array( 'titulo' => $name, 'url' => $record['fuente'] ) ),
+            'modo' => 'seguimiento', 'tema' => 'Oferta académica', 'contexto' => $context_id );
+    }
+
+    public static function answer( $question, $data, $context_id = '' ) {
         $question = trim( (string) $question );
         if ( strlen( $question ) > 3000 ) { $question = substr( $question, 0, 3000 ); }
         if ( '' === $question ) { return array( 'respuesta' => 'Escribe una pregunta sobre el ISTPN.', 'fuentes' => array(), 'modo' => 'local' ); }
@@ -129,6 +191,18 @@ final class ISTPNCHAT_Search {
         }
         $records = is_array( $data ) ? ( $data['respuestas'] ?? array() ) : array();
         if ( ! is_array( $records ) || ! $records ) { return array( 'respuesta' => 'La base institucional no esta disponible. Intentalo nuevamente.', 'fuentes' => array(), 'modo' => 'sin_datos' ); }
+        // El usuario puede decir «otras» sin repetir «carreras» ni «Criminalística».
+        // Solo se utiliza el ID de la ultima respuesta, nunca texto arbitrario del cliente.
+        $context_id = is_string( $context_id ) && strlen( $context_id ) <= 80 && preg_match( '/^[a-z0-9-]+$/', $context_id ) ? $context_id : '';
+        if ( $context_id ) {
+            $follow = self::follow_up_careers( $question, $context_id, $records );
+            if ( null !== $follow ) { return $follow; }
+            $follow = self::short_career_reference( $question, $context_id, $records );
+            if ( null !== $follow ) { return $follow; }
+        }
+        if ( preg_match( '/^(?:y )?(?:las |los )?(?:otra|otras|otro|otros|demas|restantes)(?: carreras| opciones)?$/', self::normalize( $question ) ) ) {
+            return array( 'respuesta' => '¿Te refieres a otras carreras del ISTPN? Pregúntame por las carreras disponibles o consulta primero una carrera en particular.', 'fuentes' => array(), 'modo' => 'aclaracion' );
+        }
         $matches = self::search( $question, $records );
         if ( ! $matches ) { return array(
             'respuesta' => 'No encontre informacion suficiente en la base institucional. Puedes consultar el portal oficial del ISTPN.',
@@ -167,6 +241,6 @@ final class ISTPNCHAT_Search {
                 if ( count( $sources ) >= 3 ) { break; }
             }
         }
-        return array( 'respuesta' => $body, 'fuentes' => $sources, 'modo' => 'local', 'tema' => (string) ( $item['tema'] ?? '' ) );
+        return array( 'respuesta' => $body, 'fuentes' => $sources, 'modo' => 'local', 'tema' => (string) ( $item['tema'] ?? '' ), 'contexto' => (string) ( $item['id'] ?? '' ) );
     }
 }
