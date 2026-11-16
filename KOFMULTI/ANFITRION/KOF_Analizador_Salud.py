@@ -21,9 +21,9 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-ANALYZER_VERSION = "v1.4"
+ANALYZER_VERSION = "v1.5"
 PORT = 38724  # Solo 127.0.0.1; el anfitrion informa ataques, no resultados.
-P2_HP_ADDRESS = 0x13C1AA58  # Direccion facilitada para la vida de P2 (Byte).
+P2_HP_HISTORICAL = 0x13C1AA58  # Solo referencia: NO es estable al reiniciar MAME.
 P2_HP_BYTES = 1
 NEAR_P2_RADII = {"64 KiB": 0x10000, "256 KiB": 0x40000,
                  "1 MiB": 0x100000, "4 MiB": 0x400000}
@@ -392,6 +392,7 @@ class Worker:
         self.p2_hp_last = None
         self.p2_hp_poll_at = 0.0
         self.p2_hp_unreadable = False
+        self.p2_address = None  # Obligatorio recalibrar al reiniciar MAME.
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("127.0.0.1", PORT))
         self.socket.settimeout(0.025)
@@ -416,34 +417,59 @@ class Worker:
         self.p2_hp_last = None
         self.p2_hp_poll_at = 0.0
         self.p2_hp_unreadable = False
+        self.p2_address = None
         self.reader = ReadOnlyMemory(pid)
+        self.emit("p2_address", None)
+        self.emit("p2_health", (None, None))
         self.emit("log", f"Conectado en solo lectura a mame.exe PID {pid}.")
-        self.emit("log", f"Salud P2 configurada: 0x{P2_HP_ADDRESS:08X}, tipo Byte.")
+        self.emit("log", "P2: dirección dinámica, no se reutiliza tras reiniciar. "
+                         "Pega la dirección vigente de Cheat Engine (Byte).")
+
+    def set_p2_address(self, text):
+        """Calibrar P2 solo para el PID actual, sin guardar dirección absoluta."""
+        if self.reader is None:
+            raise ValueError("Primero pulsa BUSCAR MAME.EXE.")
+        addresses = parse_addresses(text)
+        if len(addresses) != 1:
+            raise ValueError("Introduce una sola dirección hexadecimal de P2.")
+        address = addresses[0]
+        current = self.reader.read(address, 1)
+        if current is None:
+            raise ValueError(
+                f"La dirección 0x{address:08X} no es legible en el MAME actual.")
+        self.p2_address = address
+        self.p2_hp_last = None
+        self.p2_hp_poll_at = 0.0
+        self.p2_hp_unreadable = False
+        self.emit("p2_address", address)
+        self.emit("log", f"P2 calibrado en PID {self.reader.pid}: "
+                         f"0x{address:08X} (Byte). Verifica golpes reales "
+                         "y golpes fallidos antes de confiar en el valor.")
         self.poll_p2_health(force=True)
 
     def poll_p2_health(self, force=False):
-        """Lee la direccion indicada por el usuario. NO infiere ganadores ni KO."""
-        if not self.reader:
+        """Lectura de UN Byte calibrado en la sesión actual; no puntúa."""
+        if not self.reader or self.p2_address is None:
             return
         now = time.monotonic()
         if not force and now - self.p2_hp_poll_at < HEALTH_POLL_SECONDS:
             return
         self.p2_hp_poll_at = now
-        value = self.reader.read(P2_HP_ADDRESS, P2_HP_BYTES)
-        if value is None:
+        current = self.reader.read(self.p2_address, P2_HP_BYTES)
+        if current is None:
             if not self.p2_hp_unreadable:
                 self.p2_hp_unreadable = True
                 self.p2_hp_last = None
                 self.emit("p2_health", (None, None))
-                self.emit("log", "P2: dirección 0x13C1AA58 no legible en este proceso. "
-                                 "Puede haber cambiado al reiniciar MAME.")
+                self.emit("log", "P2: el Byte elegido dejó de ser legible; "
+                                 "revisa el PID y la dirección de esta sesión.")
             return
-        new_value = value[0]
-        delta = None if self.p2_hp_last is None else new_value - self.p2_hp_last
-        if self.p2_hp_unreadable or self.p2_hp_last != new_value:
-            self.emit("p2_health", (new_value, delta))
+        value = current[0]
+        delta = None if self.p2_hp_last is None else value - self.p2_hp_last
+        if self.p2_hp_unreadable or self.p2_hp_last != value:
+            self.emit("p2_health", (value, delta))
         self.p2_hp_unreadable = False
-        self.p2_hp_last = new_value
+        self.p2_hp_last = value
 
     def configure(self, mode, text="", width=1):
         if not self.reader:
@@ -457,14 +483,16 @@ class Worker:
         self.width = width
         if mode == "near_p2":
             radius = NEAR_P2_RADII.get(text)
+            if self.p2_address is None:
+                raise ValueError("Primero ingresa la dirección de P2 VIGENTE en esta sesión.")
             if radius is None or width != 1:
                 raise ValueError("Selecciona un radio valido y tipo Byte.")
-            self.plan = self.reader.scan_near(P2_HP_ADDRESS, radius)
+            self.plan = self.reader.scan_near(self.p2_address, radius)
             if not self.plan:
                 raise ValueError("No hay memoria legible cerca de P2.")
             self.mode = "near_p2"
             # La barra de P2 es una referencia, no candidata a P1.
-            self.learner.reject(P2_HP_ADDRESS)
+            self.learner.reject(self.p2_address)
             sampled = sum(n for _, n in self.plan)
             self.emit("log", f"Buscando P1 alrededor de P2: +/-{text}, "
                              f"{sampled / 1024:.0f} KiB legibles.")
@@ -549,7 +577,8 @@ class Worker:
             raise ValueError(
                 "Primero BUSCAR MAME y EXPLORAR RAM (o direcciones CE).")
         self.manual_before = self.reader.snapshot(self.plan)
-        self.manual_p2_before = self.reader.read(P2_HP_ADDRESS, P2_HP_BYTES)
+        self.manual_p2_before = (self.reader.read(self.p2_address, P2_HP_BYTES)
+                                 if self.p2_address is not None else None)
         if self.mode == "near_p2" and self.manual_p2_before is None:
             self.manual_before = None
             raise ValueError("La vida de P2 no se pudo leer. Verifica MAME y el PID.")
@@ -572,7 +601,7 @@ class Worker:
         self.manual_p2_before = None
         current = self.reader.snapshot(self.plan)
         if self.mode == "near_p2":
-            current_p2 = self.reader.read(P2_HP_ADDRESS, P2_HP_BYTES)
+            current_p2 = self.reader.read(self.p2_address, P2_HP_BYTES)
             if old_p2 is None or current_p2 is None:
                 raise ValueError("No se pudo verificar la barra de P2. "
                                  "Repite la captura en esta sesion.")
@@ -677,6 +706,8 @@ class Worker:
                         self.attach(pid)
                     elif command == "learn":
                         self.configure(*args)
+                    elif command == "p2_address":
+                        self.set_p2_address(args[0])
                     elif command == "before":
                         self.capture_manual_before()
                     elif command == "manual_damage":
