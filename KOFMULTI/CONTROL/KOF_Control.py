@@ -299,8 +299,32 @@ class KofControl(QWidget):
             # Si el perfil no permite escribir, el control igual funciona.
             pass
 
+    def choose_room(self):
+        """Conexión directa a la sala visible, sin depender del GET de la API."""
+        raw, ok = QInputDialog.getText(
+            self, "Conexión directa KOFMULTI",
+            "Pega el enlace de la sala (o el texto de Copiar acceso).\n"
+            "Deja vacío para volver a conexión automática por API:",
+            QLineEdit.Normal, self.direct_url or "")
+        if not ok:
+            return
+        try:
+            direct = parse_direct_room_url(raw)
+        except ValueError as exc:
+            self._write_log("[ERROR SALA] " + str(exc), "#ff8989")
+            return
+        self.direct_url = direct
+        if direct:
+            self._write_log("[RED] Sala directa: " + (urlsplit(direct).hostname or ""), "#83f9a1")
+        else:
+            self._write_log("[RED] Conexión automática mediante API.", "#91dcff")
+        self._connect_serial += 1
+        self.socket.abort()
+        self._socket_closed()
+        QTimer.singleShot(180, self.begin_connect)
+
     def begin_connect(self):
-        """El enlace se consulta en la API; el usuario no escribe URL ni clave."""
+        """Conectar directamente si existe enlace; en otro caso consultar API."""
         if self.connected or self.connecting:
             return
         name = " ".join(self.name_edit.text().split()).strip()
@@ -313,6 +337,12 @@ class KofControl(QWidget):
         self._connect_serial += 1
         serial = self._connect_serial
         self._refresh_start_button()
+        if self.direct_url:
+            self.connected_endpoint = urlsplit(self.direct_url).hostname or ""
+            self._write_log("[RED] Directo: " + self.connected_endpoint, "#91dcff")
+            self.socket.open(QUrl(self.direct_url))
+            QTimer.singleShot(12000, lambda: self._timeout_connect(serial))
+            return
         self._write_log("[RED] Consultando dirección de la sala...", "#91dcff")
         request = QNetworkRequest(QUrl(API_GET_URL))
         request.setRawHeader(b"Cache-Control", b"no-store, no-cache, max-age=0")
@@ -365,6 +395,8 @@ class KofControl(QWidget):
                 self._connect_failed("Dirección de sala no permitida.")
                 return
             websocket_url = "wss://" + host + (parsed.path or "/")
+            self.connected_endpoint = host
+            self._write_log("[API] Enlace recibido: " + host, "#ffd170")
             self._write_log("[RED] Conectando con el anfitrión...", "#8de9fa")
             self.socket.open(QUrl(websocket_url))
         except (ValueError, TypeError, KeyError, UnicodeError) as exc:
@@ -397,9 +429,18 @@ class KofControl(QWidget):
             self.name_edit.setFocusPolicy(Qt.NoFocus)
             self.setFocus()
             self._refresh_start_button()
-            self._write_log("[OK] Conectado: botón START habilitado.", "#83f9a1")
+            self.room_id = str(payload.get("room_id") or "SIN-ID")[:20]
+            self._write_log(
+                "[OK] SALA " + self.room_id + " | " +
+                ("DIRECTA" if self.direct_url else "API") + " | START listo.",
+                "#83f9a1")
         elif kind == "state":
             if not self.connected:
+                return
+            incoming_id = str(payload.get("room_id") or "")
+            if incoming_id and self.room_id not in ("", "SIN-ID", incoming_id):
+                self._write_log("[ERROR] ID de sala cambió; conexión cerrada.", "#ff8989")
+                self.socket.close()
                 return
             new_slot = payload.get("slot")
             try:
@@ -428,7 +469,9 @@ class KofControl(QWidget):
             self._write_log("[ERROR] " + str(payload.get("message", ""))[:80], "#ff8989")
             self.socket.close()
         elif kind == "input_ack" and payload.get("action") == "COIN_START":
-            self._write_log("[JUEGO] COIN + START enviado.", "#7af1aa")
+            self._write_log(
+                f"[RED] SALA {self.room_id}: COIN+START recibido por servidor.",
+                "#7af1aa")
 
     def _socket_error(self, error):
         msg = self.socket.errorString() or "Error de WebSocket."
@@ -446,6 +489,8 @@ class KofControl(QWidget):
         self.connecting = False
         self.slot = 0
         self.waiting_position = 0
+        self.room_id = ""
+        self.connected_endpoint = ""
         for a in tuple(self.held):
             self._release_action(a, send=False)
         self.name_edit.setReadOnly(False)
