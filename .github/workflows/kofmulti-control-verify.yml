@@ -33,12 +33,16 @@ jobs:
           python -m py_compile KOFMULTI/CONTROL/KOF_Control.py
           python -m py_compile KOFMULTI/CONTROL/test_room_connection.py
           python -m py_compile KOFMULTI/ANFITRION/test_control_protocol.py
+          python -m py_compile KOFMULTI/ANFITRION/test_auto_scoring.py
 
       - name: Ejecutar pruebas del anfitrión
         run: python -B KOFMULTI/ANFITRION/KOF_Anfitrion.py --selftest
 
       - name: Verificar CONTROL contra WebSocket anfitrión P1/P2
         run: python -B KOFMULTI/ANFITRION/test_control_protocol.py
+
+      - name: Verificar ganador 3vs3 y PERFECT, y rechazar nombres repetidos
+        run: python -B KOFMULTI/ANFITRION/test_auto_scoring.py
 
       - name: Probar selección directa de sala y ventana CONTROL
         env:
