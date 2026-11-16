@@ -1,8 +1,9 @@
 -- KOFMULTI | Diagnostico emulado por fotograma - kf2k2mp2 / MAME 0.289
 -- SOLO LECTURA. No modifica RAM, tiempo, rondas ni puntuaciones.
 -- Captura hp1/hp2, contadores, timer y bytes vecinos para analizar KO/equipo.
--- v1.2: 252, 253, 254 y 255 observados en derrotas reales; el contador
--- de rondas/vidas perdidas 0->1->2->3 determina mejor la baja de luchador.
+-- v1.3: 252, 253, 254 y 255 observados en derrotas reales; pueden ser
+-- valores signed Byte -4..-1. El contador 0->1->2->3 es la referencia
+-- mas fiable para detectar una baja, incluso si la salud acaba en cero.
 -- Arrancar desde KOF_Diagnostico_Combate.py o con -autoboot_script.
 
 local state_path = os.getenv("KOF_DIAG_STATE") or "KOF_DIAG_ESTADO.tsv"
@@ -198,8 +199,9 @@ local function loss_event(player, previous_loss, new_loss, hp, s)
         return
     end
     event("P" .. player .. "_PERSONAJE_PERDIDO", s, true)
-    if hp >= 252 and hp <= 255 then
-        event("P" .. player .. "_PERDIDA_ESTADO_" .. hp, s, false)
+    if hp >= 128 then
+        -- Byte con signo: por ejemplo 252 -> -4. HIPOTESIS por verificar.
+        event("P" .. player .. "_PERDIDA_HP_NEGATIVA_POSIBLE", s, false)
     elseif timer_zero_frame and frame - timer_zero_frame <= 500
            and s.timer == 0 then
         event("P" .. player .. "_DERROTA_POR_TIEMPO_POSIBLE", s, false)
@@ -222,15 +224,13 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
 
     local playing = in_combat(s)
     if playing and prev then
-        if s.hp1 >= 252 and s.hp1 <= 255 and
-           prev.hp1 <= 102 and prev.hp1 > 0 then
+        if s.hp1 >= 128 and prev.hp1 <= 102 and prev.hp1 > 0 then
             ko1 = ko1 + 1
-            event("P1_ENTRO_" .. s.hp1, s, true)
+            event("P1_HP_NEGATIVA_POSIBLE", s, true)
         end
-        if s.hp2 >= 252 and s.hp2 <= 255 and
-           prev.hp2 <= 102 and prev.hp2 > 0 then
+        if s.hp2 >= 128 and prev.hp2 <= 102 and prev.hp2 > 0 then
             ko2 = ko2 + 1
-            event("P2_ENTRO_" .. s.hp2, s, true)
+            event("P2_HP_NEGATIVA_POSIBLE", s, true)
         end
         if s.hp1 < prev.hp1 and s.hp1 <= 102 and prev.hp1 <= 102 then
             event("VIDA_P1_DISMINUYE", s, false)
@@ -301,7 +301,7 @@ _G.kof_diagnostic_reset_subscription = emu.add_machine_reset_notifier(function()
     follow_frames = 0
     timer_zero_frame = nil
     last_clip_frame = -1
-    -- ko1/ko2 cuentan transiciones 252-255 de esta instancia de MAME.
+    -- ko1/ko2 cuentan transiciones de HP a valor >=128 (posible negativo).
 end)
 
-emu.print_info("KOF_DIAG Lua v1.2: estados 252-255, tiempo y contadores 0->3->0. SOLO LECTURA.")
+emu.print_info("KOF_DIAG Lua v1.3: posible HP negativo y contador 0->3->0. SOLO LECTURA.")
