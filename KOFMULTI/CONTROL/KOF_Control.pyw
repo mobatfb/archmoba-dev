@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-KOFMULTI CONTROL v.0.0.4 — lanzador de interfaz sin consola.
+KOFMULTI CONTROL v.0.0.5 — lanzador de interfaz sin consola.
 Doble clic en este archivo para abrir solamente la GUI.
 No escribe archivos ni cache local.
 """
@@ -25,7 +25,7 @@ def main():
                 "No se pudo abrir KOFMULTI CONTROL.\n\n"
                 + type(exc).__name__ + ": " + str(exc)
                 + "\n\nInstala la dependencia con: py -m pip install --no-cache-dir PySide6",
-                "KOFMULTI CONTROL v.0.0.4",
+                "KOFMULTI CONTROL v.0.0.5",
                 0x10,
             )
         except Exception:
