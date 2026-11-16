@@ -180,10 +180,10 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
             event("P2_ENTRO_254", s, true)
         end
         if s.hp1 < prev.hp1 and s.hp1 <= 102 and prev.hp1 <= 102 then
-            event("DAÑO_P1", s, false)
+            event("DANO_P1", s, false)
         end
         if s.hp2 < prev.hp2 and s.hp2 <= 102 and prev.hp2 <= 102 then
-            event("DAÑO_P2", s, false)
+            event("DANO_P2", s, false)
         end
         if s.lost1 ~= prev.lost1 then
             event("CONTADOR_P1_CAMBIO", s, true)
