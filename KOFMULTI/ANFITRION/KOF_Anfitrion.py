@@ -2087,7 +2087,7 @@ class HostGUI:
                 text=True, errors="replace", timeout=8,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             description = detected.stdout.strip()
-            if detected.returncode != 0 or re.search(r"\\b0\\.289\\b", description) is None:
+            if detected.returncode != 0 or re.search(r"\b0\.289\b", description) is None:
                 raise ValueError(
                     f"El ejecutable no parece MAME 0.289. Respuesta: {description[:160]}")
             if LuaHealthMonitor is None:
