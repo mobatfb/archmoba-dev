@@ -49,7 +49,7 @@ try:
 except ImportError:
     parse_combat_event = None
 
-APP_VERSION = "1.16.10"
+APP_VERSION = "1.16.11"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -105,7 +105,9 @@ def mame_window_options(modern: bool = False) -> list[str]:
 def get_game_folder() -> pathlib.Path:
     """Devuelve carpeta existente o extrae solo archivos seguros del ZIP propio."""
     for folder in (BASE_DIR, BASE_DIR / GAME_FOLDER):
-        if (folder / "mame.exe").is_file() and (folder / "kf2k2mp2.zip").is_file():
+        has_rom = ((folder / "kf2k2mp2.zip").is_file() or
+                   (folder / "roms" / "kf2k2mp2.zip").is_file())
+        if (folder / "mame.exe").is_file() and has_rom:
             return folder
     archive = BASE_DIR / GAME_ARCHIVE
     if not archive.is_file():
@@ -125,6 +127,9 @@ def get_game_folder() -> pathlib.Path:
             if info.file_size > 140 * 1024 * 1024:
                 raise ValueError("El ZIP contiene un archivo inesperadamente grande.")
             dest = target / info.filename
+            # Nunca sustituir un mame.exe ya actualizado por el del ZIP antiguo.
+            if dest.is_file() and info.filename == "mame.exe":
+                continue
             if dest.exists() and dest.stat().st_size == info.file_size:
                 continue
             temp = dest.with_name(dest.name + ".parcial")
@@ -138,6 +143,36 @@ def get_game_folder() -> pathlib.Path:
     if not (target / "mame.exe").is_file():
         raise FileNotFoundError("No se encontro mame.exe en el ZIP.")
     return target
+
+
+def default_mame_executable() -> pathlib.Path:
+    """Priorizar el mame.exe ya instalado, sin seleccionar uno cada vez."""
+    for folder in (BASE_DIR, BASE_DIR / GAME_FOLDER):
+        candidate = folder / "mame.exe"
+        if candidate.is_file():
+            return candidate.resolve()
+    return (get_game_folder() / "mame.exe").resolve()
+
+
+def detect_mame_version(executable: pathlib.Path) -> str:
+    """Preguntar al ejecutable su versión, sin suponer que es MAME antiguo."""
+    if not executable.is_file():
+        raise FileNotFoundError(f"No existe el ejecutable MAME: {executable}")
+    check = subprocess.run(
+        [str(executable), "-version"], cwd=str(executable.parent),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, errors="replace", timeout=8,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=False)
+    response = check.stdout.strip()
+    if check.returncode != 0:
+        raise RuntimeError("No fue posible identificar la version de mame.exe: "
+                           + response[:160])
+    match = re.search(r"\b0\.\d{3}(?:u\d+)?\b", response)
+    if not match:
+        raise RuntimeError("mame.exe no informó una versión reconocible: "
+                           + response[:160])
+    return match.group(0).split("u")[0]
 
 
 def clean_address(raw: str) -> str:
@@ -1688,7 +1723,7 @@ class HostGUI:
         self.input_diagnostic_var = tk.StringVar(
             value="Abre la sala antes de iniciar MAME.")
         self.mame_choice_var = tk.StringVar(
-            value="Emulador: MAME 0.132 original (selecciona 0.289 para Lua)")
+            value="MAME: mame.exe del proyecto (detección automática)")
         self.lua_health_var = tk.StringVar(
             value="VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
         self.lua_perfect_var = tk.StringVar(
@@ -1744,10 +1779,10 @@ class HostGUI:
 
         emulator = ttk.Frame(body)
         emulator.pack(side="top", fill="x", pady=(0, 3))
-        ttk.Button(emulator, text="Elegir MAME 0.289 + Lua",
+        ttk.Button(emulator, text="Cambiar MAME...",
                    command=self._choose_mame_lua).pack(side="left", padx=(0, 6))
-        ttk.Button(emulator, text="Usar MAME 0.132",
-                   command=self._use_legacy_mame).pack(side="left", padx=(0, 8))
+        ttk.Button(emulator, text="Usar mame.exe predeterminado",
+                   command=self._use_default_mame).pack(side="left", padx=(0, 8))
         ttk.Label(emulator, textvariable=self.mame_choice_var,
                   style="Muted.TLabel").pack(side="left", fill="x", expand=True)
         ttk.Label(body, textvariable=self.lua_health_var,
@@ -1822,6 +1857,7 @@ class HostGUI:
 
         self._append("Sala sin contrasena. Comparte el enlace solo con tus invitados.")
         self._append("El enlace de la sala se publica automaticamente en la API.")
+        self._append("El anfitrión detectará automáticamente el mame.exe ya instalado.")
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
@@ -1901,6 +1937,13 @@ class HostGUI:
                 self.api_status_var.set(str(data))
             elif kind == "input_status":
                 self.input_diagnostic_var.set("CONTROLES: " + str(data)[:210])
+            elif kind == "mame_detected":
+                self.mame_choice_var.set(
+                    f"MAME {data['version']} | {pathlib.Path(data['path']).name} "
+                    "| seleccionado automáticamente"
+                    if data["auto"] else
+                    f"MAME {data['version']} | {pathlib.Path(data['path']).name} "
+                    "| seleccionado manualmente")
             elif kind == "lua_health":
                 # Telemetría informativa. NO actualizar Ganados/Perdidos/Puntos.
                 self.lua_health_var.set(
@@ -2007,10 +2050,8 @@ class HostGUI:
                 row = self.roster.insert("", "end", values=display(f"P{slot} - {state}", guest))
                 if guest["id"] > 0:
                     self.member_by_tree_row[row] = guest["id"]
-            else:
-                self.roster.insert(
-                    "", "end",
-                    values=(f"P{slot} - DISPONIBLE", "Libre", "", "", "", "", ""))
+            # Los puestos vacíos ya aparecen en el resumen P1/P2.
+            # No son participantes y no deben ocupar filas de la tabla.
 
         waiting = data.get("queue", [])
         for i, guest in enumerate(waiting, 1):
@@ -2022,6 +2063,11 @@ class HostGUI:
             row = self.roster.insert("", "end",
                                      values=display("ESPECTADOR", guest))
             self.member_by_tree_row[row] = guest["id"]
+
+        if not self.member_by_tree_row:
+            self.roster.insert("", "end",
+                               values=("", "Esperando jugadores conectados...", "",
+                                       "", "", "", ""))
 
         for row, uid in self.member_by_tree_row.items():
             if uid == selected_uid:
@@ -2199,20 +2245,20 @@ class HostGUI:
             "VIDA P1: --  |  VIDA P2: --  |  inicia el juego para leer Lua")
         self.lua_perfect_var.set("PERFECT: P1=0 | P2=0 | esperando Lua V3")
         self.combat_result_var.set("COMBATE: preparado para registrar KO y fin de equipo")
-        self._append("Seleccionado MAME 0.289, sin tocar tu MAME 0.132. "
-                     "Se activará el monitor Lua al INICIAR KOF.")
+        self._append("MAME 0.289 seleccionado manualmente. "
+                     "También puedes usar el mame.exe predeterminado.")
 
-    def _use_legacy_mame(self):
+    def _use_default_mame(self):
         if self.game_process is not None and self.game_process.poll() is None:
             self.messagebox.showwarning(
-                "Cierra el juego", "Cierra MAME antes de cambiar de emulador.")
+                "Cierra el juego", "Cierra MAME antes de cambiar de ejecutable.")
             return
         self.lua_mame_exe = None
-        self.mame_choice_var.set("Emulador: MAME 0.132 original")
-        self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
-        self.lua_perfect_var.set("PERFECT: Lua desactivado en MAME 0.132")
-        self.combat_result_var.set("COMBATE: diagnóstico desactivado en MAME 0.132")
-        self._append("Volviste al MAME 0.132 original sin alterar ROM ni mandos.")
+        self.mame_choice_var.set("MAME: mame.exe del proyecto (detección automática)")
+        self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  esperando iniciar juego")
+        self.lua_perfect_var.set("PERFECT: esperando MAME")
+        self.combat_result_var.set("COMBATE: se activará diagnóstico si es MAME 0.289")
+        self._append("Usaremos mame.exe del proyecto y detectaremos su versión al iniciarlo.")
 
     def _start_game(self):
         if sys.platform != "win32":
@@ -2226,7 +2272,7 @@ class HostGUI:
                 "Para que MAME reconozca ambos controles, pulsa primero ABRIR SALA "
                 "con 2 joysticks virtuales y DESPUES INICIAR KOF.")
             return
-        self._append("Buscando o extrayendo KOF2022GAME.zip original ...")
+        self._append("Localizando mame.exe y verificando su versión ...")
         threading.Thread(target=self._game_worker, daemon=True).start()
 
     def _game_worker(self):
@@ -2234,23 +2280,32 @@ class HostGUI:
             if self.combat_monitor is not None:
                 self.combat_monitor.stop()
                 self.combat_monitor = None
-            chosen_exe = self.lua_mame_exe
-            if chosen_exe is None:
-                # Ruta antigua probada: no modificar comportamiento de MAME 0.132.
+            manual = self.lua_mame_exe is not None
+            chosen_exe = (pathlib.Path(self.lua_mame_exe).resolve()
+                          if manual else default_mame_executable())
+            version = detect_mame_version(chosen_exe)
+            self.notify("mame_detected", {
+                "version": version, "path": str(chosen_exe), "auto": not manual})
+            self.notify("log", f"MAME detectado: {version} | {chosen_exe}")
+            if version == "0.132":
+                # Compatibilidad heredada solo cuando el ejecutable lo confirme.
                 directory = get_game_folder()
-                command = [str(directory / "mame.exe"), "kf2k2mp2",
+                command = [str(chosen_exe), "kf2k2mp2",
                            *mame_window_options(),
+                           "-rompath", os.pathsep.join((
+                               str(directory), str(directory / "roms"),
+                               str(chosen_exe.parent), str(chosen_exe.parent / "roms"))),
                            "-state_directory", str(directory / STATE_FOLDER)]
                 profile = create_mame_virtual_profile(directory)
                 command.extend(["-ctrlr", profile.stem])
                 self.notify("log",
-                            "MAME 0.132 del ZIP. Perfil de 2 joysticks: "
+                            "MAME 0.132 confirmado por -version. Perfil de mandos: "
                             "ctrlr/" + profile.name)
                 if self.lua_monitor is not None:
                     self.lua_monitor.stop()
                     self.lua_monitor = None
                 self.game_process = subprocess.Popen(
-                    command, cwd=str(directory))
+                    command, cwd=str(chosen_exe.parent))
                 if os.environ.get("KOF_ENABLE_OCR_RESULTS") == "1":
                     self._start_auto_results(self.game_process, self.server)
                 else:
@@ -2260,6 +2315,11 @@ class HostGUI:
                             f"MAME 0.132 iniciado, PID {self.game_process.pid}.")
                 return
 
+            if version != "0.289":
+                raise RuntimeError(
+                    f"El mame.exe seleccionado es versión {version}. "
+                    "El diagnóstico Lua está validado para MAME 0.289; "
+                    "no iniciaré como si fuese MAME 0.132.")
             if LuaHealthMonitor is None:
                 raise RuntimeError(
                     "Falta KOF_MAME_Lua_Bridge.py en la carpeta del anfitrión.")
@@ -2459,6 +2519,18 @@ def main():
 
 def run_selftest():
     """Comprueba asignación P1/P2, lista FIFO y liberación automática."""
+    # Verificaciones de detección automática sin ejecutar el emulador real.
+    from unittest import mock as mocked
+    with mocked.patch(__name__ + ".subprocess.run",
+                      return_value=type("Result", (), {
+                          "stdout": "MAME 0.289 (mame0289)", "returncode": 0})()):
+        with mocked.patch(__name__ + ".pathlib.Path.is_file", return_value=True):
+            assert detect_mame_version(pathlib.Path("mame.exe")) == "0.289"
+    with mocked.patch(__name__ + ".subprocess.run",
+                      return_value=type("Result", (), {
+                          "stdout": "MAME 0.132 (old)", "returncode": 0})()):
+        with mocked.patch(__name__ + ".pathlib.Path.is_file", return_value=True):
+            assert detect_mame_version(pathlib.Path("mame.exe")) == "0.132"
     # La ventana y los mandos no deben capturar el cursor ni forzar el foco.
     normal_args = mame_window_options()
     modern_args = mame_window_options(modern=True)
