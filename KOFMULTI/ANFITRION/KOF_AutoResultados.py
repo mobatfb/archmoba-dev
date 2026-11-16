@@ -163,10 +163,15 @@ def ocr_mame_frame(bbox, executable: str):
                              resample=Image.Resampling.BICUBIC)
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
+    # Proceso OCR en segundo plano y prioridad baja: los mandos siempre tienen
+    # preferencia sobre el análisis visual. CREATE_NO_WINDOW evita flashes CMD.
+    flags = (getattr(subprocess, "CREATE_NO_WINDOW", 0) |
+             getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0))
     result = subprocess.run(
         [executable, "stdin", "stdout", "--psm", "11", "-l", "eng"],
         input=buffer.getvalue(), stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, timeout=3.5, check=False)
+        stderr=subprocess.DEVNULL, timeout=3.5, check=False,
+        creationflags=flags)
     return result.stdout.decode("utf-8", "replace"), True
 
 
