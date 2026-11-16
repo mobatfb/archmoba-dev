@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-KOFMULTI - CONTROL v.0.0.3
+KOFMULTI - CONTROL v.0.0.4
 Ventana fija de 520 x 240. Usa los SVG de ./assets.
 Conexion real al anfitrion mediante API GET y WebSocket, sin contraseña.
-No crea cache, archivos de configuracion ni registros en disco.
+Solo guarda el nombre del jugador en cache local; no guarda otros datos.
 Instalacion de interfaz: py -m pip install --no-cache-dir PySide6
 """
 import sys
@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import Qt, QRectF, QUrl, QTimer
+from PySide6.QtCore import Qt, QRectF, QUrl, QTimer, QStandardPaths
 from PySide6.QtGui import (
     QColor, QFont, QLinearGradient, QPainter, QPen
 )
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLineEdit
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PySide6.QtWebSockets import QWebSocket
 
-VERSION = "v.0.0.3"
+VERSION = "v.0.0.4"
 WINDOW_WIDTH = 520
 WINDOW_HEIGHT = 240
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -123,7 +123,7 @@ class ControlButton(QWidget):
 
 
 class KofControl(QWidget):
-    """Control remoto conectado al anfitrión, sin persistencia local."""
+    """Control remoto: solo conserva el nombre en cache local del usuario."""
 
     def __init__(self):
         super().__init__()
@@ -185,6 +185,7 @@ class KofControl(QWidget):
         self.name_edit.setGeometry(221, 129, 129, 25)
         self.name_edit.setMaxLength(24)
         self.name_edit.setPlaceholderText("Tu nombre")
+        self.name_edit.setText(self._load_saved_name())
         self.name_edit.setToolTip("Nombre que verán los demás jugadores")
         self.name_edit.setStyleSheet(
             "QLineEdit {background:#071526;color:#f1fbff;border:1px solid #247fbd;"
@@ -192,6 +193,7 @@ class KofControl(QWidget):
             "QLineEdit:focus {border:1px solid #39d4ff;}"
         )
         self.name_edit.returnPressed.connect(self.begin_connect)
+        self.name_edit.editingFinished.connect(self._remember_name)
         self.add_button("START", "btn_start.svg", "CONECTAR", 215, 164, 126, 38)
 
         # Bloque solicitado: A S / Z X.
@@ -211,6 +213,45 @@ class KofControl(QWidget):
         self.events = self.events[-4:]
         self.update()
 
+    @staticmethod
+    def _clean_name(value):
+        # El nombre coincide con el formato permitido por el anfitrion.
+        return " ".join(ch for ch in str(value) if ch.isprintable()).strip()[:24]
+
+    @staticmethod
+    def _name_cache_file():
+        # Cache privada por perfil de sistema. Nada se guarda junto al programa.
+        location = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
+        if not location:
+            return None
+        return Path(location) / "nombre_jugador.txt"
+
+    def _load_saved_name(self):
+        try:
+            cache = self._name_cache_file()
+            if cache and cache.is_file():
+                return self._clean_name(cache.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError):
+            pass
+        return ""
+
+    def _remember_name(self):
+        name = self._clean_name(self.name_edit.text())
+        if not name:
+            return
+        try:
+            cache = self._name_cache_file()
+            if cache is None:
+                return
+            # Se escribe solo al cambiar el nombre; no se crea otro cache.
+            if cache.is_file() and self._clean_name(cache.read_text(encoding="utf-8")) == name:
+                return
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(name, encoding="utf-8")
+        except (OSError, UnicodeError, ValueError):
+            # Si el perfil no permite escribir, el control igual funciona.
+            pass
+
     def begin_connect(self):
         """El enlace se consulta en la API; el usuario no escribe URL ni clave."""
         if self.connected or self.connecting:
@@ -220,6 +261,7 @@ class KofControl(QWidget):
             self._write_log("[AVISO] Escribe tu nombre para conectar.", "#ffd170")
             self.name_edit.setFocus()
             return
+        self._remember_name()
         self.connecting = True
         self._connect_serial += 1
         serial = self._connect_serial
@@ -421,6 +463,7 @@ class KofControl(QWidget):
         super().focusOutEvent(event)
 
     def closeEvent(self, event):
+        self._remember_name()
         for action in tuple(self.held):
             self._release_action(action)
         self.socket.close()
@@ -493,7 +536,7 @@ class KofControl(QWidget):
 
 
 def main():
-    # Sin QSettings, sqlite, configuraciones, registros ni cache en disco.
+    # Unicamente se guarda el nombre en cache local; no se persiste nada mas.
     app = QApplication(sys.argv)
     app.setApplicationName("KOFMULTI CONTROL")
     window = KofControl()
