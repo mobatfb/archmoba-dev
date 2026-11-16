@@ -21,10 +21,12 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-ANALYZER_VERSION = "v1.3"
+ANALYZER_VERSION = "v1.4"
 PORT = 38724  # Solo 127.0.0.1; el anfitrion informa ataques, no resultados.
 P2_HP_ADDRESS = 0x13C1AA58  # Direccion facilitada para la vida de P2 (Byte).
 P2_HP_BYTES = 1
+NEAR_P2_RADII = {"64 KiB": 0x10000, "256 KiB": 0x40000,
+                 "1 MiB": 0x100000, "4 MiB": 0x400000}
 HEALTH_POLL_SECONDS = 0.25  # Poco consumo, lectura de un solo Byte.
 MAX_SCAN_BYTES = 24 * 1024 * 1024
 BLOCK = 64 * 1024
@@ -250,6 +252,22 @@ class ReadOnlyMemory:
             return None
         return buf.raw[:size]
 
+    def scan_near(self, center, radius):
+        """Lee bloques de 4 KiB alrededor del Byte conocido de P2.
+
+        No intenta deducir la direccion de P1 por un offset supuesto; verifica
+        primero que cada bloque sea legible. Como máximo 8 MiB.
+        """
+        radius = int(radius)
+        if radius not in NEAR_P2_RADII.values():
+            raise ValueError("Radio no permitido para buscar P1.")
+        start = max(0x10000, (int(center) - radius) & ~0xFFF)
+        end = (int(center) + radius + 0xFFF) & ~0xFFF
+        if self.read(center, 1) is None:
+            raise ValueError("La direccion de P2 ya no es legible en este MAME.")
+        return [(addr, 4096) for addr in range(start, end, 4096)
+                if self.read(addr, 4096) is not None]
+
     def scan_plan(self):
         """Muestrea RAM escribible y mapeada por regiones, no solo la primera."""
         regions = []
@@ -366,6 +384,7 @@ class Worker:
         self.baseline_at = 0.0
         self.pending = None
         self.manual_before = None
+        self.manual_p2_before = None
         self.alt_down = False
         self.alt_count = 0
         self.width = 1
@@ -391,6 +410,7 @@ class Worker:
         self.baseline = {}
         self.pending = None
         self.manual_before = None
+        self.manual_p2_before = None
         self.alt_down = False
         self.learner = ScoreLearner()
         self.p2_hp_last = None
@@ -433,8 +453,24 @@ class Worker:
         self.baseline = {}
         self.pending = None
         self.manual_before = None
+        self.manual_p2_before = None
         self.width = width
-        if mode == "ce":
+        if mode == "near_p2":
+            radius = NEAR_P2_RADII.get(text)
+            if radius is None or width != 1:
+                raise ValueError("Selecciona un radio valido y tipo Byte.")
+            self.plan = self.reader.scan_near(P2_HP_ADDRESS, radius)
+            if not self.plan:
+                raise ValueError("No hay memoria legible cerca de P2.")
+            self.mode = "near_p2"
+            # La barra de P2 es una referencia, no candidata a P1.
+            self.learner.reject(P2_HP_ADDRESS)
+            sampled = sum(n for _, n in self.plan)
+            self.emit("log", f"Buscando P1 alrededor de P2: +/-{text}, "
+                             f"{sampled / 1024:.0f} KiB legibles.")
+            self.emit("log", "Da 2 golpes reales a P1 y un golpe fallido; "
+                             "marca P1 RECIBIO DANO o P1 SIN DANO.")
+        elif mode == "ce":
             addresses = parse_addresses(text)
             if not addresses:
                 raise ValueError("Pega al menos una dirección de Cheat Engine.")
@@ -513,20 +549,38 @@ class Worker:
             raise ValueError(
                 "Primero BUSCAR MAME y EXPLORAR RAM (o direcciones CE).")
         self.manual_before = self.reader.snapshot(self.plan)
+        self.manual_p2_before = self.reader.read(P2_HP_ADDRESS, P2_HP_BYTES)
+        if self.mode == "near_p2" and self.manual_p2_before is None:
+            self.manual_before = None
+            raise ValueError("La vida de P2 no se pudo leer. Verifica MAME y el PID.")
         if not self.manual_before:
             raise ValueError("No se pudo leer memoria; revisa direcciones o permisos.")
         self.emit("log",
-                  "CAPTURA ANTES lista. Cambia a MAME, ataca con ALT izquierdo "
-                  "y observa si P2 recibio dano. Luego confirma DAÑO o SIN DAÑO.")
+                  "CAPTURA ANTES lista: en MAME observa quien recibe el daño "
+                  "y vuelve a confirmar DAÑO o SIN DAÑO de ese jugador.")
 
     def confirm_manual_damage(self, victim, damaged=True):
         if victim not in (1, 2) or not self.reader:
             raise ValueError("El jugador debe ser P1 o P2, con MAME abierto.")
         if self.manual_before is None:
             raise ValueError("Primero pulsa CAPTURAR ANTES.")
+        if self.mode == "near_p2" and victim != 1:
+            raise ValueError("Busqueda P1: usa P1 RECIBIO DANO o P1 SIN DANO.")
         old = self.manual_before
+        old_p2 = self.manual_p2_before
         self.manual_before = None
+        self.manual_p2_before = None
         current = self.reader.snapshot(self.plan)
+        if self.mode == "near_p2":
+            current_p2 = self.reader.read(P2_HP_ADDRESS, P2_HP_BYTES)
+            if old_p2 is None or current_p2 is None:
+                raise ValueError("No se pudo verificar la barra de P2. "
+                                 "Repite la captura en esta sesion.")
+            if current_p2 != old_p2:
+                self.emit("log",
+                          "Muestra DESCARTADA: P2 tambien cambio de salud. "
+                          "Para identificar P1, deja a P2 sin recibir daño.")
+                return
         if not current:
             raise ValueError("MAME no permitio leer la memoria despues.")
         attacker = 3 - victim
