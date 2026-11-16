@@ -38,7 +38,13 @@ try:
 except ImportError:
     AutoResultMonitor = None
 
-APP_VERSION = "1.16.6"
+try:
+    from KOF_MAME_Lua_Bridge import LuaHealthMonitor, STATE_FILE_NAME
+except ImportError:
+    LuaHealthMonitor = None
+    STATE_FILE_NAME = "KOF_ARENA_LUA_ESTADO.txt"
+
+APP_VERSION = "1.16.7"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1604,6 +1610,9 @@ class HostGUI:
         self.events: queue.Queue = queue.Queue(maxsize=400)
         self.server: Optional[HostServer] = None
         self.game_process = None
+        self.lua_mame_exe = None
+        self.lua_monitor = None
+        self.lua_state_path = BASE_DIR / STATE_FILE_NAME
         self.tunnel_process = None
         self.public_address = ""
         self._api_jobs: queue.Queue = queue.Queue()
@@ -1652,6 +1661,10 @@ class HostGUI:
         self.lan_var = tk.BooleanVar(value=False)
         self.input_diagnostic_var = tk.StringVar(
             value="Abre la sala antes de iniciar MAME.")
+        self.mame_choice_var = tk.StringVar(
+            value="Emulador: MAME 0.132 original (selecciona 0.289 para Lua)")
+        self.lua_health_var = tk.StringVar(
+            value="VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
         self.host_url_var = tk.StringVar(value="Sala no publicada.")
         self.api_status_var = tk.StringVar(value="API: sala no publicada")
         self.roster_count_var = tk.StringVar(
@@ -1698,6 +1711,17 @@ class HostGUI:
                    command=self._start_game).pack(side="left")
         ttk.Button(commands, text="CERRAR SALA",
                    command=self._stop_server).pack(side="right")
+
+        emulator = ttk.Frame(body)
+        emulator.pack(side="top", fill="x", pady=(0, 3))
+        ttk.Button(emulator, text="Elegir MAME 0.289 + Lua",
+                   command=self._choose_mame_lua).pack(side="left", padx=(0, 6))
+        ttk.Button(emulator, text="Usar MAME 0.132",
+                   command=self._use_legacy_mame).pack(side="left", padx=(0, 8))
+        ttk.Label(emulator, textvariable=self.mame_choice_var,
+                  style="Muted.TLabel").pack(side="left", fill="x", expand=True)
+        ttk.Label(body, textvariable=self.lua_health_var,
+                  style="TLabel").pack(side="top", fill="x", pady=(0, 4))
 
         pads = ttk.Frame(body)
         pads.pack(side="top", fill="x", pady=(0, 4))
@@ -1765,6 +1789,7 @@ class HostGUI:
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
+        self._append("Lua MAME 0.289: lee vida P1/P2 desde RAM emulada, sin escribir ni sumar puntos.")
         self._append("Entrenamiento de salud: los golpes se observan en RAM, pero nunca suman puntos por sí solos.")
         self._append("Puntaje = Ganados + Perfecto (1 punto por cada uno).")
         self._show_roster({
@@ -1840,6 +1865,21 @@ class HostGUI:
                 self.api_status_var.set(str(data))
             elif kind == "input_status":
                 self.input_diagnostic_var.set("CONTROLES: " + str(data)[:210])
+            elif kind == "lua_health":
+                # Son valores de RAM en observacion, no resultados definitivos.
+                self.lua_health_var.set(
+                    f"VIDA P1: {data.p1}  |  VIDA P2: {data.p2}"
+                    f"  |  Rondas perdidas?: P1={data.rounds_lost_p1}"
+                    f" / P2={data.rounds_lost_p2}  |  solo lectura")
+            elif kind == "lua_status":
+                if str(data).startswith("Lua conectado:"):
+                    if "Lua desactivado" in self.lua_health_var.get():
+                        self.lua_health_var.set(
+                            "VIDA P1: --  |  VIDA P2: --  |  esperando lecturas Lua...")
+                elif not str(data).startswith("Lua: esperando"):
+                    self._append(str(data))
+                if "MAME se cerró" in str(data):
+                    self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  MAME cerrado")
             elif kind == "tunnel_closed":
                 if self.tunnel_process is data:
                     self.tunnel_process = None
