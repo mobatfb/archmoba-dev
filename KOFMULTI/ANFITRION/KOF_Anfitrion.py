@@ -1375,7 +1375,7 @@ class LuaTeamScoreTracker:
 
     def observe_health(self, state: Any):
         """Rearmar solo cuando aparece otro combate, no por otro evento KO."""
-        if not self.finished:
+        if not (self.finished or self.invalid):
             return
         if (state.rounds_lost_p1 == 0 and state.rounds_lost_p2 == 0
                 and 1 <= state.p1 <= 102 and 1 <= state.p2 <= 102
@@ -1570,10 +1570,10 @@ class HostServer:
             self.ui_notify(
                 "log",
                 f"RESULTADO DEL JUEGO: P{winner_slot} {winner.name} ganó "
-                f"contra {loser.name}. PERFECT: "
-                f"P1={self.perfects.get(participants[1].uid, 0)} / "
-                f"P2={self.perfects.get(participants[2].uid, 0)}. "
-                f"Puntaje ganador: {points}.")
+                f"contra {loser.name}. PERFECT en este enfrentamiento: "
+                f"P1={perfect_counts[0] if perfect_counts else (1 if winner_slot == 1 and perfect else 0)} / "
+                f"P2={perfect_counts[1] if perfect_counts else (1 if winner_slot == 2 and perfect else 0)}. "
+                f"Puntaje acumulado del ganador: {points}.")
             self._broadcast_state()
             return True
 
@@ -1742,6 +1742,7 @@ class HostServer:
                 guest = self.room.register(name, ws)
             except ValueError as ex:
                 ws.send(_json({"type": "error", "message": str(ex)}))
+                self.ui_notify("log", "Conexión rechazada: " + str(ex)[:120])
                 return
             ws.send(_json({"type": "welcome", "you": guest.uid, "version": APP_VERSION,
                            "control_layout": "P1_UNIFICADO",
@@ -2345,8 +2346,9 @@ class HostGUI:
                     self._append(f"Combate: P{loser} pierde personaje "
                                  f"({count}/3), fotograma {frame}.")
                 elif event.startswith("PERFECT_P"):
-                    self._append(f"Combate: {event}, fotograma {frame}; "
-                                 "observación sin puntuar.")
+                    self._append(
+                        f"Combate: {event}, fotograma {frame}. "
+                        "PERFECT reservado; se añadirá al cerrar el equipo 3/3.")
                 elif event.startswith("POSIBLE_FIN_EQUIPO_P"):
                     loser = event[-1]
                     winner = "2" if loser == "1" else "1"
@@ -2358,12 +2360,12 @@ class HostGUI:
                                  f"ganador provisional P{winner} (frame {frame}).")
                 elif event.startswith("SECUENCIA_P"):
                     loser = event[len("SECUENCIA_P")]
-                    winner = "2" if loser == "1" else "1"
-                    self.combat_result_var.set(
-                        f"COMBATE: secuencia P{loser} 3→0; posible ganador P{winner} "
-                        "| falta corroborar resultado")
+                    if self.server is None or not self.server.lua_scorer.finished:
+                        self.combat_result_var.set(
+                            f"COMBATE: contador P{loser} 3→0; "
+                            "esperando nueva batalla")
                     self._append(f"Combate: contador de P{loser} pasó 3→0 "
-                                 f"(frame {frame}); marcador intacto.")
+                                 f"(frame {frame}); esperando reinicio 0/0.")
                 elif event == "TIEMPO_LLEGO_CERO":
                     self._append(f"Combate: reloj llegó a 00 (frame {frame}); "
                                  "sin adjudicar victoria.")
