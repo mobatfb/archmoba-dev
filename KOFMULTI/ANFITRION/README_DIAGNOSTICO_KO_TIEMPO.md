@@ -1,5 +1,40 @@
 # KOFMULTI | Diagnóstico de KO, equipos y tiempo (MAME 0.289)
 
+**Versión v1.5 — detección de PERFECT por KO y por tiempo, sin puntuar ni alterar MAME.**
+
+## Cálculo de PERFECT (regla solicitada)
+
+Cada vez que el contador interno de un jugador aumenta una pérdida (0→1,
+1→2 o 2→3), el script determina si su oponente consiguió un PERFECT en
+**ese enfrentamiento entre personajes**:
+
+1. El **ganador conserva 102/102** puntos de vida en el momento de la pérdida.
+2. **Por KO:** la vida del derrotado es **0** o un Byte interpretado con
+   signo como negativo (128–255; en capturas reales: 252–255).
+3. **Por tiempo:** el reloj llegó a **00** hace como máximo 500 fotogramas,
+   sigue en 00 cuando se registra la derrota, y el derrotado tenía menos
+   de 102 de vida (aunque no haya llegado a 0).
+4. Un incremento confirmado del contador genera **como máximo un PERFECT**;
+   no se vuelve a contar mientras la vida permanezca a 0.
+5. Si ambos tienen la vida completa, **no se cuenta PERFECT** por tiempo.
+   Tampoco si quien sobrevive conserva menos de 102 puntos.
+
+| Captura ya analizada | P1 | P2 | Detalle |
+|---|---:|---:|---|
+| Primera partida, pierde equipo P2 | **3 PERFECT** | 0 | KO en fotogramas 4323 y 9733; tiempo en 8373 |
+| Segunda partida, pierde equipo P1 | 0 | **1 PERFECT** | KO en fotograma 3895 |
+
+En nuevos registros se generan los eventos `PERFECT_P1_KO`,
+`PERFECT_P2_KO`, `PERFECT_P1_TIEMPO` y `PERFECT_P2_TIEMPO`.
+
+**Importante:** son PERFECT calculados **por caída de personaje**, no
+PERFECT globales confirmados por la pantalla final de un 3 contra 3.
+La aplicación los muestra y los exporta en TSV/CSV, pero **no añade puntos
+al ranking del anfitrión**, cuya actualización requiere todavía una
+verificación independiente del resultado de la pelea completa.
+
+---
+
 **Versión v1.4 — incorpora análisis de dos sesiones reales (P1 y P2), lectura de HP con signo como hipótesis y marcas locales persistentes.**
 
 ## Segunda sesión: P1 pierde tres luchadores (16/11/2026)
