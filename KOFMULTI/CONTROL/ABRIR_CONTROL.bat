@@ -1,13 +1,8 @@
 @echo off
-setlocal
+rem KOFMULTI CONTROL v.0.0.2 — inicia GUI sin consola Python.
+rem Este .bat puede mostrar una ventana CMD brevemente.
+rem Para cero ventanas CMD usar ABRIR_CONTROL_SIN_CONSOLA.vbs o KOF_Control.pyw.
 cd /d "%~dp0"
 set PYTHONDONTWRITEBYTECODE=1
-py -B KOF_Control.py
-if errorlevel 1 (
-  echo.
-  echo Si falta PySide6, instalar una sola vez con:
-  echo py -m pip install --no-cache-dir PySide6
-  echo.
-  pause
-)
-endlocal
+wscript.exe //nologo "%~dp0ABRIR_CONTROL_SIN_CONSOLA.vbs"
+exit /b
