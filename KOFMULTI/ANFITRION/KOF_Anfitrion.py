@@ -49,7 +49,7 @@ try:
 except ImportError:
     parse_combat_event = None
 
-APP_VERSION = "1.16.12"
+APP_VERSION = "1.16.9"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -88,27 +88,13 @@ except ImportError:
     ws_connect = None
 
 
-# Opciones de ventana sin maximizar, captura del cursor ni cambios de foco.
-# El MAME moderno acepta joysticks virtuales incluso estando detrás de otras
-# ventanas. No utilizar -background_input en 0.132 sin verificar soporte.
-def mame_window_options(modern: bool = False) -> list[str]:
-    args = ["-window", "-nomaximize", "-nomouse", "-nolightgun"]
-    if modern:
-        args.extend(["-mouseprovider", "none", "-mouse_device", "none",
-                     "-joystick", "-joystickprovider", "xinput",
-                     "-background_input"])
-    return args
-
-
 # Los recursos del juego no se incluyen en el script; se leen del ZIP del usuario.
 
 
 def get_game_folder() -> pathlib.Path:
     """Devuelve carpeta existente o extrae solo archivos seguros del ZIP propio."""
     for folder in (BASE_DIR, BASE_DIR / GAME_FOLDER):
-        has_rom = ((folder / "kf2k2mp2.zip").is_file() or
-                   (folder / "roms" / "kf2k2mp2.zip").is_file())
-        if (folder / "mame.exe").is_file() and has_rom:
+        if (folder / "mame.exe").is_file() and (folder / "kf2k2mp2.zip").is_file():
             return folder
     archive = BASE_DIR / GAME_ARCHIVE
     if not archive.is_file():
@@ -128,9 +114,6 @@ def get_game_folder() -> pathlib.Path:
             if info.file_size > 140 * 1024 * 1024:
                 raise ValueError("El ZIP contiene un archivo inesperadamente grande.")
             dest = target / info.filename
-            # Nunca sustituir un mame.exe ya actualizado por el del ZIP antiguo.
-            if dest.is_file() and info.filename == "mame.exe":
-                continue
             if dest.exists() and dest.stat().st_size == info.file_size:
                 continue
             temp = dest.with_name(dest.name + ".parcial")
@@ -144,46 +127,6 @@ def get_game_folder() -> pathlib.Path:
     if not (target / "mame.exe").is_file():
         raise FileNotFoundError("No se encontro mame.exe en el ZIP.")
     return target
-
-
-def default_mame_executable() -> pathlib.Path:
-    """Buscar el mame.exe instalado, prefiriendo el MAME 0.289 comprobado.
-
-    Antes se tomaba sin examinar el primer mame.exe; si el ZIP antiguo estaba
-    presente podia arrancar MAME 0.132 y perder las pulsaciones sin foco.
-    """
-    candidates = [folder / "mame.exe" for folder in (BASE_DIR, BASE_DIR / GAME_FOLDER)]
-    available = [item.resolve() for item in candidates if item.is_file()]
-    if not available:
-        return (get_game_folder() / "mame.exe").resolve()
-    for executable in available:
-        try:
-            if detect_mame_version(executable) == "0.289":
-                return executable
-        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
-            pass
-    return available[0]
-
-
-def detect_mame_version(executable: pathlib.Path) -> str:
-    """Preguntar al ejecutable su versión, sin suponer que es MAME antiguo."""
-    if not executable.is_file():
-        raise FileNotFoundError(f"No existe el ejecutable MAME: {executable}")
-    check = subprocess.run(
-        [str(executable), "-version"], cwd=str(executable.parent),
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, errors="replace", timeout=8,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        check=False)
-    response = check.stdout.strip()
-    if check.returncode != 0:
-        raise RuntimeError("No fue posible identificar la version de mame.exe: "
-                           + response[:160])
-    match = re.search(r"\b0\.\d{3}(?:u\d+)?\b", response)
-    if not match:
-        raise RuntimeError("mame.exe no informó una versión reconocible: "
-                           + response[:160])
-    return match.group(0).split("u")[0]
 
 
 def clean_address(raw: str) -> str:
@@ -271,9 +214,9 @@ class NullInput:
 class MameKeyboard:
     """Puente de acciones P1/P2 a teclado Windows para MAME.
 
-    Diagnóstico y tiempo mínimo de pulsación evitan que los toques rápidos
-    desaparezcan entre fotogramas. No activa, restaura ni trae MAME al frente.
-    Las teclas especiales solo se envían si el usuario ya enfocó el juego.
+    Preparación del foco, diagnóstico y tiempo mínimo de pulsación evitan
+    que los toques rápidos de un control táctil desaparezcan entre fotogramas.
+    Todas las teclas se envían EXCLUSIVAMENTE al juego iniciado por este host.
     """
     VK = {
         "CTRL": 0xA2, "ALT": 0xA4, "SHIFT": 0xA0, "SPACE": 0x20,
@@ -308,6 +251,7 @@ class MameKeyboard:
         from ctypes import wintypes
         self.wintypes = wintypes
         self.user32 = ctypes.WinDLL("user32", use_last_error=True)
+        self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._process = game_process_provider
         self.status_notify = status_notify
         self.key_states: dict[str, bool] = {}
@@ -349,6 +293,15 @@ class MameKeyboard:
         self.user32.GetForegroundWindow.restype = wintypes.HWND
         self.user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
         self.user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        self.user32.IsWindowVisible.argtypes = [wintypes.HWND]
+        self.user32.IsWindowVisible.restype = wintypes.BOOL
+        self.user32.IsIconic.argtypes = [wintypes.HWND]
+        self.user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        self.user32.SetForegroundWindow.restype = wintypes.BOOL
+        self.user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        self.user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        self.user32.AttachThreadInput.restype = wintypes.BOOL
+        self.kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 
     def _status(self, message: str, *, failed: bool = False) -> None:
         if failed:
@@ -377,16 +330,57 @@ class MameKeyboard:
         self.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         return pid.value == process.pid
 
+    def _find_game_window(self):
+        process = self._running_process()
+        if process is None:
+            return None
+        callback_type = ctypes.WINFUNCTYPE(self.wintypes.BOOL, self.wintypes.HWND, self.wintypes.LPARAM)
+        candidates = []
+
+        def enumerate_window(hwnd, _):
+            pid = self.wintypes.DWORD()
+            self.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value == process.pid and self.user32.IsWindowVisible(hwnd):
+                candidates.append(hwnd)
+                return False
+            return True
+
+        callback = callback_type(enumerate_window)
+        self.user32.EnumWindows(callback, 0)
+        return candidates[0] if candidates else None
+
     def _focus_mame(self) -> bool:
-        """Comprobar foco sin robarlo ni restaurar la ventana de MAME."""
-        if self._running_process() is None:
-            self._status("MAME no esta iniciado.", failed=True)
-            return False
         if self._game_has_focus():
             return True
-        self._status(
-            "MAME esta en segundo plano: no se fuerza el foco ni se envian "
-            "teclas globales sobre otras ventanas.", failed=True)
+        if self._running_process() is None:
+            self._status("MAME no está iniciado. Pulsa 3. INICIAR KOF en el anfitrión.", failed=True)
+            return False
+        hwnd = self._find_game_window()
+        if not hwnd:
+            self._status("MAME está abierto pero no encuentro su ventana. Espera a que cargue.", failed=True)
+            return False
+        if self.user32.IsIconic(hwnd):
+            self.user32.ShowWindow(hwnd, 9)  # SW_RESTORE solamente si estaba minimizada.
+        self.user32.SetForegroundWindow(hwnd)
+        if self._game_has_focus():
+            return True
+        # Windows a veces prohíbe el foco desde el hilo WebSocket.
+        # Acoplar temporalmente su cola con la ventana en primer plano.
+        foreground = self.user32.GetForegroundWindow()
+        foreground_thread = (self.user32.GetWindowThreadProcessId(foreground, None)
+                             if foreground else 0)
+        this_thread = self.kernel32.GetCurrentThreadId()
+        attached = False
+        try:
+            if foreground_thread and foreground_thread != this_thread:
+                attached = bool(self.user32.AttachThreadInput(this_thread, foreground_thread, True))
+            self.user32.SetForegroundWindow(hwnd)
+        finally:
+            if attached:
+                self.user32.AttachThreadInput(this_thread, foreground_thread, False)
+        if self._game_has_focus():
+            return True
+        self._status("Windows no permitió activar MAME. Haz clic en la ventana del juego; comprueba también que MAME y Python tengan el mismo nivel de permisos.", failed=True)
         return False
 
     def prepare(self, slot: int) -> bool:
@@ -706,12 +700,11 @@ class MameCheckpointManager:
 
 
 
-def create_mame_virtual_profile(directory: pathlib.Path,
-                                modern: bool = False) -> pathlib.Path:
-    """Perfil de los dos mandos Xbox, separado para MAME 0.132 y 0.289.
+def create_mame_virtual_profile(directory: pathlib.Path) -> pathlib.Path:
+    """Perfil adicional para MAME 0.132, sin sobrescribir sus .cfg originales.
 
-    Para 0.289 fija las identidades XInput P1/P2: el orden de enumeracion
-    de joysticks puede cambiar, dejando a los mandos virtuales sin entrada.
+    Obliga a relacionar las entradas de KOF a los botones Xbox visibles como
+    joysticks DirectInput. Solo se usa cuando el anfitrion usa mandos virtuales.
     """
     import xml.etree.ElementTree as ET
     mapping = {
@@ -729,10 +722,6 @@ def create_mame_virtual_profile(directory: pathlib.Path,
                   "A": "BUTTON1", "B": "BUTTON2", "C": "BUTTON3", "D": "BUTTON4"}
     root = ET.Element('mameconfig', {'version': '10'})
     input_root = ET.SubElement(ET.SubElement(root, 'system', {'name': 'default'}), 'input')
-    if modern:
-        for slot in (1, 2):
-            ET.SubElement(input_root, 'mapdevice', {
-                'device': f'XInput Player {slot}', 'controller': f'JOYCODE_{slot}'})
     for slot in (1, 2):
         for action, ptype in port_names.items():
             if action in axis:
@@ -747,7 +736,7 @@ def create_mame_virtual_profile(directory: pathlib.Path,
             node = ET.SubElement(input_root, 'port', {'type': ptype})
             ET.SubElement(node, 'newseq', {'type': 'standard'}).text = (
                 f'{mapping[slot][action]} OR JOYCODE_{slot}_BUTTON{btn}')
-    path = directory / 'ctrlr' / ('kof_arena_0289.cfg' if modern else 'kof_arena.cfg')
+    path = directory / 'ctrlr' / 'kof_arena.cfg'
     path.parent.mkdir(parents=True, exist_ok=True)
     tree = ET.ElementTree(root)
     ET.indent(tree, space='    ')
@@ -795,22 +784,32 @@ class VirtualPads:
         self._pressed_at: dict[tuple[int, str], float] = {}
         self._release_timers: dict[tuple[int, str], threading.Timer] = {}
         self.MIN_HOLD = 0.11  # Toque tactil corto: mantener durante varios fotogramas
-        # Los mandos virtuales no deben cambiar el foco del escritorio.
-        # No se usa teclado Win32, ni se trae MAME al frente cuando llegan
-        # pulsaciones desde un invitado remoto.
+        # Focus is best-effort: a virtual HID controller must not be rejected
+        # merely because SetForegroundWindow is disallowed for this thread.
         self._process_provider = process_provider
+        self._focuser = MameKeyboard(process_provider, status_notify=None)
         self.status_notify = status_notify
         self.input_error = ""
-        self._last_applied_report = 0.0
+        self._warned_focus_at = 0.0
 
     def prepare(self, slot: int) -> bool:
-        """Validar que el juego exista sin enfocarlo ni tocar el cursor."""
         if slot not in (1, 2):
             return False
         game = self._process_provider()
         if game is None or game.poll() is not None:
-            self.input_error = "Primero inicia MAME en el anfitrion."
+            self.input_error = "Primero inicia MAME en el anfitrión."
             return False
+        try:
+            focused = self._focuser.prepare(slot)
+        except (OSError, AttributeError, RuntimeError):
+            focused = False
+        if not focused and self.status_notify is not None:
+            now = time.monotonic()
+            if now - self._warned_focus_at > 8:
+                self._warned_focus_at = now
+                self.status_notify("input_status", "Mandos virtuales activos; si MAME no responde, haz clic una vez en la ventana del juego. Las órdenes NO se bloquean por el foco.")
+        # HID virtual input is independent of SendInput and will be delivered
+        # whether or not Windows permits a focus change.
         self.input_error = ""
         return True
 
@@ -850,15 +849,6 @@ class VirtualPads:
                     self.states[slot].add(action)
                     self._pressed_at[key] = time.monotonic()
                     self._update(slot)
-                    # Confirmar recepción en el dispositivo, NO en la ROM.
-                    if self.status_notify is not None:
-                        now = time.monotonic()
-                        if now - self._last_applied_report > 1.5:
-                            self._last_applied_report = now
-                            self.status_notify(
-                                "input_status",
-                                f"P{slot}: {action} aplicado al joystick virtual "
-                                "(no confirma lectura dentro de MAME).")
                 return True
             if action not in self.states[slot]:
                 return True
@@ -1297,8 +1287,7 @@ class HostServer:
             result = False
             self.ui_notify("log", f"Fallo al enviar F3: {ex}")
         self.ui_notify("log", "MAME: comando F3 de reinicio enviado." if result else
-                       "MAME: no se envio F3 porque no estaba enfocado; "
-                       "nunca se trae el juego al frente automaticamente.")
+                       "MAME: no se pudo enviar F3; revisa el foco de la ventana.")
         return result
 
     def _champion_left(self, slot: int, guest: Guest):
@@ -1749,7 +1738,7 @@ class HostGUI:
         self.input_diagnostic_var = tk.StringVar(
             value="Abre la sala antes de iniciar MAME.")
         self.mame_choice_var = tk.StringVar(
-            value="MAME: mame.exe del proyecto (detección automática)")
+            value="Emulador: MAME 0.132 original (selecciona 0.289 para Lua)")
         self.lua_health_var = tk.StringVar(
             value="VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
         self.lua_perfect_var = tk.StringVar(
@@ -1805,10 +1794,10 @@ class HostGUI:
 
         emulator = ttk.Frame(body)
         emulator.pack(side="top", fill="x", pady=(0, 3))
-        ttk.Button(emulator, text="Cambiar MAME...",
+        ttk.Button(emulator, text="Elegir MAME 0.289 + Lua",
                    command=self._choose_mame_lua).pack(side="left", padx=(0, 6))
-        ttk.Button(emulator, text="Usar mame.exe predeterminado",
-                   command=self._use_default_mame).pack(side="left", padx=(0, 8))
+        ttk.Button(emulator, text="Usar MAME 0.132",
+                   command=self._use_legacy_mame).pack(side="left", padx=(0, 8))
         ttk.Label(emulator, textvariable=self.mame_choice_var,
                   style="Muted.TLabel").pack(side="left", fill="x", expand=True)
         ttk.Label(body, textvariable=self.lua_health_var,
@@ -1883,7 +1872,6 @@ class HostGUI:
 
         self._append("Sala sin contrasena. Comparte el enlace solo con tus invitados.")
         self._append("El enlace de la sala se publica automaticamente en la API.")
-        self._append("El anfitrión detectará automáticamente el mame.exe ya instalado.")
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
@@ -1963,13 +1951,6 @@ class HostGUI:
                 self.api_status_var.set(str(data))
             elif kind == "input_status":
                 self.input_diagnostic_var.set("CONTROLES: " + str(data)[:210])
-            elif kind == "mame_detected":
-                self.mame_choice_var.set(
-                    f"MAME {data['version']} | {pathlib.Path(data['path']).name} "
-                    "| seleccionado automáticamente"
-                    if data["auto"] else
-                    f"MAME {data['version']} | {pathlib.Path(data['path']).name} "
-                    "| seleccionado manualmente")
             elif kind == "lua_health":
                 # Telemetría informativa. NO actualizar Ganados/Perdidos/Puntos.
                 self.lua_health_var.set(
@@ -2076,8 +2057,10 @@ class HostGUI:
                 row = self.roster.insert("", "end", values=display(f"P{slot} - {state}", guest))
                 if guest["id"] > 0:
                     self.member_by_tree_row[row] = guest["id"]
-            # Los puestos vacíos ya aparecen en el resumen P1/P2.
-            # No son participantes y no deben ocupar filas de la tabla.
+            else:
+                self.roster.insert(
+                    "", "end",
+                    values=(f"P{slot} - DISPONIBLE", "Libre", "", "", "", "", ""))
 
         waiting = data.get("queue", [])
         for i, guest in enumerate(waiting, 1):
@@ -2089,11 +2072,6 @@ class HostGUI:
             row = self.roster.insert("", "end",
                                      values=display("ESPECTADOR", guest))
             self.member_by_tree_row[row] = guest["id"]
-
-        if not self.member_by_tree_row:
-            self.roster.insert("", "end",
-                               values=("", "Esperando jugadores conectados...", "",
-                                       "", "", "", ""))
 
         for row, uid in self.member_by_tree_row.items():
             if uid == selected_uid:
@@ -2271,20 +2249,20 @@ class HostGUI:
             "VIDA P1: --  |  VIDA P2: --  |  inicia el juego para leer Lua")
         self.lua_perfect_var.set("PERFECT: P1=0 | P2=0 | esperando Lua V3")
         self.combat_result_var.set("COMBATE: preparado para registrar KO y fin de equipo")
-        self._append("MAME 0.289 seleccionado manualmente. "
-                     "También puedes usar el mame.exe predeterminado.")
+        self._append("Seleccionado MAME 0.289, sin tocar tu MAME 0.132. "
+                     "Se activará el monitor Lua al INICIAR KOF.")
 
-    def _use_default_mame(self):
+    def _use_legacy_mame(self):
         if self.game_process is not None and self.game_process.poll() is None:
             self.messagebox.showwarning(
-                "Cierra el juego", "Cierra MAME antes de cambiar de ejecutable.")
+                "Cierra el juego", "Cierra MAME antes de cambiar de emulador.")
             return
         self.lua_mame_exe = None
-        self.mame_choice_var.set("MAME: mame.exe del proyecto (detección automática)")
-        self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  esperando iniciar juego")
-        self.lua_perfect_var.set("PERFECT: esperando MAME")
-        self.combat_result_var.set("COMBATE: se activará diagnóstico si es MAME 0.289")
-        self._append("Usaremos mame.exe del proyecto y detectaremos su versión al iniciarlo.")
+        self.mame_choice_var.set("Emulador: MAME 0.132 original")
+        self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
+        self.lua_perfect_var.set("PERFECT: Lua desactivado en MAME 0.132")
+        self.combat_result_var.set("COMBATE: diagnóstico desactivado en MAME 0.132")
+        self._append("Volviste al MAME 0.132 original sin alterar ROM ni mandos.")
 
     def _start_game(self):
         if sys.platform != "win32":
@@ -2298,7 +2276,7 @@ class HostGUI:
                 "Para que MAME reconozca ambos controles, pulsa primero ABRIR SALA "
                 "con 2 joysticks virtuales y DESPUES INICIAR KOF.")
             return
-        self._append("Localizando mame.exe y verificando su versión ...")
+        self._append("Buscando o extrayendo KOF2022GAME.zip original ...")
         threading.Thread(target=self._game_worker, daemon=True).start()
 
     def _game_worker(self):
@@ -2306,35 +2284,23 @@ class HostGUI:
             if self.combat_monitor is not None:
                 self.combat_monitor.stop()
                 self.combat_monitor = None
-            manual = self.lua_mame_exe is not None
-            chosen_exe = (pathlib.Path(self.lua_mame_exe).resolve()
-                          if manual else default_mame_executable())
-            version = detect_mame_version(chosen_exe)
-            self.notify("mame_detected", {
-                "version": version, "path": str(chosen_exe), "auto": not manual})
-            self.notify("log", f"MAME detectado: {version} | {chosen_exe}")
-            if version == "0.132":
-                # Compatibilidad heredada solo cuando el ejecutable lo confirme.
+            chosen_exe = self.lua_mame_exe
+            if chosen_exe is None:
+                # Ruta antigua probada: no modificar comportamiento de MAME 0.132.
                 directory = get_game_folder()
-                command = [str(chosen_exe), "kf2k2mp2",
-                           *mame_window_options(),
-                           "-rompath", os.pathsep.join((
-                               str(directory), str(directory / "roms"),
-                               str(chosen_exe.parent), str(chosen_exe.parent / "roms"))),
+                command = [str(directory / "mame.exe"), "kf2k2mp2",
+                           "-window", "-maximize",
                            "-state_directory", str(directory / STATE_FOLDER)]
                 profile = create_mame_virtual_profile(directory)
                 command.extend(["-ctrlr", profile.stem])
                 self.notify("log",
-                            "MAME 0.132 confirmado por -version. Perfil de mandos: "
+                            "MAME 0.132 del ZIP. Perfil de 2 joysticks: "
                             "ctrlr/" + profile.name)
-                self.notify("log",
-                            "AVISO: MAME 0.132 puede ignorar mandos virtuales "
-                            "cuando no tiene foco; para segundo plano usar MAME 0.289.")
                 if self.lua_monitor is not None:
                     self.lua_monitor.stop()
                     self.lua_monitor = None
                 self.game_process = subprocess.Popen(
-                    command, cwd=str(chosen_exe.parent))
+                    command, cwd=str(directory))
                 if os.environ.get("KOF_ENABLE_OCR_RESULTS") == "1":
                     self._start_auto_results(self.game_process, self.server)
                 else:
@@ -2344,11 +2310,6 @@ class HostGUI:
                             f"MAME 0.132 iniciado, PID {self.game_process.pid}.")
                 return
 
-            if version != "0.289":
-                raise RuntimeError(
-                    f"El mame.exe seleccionado es versión {version}. "
-                    "El diagnóstico Lua está validado para MAME 0.289; "
-                    "no iniciaré como si fuese MAME 0.132.")
             if LuaHealthMonitor is None:
                 raise RuntimeError(
                     "Falta KOF_MAME_Lua_Bridge.py en la carpeta del anfitrión.")
@@ -2387,22 +2348,17 @@ class HostGUI:
             # Los save states del MAME antiguo NO deben abrirse en el nuevo.
             modern_state_dir = directory / "KOF_ARENA_ESTADOS_0289"
             modern_state_dir.mkdir(parents=True, exist_ok=True)
-            # No reutilizar un .cfg antiguo que puede anular el perfil Xbox.
-            modern_cfg_dir = BASE_DIR / "KOF_ARENA_CONFIG_0289"
-            modern_cfg_dir.mkdir(parents=True, exist_ok=True)
-            profile = create_mame_virtual_profile(BASE_DIR, modern=True)
+            profile = create_mame_virtual_profile(directory)
             rom_paths = list(dict.fromkeys((
                 str(directory), str(directory / "roms"),
                 str(chosen_exe.parent / "roms"),
                 str(chosen_exe.parent))))
-            command = [str(chosen_exe), "kf2k2mp2",
-                       *mame_window_options(modern=True),
+            command = [str(chosen_exe), "kf2k2mp2", "-window", "-maximize",
                        "-rompath", os.pathsep.join(rom_paths),
                        "-state_directory", str(modern_state_dir),
-                       "-cfg_directory", str(modern_cfg_dir),
                        "-ctrlrpath", str(profile.parent),
                        "-ctrlr", profile.stem,
-                       "-autoboot_script", str(script)]
+                       "-joystick", "-autoboot_script", str(script)]
             diagnostic_script = BASE_DIR / "KOF_Diagnostico_Combate.lua"
             if not diagnostic_script.is_file() or parse_combat_event is None:
                 raise FileNotFoundError(
@@ -2423,12 +2379,8 @@ class HostGUI:
             ):
                 env[key] = str(session / filename)
             self.notify("log",
-                        "MAME 0.289: mandos Xbox por XInput, dos ranuras estables, "
-                        "configuración separada y entrada en segundo plano.")
-            self.notify("log",
                         "Iniciando MAME 0.289 con Lua V3 y diagnóstico KO v1.5. "
-                        "Ventana normal, mouse libre y sin forzar foco; "
-                        "no se modifica marcador ni RAM.")
+                        "No se modifica marcador ni RAM.")
             self.game_process = subprocess.Popen(
                 command, cwd=str(chosen_exe.parent), env=env)
             self.lua_monitor = LuaHealthMonitor(
@@ -2555,35 +2507,6 @@ def main():
 
 def run_selftest():
     """Comprueba asignación P1/P2, lista FIFO y liberación automática."""
-    # Verificaciones de detección automática sin ejecutar el emulador real.
-    from unittest import mock as mocked
-    with mocked.patch(__name__ + ".subprocess.run",
-                      return_value=type("Result", (), {
-                          "stdout": "MAME 0.289 (mame0289)", "returncode": 0})()):
-        with mocked.patch(__name__ + ".pathlib.Path.is_file", return_value=True):
-            assert detect_mame_version(pathlib.Path("mame.exe")) == "0.289"
-    with mocked.patch(__name__ + ".subprocess.run",
-                      return_value=type("Result", (), {
-                          "stdout": "MAME 0.132 (old)", "returncode": 0})()):
-        with mocked.patch(__name__ + ".pathlib.Path.is_file", return_value=True):
-            assert detect_mame_version(pathlib.Path("mame.exe")) == "0.132"
-    # La ventana y los mandos no deben capturar el cursor ni forzar el foco.
-    normal_args = mame_window_options()
-    modern_args = mame_window_options(modern=True)
-    assert "-window" in normal_args and "-nomaximize" in normal_args
-    assert "-nomouse" in normal_args and "-nolightgun" in normal_args
-    assert "-background_input" not in normal_args  # compatibilidad 0.132
-    assert "-background_input" in modern_args
-    assert modern_args[modern_args.index("-joystickprovider") + 1] == "xinput"
-    assert modern_args[modern_args.index("-mouseprovider") + 1] == "none"
-    assert modern_args[modern_args.index("-mouse_device") + 1] == "none"
-    assert "SetForegroundWindow" not in MameKeyboard._focus_mame.__code__.co_names
-    test_pads = VirtualPads.__new__(VirtualPads)
-    test_pads._process_provider = lambda: type(
-        "GameReady", (), {"poll": lambda self: None})()
-    test_pads.input_error = "antes"
-    assert test_pads.prepare(1) and test_pads.input_error == ""
-    assert not test_pads.prepare(3)
     # Un resultado confirmado por el juego registra ambos lados y PERFECT;
     # los datos nunca cambian por pulsaciones ni por editarlos desde la tabla.
     simulator = HostServer.__new__(HostServer)
@@ -2698,15 +2621,6 @@ def run_selftest():
     from xml.etree import ElementTree
     with TemporaryDirectory() as tmp:
         profile = create_mame_virtual_profile(pathlib.Path(tmp))
-        modern_profile = create_mame_virtual_profile(pathlib.Path(tmp), modern=True)
-        modern_root = ElementTree.parse(modern_profile).getroot()
-        modern_map = [
-            (x.attrib["device"], x.attrib["controller"])
-            for x in modern_root.findall("./system/input/mapdevice")]
-        assert modern_map == [
-            ("XInput Player 1", "JOYCODE_1"),
-            ("XInput Player 2", "JOYCODE_2")]
-        assert modern_profile.name == "kof_arena_0289.cfg"
         root = ElementTree.parse(profile).getroot()
         ports = {node.attrib["type"]: node.findtext("newseq") for node in root.findall("./system/input/port")}
         assert len(ports) == 20, len(ports)
