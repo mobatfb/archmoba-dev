@@ -13,7 +13,7 @@ Cheat Engine identificó la **salud de P2 como Byte en 0x13C1AA58**, pero esa di
 3. En Cheat Engine encuentra el Byte que corresponde a la vida de P2 **en esta ejecución**. Comprueba que disminuye con daño real y no cambia si golpeas al aire.
 4. Introduce esa dirección hexadecimal en el campo **Dirección actual de P2 (hex, Byte)** y pulsa **CALIBRAR P2**.
 5. El analizador mostrará la lectura en vivo y sus variaciones cada 250 ms. No edita ni congela el Byte.
-6. Si cambias nuevamente de MAME, **vuelve a calibrar**: el programa no confía en una dirección anterior.
+6. Si cambias nuevamente de MAME, **vuelve a calibrar**: el programa no confía en una dirección anterior. Si el analizador permanece abierto, comprueba periódicamente el PID y borra la dirección anterior al detectar otro proceso.
 
 ## Utilizar P2 como referencia para localizar P1
 
