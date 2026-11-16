@@ -21,8 +21,11 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-ANALYZER_VERSION = "v1.2"
+ANALYZER_VERSION = "v1.3"
 PORT = 38724  # Solo 127.0.0.1; el anfitrion informa ataques, no resultados.
+P2_HP_ADDRESS = 0x13C1AA58  # Direccion facilitada para la vida de P2 (Byte).
+P2_HP_BYTES = 1
+HEALTH_POLL_SECONDS = 0.25  # Poco consumo, lectura de un solo Byte.
 MAX_SCAN_BYTES = 24 * 1024 * 1024
 BLOCK = 64 * 1024
 ATTACKS = frozenset(("A", "B", "C", "D"))
@@ -367,6 +370,9 @@ class Worker:
         self.alt_count = 0
         self.width = 1
         self.attacks = [0, 0]
+        self.p2_hp_last = None
+        self.p2_hp_poll_at = 0.0
+        self.p2_hp_unreadable = False
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("127.0.0.1", PORT))
         self.socket.settimeout(0.025)
@@ -387,8 +393,37 @@ class Worker:
         self.manual_before = None
         self.alt_down = False
         self.learner = ScoreLearner()
+        self.p2_hp_last = None
+        self.p2_hp_poll_at = 0.0
+        self.p2_hp_unreadable = False
         self.reader = ReadOnlyMemory(pid)
         self.emit("log", f"Conectado en solo lectura a mame.exe PID {pid}.")
+        self.emit("log", f"Salud P2 configurada: 0x{P2_HP_ADDRESS:08X}, tipo Byte.")
+        self.poll_p2_health(force=True)
+
+    def poll_p2_health(self, force=False):
+        """Lee la direccion indicada por el usuario. NO infiere ganadores ni KO."""
+        if not self.reader:
+            return
+        now = time.monotonic()
+        if not force and now - self.p2_hp_poll_at < HEALTH_POLL_SECONDS:
+            return
+        self.p2_hp_poll_at = now
+        value = self.reader.read(P2_HP_ADDRESS, P2_HP_BYTES)
+        if value is None:
+            if not self.p2_hp_unreadable:
+                self.p2_hp_unreadable = True
+                self.p2_hp_last = None
+                self.emit("p2_health", (None, None))
+                self.emit("log", "P2: dirección 0x13C1AA58 no legible en este proceso. "
+                                 "Puede haber cambiado al reiniciar MAME.")
+            return
+        new_value = value[0]
+        delta = None if self.p2_hp_last is None else new_value - self.p2_hp_last
+        if self.p2_hp_unreadable or self.p2_hp_last != new_value:
+            self.emit("p2_health", (new_value, delta))
+        self.p2_hp_unreadable = False
+        self.p2_hp_last = new_value
 
     def configure(self, mode, text="", width=1):
         if not self.reader:
@@ -605,8 +640,9 @@ class Worker:
                         self.emit("log", "Aprendizaje reiniciado. Alterna DAÑO y SIN DAÑO.")
                 except (OSError, ValueError) as exc:
                     self.emit("log", "ERROR: " + str(exc))
-            # La RAM se compara solo cuando el operador confirma
-            # daño o ausencia de daño; no se sondea en cada iteracion.
+            # La busqueda extensa solo se compara cuando el operador confirma
+            # daño. La direccion ya identificada de P2 lee 1 Byte cada 250 ms.
+            self.poll_p2_health()
         if self.reader:
             self.reader.close()
         self.socket.close()
@@ -637,6 +673,8 @@ class App:
         self.alt_status = tk.StringVar(value="ALT IZQUIERDO (P1): 0 pulsaciones detectadas")
         self.sample_status = tk.StringVar(
             value="Muestras confirmadas: P2 daño 0 / sin daño 0 | P1 daño 0 / sin daño 0")
+        self.p2_health_status = tk.StringVar(
+            value=f"VIDA P2 | 0x{P2_HP_ADDRESS:08X} | Byte | esperando MAME...")
         self.value_width = tk.IntVar(value=1)
 
         body = ttk.Frame(self.root)
@@ -650,6 +688,8 @@ class App:
         ).pack(anchor="w")
         ttk.Label(body, textvariable=self.alt_status).pack(anchor="w", pady=(3, 0))
         ttk.Label(body, textvariable=self.sample_status).pack(anchor="w", pady=(2, 0))
+        ttk.Label(body, textvariable=self.p2_health_status,
+                  font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(5, 1))
         actions = ttk.Frame(body)
         actions.pack(fill="x", pady=(9, 6))
         ttk.Button(actions, text="1. BUSCAR MAME.EXE",
@@ -667,6 +707,7 @@ class App:
                           relief="flat", font=("Consolas", 10),
                           insertbackground="white")
         self.ce.pack(fill="x", pady=(4, 4))
+        self.ce.insert("1.0", f"0x{P2_HP_ADDRESS:08X}")
         ce_controls = ttk.Frame(body)
         ce_controls.pack(fill="x", pady=(0, 6))
         ttk.Radiobutton(ce_controls, text="Byte", value=1,
@@ -735,6 +776,7 @@ class App:
         self._line("Paso 1: CAPTURAR ANTES; paso 2: golpear con ALT y mirar la barra.")
         self._line("Paso 3: marcar P2 RECIBIÓ DAÑO o P2 SIN DAÑO según lo observado.")
         self._line("Repite con una nueva CAPTURAR ANTES en cada prueba. Mínimo 2 daños y 1 fallo.")
+        self._line("P2: Byte 0x13C1AA58 leído en vivo; úsalo como referencia, sin sumar puntos.")
         self._line("Descarta falsas direcciones seleccionándolas. NO se modifica MAME.")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(130, self.poll)
@@ -785,6 +827,15 @@ class App:
                 self.sample_status.set(
                     f"Muestras: P2 daño {good[0]} / sin daño {bad[0]}"
                     f" | P1 daño {good[1]} / sin daño {bad[1]}")
+            elif kind == "p2_health":
+                value, delta = val
+                suffix = (
+                    "sin lectura (revisar dirección o PID)" if value is None else
+                    f"valor {value} / 255" if delta is None else
+                    f"valor {value} / 255  |  cambio {delta:+d}"
+                )
+                self.p2_health_status.set(
+                    f"VIDA P2 | 0x{P2_HP_ADDRESS:08X} | Byte | {suffix}")
             elif kind == "rank":
                 selected = self.table.selection()
                 selection_value = (
@@ -842,6 +893,8 @@ def selftest():
     assert all(row[2] != health_p2 for row in learner.top())
 
     # Lecturas multibyte de direcciones CE requieren también control sin daño.
+    assert P2_HP_ADDRESS == 0x13C1AA58 and P2_HP_BYTES == 1
+    assert parse_addresses("13C1AA58") == [P2_HP_ADDRESS]
     assert parse_addresses("00123000\n0x00124000") == [0x123000, 0x124000]
     for width, value, delta in ((2, 1200, 20), (4, 150000, 100)):
         model = ScoreLearner()
