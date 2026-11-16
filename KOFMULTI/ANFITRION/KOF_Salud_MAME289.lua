@@ -134,3 +134,14 @@ end)
 
 emu.print_info("KOF ARENA Lua V3: PERFECT por KO/tiempo, SOLO LECTURA: " ..
     output_path)
+
+-- Este es el unico -autoboot_script. Se conserva la telemetria V3 y
+-- se incorpora el diagnostico de combate en la misma instancia de MAME.
+local diagnostic_script = os.getenv("KOF_ARENA_DIAG_SCRIPT")
+if diagnostic_script and diagnostic_script ~= "" then
+    local ok, err = pcall(dofile, diagnostic_script)
+    if not ok then
+        emu.print_error("KOF ARENA: diagnostico KO no pudo iniciarse: " ..
+            tostring(err))
+    end
+end
