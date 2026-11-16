@@ -32,7 +32,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-APP_VERSION = "1.16.2"
+APP_VERSION = "1.16.3"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1575,17 +1575,17 @@ class HostGUI:
         st.configure("TFrame", background="#0b1323")
         st.configure("TLabel", background="#0b1323", foreground="#eaf0ff", font=("Segoe UI", 10))
         st.configure("Title.TLabel", background="#0b1323", foreground="#ffffff",
-                     font=("Segoe UI Semibold", 18))
+                     font=("Segoe UI Semibold", 15))
         st.configure("Muted.TLabel", background="#0b1323", foreground="#96aace",
                      font=("Segoe UI", 9))
-        st.configure("TButton", font=("Segoe UI Semibold", 9), padding=(7, 4))
+        st.configure("TButton", font=("Segoe UI Semibold", 9), padding=(5, 3))
         st.configure("TEntry", padding=5)
         st.configure("TCombobox", padding=4)
         st.configure("TCheckbutton", background="#0b1323", foreground="#eaf0ff")
         st.map("TCheckbutton", background=[("active", "#0b1323")],
                foreground=[("active", "#ffffff")])
         st.configure("Treeview", background="#172641", foreground="#f1f5ff",
-                     fieldbackground="#172641", rowheight=25, borderwidth=0)
+                     fieldbackground="#172641", rowheight=23, borderwidth=0)
         st.configure("Treeview.Heading", background="#213654", foreground="#ffffff",
                      font=("Segoe UI Semibold", 10))
         st.map("Treeview", background=[("selected", "#275dbd")])
@@ -1598,132 +1598,135 @@ class HostGUI:
         widget.pack(pady=(3, 0))
         return widget
 
-    def _create_scroll_body(self):
-        """Panel vertical desplazable: ninguna opcion se pierde en pantallas pequenas."""
-        tk, ttk = self.tk, self.ttk
-        outer = ttk.Frame(self.root)
-        outer.pack(fill="both", expand=True)
-        canvas = tk.Canvas(outer, bg="#0b1323", bd=0, highlightthickness=0)
-        vbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vbar.set)
-        vbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        body = ttk.Frame(canvas)
-        window_id = canvas.create_window((0, 0), window=body, anchor="nw")
-
-        def on_body_resize(_event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-
-        def on_canvas_resize(event):
-            canvas.itemconfigure(window_id, width=event.width)
-
-        body.bind("<Configure>", on_body_resize)
-        canvas.bind("<Configure>", on_canvas_resize)
-        self.scroll_canvas = canvas
-        self.root.bind_all("<MouseWheel>", self._scroll_wheel, add="+")
-        self.root.bind_all("<Button-4>", self._scroll_wheel, add="+")
-        self.root.bind_all("<Button-5>", self._scroll_wheel, add="+")
-        return body
-
-    def _scroll_wheel(self, event):
-        """No interferir con la lista de jugadores ni con su propio log."""
-        try:
-            if event.widget.winfo_toplevel() is not self.root:
-                return
-            if isinstance(event.widget, (self.tk.Text, self.ttk.Treeview, self.ttk.Combobox)):
-                return
-            if getattr(event, "num", None) in (4, 5):
-                direction = -1 if event.num == 4 else 1
-            else:
-                direction = -1 if event.delta > 0 else 1
-            self.scroll_canvas.yview_scroll(direction * 3, "units")
-        except (AttributeError, self.tk.TclError):
-            pass
-
     def _build(self):
+        """Panel compacto con prioridad para participantes y lista de espera."""
         tk, ttk = self.tk, self.ttk
-        body = self._create_scroll_body()
-        title = ttk.Frame(body)
-        title.pack(fill="x", padx=14, pady=(10, 4))
-        ttk.Label(title, text="KOF 2002  |  ANFITRION", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(title, text="Los jugadores usan los mismos botones; el anfitrión convierte P1 y P2.",
-                  style="Muted.TLabel").pack(anchor="w", pady=(3, 0))
 
         self.port_var = tk.StringVar(value=str(DEFAULT_PORT))
         self.lan_var = tk.BooleanVar(value=False)
-        self.backend_var = tk.StringVar(value="2 joysticks virtuales Xbox 360 (P1 y P2)")
-        self.input_diagnostic_var = tk.StringVar(value="MANDOS: abre la sala antes de iniciar MAME para crear los dos joysticks virtuales.")
-        # Recuperacion por Save State desactivada; no aparece en la interfaz.
+        self.input_diagnostic_var = tk.StringVar(
+            value="Abre la sala antes de iniciar MAME.")
+        self.host_url_var = tk.StringVar(value="Sala no publicada.")
+        self.api_status_var = tk.StringVar(value="API: sala no publicada")
+        self.roster_count_var = tk.StringVar(
+            value="0 conectados | P1 libre | P2 libre | En espera: 0")
+        self.activity_visible = False
 
-        form = ttk.Frame(body)
-        form.pack(fill="x", padx=14, pady=(3, 2))
-        self._entry(form, "Puerto local", self.port_var, 12)
-        ttk.Label(form, text="Sala abierta: se accede solo con el enlace, sin contraseña.",
-                  style="Muted.TLabel").pack(side="left", pady=(19, 0))
+        body = ttk.Frame(self.root)
+        body.pack(fill="both", expand=True, padx=10, pady=7)
 
-        choices = ttk.Frame(body)
-        choices.pack(fill="x", padx=14, pady=6)
-        ttk.Label(choices, text="Sin video ni audio", style="Muted.TLabel").pack(side="left", padx=(0, 20))
-        ttk.Checkbutton(choices, text="Permitir LAN", variable=self.lan_var).pack(side="left")
-        mode = ttk.Frame(body)
-        mode.pack(fill="x", padx=14, pady=4)
-        ttk.Label(mode, text="Enviar acciones mediante:").pack(side="left", padx=(0, 10))
-        self.backend_widget = ttk.Label(mode, text="2 joysticks virtuales Xbox 360 (P1 + P2)")
-        self.backend_widget.pack(side="left")
+        # La consola se aloja al final y solo ocupa altura si el usuario la abre.
+        activity_shell = ttk.Frame(body)
+        activity_shell.pack(side="bottom", fill="x", pady=(5, 0))
+        activity_heading = ttk.Frame(activity_shell)
+        activity_heading.pack(fill="x")
+        self.activity_toggle = ttk.Button(
+            activity_heading, text="ACTIVIDAD DEL SERVIDOR ▸",
+            command=self._toggle_activity)
+        self.activity_toggle.pack(side="left")
+        self.log = tk.Text(
+            activity_shell, height=5, bg="#101d34", fg="#dce9ff",
+            relief="flat", font=("Consolas", 9),
+            insertbackground="#fff", wrap="word", state="disabled")
+        # La consola no se empaqueta hasta pulsar el boton de actividad.
 
-        diagnostics = ttk.Frame(body)
-        diagnostics.pack(fill="x", padx=14, pady=(1, 3))
-        ttk.Button(diagnostics, text="VER MANDOS EN WINDOWS", command=self._show_windows_gamepads).pack(side="left")
-        tk.Label(body, textvariable=self.input_diagnostic_var, bg="#0b1323", fg="#7fe5ba",
-                 anchor="w", justify="left", wraplength=850, font=("Segoe UI", 9)).pack(
-                    fill="x", padx=14, pady=(0, 3))
+        header = ttk.Frame(body)
+        header.pack(side="top", fill="x", pady=(0, 5))
+        ttk.Label(header, text=f"KOFMULTI | ANFITRION v{APP_VERSION}",
+                  style="Title.TLabel").pack(side="left")
+        ttk.Checkbutton(header, text="Permitir LAN",
+                        variable=self.lan_var).pack(side="right")
+        port_group = ttk.Frame(header)
+        port_group.pack(side="right", padx=(0, 10))
+        ttk.Label(port_group, text="Puerto:").pack(side="left", padx=(0, 4))
+        ttk.Entry(port_group, textvariable=self.port_var,
+                  width=7).pack(side="left")
 
-        cmds = ttk.Frame(body)
-        cmds.pack(fill="x", padx=14, pady=(7, 5))
-        ttk.Button(cmds, text="1. ABRIR SALA", command=self._start_server).pack(side="left", padx=(0, 8))
-        ttk.Button(cmds, text="2. PUBLICAR EN INTERNET", command=self._start_tunnel).pack(side="left", padx=(0, 8))
-        ttk.Button(cmds, text="3. INICIAR KOF", command=self._start_game).pack(side="left")
-        ttk.Button(cmds, text="CERRAR SALA", command=self._stop_server).pack(side="right")
+        commands = ttk.Frame(body)
+        commands.pack(side="top", fill="x", pady=(0, 5))
+        ttk.Button(commands, text="1. ABRIR SALA",
+                   command=self._start_server).pack(side="left", padx=(0, 6))
+        ttk.Button(commands, text="2. PUBLICAR EN INTERNET",
+                   command=self._start_tunnel).pack(side="left", padx=(0, 6))
+        ttk.Button(commands, text="3. INICIAR KOF",
+                   command=self._start_game).pack(side="left")
+        ttk.Button(commands, text="CERRAR SALA",
+                   command=self._stop_server).pack(side="right")
+
+        pads = ttk.Frame(body)
+        pads.pack(side="top", fill="x", pady=(0, 4))
+        ttk.Label(pads, text="2 joysticks Xbox 360",
+                  style="Muted.TLabel").pack(side="left", padx=(0, 8))
+        ttk.Button(pads, text="Ver mandos",
+                   command=self._show_windows_gamepads).pack(side="right")
+        ttk.Label(pads, textvariable=self.input_diagnostic_var,
+                  style="Muted.TLabel", width=30, anchor="w").pack(
+                      side="left", fill="x", expand=True)
 
         address = ttk.Frame(body)
-        address.pack(fill="x", padx=14, pady=(3, 5))
-        self.host_url_var = tk.StringVar(value="Sala no publicada. Abre sala y después publica en Internet.")
-        tk.Label(address, textvariable=self.host_url_var, bg="#0b1323", fg="#78d7fc",
-                 wraplength=420, anchor="w", justify="left", font=("Segoe UI", 10))\
-            .pack(side="left", fill="x", expand=True)
-        ttk.Button(address, text="Copiar acceso", command=self._copy_join).pack(side="right")
-        ttk.Button(address, text="Reenviar a API", command=self._resync_api).pack(side="right", padx=(0, 7))
-        self.api_status_var = tk.StringVar(value="API: aún no se ha publicado la sala")
-        ttk.Label(body, textvariable=self.api_status_var, style="Muted.TLabel")\
-            .pack(anchor="w", padx=14, pady=(0, 3))
+        address.pack(side="top", fill="x", pady=(0, 3))
+        ttk.Label(address, text="Sala:").pack(side="left", padx=(0, 5))
+        ttk.Button(address, text="Copiar acceso",
+                   command=self._copy_join).pack(side="right")
+        ttk.Button(address, text="Reenviar API",
+                   command=self._resync_api).pack(side="right", padx=(0, 5))
+        ttk.Entry(address, textvariable=self.host_url_var,
+                  state="readonly").pack(side="left", fill="x", expand=True)
+
+        ttk.Label(body, textvariable=self.api_status_var,
+                  style="Muted.TLabel").pack(
+                      side="top", fill="x", pady=(0, 4))
 
         roster_header = ttk.Frame(body)
-        roster_header.pack(fill="x", padx=14, pady=(3, 2))
-        ttk.Label(roster_header, text="JUGADORES CONECTADOS Y LISTA DE ESPERA", style="Muted.TLabel").pack(side="left")
-        ttk.Button(roster_header, text="Expulsar seleccionado", command=self._kick_selected).pack(side="right")
+        roster_header.pack(side="top", fill="x", pady=(1, 3))
+        ttk.Label(roster_header, text="JUGADORES Y LISTA DE ESPERA",
+                  style="TLabel").pack(side="left")
+        ttk.Button(roster_header, text="Expulsar seleccionado",
+                   command=self._kick_selected).pack(side="right")
+        ttk.Label(roster_header, textvariable=self.roster_count_var,
+                  style="Muted.TLabel").pack(side="right", padx=(0, 10))
+
+        # La lista tiene todo el alto restante y crece al maximizar.
         table_holder = ttk.Frame(body)
-        table_holder.pack(fill="both", expand=True, padx=14)
-        self.roster = ttk.Treeview(table_holder, columns=("slot", "name", "id"), show="headings", height=4)
-        for key, title, width in (("slot", "Posición", 170), ("name", "Participante", 350), ("id", "ID", 75)):
+        table_holder.pack(side="top", fill="both", expand=True)
+        self.roster = ttk.Treeview(
+            table_holder, columns=("slot", "name", "id"),
+            show="headings", height=12, selectmode="browse")
+        for key, title, width in (
+            ("slot", "Posicion / Estado", 205),
+            ("name", "Participante", 390),
+            ("id", "ID", 75),
+        ):
             self.roster.heading(key, text=title)
-            self.roster.column(key, width=width, minwidth=65, stretch=True, anchor="w" if key == "name" else "center")
+            self.roster.column(key, width=width, minwidth=60, stretch=True,
+                               anchor="w" if key == "name" else "center")
         self.roster.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(table_holder, orient="vertical", command=self.roster.yview)
+        scroll = ttk.Scrollbar(
+            table_holder, orient="vertical", command=self.roster.yview)
         self.roster.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
-        ttk.Label(body, text="ACTIVIDAD DEL SERVIDOR", style="Muted.TLabel")\
-            .pack(anchor="w", padx=14, pady=(0, 3))
-        self.log = tk.Text(body, height=5, bg="#101d34", fg="#dce9ff", relief="flat",
-                           font=("Consolas", 9), insertbackground="#fff", wrap="word", state="disabled")
-        self.log.pack(fill="x", padx=14, pady=(0, 6))
-        self._append("Sala sin contraseña: comparte el enlace únicamente con quienes quieras invitar.")
-        self._append("Al publicar, la URL se enviará a api.isupol.edu.ec y los jugadores la consultarán automáticamente.")
-        self._append("Controles P1 universales: el anfitrión convierte automáticamente a P2 según el turno.")
-        self._append("MAME 0.132 original: joysticks virtuales DirectInput. Primero ABRIR SALA, luego INICIAR KOF.")
-        self._append("Abre VER MANDOS EN WINDOWS (joy.cpl). Comprueba 2 Xbox 360; desconecta otros mandos para evitar alterar P1/P2.")
-        self._append("Solo se reciben botones de juego; ningún usuario puede controlar tu escritorio. Mandos virtuales requieren ViGEmBus en este PC.")
-        self._append("Temporizadores: START 30 s e inactividad 60 s. Recuperación por Save State desactivada.")
-        self._show_roster({"players": {"1": None, "2": None}, "queue": [], "spectators": []})
+
+        self._append("Sala sin contrasena. Comparte el enlace solo con tus invitados.")
+        self._append("El enlace de la sala se publica automaticamente en la API.")
+        self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
+        self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
+        self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
+        self._show_roster({
+            "players": {"1": None, "2": None},
+            "queue": [], "spectators": [], "total": 0})
+
+    def _toggle_activity(self):
+        """Muestra u oculta la consola sin desplazar a la tabla."""
+        self.activity_visible = not self.activity_visible
+        if self.activity_visible:
+            self.log.pack(fill="x", pady=(4, 0))
+            self.activity_toggle.configure(
+                text="OCULTAR ACTIVIDAD DEL SERVIDOR ▾")
+            self.log.see("end")
+        else:
+            self.log.pack_forget()
+            self.activity_toggle.configure(
+                text="ACTIVIDAD DEL SERVIDOR ▸")
 
     def _append(self, line):
         self.log.configure(state="normal")
@@ -1795,13 +1798,19 @@ class HostGUI:
             pass
 
     def _show_roster(self, data):
+        """Redibuja sin perder el jugador seleccionado ni el scroll."""
+        selection = self.roster.selection()
+        selected_uid = self.member_by_tree_row.get(selection[0]) if selection else None
+        old_scroll = self.roster.yview()
         for item in self.roster.get_children():
             self.roster.delete(item)
         self.member_by_tree_row.clear()
         scores = data.get("scores", {})
+
         def with_score(person):
             wins = scores.get(person["id"], scores.get(str(person["id"]), 0))
             return f"{person['name']} ({wins} victorias)" if wins else person["name"]
+
         for slot in (1, 2):
             guest = data.get("players", {}).get(str(slot))
             if guest:
@@ -1809,16 +1818,45 @@ class HostGUI:
                 remaining = guest.get("timer_remaining", 0)
                 state = (f"BOT {remaining}s" if phase == "bot" else
                          f"START {remaining}s" if phase == "start" else f"ACTIVO {remaining}s")
-                row = self.roster.insert("", "end", values=(f"P{slot} - {state}", with_score(guest), guest["id"]))
+                row = self.roster.insert(
+                    "", "end",
+                    values=(f"P{slot} - {state}", with_score(guest), guest["id"]))
                 self.member_by_tree_row[row] = guest["id"]
             else:
-                self.roster.insert("", "end", values=(f"P{slot} - DISPONIBLE", "Libre", ""))
-        for i, guest in enumerate(data.get("queue", []), 1):
-            row = self.roster.insert("", "end", values=(f"EN ESPERA {i}", with_score(guest), guest["id"]))
+                self.roster.insert("", "end",
+                                   values=(f"P{slot} - DISPONIBLE", "Libre", ""))
+
+        waiting = data.get("queue", [])
+        for i, guest in enumerate(waiting, 1):
+            row = self.roster.insert(
+                "", "end",
+                values=(f"EN ESPERA {i}", with_score(guest), guest["id"]))
             self.member_by_tree_row[row] = guest["id"]
-        for guest in data.get("spectators", []):
-            row = self.roster.insert("", "end", values=("ESPECTADOR", with_score(guest), guest["id"]))
+        spectators = data.get("spectators", [])
+        for guest in spectators:
+            row = self.roster.insert(
+                "", "end",
+                values=("ESPECTADOR", with_score(guest), guest["id"]))
             self.member_by_tree_row[row] = guest["id"]
+
+        for row, uid in self.member_by_tree_row.items():
+            if uid == selected_uid:
+                self.roster.selection_set(row)
+                self.roster.focus(row)
+                break
+        if old_scroll:
+            self.roster.yview_moveto(old_scroll[0])
+
+        players = data.get("players", {})
+        p1 = "ocupado" if players.get("1") else "libre"
+        p2 = "ocupado" if players.get("2") else "libre"
+        total = data.get("total")
+        if total is None:
+            total = sum(bool(players.get(str(p))) for p in (1, 2))
+            total += len(waiting) + len(spectators)
+        self.roster_count_var.set(
+            f"{total} conectados  |  P1 {p1}  |  P2 {p2}"
+            f"  |  En espera: {len(waiting)}")
 
     def _start_server(self):
         if self.server is not None:
