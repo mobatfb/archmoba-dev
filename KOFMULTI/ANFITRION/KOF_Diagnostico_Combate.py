@@ -25,7 +25,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-VERSION = "1.4"
+VERSION = "1.5"
 HERE = pathlib.Path(__file__).resolve().parent
 LUA_FILE = HERE / "KOF_Diagnostico_Combate.lua"
 SESSION_DIR = HERE / "KOF_DIAG_SESIONES"
@@ -80,6 +80,28 @@ class GameEvent:
     reading: Reading
     kind: str
     contexts: tuple[str, ...]  # Cinco volcados de 32 bytes cada uno.
+
+
+def evaluar_perfect_por_perdida(
+    perdedor: int, estado: Reading, tiempo_cero_reciente: bool
+) -> Optional[tuple[int, str]]:
+    """Regla del usuario: ganador a 102, rival KO o derrota por tiempo.
+
+    No adjudica una victoria de equipo ni puntaje; se invoca al confirmar
+    el incremento de un contador de personajes perdidos.
+    """
+    if perdedor not in (1, 2):
+        return None
+    vencedor = 3 - perdedor
+    ganador_hp = estado.hp1 if vencedor == 1 else estado.hp2
+    perdedor_hp = estado.hp1 if perdedor == 1 else estado.hp2
+    if ganador_hp != 102:
+        return None
+    if perdedor_hp == 0 or perdedor_hp >= 128:
+        return vencedor, "KO"
+    if tiempo_cero_reciente and estado.timer == 0 and 0 <= perdedor_hp < 102:
+        return vencedor, "TIEMPO"
+    return None
 
 
 def parse_numbers(parts: list[str]) -> Optional[Reading]:
@@ -160,6 +182,9 @@ class DiagnosticsApp:
             value="EQUIPOS: pendiente | observar cambios de contador 0 a 3")
         self.last_outcome = tk.StringVar(
             value="Último final observado: pendiente de una secuencia 3 → 0")
+        self.perfect_count = {1: 0, 2: 0}
+        self.perfect_var = tk.StringVar(
+            value="PERFECT: P1=0 | P2=0 | KO/tiempo (solo diagnóstico)")
         self.frame_text = tk.StringVar(value="Fotograma emulado: --")
         self.watch_text = tk.StringVar(value="Cronómetro local: 00:00.0")
 
@@ -228,6 +253,8 @@ class DiagnosticsApp:
         ttk.Label(frame, textvariable=self.team_status,
                   style="Status.TLabel").pack(anchor="w", pady=(1, 3))
         ttk.Label(frame, textvariable=self.last_outcome,
+                  style="Status.TLabel").pack(anchor="w", pady=(1, 3))
+        ttk.Label(frame, textvariable=self.perfect_var,
                   style="Status.TLabel").pack(anchor="w", pady=(1, 3))
         for variable in (self.timer_text, self.counters_text, self.frame_text):
             ttk.Label(frame, textvariable=variable).pack(anchor="w", pady=1)
@@ -354,6 +381,9 @@ class DiagnosticsApp:
             self.command_id = 0
             self.team_status.set("EQUIPOS: esperando datos de MAME...")
             self.last_outcome.set("Último final observado: pendiente de secuencia 3 → 0")
+            self.perfect_count = {1: 0, 2: 0}
+            self.perfect_var.set(
+                "PERFECT: P1=0 | P2=0 | KO/tiempo (solo diagnóstico)")
             self.reset_watch()
 
             rom_dir = pathlib.Path(self.rom_folder.get().strip() or str(exe.parent))
@@ -459,6 +489,22 @@ class DiagnosticsApp:
             s.frame, event.kind, byte_label(s.hp1), byte_label(s.hp2),
             f"{s.lost1} / {s.lost2}", timer_label(s.timer)))
         self.event_items[row] = event
+        if event.kind.startswith("PERFECT_P1_"):
+            self.perfect_count[1] += 1
+            self.perfect_var.set(
+                f"PERFECT: P1={self.perfect_count[1]} | "
+                f"P2={self.perfect_count[2]} | KO/tiempo (diagnóstico)")
+            self.last_outcome.set(
+                f"PERFECT P1 por {event.kind.rsplit('_', 1)[-1]} "
+                f"| fotograma {s.frame} | no suma puntos")
+        elif event.kind.startswith("PERFECT_P2_"):
+            self.perfect_count[2] += 1
+            self.perfect_var.set(
+                f"PERFECT: P1={self.perfect_count[1]} | "
+                f"P2={self.perfect_count[2]} | KO/tiempo (diagnóstico)")
+            self.last_outcome.set(
+                f"PERFECT P2 por {event.kind.rsplit('_', 1)[-1]} "
+                f"| fotograma {s.frame} | no suma puntos")
         if event.kind.startswith("MARCA_"):
             self.status.set("Marca del usuario registrada: " + event.kind)
         if event.kind in (
@@ -660,7 +706,19 @@ def selftest():
     assert [p1_first.lost1, p1_second.lost1, p1_last.lost1,
             p1_reset.lost1] == [1, 2, 3, 0]
     assert p1_reset.frame - p1_last.frame == 533
-    print("OK: Byte con signo, BCD, perdidas 0->1->2->3 y reinicio 3->0.")
+    # Datos de las dos partidas analizadas: 3 PERFECT de P1 y 1 de P2.
+    assert evaluar_perfect_por_perdida(2, first, False) == (1, "KO")
+    assert evaluar_perfect_por_perdida(2, timeout, True) == (1, "TIEMPO")
+    assert evaluar_perfect_por_perdida(2, last, False) == (1, "KO")
+    assert evaluar_perfect_por_perdida(1, p1_first, False) == (2, "KO")
+    assert evaluar_perfect_por_perdida(1, p1_second, False) is None
+    assert evaluar_perfect_por_perdida(2, p2_first, False) is None
+    assert evaluar_perfect_por_perdida(1, p1_last, False) is None
+    assert evaluar_perfect_por_perdida(
+        2, Reading(5000, 102, 102, 0, 1, 0, 0, 0, 0), True) is None
+    assert evaluar_perfect_por_perdida(
+        2, Reading(5000, 102, 35, 0, 1, 0, 0, 0, 0), False) is None
+    print("OK: PERFECT KO o tiempo, 102 HP, sin falso PERFECT por empate.")
 
 
 if __name__ == "__main__":
