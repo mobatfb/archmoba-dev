@@ -44,7 +44,12 @@ except ImportError:
     LuaHealthMonitor = None
     STATE_FILE_NAME = "KOF_ARENA_LUA_ESTADO.txt"
 
-APP_VERSION = "1.16.8"
+try:
+    from KOF_Diagnostico_Combate import parse_event as parse_combat_event
+except ImportError:
+    parse_combat_event = None
+
+APP_VERSION = "1.16.9"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1588,6 +1593,75 @@ class HostServer:
         self.ui_notify("log", "Sala cerrada y controles liberados.")
 
 
+class CombatDiagnosticMonitor:
+    """Observa eventos Lua v1.5, sin declarar ganadores ni sumar puntos."""
+
+    WATCH = frozenset((
+        "P1_PERSONAJE_PERDIDO", "P2_PERSONAJE_PERDIDO",
+        "POSIBLE_FIN_EQUIPO_P1", "POSIBLE_FIN_EQUIPO_P2",
+        "SECUENCIA_P1_3_A_0", "SECUENCIA_P2_3_A_0",
+        "TIEMPO_LLEGO_CERO",
+    ))
+
+    def __init__(self, process, path: pathlib.Path, session: pathlib.Path,
+                 notify: Callable[[str, Any], None]):
+        self.process = process
+        self.path = pathlib.Path(path)
+        self.session = pathlib.Path(session)
+        self.notify = notify
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(
+            target=self._loop, name="KOF-Combate-Lua", daemon=True)
+
+    def start(self):
+        if parse_combat_event is None:
+            self.notify("log", "Diagnóstico inactivo: falta KOF_Diagnostico_Combate.py.")
+            return
+        self.thread.start()
+        self.notify("log", "Diagnóstico KO v1.5 conectado (solo lectura y sin puntuar).")
+
+    def stop(self):
+        self.stop_event.set()
+
+    def _loop(self):
+        offset, pending = 0, b""
+        while not self.stop_event.is_set() and self.process.poll() is None:
+            try:
+                if self.path.is_file():
+                    size = self.path.stat().st_size
+                    if size < offset:
+                        offset, pending = 0, b""
+                    with self.path.open("rb") as file:
+                        file.seek(offset)
+                        data = file.read(128 * 1024)
+                        offset = file.tell()
+                    if data:
+                        lines = (pending + data).split(b"\n")
+                        pending = lines.pop()
+                        if len(pending) > 4096:
+                            pending = b""
+                        for raw in lines:
+                            if len(raw) > 4096:
+                                continue
+                            event = parse_combat_event(
+                                raw.decode("ascii", errors="replace"))
+                            if event is None:
+                                continue
+                            kind = event.kind
+                            if kind not in self.WATCH and not kind.startswith("PERFECT_P"):
+                                continue
+                            state = event.reading
+                            self.notify("combat_diagnostic", {
+                                "session": str(self.session), "event": kind,
+                                "frame": state.frame, "lost1": state.lost1,
+                                "lost2": state.lost2, "hp1": state.hp1,
+                                "hp2": state.hp2, "timer": state.timer,
+                            })
+            except (OSError, UnicodeError) as exc:
+                self.notify("log", "Error de lectura del diagnóstico KO: " + str(exc)[:90])
+            self.stop_event.wait(0.15)
+
+
 class HostGUI:
     """Interfaz que SOLO administra el servidor y la partida local."""
 
@@ -1612,6 +1686,8 @@ class HostGUI:
         self.game_process = None
         self.lua_mame_exe = None
         self.lua_monitor = None
+        self.combat_monitor = None
+        self.combat_session = None
         self.lua_state_path = BASE_DIR / STATE_FILE_NAME
         self.tunnel_process = None
         self.public_address = ""
@@ -1667,6 +1743,8 @@ class HostGUI:
             value="VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
         self.lua_perfect_var = tk.StringVar(
             value="PERFECT: P1=-- | P2=-- | solo observación, sin puntuar")
+        self.combat_result_var = tk.StringVar(
+            value="COMBATE: esperando diagnóstico KO y fin de equipo")
         self.host_url_var = tk.StringVar(value="Sala no publicada.")
         self.api_status_var = tk.StringVar(value="API: sala no publicada")
         self.roster_count_var = tk.StringVar(
@@ -1725,6 +1803,8 @@ class HostGUI:
         ttk.Label(body, textvariable=self.lua_health_var,
                   style="TLabel").pack(side="top", fill="x", pady=(0, 2))
         ttk.Label(body, textvariable=self.lua_perfect_var,
+                  style="Muted.TLabel").pack(side="top", fill="x", pady=(0, 2))
+        ttk.Label(body, textvariable=self.combat_result_var,
                   style="Muted.TLabel").pack(side="top", fill="x", pady=(0, 4))
 
         pads = ttk.Frame(body)
@@ -1735,6 +1815,8 @@ class HostGUI:
                    command=self._show_windows_gamepads).pack(side="right")
         ttk.Button(pads, text="Analizar salud",
                    command=self._launch_health_analyzer).pack(side="right", padx=(0, 6))
+        ttk.Button(pads, text="Registros KO",
+                   command=self._open_combat_session).pack(side="right", padx=(0, 6))
         ttk.Label(pads, textvariable=self.input_diagnostic_var,
                   style="Muted.TLabel", width=30, anchor="w").pack(
                       side="left", fill="x", expand=True)
@@ -1793,7 +1875,7 @@ class HostGUI:
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
-        self._append("Lua MAME 0.289: lee vida, tiempo y PERFECT P1/P2, sin escribir ni sumar puntos.")
+        self._append("Lua MAME 0.289: lee vida, tiempo, KO, PERFECT y posibles finales, sin puntuar.")
         self._append("Entrenamiento de salud: los golpes se observan en RAM, pero nunca suman puntos por sí solos.")
         self._append("Puntaje = Ganados + Perfecto (1 punto por cada uno).")
         self._show_roster({
@@ -1886,6 +1968,37 @@ class HostGUI:
                 self._append(
                     f"Lua: PERFECT calculados P1={data.perfect_p1} / "
                     f"P2={data.perfect_p2}. No se modificó el marcador.")
+            elif kind == "combat_diagnostic":
+                if self.combat_session is None or data["session"] != str(self.combat_session):
+                    continue
+                event, frame = data["event"], data["frame"]
+                if event.endswith("_PERSONAJE_PERDIDO"):
+                    loser = event[1]
+                    count = data["lost1"] if loser == "1" else data["lost2"]
+                    self._append(f"Combate: P{loser} pierde personaje "
+                                 f"({count}/3), fotograma {frame}.")
+                elif event.startswith("PERFECT_P"):
+                    self._append(f"Combate: {event}, fotograma {frame}; "
+                                 "observación sin puntuar.")
+                elif event.startswith("POSIBLE_FIN_EQUIPO_P"):
+                    loser = event[-1]
+                    winner = "2" if loser == "1" else "1"
+                    self.combat_result_var.set(
+                        f"COMBATE: posible ganador P{winner} | P{loser} perdió 3/3 "
+                        "| aún SIN CONFIRMAR")
+                    self._append(f"Combate: equipo P{loser} posiblemente eliminado, "
+                                 f"ganador provisional P{winner} (frame {frame}).")
+                elif event.startswith("SECUENCIA_P"):
+                    loser = event[len("SECUENCIA_P")]
+                    winner = "2" if loser == "1" else "1"
+                    self.combat_result_var.set(
+                        f"COMBATE: secuencia P{loser} 3→0; posible ganador P{winner} "
+                        "| falta corroborar resultado")
+                    self._append(f"Combate: contador de P{loser} pasó 3→0 "
+                                 f"(frame {frame}); marcador intacto.")
+                elif event == "TIEMPO_LLEGO_CERO":
+                    self._append(f"Combate: reloj llegó a 00 (frame {frame}); "
+                                 "sin adjudicar victoria.")
             elif kind == "lua_status":
                 if str(data).startswith("Lua conectado:"):
                     if "Lua desactivado" in self.lua_health_var.get():
@@ -2032,6 +2145,16 @@ class HostGUI:
         except OSError as exc:
             self.messagebox.showerror("Analizador de salud", str(exc))
 
+    def _open_combat_session(self):
+        if self.combat_session is None or not self.combat_session.is_dir():
+            self.messagebox.showinfo(
+                "Registros KO", "Primero inicia KOF con MAME 0.289 + Lua.")
+            return
+        try:
+            os.startfile(str(self.combat_session))
+        except OSError as exc:
+            self.messagebox.showerror("Registros KO", str(exc))
+
     def _start_tunnel(self):
         if self.server is None:
             self.messagebox.showwarning("Primero abre la sala", "Pulsa 1. ABRIR SALA.")
@@ -2114,6 +2237,9 @@ class HostGUI:
             if not script.is_file():
                 raise FileNotFoundError(
                     "Falta KOF_Salud_MAME289.lua junto al anfitrión.")
+            if not (BASE_DIR / "KOF_Diagnostico_Combate.lua").is_file() or parse_combat_event is None:
+                raise FileNotFoundError(
+                    "Faltan KOF_Diagnostico_Combate.lua o KOF_Diagnostico_Combate.py.")
         except (OSError, ValueError, RuntimeError) as exc:
             self.messagebox.showerror("MAME 0.289", str(exc))
             return
@@ -2122,6 +2248,7 @@ class HostGUI:
         self.lua_health_var.set(
             "VIDA P1: --  |  VIDA P2: --  |  inicia el juego para leer Lua")
         self.lua_perfect_var.set("PERFECT: P1=0 | P2=0 | esperando Lua V3")
+        self.combat_result_var.set("COMBATE: preparado para registrar KO y fin de equipo")
         self._append("Seleccionado MAME 0.289, sin tocar tu MAME 0.132. "
                      "Se activará el monitor Lua al INICIAR KOF.")
 
@@ -2134,6 +2261,7 @@ class HostGUI:
         self.mame_choice_var.set("Emulador: MAME 0.132 original")
         self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
         self.lua_perfect_var.set("PERFECT: Lua desactivado en MAME 0.132")
+        self.combat_result_var.set("COMBATE: diagnóstico desactivado en MAME 0.132")
         self._append("Volviste al MAME 0.132 original sin alterar ROM ni mandos.")
 
     def _start_game(self):
@@ -2153,6 +2281,9 @@ class HostGUI:
 
     def _game_worker(self):
         try:
+            if self.combat_monitor is not None:
+                self.combat_monitor.stop()
+                self.combat_monitor = None
             chosen_exe = self.lua_mame_exe
             if chosen_exe is None:
                 # Ruta antigua probada: no modificar comportamiento de MAME 0.132.
@@ -2228,11 +2359,28 @@ class HostGUI:
                        "-ctrlrpath", str(profile.parent),
                        "-ctrlr", profile.stem,
                        "-joystick", "-autoboot_script", str(script)]
+            diagnostic_script = BASE_DIR / "KOF_Diagnostico_Combate.lua"
+            if not diagnostic_script.is_file() or parse_combat_event is None:
+                raise FileNotFoundError(
+                    "Se necesitan KOF_Diagnostico_Combate.lua y .py para MAME 0.289.")
+            session = (BASE_DIR / "KOF_DIAG_SESIONES" /
+                       f"{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns() % 100000:05d}")
+            session.mkdir(parents=True, exist_ok=False)
+            self.combat_session = session
+            diag_events = session / "KOF_DIAG_EVENTOS.tsv"
             env = os.environ.copy()
             env["KOF_ARENA_LUA_STATE"] = str(self.lua_state_path)
+            env["KOF_ARENA_DIAG_SCRIPT"] = str(diagnostic_script)
+            for key, filename in (
+                ("KOF_DIAG_STATE", "KOF_DIAG_ESTADO.tsv"),
+                ("KOF_DIAG_EVENTS", "KOF_DIAG_EVENTOS.tsv"),
+                ("KOF_DIAG_CLIPS", "KOF_DIAG_CLIPS.tsv"),
+                ("KOF_DIAG_COMMAND", "KOF_DIAG_COMANDO.tsv"),
+            ):
+                env[key] = str(session / filename)
             self.notify("log",
-                        "Iniciando MAME 0.289 con Lua y dos joysticks "
-                        "virtuales; marcador automático sigue desactivado.")
+                        "Iniciando MAME 0.289 con Lua V3 y diagnóstico KO v1.5. "
+                        "No se modifica marcador ni RAM.")
             self.game_process = subprocess.Popen(
                 command, cwd=str(chosen_exe.parent), env=env)
             self.lua_monitor = LuaHealthMonitor(
@@ -2240,6 +2388,10 @@ class HostGUI:
                 file_path=self.lua_state_path,
                 notify=self.notify)
             self.lua_monitor.start()
+            self.combat_monitor = CombatDiagnosticMonitor(
+                self.game_process, diag_events, session, self.notify)
+            self.combat_monitor.start()
+            self.notify("log", "Registros KO: " + str(session))
             self.notify("log",
                         f"MAME 0.289 iniciado PID {self.game_process.pid}. "
                         "Lectura Neo Geo P1 0x108239 / P2 0x108439, "
@@ -2284,6 +2436,9 @@ class HostGUI:
         self._append("Enlace copiado. Cualquier persona que lo tenga puede entrar a la sala.")
 
     def _stop_server(self):
+        if self.combat_monitor is not None:
+            self.combat_monitor.stop()
+            self.combat_monitor = None
         if self.lua_monitor is not None:
             self.lua_monitor.stop()
             self.lua_monitor = None
