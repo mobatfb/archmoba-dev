@@ -27,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -50,7 +51,7 @@ try:
 except ImportError:
     parse_combat_event = None
 
-APP_VERSION = "1.16.13"
+APP_VERSION = "1.16.14"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -251,6 +252,11 @@ def read_published_room_url(timeout: float = 8.0) -> str:
     })
     with urlopen(request, timeout=timeout) as response:
         return extract_room_url(json.load(response))
+
+
+def canonical_player_name(value: str) -> str:
+    """Identidad de nombre dentro de la sala: insensible a mayúsculas y espacios."""
+    return " ".join(unicodedata.normalize("NFKC", str(value)).split()).casefold()
 
 
 def _json(obj: dict) -> str:
@@ -1061,9 +1067,18 @@ class Room:
         with self.lock:
             if len(self.guests) >= self.max_guests:
                 raise ValueError("Sala llena; vuelve a intentarlo despues.")
+            display_name = " ".join(str(name).split())[:24]
+            if not display_name:
+                raise ValueError("Escribe un nombre de jugador válido.")
+            wanted = canonical_player_name(display_name)
+            if any(canonical_player_name(guest.name) == wanted
+                   for guest in self.guests.values()):
+                raise ValueError(
+                    f"El nombre '{display_name}' ya está en uso en esta sala. "
+                    "Elige otro nombre para conectarte.")
             uid = self.next_uid
             self.next_uid += 1
-            guest = Guest(uid, name[:24] or f"Jugador {uid}", websocket)
+            guest = Guest(uid, display_name, websocket)
             self.guests[uid] = guest
             self._take_or_queue(guest)
             return guest
@@ -1332,6 +1347,126 @@ class Room:
                              **snapshot}) for guest in self.guests.values()]
 
 
+class LuaTeamScoreTracker:
+    """Puntúa SOLO el fin de un equipo 3/3 detectado por RAM de MAME.
+
+    Requiere observar 0->1->2->3 pérdidas del mismo equipo, sin saltos ni
+    cambios de jugadores. Registra a lo sumo una victoria por secuencia;
+    vuelve a armarse con un nuevo combate 0/0. Acumula cada PERFECT por
+    personaje perdido (un máximo de tres por jugador y enfrentamiento).
+    """
+
+    def __init__(self, commit: Callable[..., bool]):
+        self.commit = commit
+        self.session = None
+        self._reset_match()
+
+    def _reset_match(self):
+        self.pair: Optional[tuple[int, int]] = None
+        self.losses = {1: 0, 2: 0}
+        self.perfects = {1: set(), 2: set()}
+        self.finished = False
+        self.invalid = False
+        self.last_frame = -1
+
+    def start_session(self, session: str):
+        self.session = str(session)
+        self._reset_match()
+
+    def observe_health(self, state: Any):
+        """Rearmar solo cuando aparece otro combate, no por otro evento KO."""
+        if not self.finished:
+            return
+        if (state.rounds_lost_p1 == 0 and state.rounds_lost_p2 == 0
+                and 1 <= state.p1 <= 102 and 1 <= state.p2 <= 102
+                and state.timer is not None and state.timer > 0):
+            self._reset_match()
+
+    def on_event(self, data: dict, active_pair: Optional[tuple[int, int]]
+                 ) -> Optional[dict]:
+        if not isinstance(data, dict) or self.session != data.get("session"):
+            return None
+        kind = data.get("event")
+        frame = data.get("frame")
+        l1, l2 = data.get("lost1"), data.get("lost2")
+        if (not isinstance(kind, str) or not isinstance(frame, int)
+                or frame < self.last_frame
+                or not all(isinstance(count, int) and 0 <= count <= 3
+                           for count in (l1, l2))):
+            return None
+        self.last_frame = frame
+        if self.finished or self.invalid:
+            return None
+        if (not isinstance(active_pair, tuple) or len(active_pair) != 2
+                or any(not isinstance(uid, int) or uid <= 0 for uid in active_pair)
+                or active_pair[0] == active_pair[1]):
+            # Una baja de un jugador que quedó solo nunca produce puntos.
+            self._reset_match()
+            self.last_frame = frame
+            return None
+        if self.pair is None:
+            self.pair = active_pair
+        elif self.pair != active_pair:
+            # No atribuir a un sustituto las bajas del jugador anterior.
+            self._reset_match()
+            self.pair = active_pair
+            self.last_frame = frame
+
+        if kind in ("P1_PERSONAJE_PERDIDO", "P2_PERSONAJE_PERDIDO"):
+            loser = int(kind[1])
+            count = l1 if loser == 1 else l2
+            expected = self.losses[loser] + 1
+            if count == self.losses[loser]:
+                return None
+            if count != expected:
+                self.invalid = True  # hubo un salto o datos incompletos
+                return None
+            self.losses[loser] = count
+            return None
+
+        if kind in ("PERFECT_P1_KO", "PERFECT_P2_KO",
+                    "PERFECT_P1_TIEMPO", "PERFECT_P2_TIEMPO"):
+            winner = int(kind[len("PERFECT_P")])
+            loser = 3 - winner
+            losing_count = l1 if loser == 1 else l2
+            hp_winner = data.get("hp1") if winner == 1 else data.get("hp2")
+            hp_loser = data.get("hp1") if loser == 1 else data.get("hp2")
+            timer = data.get("timer")
+            valid_ko = isinstance(hp_loser, int) and (
+                hp_loser == 0 or 128 <= hp_loser <= 255)
+            valid_time = (isinstance(hp_loser, int) and 0 <= hp_loser < 102
+                          and timer == 0)
+            if (self.losses[loser] == losing_count and 1 <= losing_count <= 3
+                    and hp_winner == 102
+                    and ((kind.endswith("_KO") and valid_ko)
+                         or (kind.endswith("_TIEMPO") and valid_time))):
+                self.perfects[winner].add((loser, losing_count))
+            return None
+
+        if kind not in ("POSIBLE_FIN_EQUIPO_P1", "POSIBLE_FIN_EQUIPO_P2"):
+            return None
+        loser = int(kind[-1])
+        winner = 3 - loser
+        losing_count = l1 if loser == 1 else l2
+        winning_count = l1 if winner == 1 else l2
+        hp_winner = data.get("hp1") if winner == 1 else data.get("hp2")
+        if (self.losses[loser] != 3 or losing_count != 3
+                or winning_count >= 3
+                or self.losses[winner] != winning_count
+                or not isinstance(hp_winner, int) or not 1 <= hp_winner <= 102):
+            return None
+        self.finished = True  # primero bloquear duplicados; después registrar
+        perfect_counts = (len(self.perfects[1]), len(self.perfects[2]))
+        accepted = self.commit(
+            winner, False, self.pair, perfect_counts=perfect_counts)
+        if not accepted:
+            return None
+        return {
+            "winner": winner, "loser": loser, "frame": frame,
+            "perfect_p1": perfect_counts[0], "perfect_p2": perfect_counts[1],
+        }
+
+
 class HostServer:
     def __init__(self, port: int, ui_notify: Callable[[str, Any], None],
                  device: Any, bind_lan: bool = False,
@@ -1361,6 +1496,7 @@ class HostServer:
         self._health_socket.setblocking(False)
         self.room = Room(device, slot_events=self._slot_event,
                          input_observer=self._observe_attack)
+        self.lua_scorer = LuaTeamScoreTracker(self.record_game_outcome)
         self.checkpoints.room = self.room
         self.bind_lan = bind_lan
         # Identificador de la instancia, informativo (no es una contraseña).
@@ -1382,8 +1518,18 @@ class HostServer:
         }, separators=(",", ":")).encode("utf-8")
         self._health_socket.sendto(payload, ("127.0.0.1", HEALTH_ANALYZER_PORT))
 
+    def active_player_pair(self) -> Optional[tuple[int, int]]:
+        """Pareja estable con START pulsado; nadie de la cola puede puntuar."""
+        with self.room.lock:
+            players = {guest.slot: guest for guest in self.room.guests.values()
+                       if guest.slot in (1, 2) and guest.active and guest.start_pressed}
+            if set(players) != {1, 2}:
+                return None
+            return players[1].uid, players[2].uid
+
     def record_game_outcome(self, winner_slot: int, perfect: bool,
-                            expected_uids: tuple[int, int]) -> bool:
+                            expected_uids: tuple[int, int],
+                            *, perfect_counts: Optional[tuple[int, int]] = None) -> bool:
         """Solo acepta resultados corroborados por lectura LOCAL del juego.
 
         Nunca se puntúa por teclas, cola, desconexiones ni botones manuales.
@@ -1400,20 +1546,34 @@ class HostServer:
                 return False
             if (participants[1].uid, participants[2].uid) != tuple(expected_uids):
                 return False
+            if perfect_counts is not None:
+                if (len(perfect_counts) != 2
+                        or any(not isinstance(n, int) or not 0 <= n <= 3
+                               for n in perfect_counts)):
+                    return False
             winner = participants[winner_slot]
             loser = participants[3 - winner_slot]
             self.scores[winner.uid] = self.scores.get(winner.uid, 0) + 1
             self.losses[loser.uid] = self.losses.get(loser.uid, 0) + 1
-            if perfect:
-                self.perfects[winner.uid] = self.perfects.get(winner.uid, 0) + 1
+            if perfect_counts is None:
+                if perfect:
+                    self.perfects[winner.uid] = self.perfects.get(winner.uid, 0) + 1
+            else:
+                for slot in (1, 2):
+                    count = perfect_counts[slot - 1]
+                    if count:
+                        uid = participants[slot].uid
+                        self.perfects[uid] = self.perfects.get(uid, 0) + count
             self.last_winner_uid = winner.uid
             self.last_winner_name = winner.name
             points = self.scores[winner.uid] + self.perfects.get(winner.uid, 0)
             self.ui_notify(
                 "log",
                 f"RESULTADO DEL JUEGO: P{winner_slot} {winner.name} ganó "
-                f"contra {loser.name}. PERFECT: {'sí' if perfect else 'no'}. "
-                f"Puntaje: {points}.")
+                f"contra {loser.name}. PERFECT: "
+                f"P1={self.perfects.get(participants[1].uid, 0)} / "
+                f"P2={self.perfects.get(participants[2].uid, 0)}. "
+                f"Puntaje ganador: {points}.")
             self._broadcast_state()
             return True
 
@@ -2142,7 +2302,9 @@ class HostGUI:
                     f"MAME {data['version']} | {pathlib.Path(data['path']).name} "
                     "| seleccionado manualmente")
             elif kind == "lua_health":
-                # Telemetría informativa. NO actualizar Ganados/Perdidos/Puntos.
+                # El marcador se rearma solo con datos de nueva partida 0/0.
+                if self.server is not None:
+                    self.server.lua_scorer.observe_health(data)
                 self.lua_health_var.set(
                     f"VIDA P1: {data.p1_display}  |  VIDA P2: {data.p2_display}"
                     f"  |  TIEMPO: {data.timer_display}"
@@ -2150,17 +2312,32 @@ class HostGUI:
                 if data.timer is not None:
                     self.lua_perfect_var.set(
                         f"PERFECT OBSERVADOS: P1={data.perfect_p1} | "
-                        f"P2={data.perfect_p2} | KO/tiempo, sin puntuar")
+                        f"P2={data.perfect_p2} | KO/tiempo, marcador al terminar equipo")
                 else:
                     self.lua_perfect_var.set(
                         "PERFECT: requiere KOF_Salud_MAME289.lua V3")
             elif kind == "lua_perfect":
                 self._append(
                     f"Lua: PERFECT calculados P1={data.perfect_p1} / "
-                    f"P2={data.perfect_p2}. No se modificó el marcador.")
+                    f"P2={data.perfect_p2}. Se contabilizarán al finalizar 3/3.")
             elif kind == "combat_diagnostic":
                 if self.combat_session is None or data["session"] != str(self.combat_session):
                     continue
+                if self.server is not None:
+                    scored = self.server.lua_scorer.on_event(
+                        data, self.server.active_player_pair())
+                    if scored is not None:
+                        self.combat_result_var.set(
+                            f"COMBATE: GANADOR P{scored['winner']} (equipo 3/3) | "
+                            f"PERFECT P1={scored['perfect_p1']}, "
+                            f"P2={scored['perfect_p2']} | MARCADOR ACTUALIZADO")
+                        self._append(
+                            f"RESULTADO AUTOMÁTICO: equipo P{scored['loser']} "
+                            f"perdió sus 3 personajes. "
+                            f"Ganador P{scored['winner']}, victoria +1; "
+                            f"PERFECT P1={scored['perfect_p1']}, "
+                            f"P2={scored['perfect_p2']}.")
+                        continue
                 event, frame = data["event"], data["frame"]
                 if event.endswith("_PERSONAJE_PERDIDO"):
                     loser = event[1]
@@ -2173,9 +2350,10 @@ class HostGUI:
                 elif event.startswith("POSIBLE_FIN_EQUIPO_P"):
                     loser = event[-1]
                     winner = "2" if loser == "1" else "1"
-                    self.combat_result_var.set(
-                        f"COMBATE: posible ganador P{winner} | P{loser} perdió 3/3 "
-                        "| aún SIN CONFIRMAR")
+                    if self.server is None or not self.server.lua_scorer.finished:
+                        self.combat_result_var.set(
+                            f"COMBATE: equipo P{loser} 3/3 detectado; "
+                            "verificando jugadores y secuencia")
                     self._append(f"Combate: equipo P{loser} posiblemente eliminado, "
                                  f"ganador provisional P{winner} (frame {frame}).")
                 elif event.startswith("SECUENCIA_P"):
@@ -2612,6 +2790,8 @@ class HostGUI:
                        f"{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns() % 100000:05d}")
             session.mkdir(parents=True, exist_ok=False)
             self.combat_session = session
+            if self.server is not None:
+                self.server.lua_scorer.start_session(str(session))
             diag_events = session / "KOF_DIAG_EVENTOS.tsv"
             env = os.environ.copy()
             env["KOF_ARENA_LUA_STATE"] = str(self.lua_state_path)
@@ -2730,6 +2910,8 @@ class HostGUI:
         self._append("Enlace copiado. Cualquier persona que lo tenga puede entrar a la sala.")
 
     def _stop_server(self):
+        if self.server is not None:
+            self.server.lua_scorer.start_session("")
         if self.combat_monitor is not None:
             self.combat_monitor.stop()
             self.combat_monitor = None
