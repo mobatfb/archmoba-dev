@@ -1,6 +1,6 @@
 # KOFMULTI — Salud en vivo con MAME 0.289 y Lua
 
-**Versión mínima del anfitrión: 1.16.7 (experimental).**
+**Versión mínima del anfitrión: 1.16.8 (experimental, protocolo Lua V3).**
 
 Este modo evita depender de direcciones variables de Cheat Engine en Windows.
 MAME lee la memoria de la CPU Neo Geo mediante Lua y remite los valores
@@ -28,8 +28,11 @@ un respaldo funcional: el anfitrión permite seleccionar el ejecutable externo.
 3. Pulsa **1. ABRIR SALA**. Esto crea primero los dos joysticks virtuales.
 4. Pulsa **3. INICIAR KOF**. El anfitrión inicia MAME con
    `-autoboot_script`, habilita el perfil de mandos y crea el receptor de salud.
-5. Verás un estado como **VIDA P1: 102 | VIDA P2: 102**.
+5. Verás un estado como **VIDA P1: 102 | VIDA P2: 102**,
+   **TIEMPO: 60** y **PERFECT OBSERVADOS: P1=0 | P2=0**.
 6. Golpea a cualquiera de los dos personajes: observa que el valor adecuado baja.
+   Si el vencedor conserva **102/102** cuando el rival pierde un personaje
+   por KO (vida 0 o negativa) o por tiempo, la cuenta de PERFECT aumenta una vez.
 7. Verifica los controles con **Ver mandos** y, si hace falta, con
    TAB > Input Assignments en MAME 0.289. No se asegura que el perfil
    histórico de dos mandos sea 100 % compatible sin probarlo en Windows.
@@ -48,19 +51,52 @@ utilizan una carpeta separada: `KOF_ARENA_ESTADOS_0289`.
 | P1 HP | `0x108239` | Byte, inicialmente 102 |
 | P2 HP | `0x108439` | Byte, inicialmente 102 |
 | P1 Rounds Lost | `0x10A7E5` | Datos experimentales |
-| P2 Rounds Lost | `0x10A80B` | Datos experimentales |
+| P2 Rounds Lost | `0x10A80B` | Aumenta cuando se pierde un personaje |
+| Tiempo del juego | `0x10A7D2` | BCD: 0x60 = 60, 0x00 = 0 |
 
 El Lua crea un único archivo pequeño de telemetría
 `KOF_ARENA_LUA_ESTADO.txt` (en la carpeta del anfitrión cuando se lanza
 desde este). Las líneas utilizan el protocolo interno:
 
 ```text
-KOF_LUA_V1<TAB>secuencia<TAB>hp1<TAB>hp2<TAB>rounds_lost_p1<TAB>rounds_lost_p2
+KOF_LUA_V3<TAB>secuencia<TAB>hp1<TAB>hp2<TAB>perdidas1<TAB>perdidas2<TAB>ko1<TAB>ko2<TAB>tiempo<TAB>perfect1<TAB>perfect2
 ```
 
 El archivo se **sobrescribe** cuando hay cambios o aproximadamente cada
 0,5 segundos; no acumula partidas ni imágenes. El receptor Python comprueba
 rango de Byte, formato y número secuencial para evitar muestras incompletas.
+
+## Cómo se calcula PERFECT
+
+La verificación se realiza **en cada incremento del contador de personajes
+perdidos**, no simplemente al presionar un botón. El ganador debe conservar
+**102/102 HP**. El motivo puede ser:
+
+- **KO:** el rival llega a 0 HP o tiene un Byte de vida negativo
+  (128–255 interpretados como valores con signo).
+- **Tiempo:** el reloj llega a `00` y, cuando el contador finalmente
+  confirma quién perdió (hasta 500 fotogramas después), ese jugador
+  tiene menos de 102 puntos de vida.
+
+Si ambos permanecen en 102 HP cuando el tiempo termina, **no se contabiliza
+PERFECT** con esta regla. Cada pérdida da como máximo un PERFECT, aunque
+la vida permanezca en 0 durante muchos fotogramas.
+
+**Estos PERFECT son observaciones por personaje vencido, no victorias
+oficiales ni puntos de clasificación.** Se muestran en la interfaz del
+anfitrión, pero no se invoca `record_game_outcome` ni se modifica la tabla
+de Ganados, Perdidos, Perfecto y Puntaje hasta validar el final del combate.
+
+Con las dos capturas originales la regla produce estos resultados:
+**P1 = 3 PERFECT (2 KO, 1 por tiempo)** en la primera partida;
+**P2 = 1 PERFECT (KO)** en la segunda.
+
+Actualiza **los tres archivos a la vez**: `KOF_Anfitrion.py`,
+`KOF_Salud_MAME289.lua` y `KOF_MAME_Lua_Bridge.py`.
+La nueva telemetría V3 es recibida correctamente por el puente actualizado,
+que mantiene la lectura de los formatos V1 y V2.
+
+---
 
 ## Prueba aislada desde PowerShell (sin anfitrión)
 
