@@ -60,8 +60,10 @@ class ControlNetworkTests(unittest.TestCase):
         ws = connect(f"ws://127.0.0.1:{self.port}", open_timeout=5, close_timeout=2)
         ws.send(json.dumps({"type": "hello", "name": name}))
         welcome = recv_kind(ws, "welcome")
-        self.assertEqual(welcome["version"], "1.16.12")
+        self.assertEqual(welcome["version"], "1.16.13")
+        self.assertEqual(welcome["room_id"], self.host.room_id)
         state = recv_kind(ws, "state")
+        self.assertEqual(state["room_id"], self.host.room_id)
         return ws, state
 
     def test_input_reaches_host_and_virtual_adapter(self):
