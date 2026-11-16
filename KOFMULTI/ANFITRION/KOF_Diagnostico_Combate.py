@@ -25,7 +25,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-VERSION = "1.2"
+VERSION = "1.3"
 HERE = pathlib.Path(__file__).resolve().parent
 LUA_FILE = HERE / "KOF_Diagnostico_Combate.lua"
 SESSION_DIR = HERE / "KOF_DIAG_SESIONES"
@@ -47,8 +47,8 @@ MARKS = (
 
 
 def byte_label(value: int) -> str:
-    if 252 <= value <= 255:
-        return f"{value} (posible baja)"
+    if 128 <= value <= 255:
+        return f"{value} (posible HP {value - 256})"
     if 0 <= value <= 102:
         return f"{value} / 102"
     return f"{value} (estado especial)"
@@ -408,7 +408,7 @@ class DiagnosticsApp:
                             + f" | estado 0x{state.timer_aux:02X}")
         self.counters_text.set(
             f"Contadores ('Rounds Lost'): P1={state.lost1} / P2={state.lost2} "
-            f"| transiciones 252-255: P1={state.ko1} / P2={state.ko2}")
+            f"| posibles HP negativos: P1={state.ko1} / P2={state.ko2}")
         if state.lost1 == 3 and state.lost2 < 3:
             self.team_status.set(
                 f"POSIBLE FIN EQUIPO P1 (3/3) | ganador provisional P2 "
@@ -606,7 +606,8 @@ class DiagnosticsApp:
 
 def selftest():
     for special in (252, 253, 254, 255):
-        assert byte_label(special) == f"{special} (posible baja)"
+        assert byte_label(special) == f"{special} (posible HP {special - 256})"
+    assert byte_label(240) == "240 (posible HP -16)"
     assert byte_label(102) == "102 / 102"
     assert timer_label(0x99).startswith("99")
     assert timer_label(0x60).startswith("60")
@@ -644,7 +645,7 @@ def selftest():
     assert [p1_first.lost1, p1_second.lost1, p1_last.lost1,
             p1_reset.lost1] == [1, 2, 3, 0]
     assert p1_reset.frame - p1_last.frame == 533
-    print("OK: Byte 252..255, reloj BCD, 3 pérdidas por equipo, reset 3→0.")
+    print("OK: Byte con signo, BCD, perdidas 0->1->2->3 y reinicio 3->0.")
 
 
 if __name__ == "__main__":
