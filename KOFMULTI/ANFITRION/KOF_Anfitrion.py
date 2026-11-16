@@ -1860,6 +1860,7 @@ class HostGUI:
         self._build()
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self._poll_job = self.root.after(80, self._poll)
+        self._roster_job = self.root.after(1000, self._sync_gui_roster)
 
     def _theme(self):
         st = self.ttk.Style()
@@ -2211,6 +2212,24 @@ class HostGUI:
             self._poll_job = self.root.after(80, self._poll)
         except Exception:
             pass
+
+    def _sync_gui_roster(self):
+        """Reconciliar tabla contra el servidor real, incluso si se pierden eventos."""
+        try:
+            if self.server is not None:
+                with self.server.room.lock:
+                    snapshot = self.server.room.snapshot()
+                    snapshot["scores"] = dict(self.server.scores)
+                    snapshot["losses"] = dict(self.server.losses)
+                    snapshot["perfects"] = dict(self.server.perfects)
+                self._show_roster(snapshot)
+        except Exception as exc:
+            self._append("ERROR de sincronización de participantes: " + str(exc)[:110])
+        finally:
+            try:
+                self._roster_job = self.root.after(1000, self._sync_gui_roster)
+            except Exception:
+                pass
 
     def _show_roster(self, data):
         """Redibuja todos los jugadores con sus contadores y sin perder scroll."""
@@ -2750,6 +2769,7 @@ class HostGUI:
     def _close(self):
         try:
             self.root.after_cancel(self._poll_job)
+            self.root.after_cancel(self._roster_job)
         except Exception:
             pass
         self._stop_server()
