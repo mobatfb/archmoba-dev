@@ -1,8 +1,22 @@
-# KOFMULTI | Analizador de salud v1.2 — daño comprobado contra golpe fallido
+# KOFMULTI | Analizador de salud v1.3 — Byte de P2 identificado
 
 **Cambio importante:** las direcciones sugeridas por pulsaciones de ALT izquierdo no resultaron ser la salud real. La versión v1.2 descarta ese método como evidencia suficiente. Ya NO muestra candidatos únicamente porque un valor disminuyó después de pulsar ALT.
 
 El analizador sigue siendo una herramienta de aprendizaje local y **no cambia el marcador del anfitrión**.
+
+## Dirección de salud P2 registrada
+
+El usuario identificó con Cheat Engine la dirección absoluta **`0x13C1AA58`**, tipo **Byte (1 byte)**, correspondiente a la vida de **P2** en su sesión de `mame.exe`.
+
+- El analizador guarda esta dirección en el código, **sin modificar el contenido de la memoria**.
+- Al pulsar **BUSCAR MAME.EXE**, lee automáticamente ese Byte aproximadamente cada 250 milisegundos.
+- Arriba aparece **VIDA P2 | 0x13C1AA58 | Byte | valor ...** y los cambios positivos o negativos.
+- El campo de direcciones de Cheat Engine comienza rellenado con esa dirección, por si deseas seguirla mediante el analizador.
+- **El valor máximo de vida aún es desconocido**. Byte define el tipo de almacenamiento, no que 255 sea la vida máxima.
+- Esta es una dirección absoluta de Windows; puede cambiar tras reiniciar el emulador. Hay que comprobarla en una partida nueva.
+- **P1 todavía está pendiente**. Tener únicamente la salud de P2 no permite deducir automáticamente victorias, derrotas ni PERFECT ni identificar la eliminación del equipo completo.
+
+Prueba rápida: abre el juego, pulsa **BUSCAR MAME.EXE**, golpea a P2 con Alt izquierdo y observa si el valor baja. Haz también un golpe al aire y confirma que permanece estable. Si aparece **no legible**, verifica la dirección en Cheat Engine después de reiniciar MAME.
 
 ## Cómo utilizarlo en Windows
 
@@ -29,7 +43,7 @@ El analizador sigue siendo una herramienta de aprendizaje local y **no cambia el
 
 Las ubicaciones que también cambian cuando fallas un golpe o te mueves reciben penalización. Si confirmaste que una dirección es falsa, selecciónala en la tabla y pulsa **Descartar seleccionado**. El descarte se mantiene en memoria hasta reiniciar el aprendizaje.
 
-Las primeras tres direcciones descartadas en la conversación (0x0B05EA4D, 0x0B05EA45 y 0x0B05E04D) **no están verificadas como salud**; no deben utilizarse para el marcador.
+Las antiguas candidatas `0x0B05EA4D`, `0x0B05EA45` y `0x0B05E04D` fueron descartadas. La dirección registrada de P2 es `0x13C1AA58` (Byte).
 
 ## Si sigues sin encontrar la salud
 
