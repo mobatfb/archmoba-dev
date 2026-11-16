@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-KOFMULTI - CONTROL v.0.0.1
+KOFMULTI - CONTROL v.0.0.2
 Ventana fija de 520 x 240. Usa los SVG de ./assets.
 Este primer prototipo es LOCAL: todavia no se conecta al anfitrion.
 No crea cache, archivos de configuracion ni registros en disco.
@@ -16,7 +16,7 @@ from PySide6.QtGui import (
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton
 
-VERSION = "v.0.0.1"
+VERSION = "v.0.0.2"
 WINDOW_WIDTH = 520
 WINDOW_HEIGHT = 240
 ASSETS = Path(__file__).resolve().parent / "assets"
