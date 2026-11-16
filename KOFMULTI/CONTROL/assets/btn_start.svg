@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="330" height="108" viewBox="0 0 330 108" fill="none" role="img"><title>Botón START de KOFMULTI</title>
+<defs><linearGradient id="edge" x1="28" y1="20" x2="291" y2="92" gradientUnits="userSpaceOnUse"><stop stop-color="#0b3479"/><stop offset=".4" stop-color="#075ac3"/><stop offset="1" stop-color="#021a50"/></linearGradient>
+<linearGradient id="face" x1="85" y1="25" x2="220" y2="95" gradientUnits="userSpaceOnUse"><stop stop-color="#114ca7"/><stop offset=".48" stop-color="#082d72"/><stop offset="1" stop-color="#06132e"/></linearGradient></defs>
+<rect x="7" y="11" width="316" height="88" rx="42" stroke="#018fff" stroke-opacity=".2" stroke-width="12"/>
+<rect x="10" y="12" width="310" height="84" rx="39" fill="url(#edge)" stroke="#00d7ff" stroke-width="4"/>
+<rect x="19" y="21" width="292" height="66" rx="31" fill="url(#face)" stroke="#69ddff" stroke-opacity=".5" stroke-width="2"/>
+<path d="M39 26 Q158 13 288 28" stroke="#e5f8ff" stroke-opacity=".3" stroke-width="4" stroke-linecap="round"/>
+<g fill="#15ddff"><path d="M34 46 L47 54 L34 62 L43 54Z"/><path d="M48 46 L61 54 L48 62 L57 54Z"/><path d="M296 46 L283 54 L296 62 L287 54Z"/><path d="M282 46 L269 54 L282 62 L273 54Z"/></g>
+<text x="165" y="70" fill="#fff" stroke="#05102b" stroke-width="4" paint-order="stroke" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="46" font-weight="900" font-style="italic">START</text>
+</svg>
