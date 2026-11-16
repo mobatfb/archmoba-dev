@@ -1734,13 +1734,13 @@ class HostGUI:
             columns=("slot", "name", "id", "wins", "losses", "perfects", "points"),
             show="headings", height=12, selectmode="browse")
         for key, title, width, stretch in (
-            ("slot", "Posicion", 140, True),
-            ("name", "Participante", 200, True),
-            ("id", "ID", 42, False),
-            ("wins", "Ganados", 68, False),
-            ("losses", "Perdidos", 68, False),
-            ("perfects", "Perfecto", 68, False),
-            ("points", "Puntaje", 68, False),
+            ("slot", "Posicion", 120, True),
+            ("name", "Participante", 205, True),
+            ("id", "ID", 40, False),
+            ("wins", "Ganados", 62, False),
+            ("losses", "Perdidos", 62, False),
+            ("perfects", "Perfecto", 62, False),
+            ("points", "Puntaje", 62, False),
         ):
             self.roster.heading(key, text=title)
             self.roster.column(
