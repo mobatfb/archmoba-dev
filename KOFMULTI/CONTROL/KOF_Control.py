@@ -1,25 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-KOFMULTI - CONTROL v.0.0.2
+KOFMULTI - CONTROL v.0.0.3
 Ventana fija de 520 x 240. Usa los SVG de ./assets.
-Este primer prototipo es LOCAL: todavia no se conecta al anfitrion.
+Conexion real al anfitrion mediante API GET y WebSocket, sin contraseña.
 No crea cache, archivos de configuracion ni registros en disco.
 Instalacion de interfaz: py -m pip install --no-cache-dir PySide6
 """
 import sys
+import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, QUrl, QTimer
 from PySide6.QtGui import (
     QColor, QFont, QLinearGradient, QPainter, QPen
 )
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLineEdit
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from PySide6.QtWebSockets import QWebSocket
 
-VERSION = "v.0.0.2"
+VERSION = "v.0.0.3"
 WINDOW_WIDTH = 520
 WINDOW_HEIGHT = 240
 ASSETS = Path(__file__).resolve().parent / "assets"
+API_GET_URL = "https://api.isupol.edu.ec/api/geturlkof"
+ACTION_MAP = {"UP": "UP", "DOWN": "DOWN", "LEFT": "LEFT", "RIGHT": "RIGHT",
+              "A": "A", "S": "C", "Z": "B", "X": "D", "COIN": "COIN", "START": "COIN_START"}
 
 # Teclado identico para todos, independientemente de P1/P2.
 KEYS = {
@@ -81,6 +88,20 @@ class ControlButton(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         rect = QRectF(0, 0, self.width(), self.height())
+        # START cambia visualmente a CONECTAR mientras no haya una sesión validada.
+        if self.action == "START" and not self.parent().connected:
+            grad = QLinearGradient(0, 0, 0, self.height())
+            grad.setColorAt(0, QColor("#086db9"))
+            grad.setColorAt(1, QColor("#061f59"))
+            p.setBrush(grad)
+            p.setPen(QPen(QColor("#27ddff" if not self.is_down else "#f4fbff"), 2))
+            p.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), 12, 12)
+            p.setPen(QColor("#ffffff"))
+            p.setFont(QFont("Arial", 9 if self.parent().connecting else 10, QFont.Bold))
+            p.drawText(rect, Qt.AlignCenter,
+                       "CONECTANDO" if self.parent().connecting else "CONECTAR")
+            p.end()
+            return
         if self.renderer.isValid():
             self.renderer.render(p, rect)
         else:
@@ -102,7 +123,7 @@ class ControlButton(QWidget):
 
 
 class KofControl(QWidget):
-    """Solo interfaz y diagnostico local. Sin red ni persistencia."""
+    """Control remoto conectado al anfitrión, sin persistencia local."""
 
     def __init__(self):
         super().__init__()
@@ -113,11 +134,22 @@ class KofControl(QWidget):
         self.drag_origin = None
         self.buttons = {}
         self.held = set()
+        self.connected = False
+        self.connecting = False
+        self.slot = 0
+        self.waiting_position = 0
         self.events = [
             ("[SISTEMA] Control iniciado.", "#9df9ad"),
-            ("[ESTADO] Modo local, sin servidor.", "#a1bbd2"),
-            ("[LISTO] Prueba flechas, ASZX y START.", "#8de9fa"),
+            ("[RED] Desconectado del anfitrión.", "#a1bbd2"),
+            ("[LISTO] Escribe tu nombre y pulsa CONECTAR.", "#8de9fa"),
         ]
+        self.net = QNetworkAccessManager(self)
+        self.socket = QWebSocket(parent=self)
+        self.socket.connected.connect(self._socket_opened)
+        self.socket.disconnected.connect(self._socket_closed)
+        self.socket.textMessageReceived.connect(self._socket_message)
+        self.socket.errorOccurred.connect(self._socket_error)
+        self._connect_serial = 0
 
         # Barra propia para conservar exactamente 520 x 240 pixeles.
         self.min_button = QPushButton("–", self)
@@ -148,7 +180,19 @@ class KofControl(QWidget):
         center.setCursor(Qt.ArrowCursor)
         center.setAttribute(Qt.WA_TransparentForMouseEvents, True)
 
-        self.add_button("START", "btn_start.svg", "START", 205, 164, 115, 38)
+        # Nombre visible justo encima de START / CONECTAR.
+        self.name_edit = QLineEdit(self)
+        self.name_edit.setGeometry(221, 129, 129, 25)
+        self.name_edit.setMaxLength(24)
+        self.name_edit.setPlaceholderText("Tu nombre")
+        self.name_edit.setToolTip("Nombre que verán los demás jugadores")
+        self.name_edit.setStyleSheet(
+            "QLineEdit {background:#071526;color:#f1fbff;border:1px solid #247fbd;"
+            "border-radius:6px;padding:2px 6px;font-size:10px;}"
+            "QLineEdit:focus {border:1px solid #39d4ff;}"
+        )
+        self.name_edit.returnPressed.connect(self.begin_connect)
+        self.add_button("START", "btn_start.svg", "CONECTAR", 215, 164, 126, 38)
 
         # Bloque solicitado: A S / Z X.
         self.add_button("A", "btn_a.svg", "A", 404, 128, 43, 43)
@@ -162,22 +206,195 @@ class KofControl(QWidget):
         button = ControlButton(self, action, filename, label, x, y, w, h)
         self.buttons[action] = button
 
+    def _write_log(self, text, color="#8de9fa"):
+        self.events.append((text, color))
+        self.events = self.events[-4:]
+        self.update()
+
+    def begin_connect(self):
+        """El enlace se consulta en la API; el usuario no escribe URL ni clave."""
+        if self.connected or self.connecting:
+            return
+        name = " ".join(self.name_edit.text().split()).strip()
+        if not name:
+            self._write_log("[AVISO] Escribe tu nombre para conectar.", "#ffd170")
+            self.name_edit.setFocus()
+            return
+        self.connecting = True
+        self._connect_serial += 1
+        serial = self._connect_serial
+        self.buttons["START"].update()
+        self._write_log("[RED] Consultando dirección de la sala...", "#91dcff")
+        request = QNetworkRequest(QUrl(API_GET_URL))
+        request.setRawHeader(b"Cache-Control", b"no-store, no-cache, max-age=0")
+        request.setAttribute(QNetworkRequest.CacheLoadControlAttribute,
+                             QNetworkRequest.CacheLoadControl.AlwaysNetwork)
+        request.setAttribute(QNetworkRequest.CacheSaveControlAttribute, False)
+        request.setTransferTimeout(10000)
+        reply = self.net.get(request)
+        reply.finished.connect(lambda: self._api_finished(reply, serial))
+        QTimer.singleShot(12000, lambda: self._timeout_connect(serial))
+
+    def _timeout_connect(self, serial):
+        if serial != self._connect_serial or not self.connecting:
+            return
+        self._connect_failed("Tiempo de conexión agotado.")
+
+    def _connect_failed(self, message):
+        self._connect_serial += 1
+        self.connecting = False
+        self.connected = False
+        self.slot = 0
+        self.waiting_position = 0
+        self.buttons["START"].update()
+        self._write_log("[ERROR] " + message[:100], "#ff8989")
+
+    def _api_finished(self, reply, serial):
+        try:
+            if serial != self._connect_serial or not self.connecting:
+                return
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                self._connect_failed("No se pudo consultar la API: " + reply.errorString())
+                return
+            data = json.loads(bytes(reply.readAll()).decode("utf-8"))
+            if not isinstance(data, dict) or data.get("status") != "success":
+                self._connect_failed("La API no devolvió una sala válida.")
+                return
+            raw_url = str(data.get("url") or "").strip()
+            parsed = urlsplit(raw_url)
+            # El anfitrión publica Cloudflare Quick Tunnel. No seguir URL
+            # arbitrarias si alguien modifica el POST público de Laravel.
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme not in ("https", "wss") or not host.endswith(".trycloudflare.com"):
+                self._connect_failed("Sala no publicada o URL de Cloudflare no válida.")
+                return
+            if parsed.username or parsed.password or parsed.port not in (None, 443):
+                self._connect_failed("Dirección de sala no permitida.")
+                return
+            websocket_url = "wss://" + host + (parsed.path or "/")
+            self._write_log("[RED] Conectando con el anfitrión...", "#8de9fa")
+            self.socket.open(QUrl(websocket_url))
+        except (ValueError, TypeError, KeyError, UnicodeError) as exc:
+            self._connect_failed("Respuesta de API incorrecta: " + str(exc))
+        finally:
+            reply.deleteLater()
+
+    def _socket_opened(self):
+        if not self.connecting:
+            self.socket.close()
+            return
+        hello = {"type": "hello", "name": self.name_edit.text().strip()[:24]}
+        self.socket.sendTextMessage(json.dumps(hello, ensure_ascii=False))
+
+    def _socket_message(self, message):
+        try:
+            payload = json.loads(message)
+        except (TypeError, ValueError):
+            return
+        if not isinstance(payload, dict):
+            return
+        kind = payload.get("type")
+        if kind == "welcome":
+            self._connect_serial += 1
+            self.connecting = False
+            self.connected = True
+            self.name_edit.setReadOnly(True)
+            self.name_edit.setFocusPolicy(Qt.NoFocus)
+            self.setFocus()
+            self.buttons["START"].update()
+            self._write_log("[OK] Conectado como " + self.name_edit.text().strip(), "#83f9a1")
+        elif kind == "state":
+            if not self.connected:
+                return
+            new_slot = payload.get("slot")
+            try:
+                new_slot = int(new_slot) if new_slot else 0
+            except (TypeError, ValueError):
+                new_slot = 0
+            if new_slot not in (0, 1, 2):
+                new_slot = 0
+            pos = payload.get("waiting_position", 0)
+            try:
+                pos = max(0, int(pos))
+            except (ValueError, TypeError):
+                pos = 0
+            if (new_slot, pos) != (self.slot, self.waiting_position):
+                for a in tuple(self.held):
+                    self._release_action(a)
+                self.slot = new_slot
+                self.waiting_position = pos
+                status = f"Asignado a P{new_slot}." if new_slot else (
+                    f"En espera: posición {pos}." if pos else "Modo espectador.")
+                self._write_log("[TURNO] " + status, "#ffdf61")
+            self.update()
+        elif kind == "notice":
+            self._write_log("[AVISO] " + str(payload.get("message", ""))[:80], "#ffd170")
+        elif kind == "error":
+            self._write_log("[ERROR] " + str(payload.get("message", ""))[:80], "#ff8989")
+            self.socket.close()
+        elif kind == "input_ack" and payload.get("action") == "COIN_START":
+            self._write_log("[JUEGO] COIN + START enviado.", "#7af1aa")
+
+    def _socket_error(self, error):
+        msg = self.socket.errorString() or "Error de WebSocket."
+        if self.connecting:
+            self._connect_failed(msg)
+        elif self.connected:
+            self._write_log("[RED] " + msg[:90], "#ff8989")
+
+    def _socket_closed(self):
+        if self.connecting:
+            self._connect_failed("No se completó la conexión.")
+        elif self.connected:
+            self._write_log("[RED] Desconectado del anfitrión.", "#ffd170")
+        self.connected = False
+        self.connecting = False
+        self.slot = 0
+        self.waiting_position = 0
+        for a in tuple(self.held):
+            self._release_action(a, send=False)
+        self.name_edit.setReadOnly(False)
+        self.name_edit.setFocusPolicy(Qt.StrongFocus)
+        self.buttons["START"].update()
+        self.update()
+
+    def _send(self, payload):
+        if not self.connected:
+            return
+        self.socket.sendTextMessage(json.dumps(payload, separators=(",", ":")))
+
+    def _release_action(self, action, send=True):
+        if action not in self.held:
+            return
+        self.held.remove(action)
+        if action in self.buttons:
+            self.buttons[action].set_pressed(False)
+        if send and self.connected and self.slot:
+            self._send({"type": "input", "action": ACTION_MAP[action], "down": False})
+
     def action_event(self, action, down, source):
         if not action:
             return
-        was_down = action in self.held
-        if down and not was_down:
+        if action == "START" and not self.connected:
+            if down:
+                self.begin_connect()
+            return
+        if down:
+            if action in self.held:
+                return
             self.held.add(action)
-            self.events.append((f"[INPUT] {action} pulsado ({source})", "#61e9ff"))
-            self.events = self.events[-3:]
-        elif not down and was_down:
-            self.held.remove(action)
-        for name, button in self.buttons.items():
-            if name == action:
-                button.set_pressed(action in self.held)
+            self.buttons.get(action) and self.buttons[action].set_pressed(True)
+            if not self.connected:
+                return
+            if not self.slot:
+                if action == "START" and not self.waiting_position:
+                    self._send({"type": "request"})
+                    self._write_log("[TURNO] Solicitando un mando...", "#91dcff")
+                return
+            self._send({"type": "input", "action": ACTION_MAP[action], "down": True})
+        else:
+            self._release_action(action)
         self.update()
-        # En versiones futuras aqui se enviaran las acciones al anfitrion.
-        # Esta version no hace peticiones HTTP ni abre WebSockets.
 
     def keyPressEvent(self, event):
         action = KEYS.get(event.key())
@@ -198,10 +415,16 @@ class KofControl(QWidget):
             super().keyReleaseEvent(event)
 
     def focusOutEvent(self, event):
-        # Liberar todo al perder foco: no deben quedarse botones activos.
+        # Al perder foco, soltar direcciones y golpes (no quedan bloqueados).
         for action in tuple(self.held):
-            self.action_event(action, False, "sistema")
+            self._release_action(action)
         super().focusOutEvent(event)
+
+    def closeEvent(self, event):
+        for action in tuple(self.held):
+            self._release_action(action)
+        self.socket.close()
+        super().closeEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and event.position().y() <= 25:
@@ -244,33 +467,33 @@ class KofControl(QWidget):
         p.setPen(QColor("#59e8ff"))
         p.drawText(296, 19, VERSION)
 
-        # Consola: la version es SIEMPRE el primer mensaje visible.
+        # Consola solo para eventos. La versión ya figura en la barra superior.
         p.setBrush(QColor("#050c17"))
         p.setPen(QPen(QColor("#185a91"), 1))
         p.drawRoundedRect(QRectF(10, 29, 500, 83), 8, 8)
-        p.setFont(QFont("Consolas", 9, QFont.Bold))
-        p.setPen(QColor("#46daff"))
-        p.drawText(21, 45, VERSION)
         p.setFont(QFont("Consolas", 8))
-        for i, (message, color) in enumerate(self.events[-3:]):
+        for i, (message, color) in enumerate(self.events[-4:]):
             p.setPen(QColor(color))
-            p.drawText(21, 64 + i * 14, message)
+            p.drawText(21, 46 + i * 18, message[:78])
 
         # Superficie del mando.
         p.setBrush(QColor("#0e1b30"))
         p.setPen(QPen(QColor("#1b689d"), 1))
         p.drawRoundedRect(QRectF(10, 119, 500, 112), 12, 12)
-        p.setFont(QFont("Arial", 11, QFont.Bold))
-        p.setPen(QColor("#2dbdff"))
-        p.drawText(185, 146, "/// KOFMULTI ///")
+        p.setFont(QFont("Arial", 8, QFont.Bold))
+        p.setPen(QColor("#56d6ff"))
+        p.drawText(167, 146, "NOMBRE")
         p.setFont(QFont("Consolas", 8))
-        p.setPen(QColor("#7c9bb9"))
-        p.drawText(217, 225, "SIN ASIGNAR")
+        p.setPen(QColor("#7c9bb9" if not self.connected else "#77f5af"))
+        status = ("DESCONECTADO" if not self.connected else
+                  f"P{self.slot}" if self.slot else
+                  f"ESPERA #{self.waiting_position}" if self.waiting_position else "ESPECTADOR")
+        p.drawText(QRectF(179, 209, 170, 21), Qt.AlignCenter, status)
         p.end()
 
 
 def main():
-    # Sin QSettings, sqlite, config JSON, logs, cache local ni telemetria.
+    # Sin QSettings, sqlite, configuraciones, registros ni cache en disco.
     app = QApplication(sys.argv)
     app.setApplicationName("KOFMULTI CONTROL")
     window = KofControl()
