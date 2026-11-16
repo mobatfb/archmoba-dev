@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-KOFMULTI - CONTROL v.0.0.5
+KOFMULTI - CONTROL v.0.0.6
 Ventana fija de 520 x 240. Usa los SVG de ./assets.
 Conexion real al anfitrion mediante API GET y WebSocket, sin contraseña.
 Solo guarda el nombre del jugador en cache local; no guarda otros datos.
@@ -8,6 +8,7 @@ Instalacion de interfaz: py -m pip install --no-cache-dir PySide6
 """
 import sys
 import json
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -16,17 +17,33 @@ from PySide6.QtGui import (
     QColor, QFont, QLinearGradient, QPainter, QPen
 )
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLineEdit
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLineEdit, QInputDialog
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PySide6.QtWebSockets import QWebSocket
 
-VERSION = "v.0.0.5"
+VERSION = "v.0.0.6"
 WINDOW_WIDTH = 520
 WINDOW_HEIGHT = 240
 ASSETS = Path(__file__).resolve().parent / "assets"
 API_GET_URL = "https://api.isupol.edu.ec/api/geturlkof"
 ACTION_MAP = {"UP": "UP", "DOWN": "DOWN", "LEFT": "LEFT", "RIGHT": "RIGHT",
               "A": "A", "S": "C", "Z": "B", "X": "D", "COIN": "COIN", "START": "COIN_START"}
+
+def parse_direct_room_url(text: str):
+    """Reconocer URL Cloudflare en enlace o texto de Copiar acceso."""
+    source = str(text or "").strip()
+    if not source:
+        return None
+    found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com(?:/[^\s]*)?", source, flags=re.I)
+    if found is None:
+        raise ValueError("Pega el enlace HTTPS de Cloudflare del anfitrión.")
+    parsed = urlsplit(found.group(0))
+    if (not parsed.hostname or parsed.username or parsed.password or
+            parsed.port not in (None, 443) or parsed.query or parsed.fragment or
+            not parsed.hostname.lower().endswith(".trycloudflare.com")):
+        raise ValueError("Enlace directo no válido.")
+    return "wss://" + parsed.hostname.lower() + (parsed.path or "/")
+
 
 # Teclado identico para todos, independientemente de P1/P2.
 KEYS = {
@@ -149,8 +166,22 @@ class KofControl(QWidget):
         self.socket.textMessageReceived.connect(self._socket_message)
         self.socket.errorOccurred.connect(self._socket_error)
         self._connect_serial = 0
+        self.direct_url = None
+        self.room_id = ""
+        self.connected_endpoint = ""
 
         # Barra propia para conservar exactamente 520 x 240 pixeles.
+        self.room_button = QPushButton("SALA", self)
+        self.room_button.setGeometry(389, 3, 74, 19)
+        self.room_button.setFocusPolicy(Qt.NoFocus)
+        self.room_button.setCursor(Qt.PointingHandCursor)
+        self.room_button.setToolTip("Pega el enlace del anfitrión para conectar directamente, sin API.")
+        self.room_button.setStyleSheet(
+            "QPushButton {background:#132337;color:#95d9ff;border:1px solid #2c5778;"
+            "border-radius:5px;font-weight:bold;padding:0}"
+            "QPushButton:hover {background:#205075;color:white}"
+        )
+        self.room_button.clicked.connect(self.choose_room)
         self.min_button = QPushButton("–", self)
         self.min_button.setGeometry(470, 3, 19, 19)
         self.min_button.setFocusPolicy(Qt.NoFocus)
