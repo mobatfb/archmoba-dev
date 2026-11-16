@@ -21,6 +21,7 @@ import queue
 import random
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -37,7 +38,7 @@ try:
 except ImportError:
     AutoResultMonitor = None
 
-APP_VERSION = "1.16.5"
+APP_VERSION = "1.16.6"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -45,6 +46,7 @@ DEFAULT_PORT = 8765
 API_POST_URL = "https://api.isupol.edu.ec/api/posturlkof"
 MAX_GUESTS = 24
 MAX_INPUTS_PER_SECOND = 85
+HEALTH_ANALYZER_PORT = 38724  # Diagnóstico local 127.0.0.1 únicamente.
 START_LIMIT_SECONDS = 30
 START_WARNING_AFTER = 20
 IDLE_LIMIT_SECONDS = 60
@@ -879,9 +881,11 @@ class Room:
                  start_warning_after: float = START_WARNING_AFTER,
                  idle_limit: float = IDLE_LIMIT_SECONDS,
                  idle_warning_after: float = IDLE_WARNING_AFTER,
-                 slot_events: Optional[Callable[[str, int, Guest], None]] = None):
+                 slot_events: Optional[Callable[[str, int, Guest], None]] = None,
+                 input_observer: Optional[Callable[[int, str], None]] = None):
         self.input = input_device
         self.slot_events = slot_events
+        self.input_observer = input_observer
         self.max_guests = max_guests
         self.clock = clock
         self.start_limit = start_limit
@@ -1106,6 +1110,13 @@ class Room:
                     guest.warned_idle = False
             else:
                 guest.held.discard(action)
+            # Informar SOLO a la herramienta local de aprendizaje: haber
+            # pulsado no implica haber golpeado. No modifica estadísticas.
+            if down and action in ("A", "B", "C", "D") and self.input_observer:
+                try:
+                    self.input_observer(guest.slot, action)
+                except (OSError, RuntimeError, ValueError):
+                    pass
             if action == "COIN_START":
                 # The remote sends the same action for both players. Only the
                 # host knows the assigned slot and expands it to 5/1 or 6/2.
@@ -1186,7 +1197,10 @@ class HostServer:
         self.checkpoints = MameCheckpointManager(
             process_provider, game_folder_provider, device, ui_notify,
             enabled=restore_state, hotkeys=state_hotkeys)
-        self.room = Room(device, slot_events=self._slot_event)
+        self._health_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._health_socket.setblocking(False)
+        self.room = Room(device, slot_events=self._slot_event,
+                         input_observer=self._observe_attack)
         self.checkpoints.room = self.room
         self.bind_lan = bind_lan
         self.process_provider = process_provider
@@ -1194,6 +1208,17 @@ class HostServer:
         self.thread = None
         self.timer_thread = None
         self.stop_event = threading.Event()
+
+    def _observe_attack(self, slot: int, action: str):
+        """Enviar input de golpe aceptado al analizador en localhost, no a Internet."""
+        game = self.process_provider()
+        if game is None or game.poll() is not None:
+            return
+        payload = json.dumps({
+            "type": "attack", "slot": slot, "action": action,
+            "pid": game.pid,
+        }, separators=(",", ":")).encode("utf-8")
+        self._health_socket.sendto(payload, ("127.0.0.1", HEALTH_ANALYZER_PORT))
 
     def record_game_outcome(self, winner_slot: int, perfect: bool,
                             expected_uids: tuple[int, int]) -> bool:
@@ -1550,6 +1575,10 @@ class HostServer:
             self.room.remove(guest.uid, reason="shutdown")
         if hasattr(self.room.input, "release_all"):
             self.room.input.release_all()
+        try:
+            self._health_socket.close()
+        except OSError:
+            pass
         self.ui_notify("log", "Sala cerrada y controles liberados.")
 
 
@@ -1676,6 +1705,8 @@ class HostGUI:
                   style="Muted.TLabel").pack(side="left", padx=(0, 8))
         ttk.Button(pads, text="Ver mandos",
                    command=self._show_windows_gamepads).pack(side="right")
+        ttk.Button(pads, text="Analizar salud",
+                   command=self._launch_health_analyzer).pack(side="right", padx=(0, 6))
         ttk.Label(pads, textvariable=self.input_diagnostic_var,
                   style="Muted.TLabel", width=30, anchor="w").pack(
                       side="left", fill="x", expand=True)
@@ -1734,7 +1765,7 @@ class HostGUI:
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
-        self._append("Marcador automático: lectura local del MAME; no se suma al presionar teclas.")
+        self._append("Entrenamiento de salud: los golpes se observan en RAM, pero nunca suman puntos por sí solos.")
         self._append("Puntaje = Ganados + Perfecto (1 punto por cada uno).")
         self._show_roster({
             "players": {"1": None, "2": None},
@@ -1927,6 +1958,23 @@ class HostGUI:
         except Exception as ex:
             self.messagebox.showerror("No se pueden mostrar los mandos", str(ex))
 
+    def _launch_health_analyzer(self):
+        """Abrir herramienta visual de correlación sin consola Python."""
+        script = BASE_DIR / "KOF_Analizador_Salud.py"
+        if not script.is_file():
+            self.messagebox.showwarning(
+                "Analizador no encontrado",
+                "Coloca KOF_Analizador_Salud.py en la misma carpeta del anfitrión.")
+            return
+        pythonw = pathlib.Path(sys.executable).with_name("pythonw.exe")
+        interpreter = str(pythonw) if pythonw.is_file() else sys.executable
+        try:
+            subprocess.Popen([interpreter, "-B", str(script)], cwd=str(BASE_DIR),
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            self._append("Analizador de salud iniciado: detecta inputs y observa RAM en solo lectura.")
+        except OSError as exc:
+            self.messagebox.showerror("Analizador de salud", str(exc))
+
     def _start_tunnel(self):
         if self.server is None:
             self.messagebox.showwarning("Primero abre la sala", "Pulsa 1. ABRIR SALA.")
@@ -2003,7 +2051,12 @@ class HostGUI:
             self.notify("log", "MAME 0.132 del ZIP. Perfil de 2 joysticks: ctrlr/" + path.name +
                         " (sin modificar default.cfg ni las ROM).")
             self.game_process = subprocess.Popen(command, cwd=str(directory))
-            self._start_auto_results(self.game_process, self.server)
+            if os.environ.get("KOF_ENABLE_OCR_RESULTS") == "1":
+                self._start_auto_results(self.game_process, self.server)
+            else:
+                self.notify(
+                    "log", "OCR de resultados desactivado durante el aprendizaje de "
+                           "RAM. Los inputs no suman puntuación.")
             self.notify("log", f"MAME antiguo iniciado (PID {self.game_process.pid}) con 2 joysticks virtuales. "
                         "Si hay otros mandos conectados, verifica los números P1 y P2 en TAB > Input (this Game).")
         except Exception as ex:
