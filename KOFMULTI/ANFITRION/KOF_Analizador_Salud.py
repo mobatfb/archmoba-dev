@@ -22,13 +22,15 @@ import tkinter as tk
 from tkinter import ttk
 
 PORT = 38724  # Solo 127.0.0.1; el anfitrion informa ataques, no resultados.
-MAX_SCAN_BYTES = 12 * 1024 * 1024
-BLOCK = 128 * 1024
+MAX_SCAN_BYTES = 24 * 1024 * 1024
+BLOCK = 64 * 1024
 ATTACKS = frozenset(("A", "B", "C", "D"))
 PROCESS_VM_READ = 0x10
 PROCESS_QUERY_INFORMATION = 0x400
 MEM_COMMIT = 0x1000
 MEM_PRIVATE = 0x20000
+MEM_MAPPED = 0x40000
+VK_LMENU = 0xA4  # Alt izquierdo, VK_LMENU (no Alt derecho)
 PAGE_READWRITE = 0x04
 PAGE_WRITECOPY = 0x08
 PAGE_EXECUTE_READWRITE = 0x40
@@ -65,15 +67,17 @@ class ScoreLearner:
                               for i, (a, b) in enumerate(zip(prior, current))
                               if a != b)
             else:
-                candidates = ((start + i, int.from_bytes(prior[i:i+2], "little"),
-                               int.from_bytes(current[i:i+2], "little"))
-                              for i in range(0, min(len(prior), len(current)) - 1, 2)
-                              if prior[i:i+2] != current[i:i+2])
+                candidates = ((start + i, int.from_bytes(prior[i:i+width], "little"),
+                               int.from_bytes(current[i:i+width], "little"))
+                              for i in range(0, min(len(prior), len(current)) - width + 1, width)
+                              if prior[i:i+width] != current[i:i+width])
             for address, old, new in candidates:
                 # Los medidores de salud son normalmente valores positivos
                 # que disminuyen; excluir cambios enormes y punteros.
-                if not (8 <= old <= (250 if width == 1 else 500) and
-                        0 <= new < old and old - new <= 130):
+                upper = 255 if width == 1 else (65535 if width == 2 else 10000000)
+                max_drop = 160 if width == 1 else (4096 if width == 2 else 400000)
+                if not (5 <= old <= upper and 0 <= new < old
+                        and 1 <= old - new <= max_drop):
                     continue
                 if address not in self.hits and len(self.hits) >= self.limit:
                     continue
@@ -153,6 +157,13 @@ if os.name == "nt":
     k32.Process32NextW.argtypes = (wt.HANDLE, ctypes.POINTER(ProcessEntry))
     k32.Process32FirstW.restype = wt.BOOL
     k32.Process32NextW.restype = wt.BOOL
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
+    user32.GetAsyncKeyState.restype = ctypes.c_short
+    user32.GetForegroundWindow.restype = wt.HWND
+    user32.GetWindowThreadProcessId.argtypes = (
+        wt.HWND, ctypes.POINTER(wt.DWORD))
+    user32.GetWindowThreadProcessId.restype = wt.DWORD
 
 
 def find_mame_pid():
@@ -204,40 +215,74 @@ class ReadOnlyMemory:
         return buf.raw[:size]
 
     def scan_plan(self):
-        """Muestras de memoria privada y escribible, acotadas a 12 MiB."""
-        memory = []
-        used = 0
+        """Muestrea RAM escribible y mapeada por regiones, no solo la primera."""
+        regions = []
         position = 0x10000
         maximum = 0x7FFFFFFF0000 if ctypes.sizeof(ctypes.c_void_p) == 8 else 0x7FFF0000
         count = 0
-        while position < maximum and used < MAX_SCAN_BYTES and count < 100000:
+        while position < maximum and count < 150000:
             info = MemoryRegion()
             result = k32.VirtualQueryEx(
                 self.handle, ctypes.c_void_p(position), ctypes.byref(info),
                 ctypes.sizeof(info))
             if not result:
                 break
-            start = int(info.BaseAddress or position)
-            size = int(info.RegionSize)
-            next_position = max(position + 4096, start + size)
+            start, size = int(info.BaseAddress or position), int(info.RegionSize)
+            position = max(position + 4096, start + size)
             count += 1
             writable = bool(info.Protect & (
                 PAGE_READWRITE | PAGE_WRITECOPY |
                 PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
-            # Excluir estructuras no comprometidas, guardias y ejecutables puros.
-            if (info.State == MEM_COMMIT and info.Type == MEM_PRIVATE and
-                    writable and not info.Protect & PAGE_GUARD and size > 0):
-                # Distribuir la muestra entre regiones en vez de agotar toda
-                # la cuota en una asignacion gigante.
-                budget_region = min(size, 2 * 1024 * 1024, MAX_SCAN_BYTES - used)
-                for offset in range(0, budget_region, BLOCK):
-                    n = min(BLOCK, budget_region - offset)
-                    address = start + offset
+            if (info.State == MEM_COMMIT and info.Type in (MEM_PRIVATE, MEM_MAPPED)
+                    and writable and not info.Protect & PAGE_GUARD
+                    and size >= 4096):
+                regions.append((start, size, info.Type))
+
+        # Distribuir los 24 MiB entre regiones grandes y sus distintas zonas.
+        # Si MAME almacena la RAM emulada en el final de una región, ya no
+        # queda fuera de muestra por visitar únicamente los primeros bytes.
+        regions.sort(key=lambda rec: (rec[2] == MEM_PRIVATE, rec[1]), reverse=True)
+        result = []
+        used = 0
+        for base, size, _kind in regions:
+            if used >= MAX_SCAN_BYTES:
+                break
+            budget = min(size, 2 * 1024 * 1024, MAX_SCAN_BYTES - used)
+            region_used = 0
+            sample_size = min(700 * 1024, budget)
+            anchors = (0, max(0, size // 2 - sample_size // 2),
+                       max(0, size - sample_size))
+            seen = set()
+            for anchor in anchors:
+                if region_used >= budget:
+                    break
+                for off in range(anchor, min(size, anchor + sample_size), BLOCK):
+                    address = base + off
+                    if address in seen:
+                        continue
+                    seen.add(address)
+                    n = min(BLOCK, size - off, budget - region_used,
+                            MAX_SCAN_BYTES - used)
+                    if n <= 0:
+                        break
                     if self.read(address, n) is not None:
-                        memory.append((address, n))
+                        result.append((address, n))
                         used += n
-            position = next_position
-        return memory
+                        region_used += n
+                    else:
+                        # Unos bytes protegidos no deben hacer descartar 64 KiB.
+                        page = 4096
+                        for part in range(0, n, page):
+                            count_part = min(page, n - part)
+                            if self.read(address + part, count_part) is not None:
+                                result.append((address + part, count_part))
+                                used += count_part
+                                region_used += count_part
+                                if used >= MAX_SCAN_BYTES or region_used >= budget:
+                                    break
+                    if used >= MAX_SCAN_BYTES or region_used >= budget:
+                        break
+        return result
 
     def snapshot(self, plan):
         data = {}
@@ -284,11 +329,14 @@ class Worker:
         self.baseline = {}
         self.baseline_at = 0.0
         self.pending = None
+        self.manual_before = None
+        self.alt_down = False
+        self.alt_count = 0
         self.width = 1
         self.attacks = [0, 0]
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("127.0.0.1", PORT))
-        self.socket.settimeout(0.08)
+        self.socket.settimeout(0.025)
         self.thread = threading.Thread(target=self.loop, name="KOF-Salud-RAM", daemon=True)
         self.thread.start()
 
@@ -303,6 +351,8 @@ class Worker:
         self.mode = "none"
         self.baseline = {}
         self.pending = None
+        self.manual_before = None
+        self.alt_down = False
         self.learner = ScoreLearner()
         self.reader = ReadOnlyMemory(pid)
         self.emit("log", f"Conectado en solo lectura a mame.exe PID {pid}.")
@@ -314,6 +364,7 @@ class Worker:
         self.learner = ScoreLearner()
         self.baseline = {}
         self.pending = None
+        self.manual_before = None
         self.width = width
         if mode == "ce":
             addresses = parse_addresses(text)
@@ -328,9 +379,16 @@ class Worker:
                 raise ValueError("No se encontraron regiones legibles para explorar.")
             self.mode = "auto"
             size = sum(length for _, length in self.plan)
-            self.emit("log", f"Explorando {size / (1024 * 1024):.1f} MiB de RAM (Byte).")
+            self.emit("log", f"Explorando {size / (1024 * 1024):.1f} MiB de RAM ({width} Byte).")
         self.baseline = self.reader.snapshot(self.plan)
+        if not self.baseline:
+            raise ValueError(
+                "No se pudo leer RAM; revisa permisos y prueba direcciones de Cheat Engine.")
         self.baseline_at = time.monotonic()
+        available = sum(len(block) for block in self.baseline.values())
+        self.emit("log",
+                  f"Memoria preparada: {len(self.baseline)} bloques, "
+                  f"{available / 1048576:.1f} MiB leídos. ALT IZQUIERDO = golpe P1.")
         self.emit("snapshot", (self.mode, len(self.plan)))
 
     def event_attack(self, packet):
