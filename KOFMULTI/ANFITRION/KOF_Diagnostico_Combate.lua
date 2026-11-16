@@ -124,13 +124,20 @@ local function start_clip()
 end
 
 local function event(kind, s, with_clip)
-    -- Evento fechado en FOTOGRAMAS EMULADOS, no por el reloj de Windows.
-    -- Adjunta 4 fragmentos de 32 bytes para analizar banderas vecinas.
+    -- La muestra central se registra en el fotograma de la CPU emulada.
+    -- Los volcados completos se reservan para eventos críticos: evita
+    -- ralentizar MAME con cientos de lecturas en cada golpe o tick.
+    local blank = string.rep("?", 64)
+    local p1, p2, l1, l2, clock = blank, blank, blank, blank, blank
+    if with_clip then
+        p1 = dump_near(A.hp1)
+        p2 = dump_near(A.hp2)
+        l1 = dump_near(A.lost1)
+        l2 = dump_near(A.lost2)
+        clock = dump_near(A.timer)
+    end
     append_line(events_path, table.concat({
-        "KOF_DIAG_EVT1", one_line(s), kind,
-        dump_near(A.hp1), dump_near(A.hp2),
-        dump_near(A.lost1), dump_near(A.lost2),
-        dump_near(A.timer)
+        "KOF_DIAG_EVT1", one_line(s), kind, p1, p2, l1, l2, clock
     }, "\t"))
     if with_clip then start_clip() end
 end
@@ -190,6 +197,9 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
         end
         if s.lost2 ~= prev.lost2 then
             event("CONTADOR_P2_CAMBIO", s, true)
+        end
+        if s.timer ~= prev.timer then
+            event("TIEMPO_CAMBIO", s, false)
         end
         if s.timer == 0 and prev.timer ~= 0 then
             event("TIEMPO_LLEGO_CERO", s, true)
