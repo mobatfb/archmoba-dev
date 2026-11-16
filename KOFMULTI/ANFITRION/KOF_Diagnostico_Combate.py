@@ -25,7 +25,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-VERSION = "1.1"
+VERSION = "1.2"
 HERE = pathlib.Path(__file__).resolve().parent
 LUA_FILE = HERE / "KOF_Diagnostico_Combate.lua"
 SESSION_DIR = HERE / "KOF_DIAG_SESIONES"
@@ -47,10 +47,8 @@ MARKS = (
 
 
 def byte_label(value: int) -> str:
-    if value == HP_SENTINEL:
-        return "254 (KO observado)"
-    if value == 255:
-        return "255 (KO posible)"
+    if 252 <= value <= 255:
+        return f"{value} (posible baja)"
     if 0 <= value <= 102:
         return f"{value} / 102"
     return f"{value} (estado especial)"
@@ -160,6 +158,8 @@ class DiagnosticsApp:
         self.counters_text = tk.StringVar(value="Contadores P1/P2: -- / --")
         self.team_status = tk.StringVar(
             value="EQUIPOS: pendiente | observar cambios de contador 0 a 3")
+        self.last_outcome = tk.StringVar(
+            value="Último final observado: pendiente de una secuencia 3 → 0")
         self.frame_text = tk.StringVar(value="Fotograma emulado: --")
         self.watch_text = tk.StringVar(value="Cronómetro local: 00:00.0")
 
@@ -225,6 +225,8 @@ class DiagnosticsApp:
         ttk.Label(vital, textvariable=self.p2_text,
                   style="Header.TLabel").pack(side="left")
         ttk.Label(frame, textvariable=self.team_status,
+                  style="Status.TLabel").pack(anchor="w", pady=(1, 3))
+        ttk.Label(frame, textvariable=self.last_outcome,
                   style="Status.TLabel").pack(anchor="w", pady=(1, 3))
         for variable in (self.timer_text, self.counters_text, self.frame_text):
             ttk.Label(frame, textvariable=variable).pack(anchor="w", pady=1)
@@ -349,6 +351,7 @@ class DiagnosticsApp:
             self.game_closed_reported = False
             self.command_id = 0
             self.team_status.set("EQUIPOS: esperando datos de MAME...")
+            self.last_outcome.set("Último final observado: pendiente de secuencia 3 → 0")
             self.reset_watch()
 
             rom_dir = pathlib.Path(self.rom_folder.get().strip() or str(exe.parent))
@@ -405,15 +408,15 @@ class DiagnosticsApp:
                             + f" | estado 0x{state.timer_aux:02X}")
         self.counters_text.set(
             f"Contadores ('Rounds Lost'): P1={state.lost1} / P2={state.lost2} "
-            f"| transiciones 254/255: P1={state.ko1} / P2={state.ko2}")
+            f"| transiciones 252-255: P1={state.ko1} / P2={state.ko2}")
         if state.lost1 == 3 and state.lost2 < 3:
             self.team_status.set(
-                f"POSIBLE FIN EQUIPO P1 (3/3): fotograma {state.frame}; "
-                "pendiente confirmar pantalla de victoria")
+                f"POSIBLE FIN EQUIPO P1 (3/3) | ganador provisional P2 "
+                f"| fotograma {state.frame}")
         elif state.lost2 == 3 and state.lost1 < 3:
             self.team_status.set(
-                f"POSIBLE FIN EQUIPO P2 (3/3): fotograma {state.frame}; "
-                "pendiente confirmar pantalla de victoria")
+                f"POSIBLE FIN EQUIPO P2 (3/3) | ganador provisional P1 "
+                f"| fotograma {state.frame}")
         elif state.lost1 <= 3 and state.lost2 <= 3:
             self.team_status.set(
                 f"PERSONAJES/RONDAS PERDIDAS: P1 {state.lost1}/3, "
@@ -458,8 +461,21 @@ class DiagnosticsApp:
             self.status.set("Marca del usuario registrada: " + event.kind)
         if event.kind in (
             "POSIBLE_FIN_EQUIPO_P1", "POSIBLE_FIN_EQUIPO_P2"):
-            self.team_status.set("ATENCIÓN: " + event.kind.replace("_", " ") +
-                                 f" | fotograma {s.frame}")
+            loser = "P1" if event.kind.endswith("P1") else "P2"
+            winner = "P2" if loser == "P1" else "P1"
+            self.team_status.set(
+                f"POSIBLE FIN DEL EQUIPO {loser}, ganador provisional {winner} "
+                f"| fotograma {s.frame}")
+            self.last_outcome.set(
+                f"Pendiente cierre 3→0 | equipo {loser} agotado "
+                f"en fotograma {s.frame}")
+        elif event.kind in ("SECUENCIA_P1_3_A_0", "SECUENCIA_P2_3_A_0"):
+            loser = "P1" if "P1" in event.kind else "P2"
+            winner = "P2" if loser == "P1" else "P1"
+            self.last_outcome.set(
+                f"Secuencia 3→0 observada: perdedor {loser}, "
+                f"ganador provisional {winner} | fotograma {s.frame}")
+            # No alterar el marcador de sala; falta validar en más partidas.
         if len(self.event_items) > 750:
             oldest = next(iter(self.event_items))
             self.tree.delete(oldest)
@@ -589,8 +605,8 @@ class DiagnosticsApp:
 
 
 def selftest():
-    assert byte_label(254).startswith("254 (KO")
-    assert byte_label(255).startswith("255 (KO")
+    for special in (252, 253, 254, 255):
+        assert byte_label(special) == f"{special} (posible baja)"
     assert byte_label(102) == "102 / 102"
     assert timer_label(0x99).startswith("99")
     assert timer_label(0x60).startswith("60")
@@ -617,7 +633,18 @@ def selftest():
     assert first.hp2 == 255 and first.lost2 == 1
     assert timeout.lost2 == 2 and timeout.timer == 0
     assert last.hp2 == 254 and last.lost2 == 3
-    print("OK: 254/255, BCD, primera muerte, tiempo agotado y ultimo personaje.")
+    # Segunda sesión: P1 pierde tres personajes y P2 uno.
+    p1_first = Reading(3895, 252, 102, 1, 0, 54, 23, 0, 0)
+    p1_second = Reading(5860, 254, 98, 2, 0, 54, 45, 1, 0)
+    p2_first = Reading(7765, 90, 253, 2, 1, 54, 34, 1, 0)
+    p1_last = Reading(9810, 254, 92, 3, 1, 52, 19, 2, 0)
+    p1_reset = Reading(10343, 254, 92, 0, 1, 52, 19, 2, 0)
+    assert [p1_first.hp1, p1_second.hp1, p2_first.hp2, p1_last.hp1] == [
+        252, 254, 253, 254]
+    assert [p1_first.lost1, p1_second.lost1, p1_last.lost1,
+            p1_reset.lost1] == [1, 2, 3, 0]
+    assert p1_reset.frame - p1_last.frame == 533
+    print("OK: Byte 252..255, reloj BCD, 3 pérdidas por equipo, reset 3→0.")
 
 
 if __name__ == "__main__":
