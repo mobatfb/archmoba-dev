@@ -391,7 +391,96 @@ class Worker:
                   f"{available / 1048576:.1f} MiB leídos. ALT IZQUIERDO = golpe P1.")
         self.emit("snapshot", (self.mode, len(self.plan)))
 
+    def _register_attack(self, slot, source):
+        """Inicia comparación en RAM; pulsación no equivale a impacto."""
+        self.attacks[slot - 1] += 1
+        self.emit("attack", tuple(self.attacks))
+        if not self.plan:
+            self.emit("log",
+                      f"{source}: pulsación detectada, pero falta preparar RAM. "
+                      "Pulsa EXPLORAR RAM o SEGUIR DIRECCIONES CE.")
+            return
+        if self.pending is not None:
+            # Conservar la muestra previa: el segundo botón no la cancela.
+            return
+        now = time.monotonic()
+        before = (self.manual_before if self.manual_before is not None
+                  else self.baseline)
+        if not before:
+            self.emit("log", "No hay referencia de RAM: pulsa CAPTURAR ANTES.")
+            return
+        if self.manual_before is None and now - self.baseline_at > 2.0:
+            self.emit("log",
+                      "Referencia muy antigua; usa CAPTURAR ANTES y vuelve a golpear.")
+            return
+        self.pending = (slot, now, before)
+        self.manual_before = None
+        self.emit("log", f"{source}: comparando salud P{3 - slot} después del golpe...")
+
+    def _mame_has_focus(self):
+        """Solo contabilizar ALT si el proceso activo es MAME, no otro programa."""
+        if not self.reader or os.name != "nt":
+            return False
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+        pid = wt.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        return pid.value == self.reader.pid
+
+    def poll_left_alt(self):
+        """Detección global de ALT IZQUIERDO, también con MAME en primer plano.
+
+        GetAsyncKeyState lee el estado del teclado, no captura ni bloquea teclas.
+        """
+        if os.name != "nt" or not self.reader:
+            return
+        try:
+            active = self._mame_has_focus()
+            pressed = bool(user32.GetAsyncKeyState(VK_LMENU) & 0x8000)
+        except OSError:
+            return
+        down = active and pressed
+        if down and not self.alt_down:
+            self.alt_count += 1
+            self.last_alt_at = time.monotonic()
+            self.emit("alt", self.alt_count)
+            self._register_attack(1, "ALT IZQUIERDO (P1)")
+        self.alt_down = down
+
+    def capture_manual_before(self):
+        if not self.reader or not self.plan:
+            raise ValueError("Primero BUSCAR MAME y EXPLORAR RAM (o direcciones CE).")
+        self.pending = None
+        self.manual_before = self.reader.snapshot(self.plan)
+        if not self.manual_before:
+            raise ValueError("No se pudo leer ninguna región; revisa direcciones o permisos.")
+        self.emit("log", "Memoria ANTES capturada. Haz un golpe real "
+                         "con ALT IZQUIERDO, o pulsa P2 RECIBIÓ DAÑO después del golpe.")
+
+    def confirm_manual_damage(self, victim):
+        if victim not in (1, 2) or not self.reader:
+            return
+        if self.manual_before is None:
+            raise ValueError("Primero pulsa CAPTURAR ANTES para crear referencia.")
+        old = self.manual_before
+        self.manual_before = None
+        self.pending = None
+        now = time.monotonic()
+        current = self.reader.snapshot(self.plan)
+        if not current:
+            raise ValueError("MAME no permitió leer la RAM posterior.")
+        attacker = 3 - victim
+        result = self.learner.observe(old, current, attacker, self.width)
+        self.baseline, self.baseline_at = current, now
+        self.emit("rank", self.learner.top())
+        self.emit("log", f"P{victim} RECIBIÓ DAÑO: {result} valores descendentes "
+                         "candidatos. Repite el mismo procedimiento varias veces."
+                         if result else
+                         f"P{victim}: 0 valores compatibles; intenta 2 Bytes o CE.")
+
     def event_attack(self, packet):
+        """Mantiene soporte para botones remotos sin duplicar ALT local."""
         if packet.get("type") != "attack":
             return
         slot = packet.get("slot")
@@ -406,27 +495,17 @@ class Worker:
             except OSError as exc:
                 self.emit("log", str(exc))
                 return
-        if self.reader.pid != pid:
+        elif self.reader.pid != pid:
             try:
                 self.attach(pid)
-                self.emit("log", "MAME se reinició: repite el aprendizaje.")
+                self.emit("log", "MAME cambió de PID: prepara nuevamente la memoria.")
             except OSError as exc:
                 self.emit("log", str(exc))
             return
-        self.attacks[slot - 1] += 1
-        self.emit("attack", tuple(self.attacks))
-        if not self.plan:
+        if slot == 1 and time.monotonic() - getattr(self, "last_alt_at", -100) < 0.8:
+            # ALT local y evento del control pueden referirse al mismo golpe.
             return
-        now = time.monotonic()
-        if self.pending is not None:
-            self.pending = None
-            self.emit("log", "Golpes superpuestos: muestra descartada. Separa ataques 2 s.")
-            self.baseline = {}
-            return
-        if not self.baseline or now - self.baseline_at > 1.8:
-            # Una foto anterior antigua mezcla demasiados cambios no relacionados.
-            return
-        self.pending = (slot, now, self.baseline)
+        self._register_attack(slot, f"Input remoto P{slot}")
 
     def capture(self):
         if not self.reader or not self.plan:
@@ -434,15 +513,22 @@ class Worker:
         now = time.monotonic()
         if self.pending:
             slot, stamp, old = self.pending
-            if now - stamp >= 0.85:
-                new = self.reader.snapshot(self.plan)
-                deltas = self.learner.observe(old, new, slot, self.width)
-                self.baseline, self.baseline_at = new, time.monotonic()
+            if now - stamp >= 0.65:
+                after = self.reader.snapshot(self.plan)
+                count = self.learner.observe(old, after, slot, self.width)
+                self.baseline, self.baseline_at = after, time.monotonic()
                 self.pending = None
-                self.emit("log", f"Input P{slot}: {deltas} valores descendentes candidatos; "
-                                 "NO equivale a golpe acertado.")
                 self.emit("rank", self.learner.top())
-        elif now - self.baseline_at >= 0.85:
+                if count:
+                    self.emit("log",
+                              f"P{slot} atacó: {count} descensos posibles en "
+                              f"salud P{3-slot}. Comprueba los candidatos en CE.")
+                else:
+                    self.emit("log",
+                              "0 candidatos en memoria explorada: prueba "
+                              "CAPTURAR ANTES / P2 RECIBIÓ DAÑO, "
+                              "2 Bytes o direcciones CE.")
+        elif now - self.baseline_at >= 0.75:
             self.baseline = self.reader.snapshot(self.plan)
             self.baseline_at = time.monotonic()
 
@@ -460,6 +546,9 @@ class Worker:
             except OSError as exc:
                 self.emit("log", str(exc))
                 break
+            # ALT se consulta incluso si el juego tiene el foco y no hay
+            # ningún control remoto conectado.
+            self.poll_left_alt()
             for _ in range(8):
                 try:
                     job = self.jobs.get_nowait()
@@ -474,7 +563,13 @@ class Worker:
                         self.attach(pid)
                     elif command == "learn":
                         self.configure(*args)
+                    elif command == "before":
+                        self.capture_manual_before()
+                    elif command == "manual_damage":
+                        self.confirm_manual_damage(args[0])
                     elif command == "reset":
+                        self.pending = None
+                        self.manual_before = None
                         self.learner = ScoreLearner()
                         self.emit("rank", [])
                 except (OSError, ValueError) as exc:
