@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-KOFMULTI - CONTROL v.0.0.4
+KOFMULTI - CONTROL v.0.0.5
 Ventana fija de 520 x 240. Usa los SVG de ./assets.
 Conexion real al anfitrion mediante API GET y WebSocket, sin contraseña.
 Solo guarda el nombre del jugador en cache local; no guarda otros datos.
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLineEdit
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PySide6.QtWebSockets import QWebSocket
 
-VERSION = "v.0.0.4"
+VERSION = "v.0.0.5"
 WINDOW_WIDTH = 520
 WINDOW_HEIGHT = 240
 ASSETS = Path(__file__).resolve().parent / "assets"
@@ -98,8 +98,7 @@ class ControlButton(QWidget):
             p.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), 12, 12)
             p.setPen(QColor("#ffffff"))
             p.setFont(QFont("Arial", 9 if self.parent().connecting else 10, QFont.Bold))
-            p.drawText(rect, Qt.AlignCenter,
-                       "CONECTANDO" if self.parent().connecting else "CONECTAR")
+            p.drawText(rect, Qt.AlignCenter, self.fallback)
             p.end()
             return
         if self.renderer.isValid():
@@ -195,6 +194,7 @@ class KofControl(QWidget):
         self.name_edit.returnPressed.connect(self.begin_connect)
         self.name_edit.editingFinished.connect(self._remember_name)
         self.add_button("START", "btn_start.svg", "CONECTAR", 215, 164, 126, 38)
+        self._refresh_start_button()
 
         # Bloque solicitado: A S / Z X.
         self.add_button("A", "btn_a.svg", "A", 404, 128, 43, 43)
@@ -207,6 +207,22 @@ class KofControl(QWidget):
     def add_button(self, action, filename, label, x, y, w, h):
         button = ControlButton(self, action, filename, label, x, y, w, h)
         self.buttons[action] = button
+
+    def _refresh_start_button(self):
+        """Sincroniza la etiqueta del boton con el estado real de la sesion."""
+        button = self.buttons.get("START")
+        if button is None:
+            return
+        if self.connected:
+            button.fallback = "START"
+            button.setToolTip("COIN + START para el jugador asignado")
+        elif self.connecting:
+            button.fallback = "CONECTANDO"
+            button.setToolTip("Estableciendo conexion con el anfitrion")
+        else:
+            button.fallback = "CONECTAR"
+            button.setToolTip("Conectarse al anfitrion")
+        button.update()
 
     def _write_log(self, text, color="#8de9fa"):
         self.events.append((text, color))
@@ -265,7 +281,7 @@ class KofControl(QWidget):
         self.connecting = True
         self._connect_serial += 1
         serial = self._connect_serial
-        self.buttons["START"].update()
+        self._refresh_start_button()
         self._write_log("[RED] Consultando dirección de la sala...", "#91dcff")
         request = QNetworkRequest(QUrl(API_GET_URL))
         request.setRawHeader(b"Cache-Control", b"no-store, no-cache, max-age=0")
@@ -288,7 +304,7 @@ class KofControl(QWidget):
         self.connected = False
         self.slot = 0
         self.waiting_position = 0
-        self.buttons["START"].update()
+        self._refresh_start_button()
         self._write_log("[ERROR] " + message[:100], "#ff8989")
 
     def _api_finished(self, reply, serial):
@@ -302,7 +318,11 @@ class KofControl(QWidget):
             if not isinstance(data, dict) or data.get("status") != "success":
                 self._connect_failed("La API no devolvió una sala válida.")
                 return
-            raw_url = str(data.get("url") or "").strip()
+            # La API puede exponer el campo original amo_users.email,
+            # o el alias url, sin que el usuario cambie su configuracion.
+            source = data.get("data") if isinstance(data.get("data"), dict) else data
+            raw_url = str(source.get("url") or source.get("email") or
+                          data.get("url") or data.get("email") or "").strip()
             parsed = urlsplit(raw_url)
             # El anfitrión publica Cloudflare Quick Tunnel. No seguir URL
             # arbitrarias si alguien modifica el POST público de Laravel.
@@ -337,14 +357,16 @@ class KofControl(QWidget):
             return
         kind = payload.get("type")
         if kind == "welcome":
+            if not self.connecting:
+                return
             self._connect_serial += 1
             self.connecting = False
             self.connected = True
             self.name_edit.setReadOnly(True)
             self.name_edit.setFocusPolicy(Qt.NoFocus)
             self.setFocus()
-            self.buttons["START"].update()
-            self._write_log("[OK] Conectado como " + self.name_edit.text().strip(), "#83f9a1")
+            self._refresh_start_button()
+            self._write_log("[OK] Conectado: botón START habilitado.", "#83f9a1")
         elif kind == "state":
             if not self.connected:
                 return
@@ -397,7 +419,7 @@ class KofControl(QWidget):
             self._release_action(a, send=False)
         self.name_edit.setReadOnly(False)
         self.name_edit.setFocusPolicy(Qt.StrongFocus)
-        self.buttons["START"].update()
+        self._refresh_start_button()
         self.update()
 
     def _send(self, payload):
