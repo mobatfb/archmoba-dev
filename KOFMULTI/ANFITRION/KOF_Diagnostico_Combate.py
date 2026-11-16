@@ -25,7 +25,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-VERSION = "1.0"
+VERSION = "1.1"
 HERE = pathlib.Path(__file__).resolve().parent
 LUA_FILE = HERE / "KOF_Diagnostico_Combate.lua"
 SESSION_DIR = HERE / "KOF_DIAG_SESIONES"
@@ -49,16 +49,18 @@ MARKS = (
 def byte_label(value: int) -> str:
     if value == HP_SENTINEL:
         return "254 (KO observado)"
+    if value == 255:
+        return "255 (KO posible)"
     if 0 <= value <= 102:
         return f"{value} / 102"
     return f"{value} (estado especial)"
 
 
 def timer_label(value: int) -> str:
-    """El cheat 0x10A7D2 usa 0x99; BCD es hipótesis verificable."""
+    """En esta captura, 0x60, 0x59 ... 0x00 concuerda con BCD 60..0."""
     hi, lo = value >> 4, value & 0xF
     if hi <= 9 and lo <= 9:
-        return f"{hi * 10 + lo:02d} (posible BCD, 0x{value:02X})"
+        return f"{hi * 10 + lo:02d} (BCD observado, 0x{value:02X})"
     return f"0x{value:02X} ({value} decimal)"
 
 
@@ -156,6 +158,8 @@ class DiagnosticsApp:
         self.p2_text = tk.StringVar(value="P2: --")
         self.timer_text = tk.StringVar(value="TIEMPO DEL JUEGO: --")
         self.counters_text = tk.StringVar(value="Contadores P1/P2: -- / --")
+        self.team_status = tk.StringVar(
+            value="EQUIPOS: pendiente | observar cambios de contador 0 a 3")
         self.frame_text = tk.StringVar(value="Fotograma emulado: --")
         self.watch_text = tk.StringVar(value="Cronómetro local: 00:00.0")
 
@@ -220,6 +224,8 @@ class DiagnosticsApp:
                   style="Header.TLabel").pack(side="left", padx=(0, 40))
         ttk.Label(vital, textvariable=self.p2_text,
                   style="Header.TLabel").pack(side="left")
+        ttk.Label(frame, textvariable=self.team_status,
+                  style="Status.TLabel").pack(anchor="w", pady=(1, 3))
         for variable in (self.timer_text, self.counters_text, self.frame_text):
             ttk.Label(frame, textvariable=variable).pack(anchor="w", pady=1)
 
@@ -342,6 +348,7 @@ class DiagnosticsApp:
             self.last_frame = -1
             self.game_closed_reported = False
             self.command_id = 0
+            self.team_status.set("EQUIPOS: esperando datos de MAME...")
             self.reset_watch()
 
             rom_dir = pathlib.Path(self.rom_folder.get().strip() or str(exe.parent))
@@ -398,7 +405,21 @@ class DiagnosticsApp:
                             + f" | estado 0x{state.timer_aux:02X}")
         self.counters_text.set(
             f"Contadores ('Rounds Lost'): P1={state.lost1} / P2={state.lost2} "
-            f"| transiciones 254: P1={state.ko1} / P2={state.ko2}")
+            f"| transiciones 254/255: P1={state.ko1} / P2={state.ko2}")
+        if state.lost1 == 3 and state.lost2 < 3:
+            self.team_status.set(
+                f"POSIBLE FIN EQUIPO P1 (3/3): fotograma {state.frame}; "
+                "pendiente confirmar pantalla de victoria")
+        elif state.lost2 == 3 and state.lost1 < 3:
+            self.team_status.set(
+                f"POSIBLE FIN EQUIPO P2 (3/3): fotograma {state.frame}; "
+                "pendiente confirmar pantalla de victoria")
+        elif state.lost1 <= 3 and state.lost2 <= 3:
+            self.team_status.set(
+                f"PERSONAJES/RONDAS PERDIDAS: P1 {state.lost1}/3, "
+                f"P2 {state.lost2}/3 (observación)")
+        else:
+            self.team_status.set("EQUIPOS: datos fuera de rango; esperar combate")
         self.frame_text.set(f"Fotograma emulado: {state.frame} | "
                             "0x10A7D2 tiempo, 0x10A7D3 estado")
         self.status.set(f"Telemetría activa (solo lectura) | sesión {self.session.name}")
@@ -433,6 +454,12 @@ class DiagnosticsApp:
             s.frame, event.kind, byte_label(s.hp1), byte_label(s.hp2),
             f"{s.lost1} / {s.lost2}", timer_label(s.timer)))
         self.event_items[row] = event
+        if event.kind.startswith("MARCA_"):
+            self.status.set("Marca del usuario registrada: " + event.kind)
+        if event.kind in (
+            "POSIBLE_FIN_EQUIPO_P1", "POSIBLE_FIN_EQUIPO_P2"):
+            self.team_status.set("ATENCIÓN: " + event.kind.replace("_", " ") +
+                                 f" | fotograma {s.frame}")
         if len(self.event_items) > 750:
             oldest = next(iter(self.event_items))
             self.tree.delete(oldest)
@@ -563,9 +590,11 @@ class DiagnosticsApp:
 
 def selftest():
     assert byte_label(254).startswith("254 (KO")
+    assert byte_label(255).startswith("255 (KO")
     assert byte_label(102) == "102 / 102"
     assert timer_label(0x99).startswith("99")
     assert timer_label(0x60).startswith("60")
+    assert timer_label(0x41).startswith("41")
     assert timer_label(0xAB).startswith("0xAB")
     good = ("KOF_DIAG_STATE1\t3\t842\t102\t254\t0\t2"
             "\t153\t1\t0\t1\n")
@@ -581,7 +610,14 @@ def selftest():
     assert event.reading.frame == 842 and len(event.contexts) == 5
     assert parse_event(good_evt.replace("00" * 32, "ZZ" * 32)) is None
     assert parse_event("KOF_DIAG_EVT1\t1\t1\t1") is None
-    print("OK: 254, temporizador BCD, tramas de Lua y eventos con contexto.")
+    # Fotogramas que constan en el registro real del usuario:
+    first = Reading(4323, 102, 255, 0, 1, 0x38, 35, 0, 0)
+    timeout = Reading(8373, 102, 35, 0, 2, 0, 0, 0, 0)
+    last = Reading(9733, 102, 254, 0, 3, 0x41, 3, 0, 1)
+    assert first.hp2 == 255 and first.lost2 == 1
+    assert timeout.lost2 == 2 and timeout.timer == 0
+    assert last.hp2 == 254 and last.lost2 == 3
+    print("OK: 254/255, BCD, primera muerte, tiempo agotado y ultimo personaje.")
 
 
 if __name__ == "__main__":
