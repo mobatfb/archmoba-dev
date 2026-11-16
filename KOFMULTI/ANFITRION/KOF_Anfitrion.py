@@ -32,7 +32,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-APP_VERSION = "1.16.3"
+APP_VERSION = "1.16.4"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1171,7 +1171,9 @@ class HostServer:
         self.champion_exit_mode = champion_exit_mode if champion_exit_mode in CHAMPION_EXIT_MODES else MODE_TECHNICAL
         self.last_winner_uid: Optional[int] = None
         self.last_winner_name = ""
-        self.scores: dict[int, int] = {}
+        self.scores: dict[int, int] = {}  # victorias
+        self.losses: dict[int, int] = {}
+        self.perfects: dict[int, int] = {}
         self.bot_until: dict[int, float] = {}
         self.bot_held: dict[int, set[str]] = {}
         self.bot_next: dict[int, float] = {}
@@ -1187,6 +1189,41 @@ class HostServer:
         self.thread = None
         self.timer_thread = None
         self.stop_event = threading.Event()
+
+    def adjust_stat(self, uid: int, field_name: str, delta: int) -> bool:
+        """Actualizacion manual de contadores; PERFECTO suma un punto adicional.
+
+        No se detectan resultados internos de MAME: el operador registra cada
+        victoria, derrota o perfecto. Puntaje = Ganados + Perfectos.
+        """
+        if delta not in (-1, 1):
+            return False
+        with self.room.lock:
+            guest = self.room.guests.get(uid)
+            if guest is None:
+                return False
+            target = {"ganados": self.scores, "perdidos": self.losses,
+                      "perfectos": self.perfects}.get(field_name)
+            if target is None:
+                return False
+            previous = target.get(uid, 0)
+            updated = previous + delta
+            if updated < 0:
+                return False
+            target[uid] = updated
+            if field_name == "ganados":
+                if delta == 1:
+                    self.last_winner_uid = guest.uid
+                    self.last_winner_name = guest.name
+                elif self.last_winner_uid == guest.uid:
+                    self.last_winner_uid = None
+                    self.last_winner_name = ""
+            points = self.scores.get(uid, 0) + self.perfects.get(uid, 0)
+            self.ui_notify(
+                "log", f"Marcador {guest.name}: {field_name} {previous} a "
+                       f"{updated} | Puntaje {points}.")
+            self._broadcast_state()
+            return True
 
     def mark_winner(self, slot: int) -> bool:
         """Registro manual del resultado; este MAME no expone un evento WINNER.
@@ -1276,6 +1313,7 @@ class HostServer:
                       if g.uid != guest.uid and g.slot in (1, 2) and g.start_pressed), None)
         if mode == MODE_TECHNICAL and rival is not None:
             self.scores[rival.uid] = self.scores.get(rival.uid, 0) + 1
+            self.losses[guest.uid] = self.losses.get(guest.uid, 0) + 1
             self.last_winner_uid = rival.uid
             self.last_winner_name = rival.name
             message = (f"Victoria tecnica para {rival.name}: el ultimo ganador "
@@ -1471,6 +1509,8 @@ class HostServer:
                         "timer_remaining": max(0, int(until - time.monotonic()))}
             roster["last_winner"] = self.last_winner_name
             roster["scores"] = dict(self.scores)
+            roster["losses"] = dict(self.losses)
+            roster["perfects"] = dict(self.perfects)
             for guest, state in self.room.personalized_snapshots():
                 state.update({"players": roster["players"],
                               "last_winner": self.last_winner_name,
@@ -1690,16 +1730,24 @@ class HostGUI:
         table_holder = ttk.Frame(body)
         table_holder.pack(side="top", fill="both", expand=True)
         self.roster = ttk.Treeview(
-            table_holder, columns=("slot", "name", "id"),
+            table_holder,
+            columns=("slot", "name", "id", "wins", "losses", "perfects", "points"),
             show="headings", height=12, selectmode="browse")
-        for key, title, width in (
-            ("slot", "Posicion / Estado", 205),
-            ("name", "Participante", 390),
-            ("id", "ID", 75),
+        for key, title, width, stretch in (
+            ("slot", "Posicion", 140, True),
+            ("name", "Participante", 200, True),
+            ("id", "ID", 42, False),
+            ("wins", "Ganados", 68, False),
+            ("losses", "Perdidos", 68, False),
+            ("perfects", "Perfecto", 68, False),
+            ("points", "Puntaje", 68, False),
         ):
             self.roster.heading(key, text=title)
-            self.roster.column(key, width=width, minwidth=60, stretch=True,
-                               anchor="w" if key == "name" else "center")
+            self.roster.column(
+                key, width=width, minwidth=40, stretch=stretch,
+                anchor="w" if key == "name" else "center")
+        self.roster.bind("<Double-1>", self._roster_double_click)
+        self.roster.bind("<Button-3>", self._roster_context_menu)
         self.roster.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(
             table_holder, orient="vertical", command=self.roster.yview)
@@ -1711,6 +1759,8 @@ class HostGUI:
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
+        self._append("Marcador manual: doble clic en Ganados, Perdidos o Perfecto para sumar 1; clic derecho para corregir.")
+        self._append("Puntaje = Ganados + Perfecto. Cada uno vale 1 punto.")
         self._show_roster({
             "players": {"1": None, "2": None},
             "queue": [], "spectators": [], "total": 0})
@@ -1798,18 +1848,28 @@ class HostGUI:
             pass
 
     def _show_roster(self, data):
-        """Redibuja sin perder el jugador seleccionado ni el scroll."""
+        """Redibuja todos los jugadores con sus contadores y sin perder scroll."""
         selection = self.roster.selection()
         selected_uid = self.member_by_tree_row.get(selection[0]) if selection else None
         old_scroll = self.roster.yview()
         for item in self.roster.get_children():
             self.roster.delete(item)
         self.member_by_tree_row.clear()
-        scores = data.get("scores", {})
+        wins = data.get("scores", {})
+        losses = data.get("losses", {})
+        perfects = data.get("perfects", {})
 
-        def with_score(person):
-            wins = scores.get(person["id"], scores.get(str(person["id"]), 0))
-            return f"{person['name']} ({wins} victorias)" if wins else person["name"]
+        def count(table, person):
+            uid = person["id"]
+            return int(table.get(uid, table.get(str(uid), 0)))
+
+        def display(position, person):
+            won = count(wins, person)
+            lost = count(losses, person)
+            perfect = count(perfects, person)
+            # Un perfecto suma 1 punto, igual que un ganado.
+            return (position, person["name"], person["id"],
+                    won, lost, perfect, won + perfect)
 
         for slot in (1, 2):
             guest = data.get("players", {}).get(str(slot))
@@ -1818,25 +1878,23 @@ class HostGUI:
                 remaining = guest.get("timer_remaining", 0)
                 state = (f"BOT {remaining}s" if phase == "bot" else
                          f"START {remaining}s" if phase == "start" else f"ACTIVO {remaining}s")
-                row = self.roster.insert(
-                    "", "end",
-                    values=(f"P{slot} - {state}", with_score(guest), guest["id"]))
-                self.member_by_tree_row[row] = guest["id"]
+                row = self.roster.insert("", "end", values=display(f"P{slot} - {state}", guest))
+                if guest["id"] > 0:
+                    self.member_by_tree_row[row] = guest["id"]
             else:
-                self.roster.insert("", "end",
-                                   values=(f"P{slot} - DISPONIBLE", "Libre", ""))
+                self.roster.insert(
+                    "", "end",
+                    values=(f"P{slot} - DISPONIBLE", "Libre", "", "", "", "", ""))
 
         waiting = data.get("queue", [])
         for i, guest in enumerate(waiting, 1):
-            row = self.roster.insert(
-                "", "end",
-                values=(f"EN ESPERA {i}", with_score(guest), guest["id"]))
+            row = self.roster.insert("", "end",
+                                     values=display(f"EN ESPERA {i}", guest))
             self.member_by_tree_row[row] = guest["id"]
         spectators = data.get("spectators", [])
         for guest in spectators:
-            row = self.roster.insert(
-                "", "end",
-                values=("ESPECTADOR", with_score(guest), guest["id"]))
+            row = self.roster.insert("", "end",
+                                     values=display("ESPECTADOR", guest))
             self.member_by_tree_row[row] = guest["id"]
 
         for row, uid in self.member_by_tree_row.items():
@@ -1857,6 +1915,49 @@ class HostGUI:
         self.roster_count_var.set(
             f"{total} conectados  |  P1 {p1}  |  P2 {p2}"
             f"  |  En espera: {len(waiting)}")
+
+    def _adjust_roster_stat(self, uid: int, metric: str, delta: int):
+        if not self.server:
+            self.messagebox.showwarning("Sala cerrada", "Abre la sala primero.")
+            return
+        if not self.server.adjust_stat(uid, metric, delta):
+            self._append(
+                "No se pudo modificar el marcador: el jugador se desconecto "
+                "o el contador ya esta en cero.")
+
+    def _roster_double_click(self, event):
+        """Doble clic en el numero para sumar exactamente una unidad."""
+        row = self.roster.identify_row(event.y)
+        col = self.roster.identify_column(event.x)
+        metric = {"#4": "ganados", "#5": "perdidos", "#6": "perfectos"}.get(col)
+        uid = self.member_by_tree_row.get(row)
+        if uid is not None and metric is not None:
+            self._adjust_roster_stat(uid, metric, 1)
+            return "break"
+
+    def _roster_context_menu(self, event):
+        """Editar o corregir contadores mediante clic derecho en el jugador."""
+        row = self.roster.identify_row(event.y)
+        uid = self.member_by_tree_row.get(row)
+        if uid is None:
+            return
+        self.roster.selection_set(row)
+        menu = self.tk.Menu(self.roster, tearoff=0)
+        for metric, label in (("ganados", "Ganados"),
+                              ("perdidos", "Perdidos"),
+                              ("perfectos", "Perfecto")):
+            menu.add_command(
+                label=f"{label} +1",
+                command=lambda m=metric: self._adjust_roster_stat(uid, m, 1))
+            menu.add_command(
+                label=f"{label} -1 (corregir)",
+                command=lambda m=metric: self._adjust_roster_stat(uid, m, -1))
+            menu.add_separator()
+        menu.add_command(label="Puntaje = Ganados + Perfecto", state="disabled")
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
 
     def _start_server(self):
         if self.server is not None:
