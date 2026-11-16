@@ -2111,6 +2111,30 @@ def main():
 
 def run_selftest():
     """Comprueba asignación P1/P2, lista FIFO y liberación automática."""
+    # Un resultado confirmado por el juego registra ambos lados y PERFECT;
+    # los datos nunca cambian por pulsaciones ni por editarlos desde la tabla.
+    simulator = HostServer.__new__(HostServer)
+    simulator.room = Room(NullInput())
+    player_1 = simulator.room.register("Test P1")
+    player_2 = simulator.room.register("Test P2")
+    player_1.start_pressed = True
+    player_2.start_pressed = True
+    simulator.scores = {}
+    simulator.losses = {}
+    simulator.perfects = {}
+    simulator.last_winner_uid = None
+    simulator.last_winner_name = ""
+    simulator.ui_notify = lambda *_args: None
+    simulator._broadcast_state = lambda: None
+    pair = (player_1.uid, player_2.uid)
+    assert simulator.record_game_outcome(1, True, pair)
+    assert simulator.scores[player_1.uid] == 1
+    assert simulator.losses[player_2.uid] == 1
+    assert simulator.perfects[player_1.uid] == 1
+    assert simulator.scores[player_1.uid] + simulator.perfects[player_1.uid] == 2
+    assert not simulator.record_game_outcome(1, False, (player_1.uid, 999))
+    assert simulator.scores[player_1.uid] == 1
+
     mock = NullInput()
     room = Room(mock)
     a, b, c, d = [room.register(n) for n in ("Ana", "Beto", "Cata", "Dani")]
