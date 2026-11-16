@@ -2066,6 +2066,57 @@ class HostGUI:
                 self.notify("log", "El túnel terminó sin crear URL. Revisa Internet y cloudflared.")
             self.notify("tunnel_closed", process)
 
+    def _choose_mame_lua(self):
+        """Seleccionar MAME 0.289 real; no sustituir el ejecutable antiguo."""
+        if self.game_process is not None and self.game_process.poll() is None:
+            self.messagebox.showwarning(
+                "Cierra el juego", "Cierra MAME antes de cambiar de emulador.")
+            return
+        from tkinter import filedialog
+        filename = filedialog.askopenfilename(
+            title="Selecciona mame.exe de MAME 0.289 (64 bits)",
+            filetypes=[("Ejecutable MAME", "mame*.exe"),
+                       ("Programas Windows", "*.exe")])
+        if not filename:
+            return
+        executable = pathlib.Path(filename).resolve()
+        try:
+            detected = subprocess.run(
+                [str(executable), "-version"], cwd=str(executable.parent),
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, errors="replace", timeout=8,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            description = detected.stdout.strip()
+            if detected.returncode != 0 or re.search(r"\\b0\\.289\\b", description) is None:
+                raise ValueError(
+                    f"El ejecutable no parece MAME 0.289. Respuesta: {description[:160]}")
+            if LuaHealthMonitor is None:
+                raise RuntimeError(
+                    "Falta KOF_MAME_Lua_Bridge.py junto al anfitrión.")
+            script = BASE_DIR / "KOF_Salud_MAME289.lua"
+            if not script.is_file():
+                raise FileNotFoundError(
+                    "Falta KOF_Salud_MAME289.lua junto al anfitrión.")
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.messagebox.showerror("MAME 0.289", str(exc))
+            return
+        self.lua_mame_exe = executable
+        self.mame_choice_var.set("Lua: " + executable.name + " (" + str(executable.parent) + ")")
+        self.lua_health_var.set(
+            "VIDA P1: --  |  VIDA P2: --  |  inicia el juego para leer Lua")
+        self._append("Seleccionado MAME 0.289, sin tocar tu MAME 0.132. "
+                     "Se activará el monitor Lua al INICIAR KOF.")
+
+    def _use_legacy_mame(self):
+        if self.game_process is not None and self.game_process.poll() is None:
+            self.messagebox.showwarning(
+                "Cierra el juego", "Cierra MAME antes de cambiar de emulador.")
+            return
+        self.lua_mame_exe = None
+        self.mame_choice_var.set("Emulador: MAME 0.132 original")
+        self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
+        self._append("Volviste al MAME 0.132 original sin alterar ROM ni mandos.")
+
     def _start_game(self):
         if sys.platform != "win32":
             self.messagebox.showerror("Windows necesario", "mame.exe solo se ejecuta en Windows.")
@@ -2075,7 +2126,7 @@ class HostGUI:
             return
         if self.server is None or not isinstance(self.server.room.input, VirtualPads):
             self.messagebox.showwarning("Primero abre la sala",
-                "Para que MAME 0.132 reconozca los controles, pulsa primero ABRIR SALA "
+                "Para que MAME reconozca ambos controles, pulsa primero ABRIR SALA "
                 "con 2 joysticks virtuales y DESPUES INICIAR KOF.")
             return
         self._append("Buscando o extrayendo KOF2022GAME.zip original ...")
@@ -2083,22 +2134,97 @@ class HostGUI:
 
     def _game_worker(self):
         try:
-            directory = get_game_folder()
-            command = [str(directory / "mame.exe"), "kf2k2mp2", "-window", "-maximize",
-                       "-state_directory", str(directory / STATE_FOLDER)]
-            path = create_mame_virtual_profile(directory)
-            command.extend(["-ctrlr", path.stem])
-            self.notify("log", "MAME 0.132 del ZIP. Perfil de 2 joysticks: ctrlr/" + path.name +
-                        " (sin modificar default.cfg ni las ROM).")
-            self.game_process = subprocess.Popen(command, cwd=str(directory))
-            if os.environ.get("KOF_ENABLE_OCR_RESULTS") == "1":
-                self._start_auto_results(self.game_process, self.server)
-            else:
-                self.notify(
-                    "log", "OCR de resultados desactivado durante el aprendizaje de "
-                           "RAM. Los inputs no suman puntuación.")
-            self.notify("log", f"MAME antiguo iniciado (PID {self.game_process.pid}) con 2 joysticks virtuales. "
-                        "Si hay otros mandos conectados, verifica los números P1 y P2 en TAB > Input (this Game).")
+            chosen_exe = self.lua_mame_exe
+            if chosen_exe is None:
+                # Ruta antigua probada: no modificar comportamiento de MAME 0.132.
+                directory = get_game_folder()
+                command = [str(directory / "mame.exe"), "kf2k2mp2",
+                           "-window", "-maximize",
+                           "-state_directory", str(directory / STATE_FOLDER)]
+                profile = create_mame_virtual_profile(directory)
+                command.extend(["-ctrlr", profile.stem])
+                self.notify("log",
+                            "MAME 0.132 del ZIP. Perfil de 2 joysticks: "
+                            "ctrlr/" + profile.name)
+                if self.lua_monitor is not None:
+                    self.lua_monitor.stop()
+                    self.lua_monitor = None
+                self.game_process = subprocess.Popen(
+                    command, cwd=str(directory))
+                if os.environ.get("KOF_ENABLE_OCR_RESULTS") == "1":
+                    self._start_auto_results(self.game_process, self.server)
+                else:
+                    self.notify("log",
+                                "OCR desactivado: los inputs NO suman puntuación.")
+                self.notify("log",
+                            f"MAME 0.132 iniciado, PID {self.game_process.pid}.")
+                return
+
+            if LuaHealthMonitor is None:
+                raise RuntimeError(
+                    "Falta KOF_MAME_Lua_Bridge.py en la carpeta del anfitrión.")
+            script = BASE_DIR / "KOF_Salud_MAME289.lua"
+            if not script.is_file():
+                raise FileNotFoundError(
+                    "Falta el script KOF_Salud_MAME289.lua en el anfitrión.")
+            if not chosen_exe.is_file():
+                raise FileNotFoundError(
+                    f"El ejecutable seleccionado ya no existe: {chosen_exe}")
+
+            # Preferir las ROM del proyecto; permitir también el directorio
+            # independiente con el que el usuario ya abrió MAME 0.289.
+            try:
+                directory = get_game_folder()
+            except FileNotFoundError:
+                own = chosen_exe.parent
+                if ((own / "kf2k2mp2.zip").is_file() or
+                        (own / "roms" / "kf2k2mp2.zip").is_file()):
+                    directory = own
+                else:
+                    raise FileNotFoundError(
+                        "No se encontró kf2k2mp2.zip. Coloca la ROM en "
+                        "KOF2022GAME o en la carpeta roms del MAME 0.289.")
+
+            if self.lua_monitor is not None:
+                self.lua_monitor.stop()
+                self.lua_monitor = None
+            self.lua_state_path.parent.mkdir(parents=True, exist_ok=True)
+            # Nunca consumir datos de una partida o PID anterior.
+            try:
+                self.lua_state_path.unlink()
+            except FileNotFoundError:
+                pass
+
+            # Los save states del MAME antiguo NO deben abrirse en el nuevo.
+            modern_state_dir = directory / "KOF_ARENA_ESTADOS_0289"
+            modern_state_dir.mkdir(parents=True, exist_ok=True)
+            profile = create_mame_virtual_profile(directory)
+            rom_paths = list(dict.fromkeys((
+                str(directory), str(directory / "roms"),
+                str(chosen_exe.parent / "roms"),
+                str(chosen_exe.parent))))
+            command = [str(chosen_exe), "kf2k2mp2", "-window", "-maximize",
+                       "-rompath", os.pathsep.join(rom_paths),
+                       "-state_directory", str(modern_state_dir),
+                       "-ctrlrpath", str(profile.parent),
+                       "-ctrlr", profile.stem,
+                       "-joystick", "-autoboot_script", str(script)]
+            env = os.environ.copy()
+            env["KOF_ARENA_LUA_STATE"] = str(self.lua_state_path)
+            self.notify("log",
+                        "Iniciando MAME 0.289 con Lua y dos joysticks "
+                        "virtuales; marcador automático sigue desactivado.")
+            self.game_process = subprocess.Popen(
+                command, cwd=str(chosen_exe.parent), env=env)
+            self.lua_monitor = LuaHealthMonitor(
+                process=self.game_process,
+                file_path=self.lua_state_path,
+                notify=self.notify)
+            self.lua_monitor.start()
+            self.notify("log",
+                        f"MAME 0.289 iniciado PID {self.game_process.pid}. "
+                        "Lectura Neo Geo P1 0x108239 / P2 0x108439, "
+                        "sin modificación de RAM.")
         except Exception as ex:
             self.notify("log", "No se pudo abrir KOF: " + str(ex))
 
@@ -2139,6 +2265,9 @@ class HostGUI:
         self._append("Enlace copiado. Cualquier persona que lo tenga puede entrar a la sala.")
 
     def _stop_server(self):
+        if self.lua_monitor is not None:
+            self.lua_monitor.stop()
+            self.lua_monitor = None
         if self.auto_monitor is not None:
             self.auto_monitor.stop()
             self.auto_monitor = None
