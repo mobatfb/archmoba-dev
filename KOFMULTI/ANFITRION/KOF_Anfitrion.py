@@ -44,7 +44,7 @@ except ImportError:
     LuaHealthMonitor = None
     STATE_FILE_NAME = "KOF_ARENA_LUA_ESTADO.txt"
 
-APP_VERSION = "1.16.7"
+APP_VERSION = "1.16.8"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1665,6 +1665,8 @@ class HostGUI:
             value="Emulador: MAME 0.132 original (selecciona 0.289 para Lua)")
         self.lua_health_var = tk.StringVar(
             value="VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
+        self.lua_perfect_var = tk.StringVar(
+            value="PERFECT: P1=-- | P2=-- | solo observación, sin puntuar")
         self.host_url_var = tk.StringVar(value="Sala no publicada.")
         self.api_status_var = tk.StringVar(value="API: sala no publicada")
         self.roster_count_var = tk.StringVar(
@@ -1721,7 +1723,9 @@ class HostGUI:
         ttk.Label(emulator, textvariable=self.mame_choice_var,
                   style="Muted.TLabel").pack(side="left", fill="x", expand=True)
         ttk.Label(body, textvariable=self.lua_health_var,
-                  style="TLabel").pack(side="top", fill="x", pady=(0, 4))
+                  style="TLabel").pack(side="top", fill="x", pady=(0, 2))
+        ttk.Label(body, textvariable=self.lua_perfect_var,
+                  style="Muted.TLabel").pack(side="top", fill="x", pady=(0, 4))
 
         pads = ttk.Frame(body)
         pads.pack(side="top", fill="x", pady=(0, 4))
@@ -1789,7 +1793,7 @@ class HostGUI:
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
-        self._append("Lua MAME 0.289: lee vida P1/P2 desde RAM emulada, sin escribir ni sumar puntos.")
+        self._append("Lua MAME 0.289: lee vida, tiempo y PERFECT P1/P2, sin escribir ni sumar puntos.")
         self._append("Entrenamiento de salud: los golpes se observan en RAM, pero nunca suman puntos por sí solos.")
         self._append("Puntaje = Ganados + Perfecto (1 punto por cada uno).")
         self._show_roster({
@@ -1866,11 +1870,22 @@ class HostGUI:
             elif kind == "input_status":
                 self.input_diagnostic_var.set("CONTROLES: " + str(data)[:210])
             elif kind == "lua_health":
-                # Son valores de RAM en observacion, no resultados definitivos.
+                # Telemetría informativa. NO actualizar Ganados/Perdidos/Puntos.
                 self.lua_health_var.set(
-                    f"VIDA P1: {data.p1}  |  VIDA P2: {data.p2}"
-                    f"  |  Rondas perdidas?: P1={data.rounds_lost_p1}"
-                    f" / P2={data.rounds_lost_p2}  |  solo lectura")
+                    f"VIDA P1: {data.p1_display}  |  VIDA P2: {data.p2_display}"
+                    f"  |  TIEMPO: {data.timer_display}"
+                    f"  |  Pérdidas: {data.rounds_lost_p1}/{data.rounds_lost_p2}")
+                if data.timer is not None:
+                    self.lua_perfect_var.set(
+                        f"PERFECT OBSERVADOS: P1={data.perfect_p1} | "
+                        f"P2={data.perfect_p2} | KO/tiempo, sin puntuar")
+                else:
+                    self.lua_perfect_var.set(
+                        "PERFECT: requiere KOF_Salud_MAME289.lua V3")
+            elif kind == "lua_perfect":
+                self._append(
+                    f"Lua: PERFECT calculados P1={data.perfect_p1} / "
+                    f"P2={data.perfect_p2}. No se modificó el marcador.")
             elif kind == "lua_status":
                 if str(data).startswith("Lua conectado:"):
                     if "Lua desactivado" in self.lua_health_var.get():
@@ -1880,6 +1895,8 @@ class HostGUI:
                     self._append(str(data))
                 if "MAME se cerró" in str(data):
                     self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  MAME cerrado")
+                    self.lua_perfect_var.set(
+                        "PERFECT: sesión cerrada; no se modificó el marcador")
             elif kind == "tunnel_closed":
                 if self.tunnel_process is data:
                     self.tunnel_process = None
@@ -2104,6 +2121,7 @@ class HostGUI:
         self.mame_choice_var.set("Lua: " + executable.name + " (" + str(executable.parent) + ")")
         self.lua_health_var.set(
             "VIDA P1: --  |  VIDA P2: --  |  inicia el juego para leer Lua")
+        self.lua_perfect_var.set("PERFECT: P1=0 | P2=0 | esperando Lua V3")
         self._append("Seleccionado MAME 0.289, sin tocar tu MAME 0.132. "
                      "Se activará el monitor Lua al INICIAR KOF.")
 
@@ -2115,6 +2133,7 @@ class HostGUI:
         self.lua_mame_exe = None
         self.mame_choice_var.set("Emulador: MAME 0.132 original")
         self.lua_health_var.set("VIDA P1: --  |  VIDA P2: --  |  Lua desactivado")
+        self.lua_perfect_var.set("PERFECT: Lua desactivado en MAME 0.132")
         self._append("Volviste al MAME 0.132 original sin alterar ROM ni mandos.")
 
     def _start_game(self):
