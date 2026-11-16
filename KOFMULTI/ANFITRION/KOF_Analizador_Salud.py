@@ -831,8 +831,8 @@ class App:
                 value, delta = val
                 suffix = (
                     "sin lectura (revisar dirección o PID)" if value is None else
-                    f"valor {value} / 255" if delta is None else
-                    f"valor {value} / 255  |  cambio {delta:+d}"
+                    f"valor {value} (Byte)" if delta is None else
+                    f"valor {value} (Byte)  |  cambio {delta:+d}"
                 )
                 self.p2_health_status.set(
                     f"VIDA P2 | 0x{P2_HP_ADDRESS:08X} | Byte | {suffix}")
