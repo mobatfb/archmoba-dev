@@ -21,6 +21,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+ANALYZER_VERSION = "v1.1"
 PORT = 38724  # Solo 127.0.0.1; el anfitrion informa ataques, no resultados.
 MAX_SCAN_BYTES = 24 * 1024 * 1024
 BLOCK = 64 * 1024
@@ -586,7 +587,7 @@ class Worker:
 class App:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("KOFMULTI | Entrenador de memoria P1 / P2")
+        self.root.title(f"KOFMULTI | Salud ALT IZQUIERDO {ANALYZER_VERSION}")
         self.root.geometry("1020x620")
         self.root.minsize(720, 450)
         self.root.configure(bg="#0b1323")
@@ -734,7 +735,7 @@ class App:
                     if f"0x{address:08X}" == selection_value:
                         self.table.selection_set(row)
             elif kind == "snapshot":
-                self._line("Memoria preparada. Realiza golpes aislados alternando P1 y P2.")
+                self._line("Memoria preparada. Vuelve a MAME y golpea con ALT IZQUIERDO.")
         if not self.worker.stop_event.is_set():
             self.root.after(130, self.poll)
 
@@ -759,7 +760,15 @@ def selftest():
     assert any(row[1] == 2 and row[2] == 0x10000 and row[4] == 5 for row in leaders)
     assert any(row[1] == 1 and row[2] == 0x20000 and row[4] == 5 for row in leaders)
     assert parse_addresses("00123000\n0x00124000") == [0x123000, 0x124000]
-    print("OK: asociacion P1/P2, memoria solo lectura y direcciones CE.")
+    two_bytes = ScoreLearner()
+    two_bytes.observe({0x40000: (1200).to_bytes(2, "little")},
+                      {0x40000: (1180).to_bytes(2, "little")}, 1, width=2)
+    assert any(row[1] == 2 and row[2] == 0x40000 for row in two_bytes.top())
+    four_bytes = ScoreLearner()
+    four_bytes.observe({0x50000: (150000).to_bytes(4, "little")},
+                       {0x50000: (149900).to_bytes(4, "little")}, 1, width=4)
+    assert any(row[1] == 2 and row[2] == 0x50000 for row in four_bytes.top())
+    print("OK: ALT izquierdo, bytes/2/4, correlacion y direcciones CE (datos simulados).")
 
 
 if __name__ == "__main__":
