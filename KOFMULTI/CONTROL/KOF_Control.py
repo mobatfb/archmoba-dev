@@ -216,7 +216,7 @@ class KofControl(QWidget):
     @staticmethod
     def _clean_name(value):
         # El nombre coincide con el formato permitido por el anfitrion.
-        return " ".join(ch for ch in str(value) if ch.isprintable()).strip()[:24]
+        return " ".join("".join(ch for ch in str(value) if ch.isprintable()).split())[:24]
 
     @staticmethod
     def _name_cache_file():
