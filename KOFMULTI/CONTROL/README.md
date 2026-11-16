@@ -1,52 +1,43 @@
-# KOFMULTI — CONTROL v.0.0.3
+# KOFMULTI — CONTROL v.0.0.4
 
-Interfaz gráfica compacta de **520 × 240 píxeles**, con botones SVG de `assets/`, cruceta, disposición de golpes **A S / Z X** y botón central dinámico.
+Interfaz compacta de **520 × 240 píxeles** para los jugadores, con el nombre encima del botón central y controles de teclado y tactiles ASZX.
 
-## Cambios de la versión 0.0.3
+## Nombre recordado localmente
 
-- **Nombre del jugador**: campo encima del botón central; el nombre se envía al anfitrión al conectarse.
-- **Desconectado**: el botón central dice **CONECTAR**.
-- **Conectando**: muestra **CONECTANDO** y consulta `https://api.isupol.edu.ec/api/geturlkof`.
-- **Conectado**: se convierte en **START**. Cuando tienes P1 o P2, realiza **COIN + START** en una pulsación.
-- **Conectado sin mando**: START permite solicitar un turno si estás en modo espectador. Si estás en cola, conserva tu posición.
-- La versión `v.0.0.3` figura **solamente arriba, en la barra de la ventana**. La consola interna muestra exclusivamente mensajes de conexión, turno y avisos.
-- El mando no transmite video ni audio.
-
-## Para abrir sin consola negra (Windows)
-
-1. Instala PySide6 una sola vez: `py -m pip install --no-cache-dir PySide6`.
-2. Haz doble clic en `KOF_Control.pyw` (recomendado) o en `ABRIR_CONTROL_SIN_CONSOLA.vbs`.
-
-`ABRIR_CONTROL.bat` también funciona, pero el propio CMD del archivo BAT puede verse un instante.
+- La primera vez que escribes tu nombre, se guarda automáticamente al terminar de editarlo, al pulsar **CONECTAR** o al cerrar la ventana.
+- En las próximas ejecuciones aparece ya rellenado en el campo **Tu nombre**.
+- Se guarda **solo el nombre** en `nombre_jugador.txt` dentro del directorio de caché local de la cuenta de usuario (resuelto por Qt con `QStandardPaths.CacheLocation`).
+- Puedes modificarlo: el nuevo nombre sustituye al anterior.
+- Si eliminas la caché del sistema, la próxima vez aparecerá vacío.
+- No se guardan contraseñas, enlaces, teclas, sesiones, estadísticas ni logs. No se necesita ningún archivo junto al ejecutable para recordar el nombre.
 
 ## Conexión
 
-1. En el PC anfitrión, inicia MAME y abre/publica la sala con Cloudflare.
-2. Abre `KOF_Control.pyw` en el PC del jugador.
-3. Escribe tu nombre y pulsa **CONECTAR**.
-4. El control consulta la API GET, convierte el enlace `https://*.trycloudflare.com` a WSS y establece el WebSocket, sin pedir contraseña ni escribir un enlace manualmente.
-5. El anfitrión asigna automáticamente P1, P2 o una posición en la cola.
+1. Abre y publica la sala en el anfitrión.
+2. Ejecuta **`KOF_Control.pyw`** (no abre consola negra) o **`ABRIR_CONTROL_SIN_CONSOLA.vbs`**.
+3. Escribe o confirma tu nombre y pulsa **CONECTAR**.
+4. El programa consulta `https://api.isupol.edu.ec/api/geturlkof` y abre un WebSocket seguro a la sala anunciada de Cloudflare.
+5. Cuando el anfitrión confirme la conexión, CONECTAR se convierte en **START**.
+6. El anfitrión te asigna P1, P2 o la lista de espera.
 
-**Seguridad:** solo se aceptan URLs `*.trycloudflare.com` de HTTPS/WSS para evitar seguir destinos arbitrarios publicados en la API sin autenticación. Si cambias a un dominio propio más adelante, también deberás actualizar esta validación.
+La versión **v.0.0.4** se presenta solo en la barra superior; no se repite en los mensajes de la consola interna.
 
 ## Controles
 
-| Tecla local | Acción del jugador | Acción transmitida |
-|---|---|---|
-| Flechas | Movimiento | UP/DOWN/LEFT/RIGHT |
-| A | Puñetazo leve | A |
-| S | Puñetazo fuerte | C |
-| Z | Patada leve | B |
-| X | Patada fuerte | D |
-| ENTER / botón central | Moneda + inicio | COIN_START |
-| 5 | Moneda manual | COIN |
+| Entrada local | Acción |
+|---|---|
+| Flechas | Movimiento |
+| A | Puñetazo leve |
+| S | Puñetazo fuerte |
+| Z | Patada leve |
+| X | Patada fuerte |
+| ENTER / START | COIN + START si tienes P1 o P2 |
+| 5 | COIN manual |
 
-La traducción final a P1 o P2 sigue siendo responsabilidad exclusiva del anfitrión. El cliente nunca necesita saber las teclas internas de P2.
+El control remoto usa las mismas teclas para P1 y P2; el anfitrión realiza la conversión. No hay transmisión de video ni audio.
 
-## Sin caché ni archivos locales
+## Requisitos
 
-No se utilizan `QSettings`, bases de datos, logs, preferencias guardadas ni caché de disco. La API utiliza política `no-store`, la conexión se mantiene en memoria y los iniciadores evitan `__pycache__` del proyecto. El nombre debe escribirse de nuevo cada vez que abras el programa.
+Instala PySide6 una vez con `py -m pip install --no-cache-dir PySide6`; luego abre `KOF_Control.pyw`.
 
-## Verificación pendiente
-
-La conexión con el servicio público y el reconocimiento del joystick por MAME requieren una prueba real en Windows.
+El cliente no almacena caché de red, archivos de configuración ni historial; **la única excepción es el nombre del jugador** solicitado para autocompletarlo al iniciar.
