@@ -44,7 +44,7 @@ utilizan una carpeta separada: `KOF_ARENA_ESTADOS_0289`.
 
 ## ¿Qué hacen los archivos?
 
-`KOF_Salud_MAME289.lua` lee aproximadamente 10 veces por segundo:
+`KOF_Salud_MAME289.lua` revisa los valores **cada fotograma de MAME** y publica el estado aproximadamente 10 veces por segundo o inmediatamente al detectar un PERFECT:
 
 | Campo | Dirección interna del juego | Notas |
 |---|---|---|
