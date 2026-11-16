@@ -32,7 +32,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-APP_VERSION = "1.16.1"
+APP_VERSION = "1.16.2"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1359,7 +1359,7 @@ class HostServer:
         if self.checkpoints.enabled:
             self.ui_notify("log", "Recuperación: Save State de P1/P2 al asumir turno; carga al salir o perder el mando.")
             self.ui_notify("log", "IMPORTANTE: restaurar retrocede TODA la partida y créditos, incluidos los de P2/P1.")
-        self.ui_notify("log", "MODO SOLO MANDO: no se captura ni se transmite video o audio del juego.")
+        self.ui_notify("log", "Transmisión de video y audio desactivada.")
 
     def _handle(self, ws):
         guest = None
@@ -1654,8 +1654,6 @@ class HostGUI:
         self.backend_var = tk.StringVar(value="2 joysticks virtuales Xbox 360 (P1 y P2)")
         self.input_diagnostic_var = tk.StringVar(value="MANDOS: abre la sala antes de iniciar MAME para crear los dos joysticks virtuales.")
         # Recuperacion por Save State desactivada; no aparece en la interfaz.
-        self.champion_exit_var = tk.StringVar(value=MODE_TECHNICAL)
-        self.last_winner_var = tk.StringVar(value="Último ganador: sin registrar")
 
         form = ttk.Frame(body)
         form.pack(fill="x", padx=14, pady=(3, 2))
@@ -1665,20 +1663,13 @@ class HostGUI:
 
         choices = ttk.Frame(body)
         choices.pack(fill="x", padx=14, pady=6)
-        ttk.Label(choices, text="SOLO MANDO: no se transmite imagen ni audio", style="Muted.TLabel").pack(side="left", padx=(0, 20))
+        ttk.Label(choices, text="Sin video ni audio", style="Muted.TLabel").pack(side="left", padx=(0, 20))
         ttk.Checkbutton(choices, text="Permitir LAN", variable=self.lan_var).pack(side="left")
         mode = ttk.Frame(body)
         mode.pack(fill="x", padx=14, pady=4)
         ttk.Label(mode, text="Enviar acciones mediante:").pack(side="left", padx=(0, 10))
         self.backend_widget = ttk.Label(mode, text="2 joysticks virtuales Xbox 360 (P1 + P2)")
         self.backend_widget.pack(side="left")
-        winner_options = ttk.Frame(body)
-        winner_options.pack(fill="x", padx=14, pady=(3, 2))
-        ttk.Label(winner_options, text="Si se desconecta el ultimo ganador:").pack(side="left", padx=(0, 8))
-        self.exit_mode_widget = ttk.Combobox(
-            winner_options, state="readonly", textvariable=self.champion_exit_var,
-            values=CHAMPION_EXIT_MODES, width=35)
-        self.exit_mode_widget.pack(side="left")
 
         diagnostics = ttk.Frame(body)
         diagnostics.pack(fill="x", padx=14, pady=(1, 3))
@@ -1706,8 +1697,10 @@ class HostGUI:
         ttk.Label(body, textvariable=self.api_status_var, style="Muted.TLabel")\
             .pack(anchor="w", padx=14, pady=(0, 3))
 
-        ttk.Label(body, text="JUGADORES CONECTADOS Y LISTA DE ESPERA", style="Muted.TLabel")\
-            .pack(anchor="w", padx=14, pady=(3, 2))
+        roster_header = ttk.Frame(body)
+        roster_header.pack(fill="x", padx=14, pady=(3, 2))
+        ttk.Label(roster_header, text="JUGADORES CONECTADOS Y LISTA DE ESPERA", style="Muted.TLabel").pack(side="left")
+        ttk.Button(roster_header, text="Expulsar seleccionado", command=self._kick_selected).pack(side="right")
         table_holder = ttk.Frame(body)
         table_holder.pack(fill="both", expand=True, padx=14)
         self.roster = ttk.Treeview(table_holder, columns=("slot", "name", "id"), show="headings", height=4)
@@ -1718,15 +1711,6 @@ class HostGUI:
         scroll = ttk.Scrollbar(table_holder, orient="vertical", command=self.roster.yview)
         self.roster.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
-        winner_row = ttk.Frame(body)
-        winner_row.pack(fill="x", padx=14, pady=(4, 1))
-        ttk.Label(winner_row, textvariable=self.last_winner_var).pack(side="left", padx=(0, 12))
-        ttk.Button(winner_row, text="Ganó P1", command=lambda: self._mark_winner(1)).pack(side="left", padx=(0, 5))
-        ttk.Button(winner_row, text="Ganó P2", command=lambda: self._mark_winner(2)).pack(side="left", padx=(0, 5))
-        ttk.Button(winner_row, text="Limpiar ganador", command=self._clear_winner).pack(side="left")
-        player_actions = ttk.Frame(body)
-        player_actions.pack(fill="x", padx=14, pady=(3, 5))
-        ttk.Button(player_actions, text="Expulsar seleccionado", command=self._kick_selected).pack(side="right")
         ttk.Label(body, text="ACTIVIDAD DEL SERVIDOR", style="Muted.TLabel")\
             .pack(anchor="w", padx=14, pady=(0, 3))
         self.log = tk.Text(body, height=5, bg="#101d34", fg="#dce9ff", relief="flat",
@@ -1739,8 +1723,6 @@ class HostGUI:
         self._append("Abre VER MANDOS EN WINDOWS (joy.cpl). Comprueba 2 Xbox 360; desconecta otros mandos para evitar alterar P1/P2.")
         self._append("Solo se reciben botones de juego; ningún usuario puede controlar tu escritorio. Mandos virtuales requieren ViGEmBus en este PC.")
         self._append("Temporizadores: START 30 s e inactividad 60 s. Recuperación por Save State desactivada.")
-        self._append("Para activar la regla de campeon, marca Gano P1 o Gano P2 despues de cada combate.")
-        self._append("Victoria tecnica = marcador de la sala, NO victoria interna del videojuego.")
         self._show_roster({"players": {"1": None, "2": None}, "queue": [], "spectators": []})
 
     def _append(self, line):
@@ -1813,8 +1795,6 @@ class HostGUI:
             pass
 
     def _show_roster(self, data):
-        winner = data.get("last_winner", "")
-        self.last_winner_var.set("Último ganador: " + (winner or "sin registrar"))
         for item in self.roster.get_children():
             self.roster.delete(item)
         self.member_by_tree_row.clear()
@@ -1858,12 +1838,11 @@ class HostGUI:
                              bind_lan=self.lan_var.get(),
                              process_provider=lambda: self.game_process,
                              restore_state=False,
-                             champion_exit_mode=self.champion_exit_var.get())
+                             champion_exit_mode=MODE_TECHNICAL)
             new.start()
             self.server = new
             self._append("DOS JOYSTICKS VIRTUALES CREADOS. Verifica en joy.cpl y luego inicia el MAME ANTIGUO desde aquí.")
             self.input_diagnostic_var.set("LISTOS: 2 mandos virtuales. Pulsa VER MANDOS EN WINDOWS y después INICIAR KOF.")
-            self.exit_mode_widget.configure(state="disabled")
             self.host_url_var.set(f"SOLO LOCAL: ws://127.0.0.1:{port} (publica para jugar por Internet)")
         except Exception as ex:
             self.messagebox.showerror("No se pudo abrir la sala", str(ex))
@@ -1990,24 +1969,12 @@ class HostGUI:
                 pass
             self.tunnel_process = None
         self.public_address = ""
-        self.exit_mode_widget.configure(state="readonly")
         if self.server is not None:
             old = self.server
             self.server = None
             threading.Thread(target=old.stop, daemon=True).start()
         self.host_url_var.set("Sala cerrada. Abre una nueva sala para recibir jugadores.")
         self._show_roster({"players": {"1": None, "2": None}, "queue": [], "spectators": []})
-
-    def _mark_winner(self, slot: int):
-        if not self.server:
-            self.messagebox.showwarning("Sala cerrada", "Abre la sala primero.")
-            return
-        if not self.server.mark_winner(slot):
-            self.messagebox.showwarning("Sin jugador", f"P{slot} no tiene un jugador humano activo.")
-
-    def _clear_winner(self):
-        if self.server:
-            self.server.clear_winner()
 
     def _kick_selected(self):
         if not self.server:
