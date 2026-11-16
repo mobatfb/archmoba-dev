@@ -418,6 +418,8 @@ class Worker:
             raise ValueError(
                 "No se pudo leer RAM; revisa permisos y prueba direcciones de Cheat Engine.")
         self.baseline_at = time.monotonic()
+        self.emit("samples", ((0, 0), (0, 0)))
+        self.emit("rank", [])
         available = sum(len(block) for block in self.baseline.values())
         self.emit("log",
                   f"Memoria preparada: {len(self.baseline)} bloques, "
@@ -425,30 +427,20 @@ class Worker:
         self.emit("snapshot", (self.mode, len(self.plan)))
 
     def _register_attack(self, slot, source):
-        """Inicia comparación en RAM; pulsación no equivale a impacto."""
+        """Cuenta pulsaciones, pero NO asume que causaron daño."""
         self.attacks[slot - 1] += 1
         self.emit("attack", tuple(self.attacks))
         if not self.plan:
             self.emit("log",
-                      f"{source}: pulsación detectada, pero falta preparar RAM. "
-                      "Pulsa EXPLORAR RAM o SEGUIR DIRECCIONES CE.")
-            return
-        if self.pending is not None:
-            # Conservar la muestra previa: el segundo botón no la cancela.
-            return
-        now = time.monotonic()
-        before = (self.manual_before if self.manual_before is not None
-                  else self.baseline)
-        if not before:
-            self.emit("log", "No hay referencia de RAM: pulsa CAPTURAR ANTES.")
-            return
-        if self.manual_before is None and now - self.baseline_at > 2.0:
+                      f"{source}: tecla detectada. Primero explora RAM.")
+        elif self.manual_before is None:
             self.emit("log",
-                      "Referencia muy antigua; usa CAPTURAR ANTES y vuelve a golpear.")
-            return
-        self.pending = (slot, now, before)
-        self.manual_before = None
-        self.emit("log", f"{source}: comparando salud P{3 - slot} después del golpe...")
+                      f"{source}: no se suma evidencia sin CAPTURAR ANTES "
+                      "y confirmar si el rival recibio daño.")
+        else:
+            self.emit("log",
+                      f"{source}: pulsa ahora P2 CON DAÑO o P2 SIN DAÑO "
+                      "segun lo que ocurrio realmente.")
 
     def _mame_has_focus(self):
         """Solo contabilizar ALT si el proceso activo es MAME, no otro programa."""
@@ -483,34 +475,52 @@ class Worker:
 
     def capture_manual_before(self):
         if not self.reader or not self.plan:
-            raise ValueError("Primero BUSCAR MAME y EXPLORAR RAM (o direcciones CE).")
-        self.pending = None
+            raise ValueError(
+                "Primero BUSCAR MAME y EXPLORAR RAM (o direcciones CE).")
         self.manual_before = self.reader.snapshot(self.plan)
         if not self.manual_before:
-            raise ValueError("No se pudo leer ninguna región; revisa direcciones o permisos.")
-        self.emit("log", "Memoria ANTES capturada. Haz un golpe real "
-                         "con ALT IZQUIERDO, o pulsa P2 RECIBIÓ DAÑO después del golpe.")
+            raise ValueError("No se pudo leer memoria; revisa direcciones o permisos.")
+        self.emit("log",
+                  "CAPTURA ANTES lista. Cambia a MAME, ataca con ALT izquierdo "
+                  "y observa si P2 recibio dano. Luego confirma DAÑO o SIN DAÑO.")
 
-    def confirm_manual_damage(self, victim):
+    def confirm_manual_damage(self, victim, damaged=True):
         if victim not in (1, 2) or not self.reader:
-            return
+            raise ValueError("El jugador debe ser P1 o P2, con MAME abierto.")
         if self.manual_before is None:
-            raise ValueError("Primero pulsa CAPTURAR ANTES para crear referencia.")
+            raise ValueError("Primero pulsa CAPTURAR ANTES.")
         old = self.manual_before
         self.manual_before = None
-        self.pending = None
-        now = time.monotonic()
         current = self.reader.snapshot(self.plan)
         if not current:
-            raise ValueError("MAME no permitió leer la RAM posterior.")
+            raise ValueError("MAME no permitio leer la memoria despues.")
         attacker = 3 - victim
-        result = self.learner.observe(old, current, attacker, self.width)
-        self.baseline, self.baseline_at = current, now
+        changed = self.learner.observe(
+            old, current, attacker, self.width, confirmed=damaged)
+        self.baseline = current
+        self.baseline_at = time.monotonic()
         self.emit("rank", self.learner.top())
-        self.emit("log", f"P{victim} RECIBIÓ DAÑO: {result} valores descendentes "
-                         "candidatos. Repite el mismo procedimiento varias veces."
-                         if result else
-                         f"P{victim}: 0 valores compatibles; intenta 2 Bytes o CE.")
+        self.emit("samples", (tuple(self.learner.samples),
+                              tuple(self.learner.controls)))
+        if damaged:
+            self.emit("log",
+                      f"DAÑO REAL confirmado en P{victim}: {changed} descensos "
+                      "de memoria (aun sin verificar).")
+        else:
+            self.emit("log",
+                      f"SIN DAÑO confirmado en P{victim}: {changed} valores "
+                      "cambiaron sin tocar la salud; se penalizan.")
+        matches = self.learner.top()
+        if not matches:
+            self.emit("log",
+                      "Sin candidatos contrastados: realiza al menos "
+                      "2 capturas CON DAÑO y 1 captura SIN DAÑO; si persiste "
+                      "prueba otras zonas de RAM o direcciones Cheat Engine.")
+
+    def reject_candidate(self, address):
+        self.learner.reject(address)
+        self.emit("rank", self.learner.top())
+        self.emit("log", f"Descartada dirección 0x{address:X} para esta sesión.")
 
     def event_attack(self, packet):
         """Mantiene soporte para botones remotos sin duplicar ALT local."""
@@ -541,29 +551,11 @@ class Worker:
         self._register_attack(slot, f"Input remoto P{slot}")
 
     def capture(self):
-        if not self.reader or not self.plan:
-            return
-        now = time.monotonic()
-        if self.pending:
-            slot, stamp, old = self.pending
-            if now - stamp >= 0.65:
-                after = self.reader.snapshot(self.plan)
-                count = self.learner.observe(old, after, slot, self.width)
-                self.baseline, self.baseline_at = after, time.monotonic()
-                self.pending = None
-                self.emit("rank", self.learner.top())
-                if count:
-                    self.emit("log",
-                              f"P{slot} atacó: {count} descensos posibles en "
-                              f"salud P{3-slot}. Comprueba los candidatos en CE.")
-                else:
-                    self.emit("log",
-                              "0 candidatos en memoria explorada: prueba "
-                              "CAPTURAR ANTES / P2 RECIBIÓ DAÑO, "
-                              "2 Bytes o direcciones CE.")
-        elif now - self.baseline_at >= 0.75:
-            self.baseline = self.reader.snapshot(self.plan)
-            self.baseline_at = time.monotonic()
+        """En el modo guiado no analizamos RAM continuamente.
+
+        Esto evita resultados falsos por animaciones y reduce la CPU de MAME.
+        """
+        return
 
     def loop(self):
         while not self.stop_event.is_set():
@@ -599,18 +591,22 @@ class Worker:
                     elif command == "before":
                         self.capture_manual_before()
                     elif command == "manual_damage":
-                        self.confirm_manual_damage(args[0])
+                        self.confirm_manual_damage(args[0], True)
+                    elif command == "manual_no_damage":
+                        self.confirm_manual_damage(args[0], False)
+                    elif command == "reject":
+                        self.reject_candidate(args[0])
                     elif command == "reset":
                         self.pending = None
                         self.manual_before = None
                         self.learner = ScoreLearner()
                         self.emit("rank", [])
+                        self.emit("samples", ((0, 0), (0, 0)))
+                        self.emit("log", "Aprendizaje reiniciado. Alterna DAÑO y SIN DAÑO.")
                 except (OSError, ValueError) as exc:
                     self.emit("log", "ERROR: " + str(exc))
-            try:
-                self.capture()
-            except (OSError, ValueError) as exc:
-                self.emit("log", "Lectura RAM: " + str(exc))
+            # La RAM se compara solo cuando el operador confirma
+            # daño o ausencia de daño; no se sondea en cada iteracion.
         if self.reader:
             self.reader.close()
         self.socket.close()
