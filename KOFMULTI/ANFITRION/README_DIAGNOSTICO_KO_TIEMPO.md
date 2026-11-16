@@ -1,6 +1,39 @@
 # KOFMULTI | Diagnóstico de KO, equipos y tiempo (MAME 0.289)
 
-**Versión v1.1 — incorpora análisis de la primera sesión real.**
+**Versión v1.4 — incorpora análisis de dos sesiones reales (P1 y P2), lectura de HP con signo como hipótesis y marcas locales persistentes.**
+
+## Segunda sesión: P1 pierde tres luchadores (16/11/2026)
+
+Se analizaron **219 eventos válidos** y **1.200 filas de clips** del segundo paquete.
+
+| Fotograma | Situación | HP P1 | HP P2 | Contador P1 | Contador P2 |
+|---|---|---:|---:|---:|---:|
+| 3895 | P1 pierde primer luchador | 252 | 102 | 0→1 | 0 |
+| 5860 | P1 pierde segundo luchador | 254 | 98 | 1→2 | 0 |
+| 7765 | P2 pierde su primer luchador | 90 | 253 | 2 | 0→1 |
+| 9810 | P1 pierde tercer luchador (posible fin de equipo) | 254 | 92 | 2→3 | 1 |
+| 10343 | P1 reinicia contador | 254 | 92 | 3→0 | 1 |
+
+El contador de P1 confirma la secuencia 0→1→2→3→0, simétrica a P2 en la primera sesión. El intervalo entre la tercera pérdida y el reinicio fue **533 fotogramas** en P1 y **534 fotogramas** en P2. Son pruebas sólidas de una secuencia de final, pero **no equivalen a verificar la pantalla de ganador ni a conceder puntos**.
+
+### Posible explicación de los valores 252, 253, 254 y 255
+
+Cuando se interpreta un Byte **con signo**, 252 = -4, 253 = -3, 254 = -2 y 255 = -1. Por tanto, **es probable que la vida baje por debajo de cero en el golpe final** en vez de tratarse de cuatro códigos de KO distintos. Esto sigue siendo una hipótesis; la muerte del personaje se considera mejor respaldada por el **incremento del contador 0→1→2→3** y no por un Byte particular. Las nuevas versiones muestran la conversión tentativa a negativo, pero conservan el valor sin signo para auditoría.
+
+### Nuevos eventos v1.4
+
+- `P1_PERSONAJE_PERDIDO` / `P2_PERSONAJE_PERDIDO` cuando el contador aumenta
+- `P1_HP_NEGATIVA_POSIBLE` / `P2_HP_NEGATIVA_POSIBLE` si un Byte de vida pasa de 1–102 a un valor ≥128
+- `POSIBLE_FIN_EQUIPO_P1` / `POSIBLE_FIN_EQUIPO_P2` cuando el contador alcanza 3
+- `SECUENCIA_P1_3_A_0` / `SECUENCIA_P2_3_A_0` cuando dicho contador vuelve a 0
+- `TIEMPO_LLEGO_CERO` y `P1_DERROTA_POR_TIEMPO_POSIBLE` / `P2_DERROTA_POR_TIEMPO_POSIBLE` cuando corresponda
+
+### Marcas del usuario
+
+En la segunda captura el archivo de comandos contiene **FIN_COMBATE**, pero no hay un evento `MARCA_FIN_COMBATE` en el archivo de eventos. Una explicación probable es que MAME no avanzó un nuevo fotograma después de pulsar el botón. Para evitarlo, **desde v1.4 las marcas se guardan inmediatamente también en `KOF_DIAG_MARCAS_LOCALES.tsv`**, con hora de Windows y último fotograma disponible. El Lua añadirá el fotograma de recepción si el juego vuelve a avanzar. La marca local NO debe presentarse como fotograma exacto.
+
+**Siguiente prueba:** observa en pantalla el final de un equipo y marca el resultado, prueba una victoria por tiempo y, cuando sea posible, un PERFECT. Solo entonces evaluar la integración con `record_game_outcome` del anfitrión.
+
 
 ## Resultados reales analizados — 16/11/2026 (v1.1)
 
@@ -98,7 +131,7 @@ El diagnóstico NO altera ni reemplaza `KOF_Anfitrion.py` ni su configuración d
 | Tiempo | `0x10A7D2` | Temporizador del juego; 0x99 podría representar 99 en BCD |
 | Tiempo auxiliar | `0x10A7D3` | Posible estado vinculado al tiempo; por validar |
 
-El script emite eventos como `P1_ENTRO_254`, `P2_ENTRO_255`, `P1_PERSONAJE_PERDIDO`, `P2_PERSONAJE_PERDIDO`, `P2_DERROTA_POR_TIEMPO_POSIBLE`, `VIDA_P1_DISMINUYE`, `VIDA_P2_DISMINUYE`, `CONTADOR_P1_CAMBIO`, `CONTADOR_P2_CAMBIO`, `TIEMPO_CAMBIO`, `TIEMPO_LLEGO_CERO` y `POSIBLE_FIN_EQUIPO_P1/P2`. Los nombres indican hipótesis; no se otorgan puntos.
+El script emite eventos como `P1_HP_NEGATIVA_POSIBLE`, `P2_HP_NEGATIVA_POSIBLE`, `P1_PERSONAJE_PERDIDO`, `P2_PERSONAJE_PERDIDO`, `P2_DERROTA_POR_TIEMPO_POSIBLE`, `VIDA_P1_DISMINUYE`, `VIDA_P2_DISMINUYE`, `CONTADOR_P1_CAMBIO`, `CONTADOR_P2_CAMBIO`, `TIEMPO_CAMBIO`, `TIEMPO_LLEGO_CERO`, `POSIBLE_FIN_EQUIPO_P1/P2` y `SECUENCIA_P1_3_A_0` / `SECUENCIA_P2_3_A_0`. Los nombres indican hipótesis; no se otorgan puntos.
 
 **Los eventos "POSIBLE_FIN_EQUIPO" son hipótesis** basadas en vida 254 y contador de rondas. NO equivalen todavía a una victoria real. No se guardan puntos ni se altera el ranking.
 
@@ -106,7 +139,7 @@ El script emite eventos como `P1_ENTRO_254`, `P2_ENTRO_255`, `P1_PERSONAJE_PERDI
 
 Hay dos indicadores independientes:
 
-- **TIEMPO DEL JUEGO**: lee el Byte `0x10A7D2` y el Byte auxiliar `0x10A7D3`, registra sus cambios y el instante en que llega a cero.
+- **TIEMPO DEL JUEGO**: lee el Byte `0x10A7D2` y el Byte auxiliar `0x10A7D3`, registra sus cambios y el instante en que llega a cero; en las pruebas, el primer Byte siguió un formato compatible con BCD.
 - **Cronómetro local**: botones **Iniciar/Reanudar**, **Pausar** y **Reiniciar** para comparar el tiempo real transcurrido en Windows con el reloj de MAME.
 
 El cronómetro no detiene, no congela ni modifica el tiempo del videojuego. El valor hexadecimal y la posible interpretación BCD aparecen juntos para evitar confusiones.
@@ -121,6 +154,7 @@ En la carpeta `KOF_DIAG_SESIONES\AAAAMMDD_HHMMSS`:
 | `KOF_DIAG_EVENTOS.tsv` | Cambios y marcas con número de fotograma, valores y hasta 5 ventanas hexadecimales de RAM |
 | `KOF_DIAG_CLIPS.tsv` | En un evento crítico, hasta **180 fotogramas anteriores y 120 posteriores** |
 | `KOF_DIAG_COMANDO.tsv` | Última marca solicitada por la interfaz |
+| `KOF_DIAG_MARCAS_LOCALES.tsv` | Marcas persistidas en el momento de pulsar el botón, incluso si MAME está pausado (desde v1.4) |
 | `INSTRUCCIONES.txt` | Versión, ROM y referencias del diagnóstico |
 
 Usa **EXPORTAR EVENTOS CSV** para abrir resultados fácilmente en Excel. Los archivos TSV originales incluyen contexto adicional; no los descartes.
