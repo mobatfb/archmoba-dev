@@ -811,27 +811,53 @@ class App:
 
 
 def selftest():
+    # No aceptar correlaciones sin ejemplos negativos.
     learner = ScoreLearner()
-    # Direcciones simuladas; P1 golpea => barra P2 baja, al revés P2 => P1.
+    health_p2, animation, health_p1 = 0x10000, 0x11000, 0x20000
     for n in range(5):
-        learner.observe({0x10000: 120 - n * 5, 0x20000: 125},
-                        {0x10000: 115 - n * 5, 0x20000: 125}, 1)
+        old = {health_p2: 120 - 5 * n, animation: 120 - 5 * n,
+               health_p1: 125}
+        new = {health_p2: 115 - 5 * n, animation: 115 - 5 * n,
+               health_p1: 125}
+        learner.observe(old, new, 1, confirmed=True)
     for n in range(5):
-        learner.observe({0x10000: 95, 0x20000: 125 - n * 5},
-                        {0x10000: 95, 0x20000: 120 - n * 5}, 2)
-    leaders = learner.top(8)
-    assert any(row[1] == 2 and row[2] == 0x10000 and row[4] == 5 for row in leaders)
-    assert any(row[1] == 1 and row[2] == 0x20000 and row[4] == 5 for row in leaders)
+        learner.observe({health_p2: 95, animation: 95,
+                         health_p1: 125 - 5 * n},
+                        {health_p2: 95, animation: 95,
+                         health_p1: 120 - 5 * n}, 2, confirmed=True)
+    assert learner.top() == [], "No mostrar candidatos sin golpes fallidos"
+
+    # Animacion sigue cambiando cuando P2 no recibe daño.
+    learner.observe({health_p2: 95, animation: 95, health_p1: 100},
+                    {health_p2: 95, animation: 94, health_p1: 100},
+                    1, confirmed=False)
+    learner.observe({health_p2: 95, animation: 94, health_p1: 100},
+                    {health_p2: 95, animation: 94, health_p1: 100},
+                    2, confirmed=False)
+    ranked = learner.top(10)
+    assert any(row[1] == 2 and row[2] == health_p2 for row in ranked)
+    assert any(row[1] == 1 and row[2] == health_p1 for row in ranked)
+    assert all(row[2] != animation for row in ranked), "No mostrar falso positivo"
+    learner.reject(health_p2)
+    assert all(row[2] != health_p2 for row in learner.top())
+
+    # Lecturas multibyte de direcciones CE requieren también control sin daño.
     assert parse_addresses("00123000\n0x00124000") == [0x123000, 0x124000]
-    two_bytes = ScoreLearner()
-    two_bytes.observe({0x40000: (1200).to_bytes(2, "little")},
-                      {0x40000: (1180).to_bytes(2, "little")}, 1, width=2)
-    assert any(row[1] == 2 and row[2] == 0x40000 for row in two_bytes.top())
-    four_bytes = ScoreLearner()
-    four_bytes.observe({0x50000: (150000).to_bytes(4, "little")},
-                       {0x50000: (149900).to_bytes(4, "little")}, 1, width=4)
-    assert any(row[1] == 2 and row[2] == 0x50000 for row in four_bytes.top())
-    print("OK: ALT izquierdo, bytes/2/4, correlacion y direcciones CE (datos simulados).")
+    for width, value, delta in ((2, 1200, 20), (4, 150000, 100)):
+        model = ScoreLearner()
+        address = 0x40000
+        for n in range(3):
+            model.observe(
+                {address: (value - n * delta).to_bytes(width, "little")},
+                {address: (value - (n + 1) * delta).to_bytes(width, "little")},
+                1, width=width, confirmed=True)
+        assert model.top() == []
+        same = (value - 3 * delta).to_bytes(width, "little")
+        model.observe({address: same}, {address: same}, 1,
+                      width=width, confirmed=False)
+        assert any(row[1] == 2 and row[2] == address for row in model.top())
+
+    print("OK: daño/no daño, rechazo de falso positivo y lectura 1/2/4 bytes.")
 
 
 if __name__ == "__main__":
