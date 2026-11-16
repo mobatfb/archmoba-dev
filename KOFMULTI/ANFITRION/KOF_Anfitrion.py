@@ -32,7 +32,7 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-APP_VERSION = "1.16"
+APP_VERSION = "1.16.1"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1652,10 +1652,8 @@ class HostGUI:
         self.port_var = tk.StringVar(value=str(DEFAULT_PORT))
         self.lan_var = tk.BooleanVar(value=False)
         self.backend_var = tk.StringVar(value="2 joysticks virtuales Xbox 360 (P1 y P2)")
-        self.input_diagnostic_var = tk.StringVar(value="RECOMENDADO: usa 2 mandos virtuales. Primero ABRIR SALA, luego INICIAR KOF. Pulsa PROBAR P1/P2.")
-        # La inyeccion F7 de Save State puede fallar por el mismo RawInput de MAME.
-        # Desactivado de inicio para evitar esperas de 3.5 s en cada turno.
-        self.restore_var = tk.BooleanVar(value=False)
+        self.input_diagnostic_var = tk.StringVar(value="MANDOS: abre la sala antes de iniciar MAME para crear los dos joysticks virtuales.")
+        # Recuperacion por Save State desactivada; no aparece en la interfaz.
         self.champion_exit_var = tk.StringVar(value=MODE_TECHNICAL)
         self.last_winner_var = tk.StringVar(value="Último ganador: sin registrar")
 
@@ -1669,13 +1667,6 @@ class HostGUI:
         choices.pack(fill="x", padx=14, pady=6)
         ttk.Label(choices, text="SOLO MANDO: no se transmite imagen ni audio", style="Muted.TLabel").pack(side="left", padx=(0, 20))
         ttk.Checkbutton(choices, text="Permitir LAN", variable=self.lan_var).pack(side="left")
-        checkpoint_options = ttk.Frame(body)
-        checkpoint_options.pack(fill="x", padx=14, pady=(2, 2))
-        self.restore_checkbox = ttk.Checkbutton(
-            checkpoint_options,
-            text="Save State automático al perder turno o desconectarse",
-            variable=self.restore_var)
-        self.restore_checkbox.pack(side="left")
         mode = ttk.Frame(body)
         mode.pack(fill="x", padx=14, pady=4)
         ttk.Label(mode, text="Enviar acciones mediante:").pack(side="left", padx=(0, 10))
@@ -1691,13 +1682,7 @@ class HostGUI:
 
         diagnostics = ttk.Frame(body)
         diagnostics.pack(fill="x", padx=14, pady=(1, 3))
-        ttk.Button(diagnostics, text="PROBAR DERECHA P1", command=lambda: self._test_game_input(1)).pack(side="left", padx=(0, 9))
-        ttk.Button(diagnostics, text="PROBAR DERECHA P2", command=lambda: self._test_game_input(2)).pack(side="left")
-        diagnostic_row2 = ttk.Frame(body)
-        diagnostic_row2.pack(fill="x", padx=14, pady=(0, 3))
-        ttk.Button(diagnostic_row2, text="PROBAR ENTER P1 (COIN + START)", command=lambda: self._test_coin_start(1)).pack(side="left", padx=(0, 9))
-        ttk.Button(diagnostic_row2, text="PROBAR ENTER P2 (COIN + START)", command=lambda: self._test_coin_start(2)).pack(side="left")
-        ttk.Button(diagnostic_row2, text="VER MANDOS EN WINDOWS", command=self._show_windows_gamepads).pack(side="right")
+        ttk.Button(diagnostics, text="VER MANDOS EN WINDOWS", command=self._show_windows_gamepads).pack(side="left")
         tk.Label(body, textvariable=self.input_diagnostic_var, bg="#0b1323", fg="#7fe5ba",
                  anchor="w", justify="left", wraplength=850, font=("Segoe UI", 9)).pack(
                     fill="x", padx=14, pady=(0, 3))
@@ -1739,12 +1724,9 @@ class HostGUI:
         ttk.Button(winner_row, text="Ganó P1", command=lambda: self._mark_winner(1)).pack(side="left", padx=(0, 5))
         ttk.Button(winner_row, text="Ganó P2", command=lambda: self._mark_winner(2)).pack(side="left", padx=(0, 5))
         ttk.Button(winner_row, text="Limpiar ganador", command=self._clear_winner).pack(side="left")
-        recovery = ttk.Frame(body)
-        recovery.pack(fill="x", padx=14, pady=(3, 5))
-        ttk.Label(recovery, text="RECUPERACIÓN DE CRÉDITOS:", style="Muted.TLabel").pack(side="left", padx=(0, 8))
-        ttk.Button(recovery, text="Restaurar P1", command=lambda: self._manual_restore(1)).pack(side="left", padx=(0, 7))
-        ttk.Button(recovery, text="Restaurar P2", command=lambda: self._manual_restore(2)).pack(side="left")
-        ttk.Button(recovery, text="Expulsar seleccionado", command=self._kick_selected).pack(side="right")
+        player_actions = ttk.Frame(body)
+        player_actions.pack(fill="x", padx=14, pady=(3, 5))
+        ttk.Button(player_actions, text="Expulsar seleccionado", command=self._kick_selected).pack(side="right")
         ttk.Label(body, text="ACTIVIDAD DEL SERVIDOR", style="Muted.TLabel")\
             .pack(anchor="w", padx=14, pady=(0, 3))
         self.log = tk.Text(body, height=5, bg="#101d34", fg="#dce9ff", relief="flat",
@@ -1756,8 +1738,7 @@ class HostGUI:
         self._append("MAME 0.132 original: joysticks virtuales DirectInput. Primero ABRIR SALA, luego INICIAR KOF.")
         self._append("Abre VER MANDOS EN WINDOWS (joy.cpl). Comprueba 2 Xbox 360; desconecta otros mandos para evitar alterar P1/P2.")
         self._append("Solo se reciben botones de juego; ningún usuario puede controlar tu escritorio. Mandos virtuales requieren ViGEmBus en este PC.")
-        self._append("Temporizadores: START 30 s; inactividad 60 s. Save State opcional: los atajos F7 pueden no funcionar con RawInput.")
-        self._append("Un Save State reinicia P1, P2 y créditos; no se puede rebobinar a una sola persona.")
+        self._append("Temporizadores: START 30 s e inactividad 60 s. Recuperación por Save State desactivada.")
         self._append("Para activar la regla de campeon, marca Gano P1 o Gano P2 despues de cada combate.")
         self._append("Victoria tecnica = marcador de la sala, NO victoria interna del videojuego.")
         self._show_roster({"players": {"1": None, "2": None}, "queue": [], "spectators": []})
@@ -1876,15 +1857,12 @@ class HostGUI:
             new = HostServer(port, self.notify, device,
                              bind_lan=self.lan_var.get(),
                              process_provider=lambda: self.game_process,
-                             restore_state=self.restore_var.get(),
+                             restore_state=False,
                              champion_exit_mode=self.champion_exit_var.get())
             new.start()
             self.server = new
             self._append("DOS JOYSTICKS VIRTUALES CREADOS. Verifica en joy.cpl y luego inicia el MAME ANTIGUO desde aquí.")
-            if self.restore_var.get():
-                self._append("AVISO: Save State usa F7/Shift+F7 simuladas; desactívalo si MAME las ignora.")
             self.input_diagnostic_var.set("LISTOS: 2 mandos virtuales. Pulsa VER MANDOS EN WINDOWS y después INICIAR KOF.")
-            self.restore_checkbox.configure(state="disabled")
             self.exit_mode_widget.configure(state="disabled")
             self.host_url_var.set(f"SOLO LOCAL: ws://127.0.0.1:{port} (publica para jugar por Internet)")
         except Exception as ex:
@@ -1898,60 +1876,6 @@ class HostGUI:
             self._append("Abierto joy.cpl: verifica dos controles Xbox 360 (P1 y P2).")
         except Exception as ex:
             self.messagebox.showerror("No se pueden mostrar los mandos", str(ex))
-
-    def _test_game_input(self, slot: int):
-        """Prueba local de RIGHT durante 250 ms; no depende de la red ni de clientes."""
-        if self.server is None:
-            self.messagebox.showwarning("Sala cerrada", "Pulsa primero ABRIR SALA.")
-            return
-        if self.game_process is None or self.game_process.poll() is not None:
-            self.messagebox.showwarning("MAME no iniciado", "Pulsa 3. INICIAR KOF y espera a que el juego aparezca.")
-            return
-        def run():
-            device = self.server.room.input
-            try:
-                if hasattr(device, "prepare") and not device.prepare(slot):
-                    self.notify("input_status", getattr(device, "input_error", "MAME sin foco"))
-                    return
-                if device.apply(slot, "RIGHT", True) is False:
-                    self.notify("input_status", getattr(device, "input_error", "Pulsación bloqueada"))
-                    return
-                self.notify("log", f"PRUEBA P{slot}: derecha pulsada 0.30 segundos; observa MAME.")
-                time.sleep(0.30)
-                device.apply(slot, "RIGHT", False)
-                self.notify("input_status", f"PRUEBA P{slot} enviada por joystick virtual Xbox 360. Comprueba movimiento dentro del juego.")
-            except Exception as exc:
-                self.notify("input_status", f"Error en prueba P{slot}: {type(exc).__name__}: {exc}")
-        threading.Thread(target=run, name=f"KOF-Test-P{slot}", daemon=True).start()
-
-    def _test_coin_start(self, slot: int):
-        """Envía un crédito e inicio al joystick indicado sin Internet."""
-        if self.server is None:
-            self.messagebox.showwarning("Sala cerrada", "Pulsa primero ABRIR SALA.")
-            return
-        if self.game_process is None or self.game_process.poll() is not None:
-            self.messagebox.showwarning("MAME no iniciado", "Pulsa INICIAR KOF y espera a que aparezca el juego.")
-            return
-        def run():
-            device = self.server.room.input
-            try:
-                if not device.prepare(slot):
-                    self.notify("input_status", getattr(device, "input_error", "MAME no está listo"))
-                    return
-                for action, seconds in (("COIN", COIN_KEY_HOLD_SECONDS),
-                                        (None, COIN_BEFORE_START_SECONDS),
-                                        ("START", START_KEY_HOLD_SECONDS)):
-                    if action is None:
-                        time.sleep(seconds)
-                    else:
-                        device.apply(slot, action, True)
-                        time.sleep(seconds)
-                        device.apply(slot, action, False)
-                self.notify("input_status", f"PRUEBA P{slot}: mando virtual emitió COIN y START. Comprueba créditos e inicio en MAME.")
-                self.notify("log", f"PRUEBA P{slot}: COIN + START por joystick virtual enviada localmente.")
-            except Exception as ex:
-                self.notify("input_status", f"ERROR COIN + START P{slot}: {ex}")
-        threading.Thread(target=run, name=f"KOF-TestCoinStart-P{slot}", daemon=True).start()
 
     def _start_tunnel(self):
         if self.server is None:
@@ -2066,7 +1990,6 @@ class HostGUI:
                 pass
             self.tunnel_process = None
         self.public_address = ""
-        self.restore_checkbox.configure(state="normal")
         self.exit_mode_widget.configure(state="readonly")
         if self.server is not None:
             old = self.server
@@ -2085,18 +2008,6 @@ class HostGUI:
     def _clear_winner(self):
         if self.server:
             self.server.clear_winner()
-
-    def _manual_restore(self, slot: int):
-        if not self.server:
-            self.messagebox.showwarning("Sala cerrada", "Abre primero una sala.")
-            return
-        if not self.messagebox.askyesno("Confirmar recuperación global",
-                f"Se restaurará el punto guardado para P{slot}.\n\n"
-                "ATENCIÓN: afecta simultáneamente la partida y los créditos de P1 y P2.\n"
-                "¿Deseas continuar?"):
-            return
-        threading.Thread(target=self.server.checkpoints.manual_restore,
-                         args=(slot,), daemon=True).start()
 
     def _kick_selected(self):
         if not self.server:
