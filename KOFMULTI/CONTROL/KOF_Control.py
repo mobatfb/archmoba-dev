@@ -34,7 +34,7 @@ def parse_direct_room_url(text: str):
     source = str(text or "").strip()
     if not source:
         return None
-    found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com(?:/[^\s]*)?", source, flags=re.I)
+    found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com(?=$|[\s/])(?:/[^\s]*)?", source, flags=re.I)
     if found is None:
         raise ValueError("Pega el enlace HTTPS de Cloudflare del anfitrión.")
     parsed = urlsplit(found.group(0))
