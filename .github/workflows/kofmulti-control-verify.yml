@@ -1,0 +1,40 @@
+name: KOFMULTI - Protocolo del control
+on:
+  push:
+    paths:
+      - "KOFMULTI/ANFITRION/**"
+      - "KOFMULTI/CONTROL/KOF_Control.py"
+      - ".github/workflows/kofmulti-control-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar WebSocket
+        run: python -m pip install "websockets>=14,<17"
+
+      - name: Verificar sintaxis
+        run: |
+          python -m py_compile KOFMULTI/ANFITRION/KOF_Anfitrion.py
+          python -m py_compile KOFMULTI/ANFITRION/KOF_MAME_Lua_Bridge.py
+          python -m py_compile KOFMULTI/CONTROL/KOF_Control.py
+          python -m py_compile KOFMULTI/ANFITRION/test_control_protocol.py
+
+      - name: Ejecutar pruebas del anfitrión
+        run: python -B KOFMULTI/ANFITRION/KOF_Anfitrion.py --selftest
+
+      - name: Verificar CONTROL contra WebSocket anfitrión P1/P2
+        run: python -B KOFMULTI/ANFITRION/test_control_protocol.py
