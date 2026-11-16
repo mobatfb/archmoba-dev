@@ -60,7 +60,7 @@ class ControlNetworkTests(unittest.TestCase):
         ws = connect(f"ws://127.0.0.1:{self.port}", open_timeout=5, close_timeout=2)
         ws.send(json.dumps({"type": "hello", "name": name}))
         welcome = recv_kind(ws, "welcome")
-        self.assertEqual(welcome["version"], "1.16.13")
+        self.assertEqual(welcome["version"], "1.16.14")
         self.assertEqual(welcome["room_id"], self.host.room_id)
         state = recv_kind(ws, "state")
         self.assertEqual(state["room_id"], self.host.room_id)
@@ -98,6 +98,28 @@ class ControlNetworkTests(unittest.TestCase):
         finally:
             ws2.close()
             ws1.close()
+
+    def test_duplicate_name_rejected_across_players_and_queue(self):
+        p1, _ = self.connected("Ana")
+        p2, _ = self.connected("Beto")
+        waiting, state = self.connected("Carlos")
+        self.assertEqual(state["waiting_position"], 1)
+        try:
+            for name in ("ana", "  ANA  ", "cARLos", "bEtO"):
+                with self.subTest(name=name):
+                    rejected = connect(f"ws://127.0.0.1:{self.port}",
+                                       open_timeout=5, close_timeout=2)
+                    try:
+                        rejected.send(json.dumps({"type": "hello", "name": name}))
+                        message = recv_kind(rejected, "error")
+                        self.assertIn("ya está en uso", message["message"])
+                    finally:
+                        rejected.close()
+            self.assertEqual(self.host.room.snapshot()["total"], 3)
+        finally:
+            waiting.close()
+            p2.close()
+            p1.close()
 
     def test_control_start_uses_coin_then_start(self):
         action_map = control_actions()
