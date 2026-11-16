@@ -49,7 +49,7 @@ try:
 except ImportError:
     parse_combat_event = None
 
-APP_VERSION = "1.16.11"
+APP_VERSION = "1.16.12"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -95,6 +95,7 @@ def mame_window_options(modern: bool = False) -> list[str]:
     args = ["-window", "-nomaximize", "-nomouse", "-nolightgun"]
     if modern:
         args.extend(["-mouseprovider", "none", "-mouse_device", "none",
+                     "-joystick", "-joystickprovider", "xinput",
                      "-background_input"])
     return args
 
@@ -146,12 +147,22 @@ def get_game_folder() -> pathlib.Path:
 
 
 def default_mame_executable() -> pathlib.Path:
-    """Priorizar el mame.exe ya instalado, sin seleccionar uno cada vez."""
-    for folder in (BASE_DIR, BASE_DIR / GAME_FOLDER):
-        candidate = folder / "mame.exe"
-        if candidate.is_file():
-            return candidate.resolve()
-    return (get_game_folder() / "mame.exe").resolve()
+    """Buscar el mame.exe instalado, prefiriendo el MAME 0.289 comprobado.
+
+    Antes se tomaba sin examinar el primer mame.exe; si el ZIP antiguo estaba
+    presente podia arrancar MAME 0.132 y perder las pulsaciones sin foco.
+    """
+    candidates = [folder / "mame.exe" for folder in (BASE_DIR, BASE_DIR / GAME_FOLDER)]
+    available = [item.resolve() for item in candidates if item.is_file()]
+    if not available:
+        return (get_game_folder() / "mame.exe").resolve()
+    for executable in available:
+        try:
+            if detect_mame_version(executable) == "0.289":
+                return executable
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            pass
+    return available[0]
 
 
 def detect_mame_version(executable: pathlib.Path) -> str:
@@ -695,11 +706,12 @@ class MameCheckpointManager:
 
 
 
-def create_mame_virtual_profile(directory: pathlib.Path) -> pathlib.Path:
-    """Perfil adicional para MAME 0.132, sin sobrescribir sus .cfg originales.
+def create_mame_virtual_profile(directory: pathlib.Path,
+                                modern: bool = False) -> pathlib.Path:
+    """Perfil de los dos mandos Xbox, separado para MAME 0.132 y 0.289.
 
-    Obliga a relacionar las entradas de KOF a los botones Xbox visibles como
-    joysticks DirectInput. Solo se usa cuando el anfitrion usa mandos virtuales.
+    Para 0.289 fija las identidades XInput P1/P2: el orden de enumeracion
+    de joysticks puede cambiar, dejando a los mandos virtuales sin entrada.
     """
     import xml.etree.ElementTree as ET
     mapping = {
@@ -717,6 +729,10 @@ def create_mame_virtual_profile(directory: pathlib.Path) -> pathlib.Path:
                   "A": "BUTTON1", "B": "BUTTON2", "C": "BUTTON3", "D": "BUTTON4"}
     root = ET.Element('mameconfig', {'version': '10'})
     input_root = ET.SubElement(ET.SubElement(root, 'system', {'name': 'default'}), 'input')
+    if modern:
+        for slot in (1, 2):
+            ET.SubElement(input_root, 'mapdevice', {
+                'device': f'XInput Player {slot}', 'controller': f'JOYCODE_{slot}'})
     for slot in (1, 2):
         for action, ptype in port_names.items():
             if action in axis:
@@ -731,7 +747,7 @@ def create_mame_virtual_profile(directory: pathlib.Path) -> pathlib.Path:
             node = ET.SubElement(input_root, 'port', {'type': ptype})
             ET.SubElement(node, 'newseq', {'type': 'standard'}).text = (
                 f'{mapping[slot][action]} OR JOYCODE_{slot}_BUTTON{btn}')
-    path = directory / 'ctrlr' / 'kof_arena.cfg'
+    path = directory / 'ctrlr' / ('kof_arena_0289.cfg' if modern else 'kof_arena.cfg')
     path.parent.mkdir(parents=True, exist_ok=True)
     tree = ET.ElementTree(root)
     ET.indent(tree, space='    ')
@@ -785,6 +801,7 @@ class VirtualPads:
         self._process_provider = process_provider
         self.status_notify = status_notify
         self.input_error = ""
+        self._last_applied_report = 0.0
 
     def prepare(self, slot: int) -> bool:
         """Validar que el juego exista sin enfocarlo ni tocar el cursor."""
@@ -833,6 +850,15 @@ class VirtualPads:
                     self.states[slot].add(action)
                     self._pressed_at[key] = time.monotonic()
                     self._update(slot)
+                    # Confirmar recepción en el dispositivo, NO en la ROM.
+                    if self.status_notify is not None:
+                        now = time.monotonic()
+                        if now - self._last_applied_report > 1.5:
+                            self._last_applied_report = now
+                            self.status_notify(
+                                "input_status",
+                                f"P{slot}: {action} aplicado al joystick virtual "
+                                "(no confirma lectura dentro de MAME).")
                 return True
             if action not in self.states[slot]:
                 return True
@@ -2301,6 +2327,9 @@ class HostGUI:
                 self.notify("log",
                             "MAME 0.132 confirmado por -version. Perfil de mandos: "
                             "ctrlr/" + profile.name)
+                self.notify("log",
+                            "AVISO: MAME 0.132 puede ignorar mandos virtuales "
+                            "cuando no tiene foco; para segundo plano usar MAME 0.289.")
                 if self.lua_monitor is not None:
                     self.lua_monitor.stop()
                     self.lua_monitor = None
@@ -2358,7 +2387,10 @@ class HostGUI:
             # Los save states del MAME antiguo NO deben abrirse en el nuevo.
             modern_state_dir = directory / "KOF_ARENA_ESTADOS_0289"
             modern_state_dir.mkdir(parents=True, exist_ok=True)
-            profile = create_mame_virtual_profile(directory)
+            # No reutilizar un .cfg antiguo que puede anular el perfil Xbox.
+            modern_cfg_dir = BASE_DIR / "KOF_ARENA_CONFIG_0289"
+            modern_cfg_dir.mkdir(parents=True, exist_ok=True)
+            profile = create_mame_virtual_profile(BASE_DIR, modern=True)
             rom_paths = list(dict.fromkeys((
                 str(directory), str(directory / "roms"),
                 str(chosen_exe.parent / "roms"),
@@ -2367,9 +2399,10 @@ class HostGUI:
                        *mame_window_options(modern=True),
                        "-rompath", os.pathsep.join(rom_paths),
                        "-state_directory", str(modern_state_dir),
+                       "-cfg_directory", str(modern_cfg_dir),
                        "-ctrlrpath", str(profile.parent),
                        "-ctrlr", profile.stem,
-                       "-joystick", "-autoboot_script", str(script)]
+                       "-autoboot_script", str(script)]
             diagnostic_script = BASE_DIR / "KOF_Diagnostico_Combate.lua"
             if not diagnostic_script.is_file() or parse_combat_event is None:
                 raise FileNotFoundError(
@@ -2390,8 +2423,11 @@ class HostGUI:
             ):
                 env[key] = str(session / filename)
             self.notify("log",
+                        "MAME 0.289: mandos Xbox por XInput, dos ranuras estables, "
+                        "configuración separada y entrada en segundo plano.")
+            self.notify("log",
                         "Iniciando MAME 0.289 con Lua V3 y diagnóstico KO v1.5. "
-                        "Ventana normal, mouse libre y mandos en segundo plano; "
+                        "Ventana normal, mouse libre y sin forzar foco; "
                         "no se modifica marcador ni RAM.")
             self.game_process = subprocess.Popen(
                 command, cwd=str(chosen_exe.parent), env=env)
@@ -2538,6 +2574,7 @@ def run_selftest():
     assert "-nomouse" in normal_args and "-nolightgun" in normal_args
     assert "-background_input" not in normal_args  # compatibilidad 0.132
     assert "-background_input" in modern_args
+    assert modern_args[modern_args.index("-joystickprovider") + 1] == "xinput"
     assert modern_args[modern_args.index("-mouseprovider") + 1] == "none"
     assert modern_args[modern_args.index("-mouse_device") + 1] == "none"
     assert "SetForegroundWindow" not in MameKeyboard._focus_mame.__code__.co_names
@@ -2661,6 +2698,15 @@ def run_selftest():
     from xml.etree import ElementTree
     with TemporaryDirectory() as tmp:
         profile = create_mame_virtual_profile(pathlib.Path(tmp))
+        modern_profile = create_mame_virtual_profile(pathlib.Path(tmp), modern=True)
+        modern_root = ElementTree.parse(modern_profile).getroot()
+        modern_map = [
+            (x.attrib["device"], x.attrib["controller"])
+            for x in modern_root.findall("./system/input/mapdevice")]
+        assert modern_map == [
+            ("XInput Player 1", "JOYCODE_1"),
+            ("XInput Player 2", "JOYCODE_2")]
+        assert modern_profile.name == "kof_arena_0289.cfg"
         root = ElementTree.parse(profile).getroot()
         ports = {node.attrib["type"]: node.findtext("newseq") for node in root.findall("./system/input/port")}
         assert len(ports) == 20, len(ports)
