@@ -603,22 +603,28 @@ class App:
         self.messages = queue.Queue()
         self.worker = Worker(self.messages)
         self.counter = tk.StringVar(value="P1: 0 ataques | P2: 0 ataques")
-        self.state = tk.StringVar(value="Esperando eventos del anfitrión en localhost...")
+        self.state = tk.StringVar(
+            value="Paso 1: BUSCAR MAME.EXE; Paso 2: EXPLORAR RAM; Paso 3: ALT IZQUIERDO dentro del juego.")
+        self.alt_status = tk.StringVar(value="ALT IZQUIERDO (P1): 0 pulsaciones detectadas")
         self.value_width = tk.IntVar(value=1)
 
         body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True, padx=12, pady=10)
         ttk.Label(body, text="APRENDIZAJE DE SALUD — MAME (SOLO LECTURA)",
                   font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(0, 5))
-        ttk.Label(body, text="Busca salud P2 después de golpes P1; salud P1 después de golpes P2. "
-                            "No modifica resultados de la sala.").pack(anchor="w")
+        ttk.Label(
+            body,
+            text="Golpea a P2 con ALT IZQUIERDO mientras MAME esté activo. "
+                 "El analizador detectará la tecla sin necesitar otro jugador remoto."
+        ).pack(anchor="w")
+        ttk.Label(body, textvariable=self.alt_status).pack(anchor="w", pady=(3, 0))
         actions = ttk.Frame(body)
         actions.pack(fill="x", pady=(9, 6))
         ttk.Button(actions, text="1. BUSCAR MAME.EXE",
                    command=lambda: self.worker.jobs.put(("attach",))).pack(
                        side="left", padx=(0, 6))
-        ttk.Button(actions, text="2. EXPLORAR RAM (12 MiB)",
-                   command=lambda: self.worker.jobs.put(("learn", "auto", "", 1))).pack(
+        ttk.Button(actions, text="2. EXPLORAR RAM (24 MiB)",
+                   command=lambda: self.worker.jobs.put(("learn", "auto", "", int(self.value_width.get())))).pack(
                        side="left", padx=(0, 6))
         ttk.Button(actions, text="REINICIAR APRENDIZAJE",
                    command=lambda: self.worker.jobs.put(("reset",))).pack(side="right")
@@ -635,10 +641,26 @@ class App:
                         variable=self.value_width).pack(side="left")
         ttk.Radiobutton(ce_controls, text="2 Bytes", value=2,
                         variable=self.value_width).pack(side="left", padx=(8, 0))
+        ttk.Radiobutton(ce_controls, text="4 Bytes (CE)", value=4,
+                        variable=self.value_width).pack(side="left", padx=(8, 0))
         ttk.Button(ce_controls, text="SEGUIR DIRECCIONES CE",
                    command=self.load_ce).pack(side="left", padx=(14, 0))
         ttk.Label(ce_controls, textvariable=self.counter).pack(side="right")
 
+        guided = ttk.Frame(body)
+        guided.pack(fill="x", pady=(0, 7))
+        ttk.Button(
+            guided, text="3. CAPTURAR ANTES",
+            command=lambda: self.worker.jobs.put(("before",))
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            guided, text="4. P2 RECIBIÓ DAÑO",
+            command=lambda: self.worker.jobs.put(("manual_damage", 2))
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            guided, text="4. P1 RECIBIÓ DAÑO",
+            command=lambda: self.worker.jobs.put(("manual_damage", 1))
+        ).pack(side="left")
         ttk.Label(body, textvariable=self.state).pack(fill="x", pady=(0, 6))
         holder = ttk.Frame(body)
         holder.pack(fill="both", expand=True)
@@ -663,8 +685,11 @@ class App:
         self.log = tk.Text(body, height=5, bg="#091725", fg="#8cebc3",
                            relief="flat", font=("Consolas", 9), state="disabled")
         self.log.pack(fill="x", pady=(8, 0))
-        self._line("Inicia la sala, abre MAME y separa golpes de P1/P2 por 2 segundos.")
-        self._line("Las direcciones propuestas NO son fiables hasta validarlas en Cheat Engine.")
+        self._line("En MAME pulsa ALT IZQUIERDO: verás subir su contador y aparecerán candidatos.")
+        self._line("Si aparecen 0 candidatos: usa CAPTURAR ANTES y un golpe ALT, o pega CE.")
+        self._line("Si necesitas confirmar daño manualmente, usa CAPTURAR ANTES, "
+                   "daño sin ALT y pulsa P2/P1 RECIBIÓ DAÑO.")
+        self._line("Las direcciones propuestas son hipótesis, valida todo en Cheat Engine.")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(130, self.poll)
 
@@ -693,6 +718,9 @@ class App:
             elif kind == "attack":
                 self.counter.set(
                     f"P1: {val[0]} ataques | P2: {val[1]} ataques")
+            elif kind == "alt":
+                self.alt_status.set(
+                    f"ALT IZQUIERDO (P1): {val} pulsaciones detectadas")
             elif kind == "rank":
                 selected = self.table.selection()
                 selection_value = (
