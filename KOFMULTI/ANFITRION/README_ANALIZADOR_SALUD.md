@@ -1,74 +1,51 @@
-# KOFMULTI - Analizador inteligente de salud (fase de aprendizaje)
+# KOFMULTI | Analizador de salud - ALT IZQUIERDO (v1.1)
 
-**Versión anfitrión:** 1.16.6
+Este analizador experimental busca direcciones de memoria en `mame.exe` relacionadas con las dos barras de salud. Ahora puede **detectar ALT IZQUIERDO directamente en el teclado del anfitrión**, aunque la ventana del MAME tenga el foco. No necesitas conectar un control remoto para esta prueba.
 
-El archivo `KOF_Analizador_Salud.py` investiga posibles ubicaciones de las barras de salud **P1 y P2** en la memoria del proceso `mame.exe`. Recibe automáticamente los **golpes aceptados** A/B/C/D desde `KOF_Anfitrion.py`.
+## Cómo probar ALT izquierdo sin Cheat Engine
 
-**Objetivo:** asociar un ataque de P1 con una posible disminución del valor de salud P2 y un ataque de P2 con una posible disminución de salud P1. Las direcciones sugeridas son hipótesis, **no prueba de que un golpe impactó**.
+1. Abre MAME con `kf2k2mp2` y una pelea activa. Puedes iniciarlo desde el anfitrión.
+2. Abre `KOF_Analizador_Salud.pyw` (sin consola negra), o el botón **Analizar salud** del anfitrión.
+3. Pulsa **1. BUSCAR MAME.EXE**.
+4. Elige **Byte** y pulsa **2. EXPLORAR RAM (24 MiB)**. En la actividad debe aparecer cuántos bloques y megabytes fueron leídos. El proceso puede consumir recursos, por lo que conviene hacer las pruebas con el juego pausado hasta terminar la búsqueda.
+5. Vuelve a la **ventana de MAME** y golpea a P2 pulsando **ALT IZQUIERDO** (P1). Deja aproximadamente 2 segundos entre golpes.
+6. Regresa al analizador. El contador **ALT IZQUIERDO (P1)** tiene que haber aumentado. Si la memoria contiene valores descendentes, aparecerán como **Salud P2**.
 
-## 1. Archivos necesarios
+### Si ALT se detecta pero sigues teniendo 0 candidatos
 
-Coloca juntos:
-```text
-KOFMULTI/ANFITRION/
-  KOF_Anfitrion.py
-  KOF_Analizador_Salud.py
-  KOF_Analizador_Salud.pyw
-  KOF_AutoResultados.py  # opcional, detector OCR antiguo
-```
-El analizador utiliza únicamente Python estándar, Tkinter y las funciones de Windows `ReadProcessMemory`/`VirtualQueryEx`. Se recomienda **Python de 64 bits**. No necesita pip ni Cheat Engine instalado.
+- Comprueba que el golpe alcanzó al rival. El programa no puede saber si el golpe acertó solo por la pulsación.
+- Cambia el tipo a **2 Bytes**, pulsa de nuevo **EXPLORAR RAM** y repite.
+- Prueba el modo guiado: pulsa **3. CAPTURAR ANTES**, vuelve a MAME, golpea con ALT izquierdo y deja que el analizador compare automáticamente. **No hace falta pulsar P2 RECIBIÓ DAÑO en este modo**.
+- Si quieres confirmar el daño **sin depender de la tecla ALT**, pulsa CAPTURAR ANTES, provoca el daño por otro método y pulsa **4. P2 RECIBIÓ DAÑO**. Este botón está destinado a la comparación manual cuando no se activó la captura automática con ALT.
+- Si ninguno de esos métodos encuentra la salud, busca direcciones con Cheat Engine y pégalas en **SEGUIR DIRECCIONES CE**. Este método es más preciso y consume menos CPU. Soporta **Byte, 2 Bytes y 4 Bytes**.
 
-## 2. Cómo aprender con los inputs del anfitrión
+### Si ALT izquierdo queda en 0
 
-1. Ejecuta el anfitrión **v1.16.6** y pulsa **ABRIR SALA** y **INICIAR KOF**.
-2. Pulsa **Analizar salud** desde el anfitrión. También puedes hacer doble clic en `KOF_Analizador_Salud.pyw`, que no muestra consola negra.
-3. En el analizador pulsa **1. BUSCAR MAME.EXE**.
-4. Selecciona **2. EXPLORAR RAM (12 MiB)** para una búsqueda inicial limitada; o pega direcciones de Cheat Engine y pulsa **SEGUIR DIRECCIONES CE**, que es más preciso.
-5. Conecta **dos jugadores** y lanza golpes **aislados**, dejando unos **2 segundos** entre ellos, primero de P1 y después de P2. Es importante alternarlos y hacer algunas pulsaciones que fallen para descartar coincidencias falsas.
-6. Observa las candidatas **Salud P1** y **Salud P2**. Los contadores significan cuántas veces un valor bajó poco después de un input del atacante opuesto y cuántas veces bajó tras inputs que contradicen esa hipótesis.
-7. Copia las direcciones sugeridas y verifícalas con Cheat Engine: deben cambiar en sincronía con los golpes **reales** y, cuando un personaje sale del combate, restaurarse para el siguiente personaje del equipo.
+- Asegúrate de haber pulsado **BUSCAR MAME.EXE** y que el programa muestre un PID conectado.
+- La pulsación debe producirse **con MAME en primer plano**. No se cuenta ALT pulsado dentro de Cheat Engine, el escritorio o el analizador.
+- Comprueba que es ALT **izquierdo**, no AltGr/ALT derecho.
+- Si pulsas ALT muy rápidamente y no lo reconoce, mantenlo una fracción de segundo o repite la prueba: la lectura del teclado es por sondeo local.
 
-## 3. Uso con Cheat Engine
+## Cómo interpretar los resultados
 
-Cheat Engine muestra direcciones en hexadecimal. Puedes pegar varias direcciones absolutas (una por línea), por ejemplo:
-```text
-0x00ABCDEF
-00ABD120
-```
-Estos números son **solo ejemplos**, no direcciones conocidas del juego.
+Las columnas **Bajadas relacionadas** y **Bajadas contradictorias** contabilizan descensos de valores cercanos a la pulsación. **Coincidencia** es solo una puntuación heurística preliminar, **no una probabilidad real de acertar**.
 
-Selecciona el ancho **Byte** o **2 Bytes** según el tipo encontrado en Cheat Engine. El analizador acepta direcciones absolutas; expresiones con punteros, `mame.exe+offset` y cadenas de punteros todavía no están implementadas. Las direcciones pueden cambiar al reiniciar el emulador.
+Algunas variables de MAME cambian cuando se ejecutan animaciones, temporizadores o personajes. Repite al menos 4-5 golpes acertados y fallidos antes de confiar en una candidata y verifica en Cheat Engine que el valor realmente acompaña la barra de vida P2, incluso al cambiar de luchador.
 
-La búsqueda automática está acotada a aproximadamente **12 MiB de memoria privada escribible**, priorizando rendimiento. No garantiza incluir la RAM emulada donde se almacenan las barras. El modo de direcciones CE evita esa limitación y consume menos recursos.
+**Limitación:** la exploración automática está limitada a 24 MiB repartidos entre regiones legibles de MAME, incluyendo memoria privada y mapeada. Puede omitir el bloque real. Para una dirección de Cheat Engine el seguimiento es más específico. Las direcciones absolutas deben volver a comprobarse al reiniciar MAME.
 
-## 4. Cómo interpretar la tabla
+## Información del proyecto
 
-| Columna | Qué significa |
-|---|---|
-| Posible barra | P1 si bajó tras ataques de P2; P2 si bajó tras ataques de P1 |
-| Dirección RAM | Posible dirección de memoria **de MAME en Windows**, no necesariamente de la ROM |
-| Valor actual | Último valor observado al medir |
-| Bajadas relacionadas | Coincidencias después de ataques del jugador opuesto |
-| Bajadas contradictorias | Cambios después de ataques del mismo jugador |
-| Coincidencia | Indicador estadístico **preliminar**, no probabilidad real de que sea salud |
+- Solo lee memoria: `ReadProcessMemory` / `VirtualQueryEx`. No modifica ni congela salud.
+- Los resultados no afectan todavía Ganados, Perdidos, Perfecto ni Puntaje.
+- No envía imágenes ni captura video; no crea archivos de caché ni logs de diagnóstico.
+- Puede seguir escuchando ataques remotos del anfitrión por UDP local `127.0.0.1:38724`, pero la **prueba con ALT izquierdo no necesita esos eventos**.
+- Todo lo anterior requiere **Windows**. Se recomienda Python de 64 bits.
 
-Se descartan secuencias de golpes superpuestos porque no permiten atribuir cambios a un jugador. Si la captura de referencia es antigua, también se descarta.
+Prueba de lógica sin iniciar MAME:
 
-## 5. Seguridad, rendimiento y límites
-
-- Se emplean **solo** `OpenProcess` con permisos de consulta/lectura, `ReadProcessMemory` y `VirtualQueryEx`; nunca `WriteProcessMemory`.
-- Los eventos de botones pasan de anfitrión a analizador mediante **UDP en 127.0.0.1:38724**. No se publican al exterior ni se envía video.
-- No se crean archivos de caché, registros ni volcados de memoria; el análisis permanece en RAM.
-- Pulsar A/B/C/D no implica impacto: puede haber golpes al aire, defensas, proyectiles, daño simultáneo o transiciones de personajes.
-- El algoritmo todavía no puede deducir ganador, derrota o PERFECT solo a partir de un descenso aislado. **No modifica el marcador** del anfitrión.
-- Para evitar interferencias, el OCR antiguo de resultados queda desactivado **por defecto** durante el aprendizaje de RAM. Se puede habilitar deliberadamente con `KOF_ENABLE_OCR_RESULTS=1`, pero no se recomienda hasta validarlo.
-- Si se cierra y vuelve a abrir MAME, repite la búsqueda porque su PID y las direcciones del proceso pueden cambiar.
-
-## 6. Comprobación de la correlación sin MAME
-
-Desde la carpeta del anfitrión:
 ```powershell
 py -B KOF_Analizador_Salud.py --selftest
 ```
 
-Ese autocontrol usa datos simulados, no valida direcciones reales. Una vez encuentres dos direcciones candidatas, las validaremos con daño real en KOF 2002 antes de vincularlas a un contador de partidas.
+Conserva en la misma carpeta `KOF_Anfitrion.py`, `KOF_Analizador_Salud.py` y su iniciador `.pyw`. Las cifras y direcciones reales de salud todavía deben identificarse en tu ROM y validarse mediante una partida.
