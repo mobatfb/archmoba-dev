@@ -1,51 +1,53 @@
-# KOFMULTI | Analizador de salud - ALT IZQUIERDO (v1.1)
+# KOFMULTI | Analizador de salud v1.2 — daño comprobado contra golpe fallido
 
-Este analizador experimental busca direcciones de memoria en `mame.exe` relacionadas con las dos barras de salud. Ahora puede **detectar ALT IZQUIERDO directamente en el teclado del anfitrión**, aunque la ventana del MAME tenga el foco. No necesitas conectar un control remoto para esta prueba.
+**Cambio importante:** las direcciones sugeridas por pulsaciones de ALT izquierdo no resultaron ser la salud real. La versión v1.2 descarta ese método como evidencia suficiente. Ya NO muestra candidatos únicamente porque un valor disminuyó después de pulsar ALT.
 
-## Cómo probar ALT izquierdo sin Cheat Engine
+El analizador sigue siendo una herramienta de aprendizaje local y **no cambia el marcador del anfitrión**.
 
-1. Abre MAME con `kf2k2mp2` y una pelea activa. Puedes iniciarlo desde el anfitrión.
-2. Abre `KOF_Analizador_Salud.pyw` (sin consola negra), o el botón **Analizar salud** del anfitrión.
-3. Pulsa **1. BUSCAR MAME.EXE**.
-4. Elige **Byte** y pulsa **2. EXPLORAR RAM (24 MiB)**. En la actividad debe aparecer cuántos bloques y megabytes fueron leídos. El proceso puede consumir recursos, por lo que conviene hacer las pruebas con el juego pausado hasta terminar la búsqueda.
-5. Vuelve a la **ventana de MAME** y golpea a P2 pulsando **ALT IZQUIERDO** (P1). Deja aproximadamente 2 segundos entre golpes.
-6. Regresa al analizador. El contador **ALT IZQUIERDO (P1)** tiene que haber aumentado. Si la memoria contiene valores descendentes, aparecerán como **Salud P2**.
+## Cómo utilizarlo en Windows
 
-### Si ALT se detecta pero sigues teniendo 0 candidatos
+1. Abre `KOF_Anfitrion.py`, pulsa **ABRIR SALA**, luego **INICIAR KOF**; abre el analizador desde **Analizar salud** o desde `KOF_Analizador_Salud.pyw`.
+2. Selecciona **1. BUSCAR MAME.EXE** y el tipo **Byte**; después pulsa **2. EXPLORAR RAM (24 MiB)**. Si no se encuentra nada repetiremos con **2 Bytes** y, cuando haga falta, con direcciones de Cheat Engine.
+3. Coloca a los personajes frente a frente con la vida de P2 relativamente alta. En el analizador pulsa **3. CAPTURAR ANTES**.
+4. Vuelve a la ventana de MAME y presiona **ALT IZQUIERDO** para golpear a P2. Observa la barra de vida.
+5. Regresa al analizador: si **la salud de P2 realmente bajó**, pulsa **4. P2 RECIBIÓ DAÑO**. Si el golpe **falló o fue bloqueado sin pérdida de salud**, pulsa **4. P2 SIN DAÑO**.
+6. Repite **CAPTURAR ANTES → un solo golpe → confirmar** en cada intento. Para ver candidatos, se necesitan como mínimo **2 muestras etiquetadas como daño y 1 como sin daño**.
+7. Para identificar la salud de P1, repite las capturas cuando P2 ataque y selecciona los botones P1 RECIBIÓ DAÑO / P1 SIN DAÑO.
 
-- Comprueba que el golpe alcanzó al rival. El programa no puede saber si el golpe acertó solo por la pulsación.
-- Cambia el tipo a **2 Bytes**, pulsa de nuevo **EXPLORAR RAM** y repite.
-- Prueba el modo guiado: pulsa **3. CAPTURAR ANTES**, vuelve a MAME, golpea con ALT izquierdo y deja que el analizador compare automáticamente. **No hace falta pulsar P2 RECIBIÓ DAÑO en este modo**.
-- Si quieres confirmar el daño **sin depender de la tecla ALT**, pulsa CAPTURAR ANTES, provoca el daño por otro método y pulsa **4. P2 RECIBIÓ DAÑO**. Este botón está destinado a la comparación manual cuando no se activó la captura automática con ALT.
-- Si ninguno de esos métodos encuentra la salud, busca direcciones con Cheat Engine y pégalas en **SEGUIR DIRECCIONES CE**. Este método es más preciso y consume menos CPU. Soporta **Byte, 2 Bytes y 4 Bytes**.
+**Importante:** pulsar ALT izquierdo únicamente incrementa el contador de pulsaciones; **no confirma impactos ni genera puntuaciones**. Debes usar siempre un botón de confirmación para guardar la muestra.
 
-### Si ALT izquierdo queda en 0
+## Qué significa la tabla
 
-- Asegúrate de haber pulsado **BUSCAR MAME.EXE** y que el programa muestre un PID conectado.
-- La pulsación debe producirse **con MAME en primer plano**. No se cuenta ALT pulsado dentro de Cheat Engine, el escritorio o el analizador.
-- Comprueba que es ALT **izquierdo**, no AltGr/ALT derecho.
-- Si pulsas ALT muy rápidamente y no lo reconoce, mantenlo una fracción de segundo o repite la prueba: la lectura del teclado es por sondeo local.
+| Columna | Significado |
+|---|---|
+| Posible barra | P1 o P2 que habría recibido daño |
+| Dirección RAM | Dirección candidata; puede cambiar cuando reinicias MAME |
+| Valor actual | Último valor registrado |
+| Daño confirmado | Veces que bajó en una muestra que tú marcaste con daño |
+| Ruido / sin daño | Veces que cambió durante pruebas sin daño o tras el otro jugador |
+| Calidad orientativa | Índice de contraste, **no** probabilidad científica |
 
-## Cómo interpretar los resultados
+Las ubicaciones que también cambian cuando fallas un golpe o te mueves reciben penalización. Si confirmaste que una dirección es falsa, selecciónala en la tabla y pulsa **Descartar seleccionado**. El descarte se mantiene en memoria hasta reiniciar el aprendizaje.
 
-Las columnas **Bajadas relacionadas** y **Bajadas contradictorias** contabilizan descensos de valores cercanos a la pulsación. **Coincidencia** es solo una puntuación heurística preliminar, **no una probabilidad real de acertar**.
+Las primeras tres direcciones descartadas en la conversación (0x0B05EA4D, 0x0B05EA45 y 0x0B05E04D) **no están verificadas como salud**; no deben utilizarse para el marcador.
 
-Algunas variables de MAME cambian cuando se ejecutan animaciones, temporizadores o personajes. Repite al menos 4-5 golpes acertados y fallidos antes de confiar en una candidata y verifica en Cheat Engine que el valor realmente acompaña la barra de vida P2, incluso al cambiar de luchador.
+## Si sigues sin encontrar la salud
 
-**Limitación:** la exploración automática está limitada a 24 MiB repartidos entre regiones legibles de MAME, incluyendo memoria privada y mapeada. Puede omitir el bloque real. Para una dirección de Cheat Engine el seguimiento es más específico. Las direcciones absolutas deben volver a comprobarse al reiniciar MAME.
+- El explorador automático solo muestrea **24 MiB** del proceso Windows; puede no cubrir la RAM emulada real.
+- La alternativa más precisa es buscar en **Cheat Engine**: tipo Byte o 2 Bytes, **Unknown initial value**; tras un daño real, **Decreased value**; cuando el golpe no causa daño, **Unchanged value**; al cambiar de personaje, comprueba si se restablece. Repite hasta encontrar pocas candidatas.
+- Pega únicamente las **direcciones absolutas** obtenidas en Cheat Engine, en hexadecimal, una por línea, y pulsa **SEGUIR DIRECCIONES CE**. Admite Byte / 2 Bytes / 4 Bytes (enteros). Las expresiones `mame.exe+offset` o cadenas de punteros todavía no se resuelven.
+- El juego puede reflejar la salud en campos diferentes del valor numérico de una barra, y también puede tener duplicados.
 
-## Información del proyecto
+## Garantías y límites
 
-- Solo lee memoria: `ReadProcessMemory` / `VirtualQueryEx`. No modifica ni congela salud.
-- Los resultados no afectan todavía Ganados, Perdidos, Perfecto ni Puntaje.
-- No envía imágenes ni captura video; no crea archivos de caché ni logs de diagnóstico.
-- Puede seguir escuchando ataques remotos del anfitrión por UDP local `127.0.0.1:38724`, pero la **prueba con ALT izquierdo no necesita esos eventos**.
-- Todo lo anterior requiere **Windows**. Se recomienda Python de 64 bits.
+El analizador utiliza `ReadProcessMemory` y `VirtualQueryEx`: no escribe ni congela memoria, no guarda capturas, no transmite video y no modifica el juego. La detección de ALT izquierdo exige que `mame.exe` esté en primer plano, pero la confirmación se realiza desde la ventana del analizador.
 
-Prueba de lógica sin iniciar MAME:
+**El programa no puede garantizar una dirección correcta solo a partir de estas comparaciones.** Antes de automatizar Ganados, Perdidos y Perfecto hay que verificar que las direcciones candidatas describen la salud real de cada equipo durante cambios de luchador, rondas y reinicios.
+
+Para verificar la lógica de aprendizaje con datos simulados:
 
 ```powershell
 py -B KOF_Analizador_Salud.py --selftest
 ```
 
-Conserva en la misma carpeta `KOF_Anfitrion.py`, `KOF_Analizador_Salud.py` y su iniciador `.pyw`. Las cifras y direcciones reales de salud todavía deben identificarse en tu ROM y validarse mediante una partida.
+Archivos en `KOFMULTI/ANFITRION`: `KOF_Analizador_Salud.py` y `KOF_Analizador_Salud.pyw`. El anfitrión v1.16.6 sigue siendo compatible con ellos sin modificaciones adicionales.
