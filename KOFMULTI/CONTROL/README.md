@@ -1,6 +1,15 @@
-# KOFMULTI — CONTROL v.0.0.4
+# KOFMULTI — CONTROL v.0.0.5
 
 Interfaz compacta de **520 × 240 píxeles** para los jugadores, con el nombre encima del botón central y controles de teclado y tactiles ASZX.
+
+## Estado del botón central
+
+- **Desconectado:** CONECTAR.
+- **Estableciendo conexión:** CONECTANDO.
+- **Tras recibir la confirmación `welcome` del anfitrión:** START, sin necesidad de reiniciar la ventana.
+- **Si se desconecta:** vuelve automáticamente a CONECTAR.
+
+La etiqueta del botón se actualiza también cuando no están disponibles los recursos SVG. El botón START envía COIN + START al tener asignado P1 o P2; la conexión al servidor continúa siendo necesaria para activarlo.
 
 ## Nombre recordado localmente
 
@@ -16,11 +25,11 @@ Interfaz compacta de **520 × 240 píxeles** para los jugadores, con el nombre e
 1. Abre y publica la sala en el anfitrión.
 2. Ejecuta **`KOF_Control.pyw`** (no abre consola negra) o **`ABRIR_CONTROL_SIN_CONSOLA.vbs`**.
 3. Escribe o confirma tu nombre y pulsa **CONECTAR**.
-4. El programa consulta `https://api.isupol.edu.ec/api/geturlkof` y abre un WebSocket seguro a la sala anunciada de Cloudflare.
+4. El programa consulta `https://api.isupol.edu.ec/api/geturlkof` (acepta los campos `url` o `email`) y abre un WebSocket seguro a la sala anunciada de Cloudflare.
 5. Cuando el anfitrión confirme la conexión, CONECTAR se convierte en **START**.
 6. El anfitrión te asigna P1, P2 o la lista de espera.
 
-La versión **v.0.0.4** se presenta solo en la barra superior; no se repite en los mensajes de la consola interna.
+La versión **v.0.0.5** se presenta solo en la barra superior; no se repite en los mensajes de la consola interna.
 
 ## Controles
 
