@@ -25,7 +25,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-VERSION = "1.3"
+VERSION = "1.4"
 HERE = pathlib.Path(__file__).resolve().parent
 LUA_FILE = HERE / "KOF_Diagnostico_Combate.lua"
 SESSION_DIR = HERE / "KOF_DIAG_SESIONES"
@@ -169,6 +169,7 @@ class DiagnosticsApp:
         self.events_path: Optional[pathlib.Path] = None
         self.clips_path: Optional[pathlib.Path] = None
         self.commands_path: Optional[pathlib.Path] = None
+        self.local_marks_path: Optional[pathlib.Path] = None
         self.seq = 0
         self.last_frame = -1
         self.last_read_at = 0.0
@@ -340,6 +341,7 @@ class DiagnosticsApp:
             self.events_path = session / "KOF_DIAG_EVENTOS.tsv"
             self.clips_path = session / "KOF_DIAG_CLIPS.tsv"
             self.commands_path = session / "KOF_DIAG_COMANDO.tsv"
+            self.local_marks_path = session / "KOF_DIAG_MARCAS_LOCALES.tsv"
             self.event_offset = 0
             self.pending_event_bytes = b""
             self.event_rows.clear()
@@ -492,12 +494,25 @@ class DiagnosticsApp:
         # Microsegundos epoch: número exacto representable por Lua (double).
         self.command_id = max(self.command_id + 1, time.time_ns() // 1000)
         text = f"KOF_DIAG_CMD1\t{self.command_id}\t{mark}\n"
+        # La interfaz toma foco de MAME y puede pausarlo. Registrar YA una
+        # marca del reloj Windows y último fotograma conocido, sin inventar
+        # que es el fotograma exacto del evento observado en el videojuego.
+        try:
+            with self.local_marks_path.open("a", encoding="utf-8") as file:
+                timestamp = dt.datetime.now().astimezone().isoformat(
+                    timespec="milliseconds")
+                file.write(f"KOF_DIAG_LOCAL1\t{timestamp}\t"
+                           f"{self.last_frame}\t{mark}\n")
+        except OSError as exc:
+            messagebox.showerror("No se pudo registrar marca local", str(exc))
+            return
         try:
             self.commands_path.write_text(text, encoding="ascii")
-            self.status.set("Marcador solicitado: " + mark +
-                            " | Lua lo guardará en el siguiente fotograma leído.")
+            self.status.set("Marca guardada localmente: " + mark +
+                            " | Lua añadirá el fotograma al reanudar MAME.")
         except OSError as exc:
-            messagebox.showerror("Error al registrar", str(exc))
+            self.status.set(
+                "Marca local guardada; Lua no recibió orden: " + str(exc)[:80])
 
     def show_event_details(self, _event=None):
         selected = self.tree.selection()
