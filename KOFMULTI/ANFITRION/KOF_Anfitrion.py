@@ -32,7 +32,12 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-APP_VERSION = "1.16.4"
+try:
+    from KOF_AutoResultados import AutoResultMonitor
+except ImportError:
+    AutoResultMonitor = None
+
+APP_VERSION = "1.16.5"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -1190,66 +1195,40 @@ class HostServer:
         self.timer_thread = None
         self.stop_event = threading.Event()
 
-    def adjust_stat(self, uid: int, field_name: str, delta: int) -> bool:
-        """Actualizacion manual de contadores; PERFECTO suma un punto adicional.
+    def record_game_outcome(self, winner_slot: int, perfect: bool,
+                            expected_uids: tuple[int, int]) -> bool:
+        """Solo acepta resultados corroborados por lectura LOCAL del juego.
 
-        No se detectan resultados internos de MAME: el operador registra cada
-        victoria, derrota o perfecto. Puntaje = Ganados + Perfectos.
+        Nunca se puntúa por teclas, cola, desconexiones ni botones manuales.
+        Solo cuenta enfrentamientos P1 contra P2 con los mismos jugadores.
         """
-        if delta not in (-1, 1):
+        if winner_slot not in (1, 2) or len(expected_uids) != 2:
             return False
         with self.room.lock:
-            guest = self.room.guests.get(uid)
-            if guest is None:
+            participants = {
+                guest.slot: guest for guest in self.room.guests.values()
+                if guest.slot in (1, 2) and guest.start_pressed and guest.active
+            }
+            if set(participants) != {1, 2}:
                 return False
-            target = {"ganados": self.scores, "perdidos": self.losses,
-                      "perfectos": self.perfects}.get(field_name)
-            if target is None:
+            if (participants[1].uid, participants[2].uid) != tuple(expected_uids):
                 return False
-            previous = target.get(uid, 0)
-            updated = previous + delta
-            if updated < 0:
-                return False
-            target[uid] = updated
-            if field_name == "ganados":
-                if delta == 1:
-                    self.last_winner_uid = guest.uid
-                    self.last_winner_name = guest.name
-                elif self.last_winner_uid == guest.uid:
-                    self.last_winner_uid = None
-                    self.last_winner_name = ""
-            points = self.scores.get(uid, 0) + self.perfects.get(uid, 0)
+            winner = participants[winner_slot]
+            loser = participants[3 - winner_slot]
+            self.scores[winner.uid] = self.scores.get(winner.uid, 0) + 1
+            self.losses[loser.uid] = self.losses.get(loser.uid, 0) + 1
+            if perfect:
+                self.perfects[winner.uid] = self.perfects.get(winner.uid, 0) + 1
+            self.last_winner_uid = winner.uid
+            self.last_winner_name = winner.name
+            points = self.scores[winner.uid] + self.perfects.get(winner.uid, 0)
             self.ui_notify(
-                "log", f"Marcador {guest.name}: {field_name} {previous} a "
-                       f"{updated} | Puntaje {points}.")
+                "log",
+                f"RESULTADO DEL JUEGO: P{winner_slot} {winner.name} ganó "
+                f"contra {loser.name}. PERFECT: {'sí' if perfect else 'no'}. "
+                f"Puntaje: {points}.")
             self._broadcast_state()
             return True
-
-    def mark_winner(self, slot: int) -> bool:
-        """Registro manual del resultado; este MAME no expone un evento WINNER.
-
-        No permite que invitados remotos falseen el resultado: solo el GUI
-        local del anfitrion llama a este metodo.
-        """
-        with self.room.lock:
-            guest = next((g for g in self.room.guests.values() if g.slot == slot), None)
-            if guest is None:
-                return False
-            self.last_winner_uid = guest.uid
-            self.last_winner_name = guest.name
-            self.scores[guest.uid] = self.scores.get(guest.uid, 0) + 1
-            self.ui_notify("log", f"Resultado registrado: {guest.name} (P{slot}) gano la pelea anterior.")
-            for recipient in self.room.guests.values():
-                recipient.tell({"type": "notice", "level": "info",
-                                "message": f"Ganador de la pelea anterior: {guest.name} (P{slot})."})
-            self._broadcast_state()
-            return True
-
-    def clear_winner(self):
-        with self.room.lock:
-            self.last_winner_uid = None
-            self.last_winner_name = ""
-            self._broadcast_state()
 
     def _stop_bot(self, slot: int, message: bool = True):
         was_active = slot in self.bot_until
@@ -1312,13 +1291,10 @@ class HostServer:
         rival = next((g for g in self.room.guests.values()
                       if g.uid != guest.uid and g.slot in (1, 2) and g.start_pressed), None)
         if mode == MODE_TECHNICAL and rival is not None:
-            self.scores[rival.uid] = self.scores.get(rival.uid, 0) + 1
-            self.losses[guest.uid] = self.losses.get(guest.uid, 0) + 1
-            self.last_winner_uid = rival.uid
-            self.last_winner_name = rival.name
-            message = (f"Victoria tecnica para {rival.name}: el ultimo ganador "
-                       f"({guest.name}) abandono. Se solicitara reiniciar KOF.")
-            self.ui_notify("log", message)
+            # La desconexion NO es una victoria del videojuego.
+            self.last_winner_uid = None
+            self.last_winner_name = ""
+            self.ui_notify("log", "Ganador desconectado: reinicio sin sumar resultados.")
         else:
             self.last_winner_uid = None
             self.last_winner_name = ""
@@ -1393,7 +1369,7 @@ class HostServer:
         self.timer_thread = threading.Thread(target=self._timer_loop, daemon=True)
         self.timer_thread.start()
         self.ui_notify("log", "Reglas: 30 s para ENTER (moneda + inicio); 60 s sin pulsaciones.")
-        self.ui_notify("log", f"Ganador anterior: {self.champion_exit_mode}. Marca el ganador P1/P2 al terminar cada pelea.")
+        self.ui_notify("log", "Marcador: solo resultados leídos del MAME local; sin botones de registro manual.")
         if self.checkpoints.enabled:
             self.ui_notify("log", "Recuperación: Save State de P1/P2 al asumir turno; carga al salir o perder el mando.")
             self.ui_notify("log", "IMPORTANTE: restaurar retrocede TODA la partida y créditos, incluidos los de P2/P1.")
@@ -1604,6 +1580,7 @@ class HostGUI:
         self._api_jobs: queue.Queue = queue.Queue()
         self._api_worker = threading.Thread(target=self._api_publish_loop, name="KOF-API", daemon=False)
         self._api_worker.start()
+        self.auto_monitor = None
         self.member_by_tree_row: dict[str, int] = {}
         self._build()
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -1746,8 +1723,6 @@ class HostGUI:
             self.roster.column(
                 key, width=width, minwidth=40, stretch=stretch,
                 anchor="w" if key == "name" else "center")
-        self.roster.bind("<Double-1>", self._roster_double_click)
-        self.roster.bind("<Button-3>", self._roster_context_menu)
         self.roster.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(
             table_holder, orient="vertical", command=self.roster.yview)
@@ -1759,8 +1734,8 @@ class HostGUI:
         self._append("Primero abre sala, despues inicia MAME con P1 y P2 virtuales.")
         self._append("No se transmite video ni audio. Los mandos requieren ViGEmBus.")
         self._append("Temporizadores: 30 s para START y 60 s sin actividad.")
-        self._append("Marcador manual: doble clic en Ganados, Perdidos o Perfecto para sumar 1; clic derecho para corregir.")
-        self._append("Puntaje = Ganados + Perfecto. Cada uno vale 1 punto.")
+        self._append("Marcador automático: lectura local del MAME; no se suma al presionar teclas.")
+        self._append("Puntaje = Ganados + Perfecto (1 punto por cada uno).")
         self._show_roster({
             "players": {"1": None, "2": None},
             "queue": [], "spectators": [], "total": 0})
@@ -1916,49 +1891,6 @@ class HostGUI:
             f"{total} conectados  |  P1 {p1}  |  P2 {p2}"
             f"  |  En espera: {len(waiting)}")
 
-    def _adjust_roster_stat(self, uid: int, metric: str, delta: int):
-        if not self.server:
-            self.messagebox.showwarning("Sala cerrada", "Abre la sala primero.")
-            return
-        if not self.server.adjust_stat(uid, metric, delta):
-            self._append(
-                "No se pudo modificar el marcador: el jugador se desconecto "
-                "o el contador ya esta en cero.")
-
-    def _roster_double_click(self, event):
-        """Doble clic en el numero para sumar exactamente una unidad."""
-        row = self.roster.identify_row(event.y)
-        col = self.roster.identify_column(event.x)
-        metric = {"#4": "ganados", "#5": "perdidos", "#6": "perfectos"}.get(col)
-        uid = self.member_by_tree_row.get(row)
-        if uid is not None and metric is not None:
-            self._adjust_roster_stat(uid, metric, 1)
-            return "break"
-
-    def _roster_context_menu(self, event):
-        """Editar o corregir contadores mediante clic derecho en el jugador."""
-        row = self.roster.identify_row(event.y)
-        uid = self.member_by_tree_row.get(row)
-        if uid is None:
-            return
-        self.roster.selection_set(row)
-        menu = self.tk.Menu(self.roster, tearoff=0)
-        for metric, label in (("ganados", "Ganados"),
-                              ("perdidos", "Perdidos"),
-                              ("perfectos", "Perfecto")):
-            menu.add_command(
-                label=f"{label} +1",
-                command=lambda m=metric: self._adjust_roster_stat(uid, m, 1))
-            menu.add_command(
-                label=f"{label} -1 (corregir)",
-                command=lambda m=metric: self._adjust_roster_stat(uid, m, -1))
-            menu.add_separator()
-        menu.add_command(label="Puntaje = Ganados + Perfecto", state="disabled")
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
-
     def _start_server(self):
         if self.server is not None:
             self._append("La sala ya está abierta.")
@@ -1977,7 +1909,7 @@ class HostGUI:
                              bind_lan=self.lan_var.get(),
                              process_provider=lambda: self.game_process,
                              restore_state=False,
-                             champion_exit_mode=MODE_TECHNICAL)
+                             champion_exit_mode=MODE_RESTART)
             new.start()
             self.server = new
             self._append("DOS JOYSTICKS VIRTUALES CREADOS. Verifica en joy.cpl y luego inicia el MAME ANTIGUO desde aquí.")
@@ -2071,10 +2003,26 @@ class HostGUI:
             self.notify("log", "MAME 0.132 del ZIP. Perfil de 2 joysticks: ctrlr/" + path.name +
                         " (sin modificar default.cfg ni las ROM).")
             self.game_process = subprocess.Popen(command, cwd=str(directory))
+            self._start_auto_results(self.game_process, self.server)
             self.notify("log", f"MAME antiguo iniciado (PID {self.game_process.pid}) con 2 joysticks virtuales. "
                         "Si hay otros mandos conectados, verifica los números P1 y P2 en TAB > Input (this Game).")
         except Exception as ex:
             self.notify("log", "No se pudo abrir KOF: " + str(ex))
+
+    def _start_auto_results(self, process, server):
+        if self.auto_monitor is not None:
+            self.auto_monitor.stop()
+            self.auto_monitor = None
+        if AutoResultMonitor is None:
+            self.notify("log",
+                        "AUTO MARCADOR NO ACTIVO: falta KOF_AutoResultados.py junto al anfitrión.")
+            return
+        if server is None:
+            return
+        self.auto_monitor = AutoResultMonitor(
+            process=process, server=server,
+            notify=self.notify, base_dir=BASE_DIR)
+        self.auto_monitor.start()
 
     def _resync_api(self):
         if not self.public_address:
@@ -2098,6 +2046,9 @@ class HostGUI:
         self._append("Enlace copiado. Cualquier persona que lo tenga puede entrar a la sala.")
 
     def _stop_server(self):
+        if self.auto_monitor is not None:
+            self.auto_monitor.stop()
+            self.auto_monitor = None
         if self.public_address:
             self._api_jobs.put("")
             self.api_status_var.set("API: despublicando enlace...")
