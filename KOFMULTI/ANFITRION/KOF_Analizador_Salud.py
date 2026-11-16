@@ -393,6 +393,8 @@ class Worker:
         self.p2_hp_poll_at = 0.0
         self.p2_hp_unreadable = False
         self.p2_address = None  # Obligatorio recalibrar al reiniciar MAME.
+        self.pid_check_at = time.monotonic()
+        self.ever_attached = False
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("127.0.0.1", PORT))
         self.socket.settimeout(0.025)
@@ -419,6 +421,8 @@ class Worker:
         self.p2_hp_unreadable = False
         self.p2_address = None
         self.reader = ReadOnlyMemory(pid)
+        self.pid_check_at = time.monotonic()
+        self.ever_attached = True
         self.emit("p2_address", None)
         self.emit("p2_health", (None, None))
         self.emit("log", f"Conectado en solo lectura a mame.exe PID {pid}.")
@@ -692,6 +696,32 @@ class Worker:
             # ALT se consulta incluso si el juego tiene el foco y no hay
             # ningún control remoto conectado.
             self.poll_left_alt()
+            now = time.monotonic()
+            # Una direccion Byte pertenece a UN proceso. Al cerrar MAME se
+            # invalida y NUNCA se reutiliza en el siguiente mame.exe.
+            if self.ever_attached and now - self.pid_check_at >= 2.5:
+                self.pid_check_at = now
+                visible_pid = find_mame_pid()
+                current_pid = self.reader.pid if self.reader else None
+                if visible_pid != current_pid:
+                    if visible_pid is None:
+                        if self.reader:
+                            self.reader.close()
+                            self.reader = None
+                        self.p2_address = None
+                        self.plan = []
+                        self.manual_before = None
+                        self.manual_p2_before = None
+                        self.emit("p2_address", None)
+                        self.emit("log", "MAME cerrado: dirección P2 invalidada.")
+                    else:
+                        try:
+                            self.attach(visible_pid)
+                            self.emit("log",
+                                      "Nuevo MAME detectado: vuelve a calibrar P2 "
+                                      "porque su dirección puede ser distinta.")
+                        except OSError as exc:
+                            self.emit("log", "Nuevo MAME: " + str(exc))
             for _ in range(8):
                 try:
                     job = self.jobs.get_nowait()
