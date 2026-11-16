@@ -1,6 +1,8 @@
 -- KOFMULTI | Diagnostico emulado por fotograma - kf2k2mp2 / MAME 0.289
 -- SOLO LECTURA. No modifica RAM, tiempo, rondas ni puntuaciones.
 -- Captura hp1/hp2, contadores, timer y bytes vecinos para analizar KO/equipo.
+-- v1.2: 252, 253, 254 y 255 observados en derrotas reales; el contador
+-- de rondas/vidas perdidas 0->1->2->3 determina mejor la baja de luchador.
 -- Arrancar desde KOF_Diagnostico_Combate.py o con -autoboot_script.
 
 local state_path = os.getenv("KOF_DIAG_STATE") or "KOF_DIAG_ESTADO.tsv"
@@ -185,9 +187,10 @@ local function in_combat(s)
 end
 
 local function loss_event(player, previous_loss, new_loss, hp, s)
-    -- La secuencia real observada: 0 -> 1 (HP=255),
-    -- 1 -> 2 (derrota por tiempo, HP=35), 2 -> 3 (HP=254).
-    -- Son indicadores que requieren nueva validacion, no puntos.
+    -- En dos partidas reales el contador subio 0->1->2->3 en ambos lados.
+    -- Los Byte terminales variaron entre 252 y 255. Una derrota por
+    -- tiempo tambien incremento el contador sin activar esos estados.
+    -- No usar esta observacion para otorgar puntos automaticamente.
     if new_loss <= previous_loss then
         return
     end
@@ -195,7 +198,7 @@ local function loss_event(player, previous_loss, new_loss, hp, s)
         return
     end
     event("P" .. player .. "_PERSONAJE_PERDIDO", s, true)
-    if hp == 254 or hp == 255 then
+    if hp >= 252 and hp <= 255 then
         event("P" .. player .. "_PERDIDA_ESTADO_" .. hp, s, false)
     elseif timer_zero_frame and frame - timer_zero_frame <= 500
            and s.timer == 0 then
@@ -219,12 +222,12 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
 
     local playing = in_combat(s)
     if playing and prev then
-        if (s.hp1 == 254 or s.hp1 == 255) and
+        if s.hp1 >= 252 and s.hp1 <= 255 and
            prev.hp1 <= 102 and prev.hp1 > 0 then
             ko1 = ko1 + 1
             event("P1_ENTRO_" .. s.hp1, s, true)
         end
-        if (s.hp2 == 254 or s.hp2 == 255) and
+        if s.hp2 >= 252 and s.hp2 <= 255 and
            prev.hp2 <= 102 and prev.hp2 > 0 then
             ko2 = ko2 + 1
             event("P2_ENTRO_" .. s.hp2, s, true)
@@ -239,6 +242,9 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
             event("CONTADOR_P1_CAMBIO", s, s.lost1 > prev.lost1)
             if s.lost1 < prev.lost1 then
                 event("CONTADOR_P1_REINICIO", s, false)
+                if prev.lost1 == 3 and s.lost1 == 0 then
+                    event("SECUENCIA_P1_3_A_0", s, true)
+                end
             else
                 loss_event(1, prev.lost1, s.lost1, s.hp1, s)
             end
@@ -247,6 +253,9 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
             event("CONTADOR_P2_CAMBIO", s, s.lost2 > prev.lost2)
             if s.lost2 < prev.lost2 then
                 event("CONTADOR_P2_REINICIO", s, false)
+                if prev.lost2 == 3 and s.lost2 == 0 then
+                    event("SECUENCIA_P2_3_A_0", s, true)
+                end
             else
                 loss_event(2, prev.lost2, s.lost2, s.hp2, s)
             end
@@ -292,7 +301,7 @@ _G.kof_diagnostic_reset_subscription = emu.add_machine_reset_notifier(function()
     follow_frames = 0
     timer_zero_frame = nil
     last_clip_frame = -1
-    -- ko1/ko2 cuentan transiciones 254/255 de esta instancia de MAME.
+    -- ko1/ko2 cuentan transiciones 252-255 de esta instancia de MAME.
 end)
 
-emu.print_info("KOF_DIAG Lua v1.1: estados 254/255, derrotas por tiempo y contador 0..3. SOLO LECTURA.")
+emu.print_info("KOF_DIAG Lua v1.2: estados 252-255, tiempo y contadores 0->3->0. SOLO LECTURA.")
