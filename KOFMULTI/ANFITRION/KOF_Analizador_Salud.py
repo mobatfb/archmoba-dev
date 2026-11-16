@@ -635,6 +635,8 @@ class App:
         self.state = tk.StringVar(
             value="Paso 1: BUSCAR MAME.EXE; Paso 2: EXPLORAR RAM; Paso 3: ALT IZQUIERDO dentro del juego.")
         self.alt_status = tk.StringVar(value="ALT IZQUIERDO (P1): 0 pulsaciones detectadas")
+        self.sample_status = tk.StringVar(
+            value="Muestras confirmadas: P2 daño 0 / sin daño 0 | P1 daño 0 / sin daño 0")
         self.value_width = tk.IntVar(value=1)
 
         body = ttk.Frame(self.root)
@@ -643,10 +645,11 @@ class App:
                   font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(0, 5))
         ttk.Label(
             body,
-            text="Golpea a P2 con ALT IZQUIERDO mientras MAME esté activo. "
-                 "El analizador detectará la tecla sin necesitar otro jugador remoto."
+            text="ALT izquierdo detecta pulsación P1; confirma si P2 RECIBIÓ o NO RECIBIÓ daño. "
+                 "Sin controles negativos no hay resultados confiables."
         ).pack(anchor="w")
         ttk.Label(body, textvariable=self.alt_status).pack(anchor="w", pady=(3, 0))
+        ttk.Label(body, textvariable=self.sample_status).pack(anchor="w", pady=(2, 0))
         actions = ttk.Frame(body)
         actions.pack(fill="x", pady=(9, 6))
         ttk.Button(actions, text="1. BUSCAR MAME.EXE",
@@ -687,9 +690,24 @@ class App:
             command=lambda: self.worker.jobs.put(("manual_damage", 2))
         ).pack(side="left", padx=(0, 6))
         ttk.Button(
-            guided, text="4. P1 RECIBIÓ DAÑO",
+            guided, text="4. P2 SIN DAÑO",
+            command=lambda: self.worker.jobs.put(("manual_no_damage", 2))
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            guided, text="Descartar seleccionado",
+            command=self.reject_selected
+        ).pack(side="right")
+        guided_p1 = ttk.Frame(body)
+        guided_p1.pack(fill="x", pady=(0, 6))
+        ttk.Button(
+            guided_p1, text="P1 RECIBIÓ DAÑO",
             command=lambda: self.worker.jobs.put(("manual_damage", 1))
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            guided_p1, text="P1 SIN DAÑO",
+            command=lambda: self.worker.jobs.put(("manual_no_damage", 1))
         ).pack(side="left")
+
         ttk.Label(body, textvariable=self.state).pack(fill="x", pady=(0, 6))
         holder = ttk.Frame(body)
         holder.pack(fill="both", expand=True)
@@ -699,9 +717,9 @@ class App:
             ("health", "Posible barra", 115),
             ("address", "Dirección RAM", 190),
             ("value", "Valor actual", 100),
-            ("evidence", "Bajadas relacionadas", 145),
-            ("opposite", "Bajadas contradictorias", 165),
-            ("confidence", "Coincidencia", 105),
+            ("evidence", "Daño confirmado", 145),
+            ("opposite", "Ruido / sin daño", 165),
+            ("confidence", "Calidad orientativa", 130),
         ):
             self.table.heading(name, text=title)
             self.table.column(name, width=width, minwidth=60, stretch=True,
@@ -714,11 +732,10 @@ class App:
         self.log = tk.Text(body, height=5, bg="#091725", fg="#8cebc3",
                            relief="flat", font=("Consolas", 9), state="disabled")
         self.log.pack(fill="x", pady=(8, 0))
-        self._line("En MAME pulsa ALT IZQUIERDO: verás subir su contador y aparecerán candidatos.")
-        self._line("Si aparecen 0 candidatos: usa CAPTURAR ANTES y un golpe ALT, o pega CE.")
-        self._line("Si necesitas confirmar daño manualmente, usa CAPTURAR ANTES, "
-                   "daño sin ALT y pulsa P2/P1 RECIBIÓ DAÑO.")
-        self._line("Las direcciones propuestas son hipótesis, valida todo en Cheat Engine.")
+        self._line("Paso 1: CAPTURAR ANTES; paso 2: golpear con ALT y mirar la barra.")
+        self._line("Paso 3: marcar P2 RECIBIÓ DAÑO o P2 SIN DAÑO según lo observado.")
+        self._line("Repite con una nueva CAPTURAR ANTES en cada prueba. Mínimo 2 daños y 1 fallo.")
+        self._line("Descarta falsas direcciones seleccionándolas. NO se modifica MAME.")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(130, self.poll)
 
@@ -735,6 +752,19 @@ class App:
         self.worker.jobs.put((
             "learn", "ce", self.ce.get("1.0", "end"), int(self.value_width.get())))
 
+    def reject_selected(self):
+        selected = self.table.selection()
+        if not selected:
+            self._line("Selecciona primero la dirección que comprobaste que NO es salud.")
+            return
+        values = self.table.item(selected[0], "values")
+        try:
+            address = int(values[1], 16)
+        except (ValueError, TypeError, IndexError):
+            self._line("No se pudo leer la dirección seleccionada.")
+            return
+        self.worker.jobs.put(("reject", address))
+
     def poll(self):
         for _ in range(80):
             try:
@@ -750,6 +780,11 @@ class App:
             elif kind == "alt":
                 self.alt_status.set(
                     f"ALT IZQUIERDO (P1): {val} pulsaciones detectadas")
+            elif kind == "samples":
+                good, bad = val
+                self.sample_status.set(
+                    f"Muestras: P2 daño {good[0]} / sin daño {bad[0]}"
+                    f" | P1 daño {good[1]} / sin daño {bad[1]}")
             elif kind == "rank":
                 selected = self.table.selection()
                 selection_value = (
@@ -759,11 +794,11 @@ class App:
                 for _, health, address, value, matched, contrary, conf in val:
                     row = self.table.insert("", "end", values=(
                         f"Salud P{health}", f"0x{address:08X}", value,
-                        matched, contrary, f"{conf}% (preliminar)"))
+                        matched, contrary, f"{conf}/100 (orientativo)"))
                     if f"0x{address:08X}" == selection_value:
                         self.table.selection_set(row)
             elif kind == "snapshot":
-                self._line("Memoria preparada. Vuelve a MAME y golpea con ALT IZQUIERDO.")
+                self._line("RAM lista. CAPTURAR ANTES > ALT en MAME > confirmar DAÑO o SIN DAÑO.")
         if not self.worker.stop_event.is_set():
             self.root.after(130, self.poll)
 
