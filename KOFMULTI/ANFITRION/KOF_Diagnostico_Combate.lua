@@ -1,9 +1,10 @@
 -- KOFMULTI | Diagnostico emulado por fotograma - kf2k2mp2 / MAME 0.289
 -- SOLO LECTURA. No modifica RAM, tiempo, rondas ni puntuaciones.
 -- Captura hp1/hp2, contadores, timer y bytes vecinos para analizar KO/equipo.
--- v1.3: 252, 253, 254 y 255 observados en derrotas reales; pueden ser
--- valores signed Byte -4..-1. El contador 0->1->2->3 es la referencia
--- mas fiable para detectar una baja, incluso si la salud acaba en cero.
+-- v1.5: PERFECT por KO o tiempo si el ganador conserva 102/102 de HP.
+-- Se confirma por incremento de vidas/rondas perdidas del rival.
+-- Byte HP con signo: 128..255 puede indicar vida <= 0 (hipotesis).
+-- NO se envian resultados ni puntos al anfitrion.
 -- Arrancar desde KOF_Diagnostico_Combate.py o con -autoboot_script.
 
 local state_path = os.getenv("KOF_DIAG_STATE") or "KOF_DIAG_ESTADO.tsv"
@@ -30,12 +31,14 @@ local A = {
 
 local frame, seq, last_command_id = 0, 0, 0
 local ko1, ko2 = 0, 0
+local perfect1, perfect2 = 0, 0
 local prev = nil
 local last_state_frame = -60
 local history, history_size, history_head, history_count = {}, 180, 1, 0
 local clip_id, follow_frames = 0, 0
 local last_clip_frame = -1
 local timer_zero_frame = nil
+local HP_COMPLETA = 102
 local warning = {}
 
 local function report_error(what, detail)
@@ -187,6 +190,34 @@ local function in_combat(s)
             (s.hp2 >= 1 and s.hp2 <= 102))
 end
 
+local function calcular_perfect(loser, s)
+    -- Solo el contador de una muerte confirmada activa este calculo.
+    -- Para KO: el derrotado tiene HP=0 o HP negativo (Byte >=128).
+    -- Para timeout: reloj 0 y el derrotado tiene menos de 102 HP.
+    local vencedor = 3 - loser
+    local hp_ganador = (vencedor == 1) and s.hp1 or s.hp2
+    local hp_perdedor = (loser == 1) and s.hp1 or s.hp2
+    if hp_ganador ~= HP_COMPLETA then
+        return
+    end
+    local motivo = nil
+    if hp_perdedor == 0 or hp_perdedor >= 128 then
+        motivo = "KO"
+    elseif s.timer == 0 and timer_zero_frame ~= nil and
+           frame >= timer_zero_frame and
+           frame - timer_zero_frame <= 500 and hp_perdedor < HP_COMPLETA then
+        motivo = "TIEMPO"
+    end
+    if motivo ~= nil then
+        if vencedor == 1 then
+            perfect1 = perfect1 + 1
+        else
+            perfect2 = perfect2 + 1
+        end
+        event("PERFECT_P" .. vencedor .. "_" .. motivo, s, false)
+    end
+end
+
 local function loss_event(player, previous_loss, new_loss, hp, s)
     -- En dos partidas reales el contador subio 0->1->2->3 en ambos lados.
     -- Los Byte terminales variaron entre 252 y 255. Una derrota por
@@ -199,6 +230,11 @@ local function loss_event(player, previous_loss, new_loss, hp, s)
         return
     end
     event("P" .. player .. "_PERSONAJE_PERDIDO", s, true)
+    -- Uno por personaje perdido: los cambios 0->1, 1->2 y 2->3
+    -- no duplican PERFECT cuando el valor de HP permanece en cero.
+    if new_loss == previous_loss + 1 then
+        calcular_perfect(player, s)
+    end
     if hp >= 128 then
         -- Byte con signo: por ejemplo 252 -> -4. HIPOTESIS por verificar.
         event("P" .. player .. "_PERDIDA_HP_NEGATIVA_POSIBLE", s, false)
@@ -224,6 +260,14 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
 
     local playing = in_combat(s)
     if playing and prev then
+        -- Armar el agotamiento del reloj ANTES de procesar las pérdidas,
+        -- por si el contador sube en el mismo fotograma que el 0.
+        if s.timer == 0 and prev.timer ~= 0 then
+            timer_zero_frame = frame
+        end
+        if s.timer > prev.timer and s.timer - prev.timer >= 10 then
+            timer_zero_frame = nil
+        end
         if s.hp1 >= 128 and prev.hp1 <= 102 and prev.hp1 > 0 then
             ko1 = ko1 + 1
             event("P1_HP_NEGATIVA_POSIBLE", s, true)
@@ -264,11 +308,9 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
             event("TIEMPO_CAMBIO", s, false)
         end
         if s.timer == 0 and prev.timer ~= 0 then
-            timer_zero_frame = frame
             event("TIEMPO_LLEGO_CERO", s, true)
         end
         if s.timer > prev.timer and s.timer - prev.timer >= 10 then
-            timer_zero_frame = nil
             event("TIEMPO_REINICIO_O_CAMBIO", s, false)
         end
         -- El subreloj cambia en casi cada fotograma. Su valor completo ya
@@ -301,7 +343,8 @@ _G.kof_diagnostic_reset_subscription = emu.add_machine_reset_notifier(function()
     follow_frames = 0
     timer_zero_frame = nil
     last_clip_frame = -1
-    -- ko1/ko2 cuentan transiciones de HP a valor >=128 (posible negativo).
+    -- ko1/ko2 y perfect1/2 son observaciones acumuladas desde MAME abierto.
+    -- El registro de PERFECT requiere nueva validacion; no puntua.
 end)
 
-emu.print_info("KOF_DIAG Lua v1.3: posible HP negativo y contador 0->3->0. SOLO LECTURA.")
+emu.print_info("KOF_DIAG Lua v1.5: PERFECT KO/TIEMPO con 102 HP, sin puntuar. SOLO LECTURA.")
