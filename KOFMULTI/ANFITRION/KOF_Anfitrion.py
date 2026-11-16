@@ -247,6 +247,7 @@ class Guest:
     combo_epoch: int = 0
     combo_running: bool = False
     input_feedback_at: float = 0.0
+    last_remote_log_at: float = 0.0
 
     def tell(self, msg: dict) -> None:
         try:
@@ -706,12 +707,101 @@ class MameCheckpointManager:
 
 
 
+
+def _xinput_reader() -> Callable[[], dict[int, int]]:
+    """Leer los cuatro puertos XInput reales, sin enviar teclas a Windows."""
+    from ctypes import wintypes
+
+    class GAMEPAD(ctypes.Structure):
+        _fields_ = [
+            ("wButtons", wintypes.WORD),
+            ("bLeftTrigger", wintypes.BYTE),
+            ("bRightTrigger", wintypes.BYTE),
+            ("sThumbLX", ctypes.c_short), ("sThumbLY", ctypes.c_short),
+            ("sThumbRX", ctypes.c_short), ("sThumbRY", ctypes.c_short),
+        ]
+
+    class STATE(ctypes.Structure):
+        _fields_ = [("dwPacketNumber", wintypes.DWORD), ("Gamepad", GAMEPAD)]
+
+    dll = None
+    for name in ("xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"):
+        try:
+            dll = ctypes.WinDLL(name)
+            break
+        except OSError:
+            pass
+    if dll is None:
+        raise RuntimeError("Windows no tiene XInput disponible.")
+    get_state = dll.XInputGetState
+    get_state.argtypes = [wintypes.DWORD, ctypes.POINTER(STATE)]
+    get_state.restype = wintypes.DWORD
+
+    def read() -> dict[int, int]:
+        result = {}
+        for zero_based in range(4):
+            state = STATE()
+            if get_state(zero_based, ctypes.byref(state)) == 0:
+                result[zero_based + 1] = int(state.Gamepad.wButtons)
+        return result
+
+    return read
+
+
+def detect_virtual_xinput_slots(pads: list, button_names: Any,
+                                read_states: Optional[Callable[[], dict[int, int]]] = None
+                                ) -> tuple[int, int]:
+    """Identificar P1/P2 con pulsos al arranque, ANTES de iniciar MAME.
+
+    Windows no garantiza que los VX360Gamepad ocupen XInput Player 1 y 2.
+    Se comprueba cada mando emulado con A+B simultáneos y se libera al final.
+    Nunca se mandan controles al escritorio ni a la partida.
+    """
+    if len(pads) != 2:
+        raise ValueError("Se requieren exactamente dos mandos Xbox virtuales.")
+    reader = read_states or _xinput_reader()
+    probe_buttons = (button_names.XUSB_GAMEPAD_A, button_names.XUSB_GAMEPAD_B)
+    mask = 0x1000 | 0x2000  # Xbox XInput: botón A y botón B.
+    result = []
+    for index, pad in enumerate(pads, 1):
+        before = reader()
+        slot = None
+        try:
+            for button in probe_buttons:
+                pad.press_button(button=button)
+            pad.update()
+            for _ in range(25):
+                current = reader()
+                matches = [
+                    number for number, bits in current.items()
+                    if (bits & mask) == mask
+                    and (before.get(number, 0) & mask) != mask
+                    and number not in result
+                ]
+                if len(matches) == 1:
+                    slot = matches[0]
+                    break
+                time.sleep(0.05)
+        finally:
+            pad.reset()
+            pad.update()
+        if slot is None:
+            raise RuntimeError(
+                f"El joystick virtual P{index} no apareció entre los cuatro "
+                "mandos XInput. Revisa ViGEmBus o desconecta otro mando Xbox.")
+        result.append(slot)
+    if len(result) != 2 or len(set(result)) != 2:
+        raise RuntimeError("Windows no asignó dos ranuras XInput independientes.")
+    return result[0], result[1]
+
+
 def create_mame_virtual_profile(directory: pathlib.Path,
-                                modern: bool = False) -> pathlib.Path:
+                                modern: bool = False,
+                                xinput_slots: tuple[int, int] = (1, 2)) -> pathlib.Path:
     """Perfil de los dos mandos Xbox, separado para MAME 0.132 y 0.289.
 
-    Para 0.289 fija las identidades XInput P1/P2: el orden de enumeracion
-    de joysticks puede cambiar, dejando a los mandos virtuales sin entrada.
+    Para 0.289 asigna las posiciones XInput que Windows comprobó para
+    los joysticks virtuales; no supone que sean Player 1 y Player 2.
     """
     import xml.etree.ElementTree as ET
     mapping = {
@@ -730,9 +820,15 @@ def create_mame_virtual_profile(directory: pathlib.Path,
     root = ET.Element('mameconfig', {'version': '10'})
     input_root = ET.SubElement(ET.SubElement(root, 'system', {'name': 'default'}), 'input')
     if modern:
-        for slot in (1, 2):
+        if len(xinput_slots) != 2 or set(xinput_slots) != set(map(int, xinput_slots)) or (
+                len(set(xinput_slots)) != 2 or
+                any(not isinstance(index, int) or not (1 <= index <= 4)
+                    for index in xinput_slots)):
+            raise ValueError("Las posiciones XInput de P1/P2 deben ser distintas y estar entre 1 y 4.")
+        for slot, player_number in enumerate(xinput_slots, 1):
             ET.SubElement(input_root, 'mapdevice', {
-                'device': f'XInput Player {slot}', 'controller': f'JOYCODE_{slot}'})
+                'device': f'XInput Player {player_number}',
+                'controller': f'JOYCODE_{slot}'})
     for slot in (1, 2):
         for action, ptype in port_names.items():
             if action in axis:
@@ -802,6 +898,19 @@ class VirtualPads:
         self.status_notify = status_notify
         self.input_error = ""
         self._last_applied_report = 0.0
+        self.xinput_slots: Optional[tuple[int, int]] = None
+        self.xinput_error = ""
+        try:
+            self.xinput_slots = detect_virtual_xinput_slots(self.pads, self.vg.XUSB_BUTTON)
+        except (RuntimeError, OSError, ValueError) as exc:
+            self.xinput_error = str(exc)
+        if status_notify is not None:
+            if self.xinput_slots:
+                p1, p2 = self.xinput_slots
+                status_notify("log", f"XINPUT REAL: mando virtual P1 = Player {p1}; "
+                              f"mando virtual P2 = Player {p2}.")
+            else:
+                status_notify("log", "XINPUT NO VERIFICADO: " + self.xinput_error)
 
     def prepare(self, slot: int) -> bool:
         """Validar que el juego exista sin enfocarlo ni tocar el cursor."""
@@ -1470,6 +1579,12 @@ class HostServer:
                                 current = self.room.guests.get(guest.uid)
                                 confirmation = bool(current and current.slot and not current.start_pressed)
                         accepted = self.room.input_event(guest.uid, action, down)
+                        if down and time.monotonic() - guest.last_remote_log_at > 2:
+                            guest.last_remote_log_at = time.monotonic()
+                            self.ui_notify("log",
+                                f"WEBSOCKET: {guest.name} P{guest.slot} -> {action}: "
+                                + ("aceptado por anfitrión" if accepted
+                                   else "rechazado; comprueba puesto, tiempo y MAME"))
                         if down and time.monotonic() - guest.input_feedback_at > (2.0 if not accepted else 0.25):
                             guest.input_feedback_at = time.monotonic()
                             if accepted:
@@ -2390,7 +2505,17 @@ class HostGUI:
             # No reutilizar un .cfg antiguo que puede anular el perfil Xbox.
             modern_cfg_dir = BASE_DIR / "KOF_ARENA_CONFIG_0289"
             modern_cfg_dir.mkdir(parents=True, exist_ok=True)
-            profile = create_mame_virtual_profile(BASE_DIR, modern=True)
+            virtual_pads = self.server.room.input if self.server is not None else None
+            xinput_slots = getattr(virtual_pads, "xinput_slots", None)
+            if xinput_slots is None:
+                raise RuntimeError(
+                    "Los mandos Xbox virtuales no tienen posición XInput comprobada. "
+                    + str(getattr(virtual_pads, "xinput_error", "Revisa ViGEmBus.")))
+            profile = create_mame_virtual_profile(
+                BASE_DIR, modern=True, xinput_slots=xinput_slots)
+            self.notify("log", f"Asignación REAL: control remoto P1 -> "
+                               f"XInput Player {xinput_slots[0]}; P2 -> "
+                               f"XInput Player {xinput_slots[1]}.")
             rom_paths = list(dict.fromkeys((
                 str(directory), str(directory / "roms"),
                 str(chosen_exe.parent / "roms"),
@@ -2429,8 +2554,18 @@ class HostGUI:
                         "Iniciando MAME 0.289 con Lua V3 y diagnóstico KO v1.5. "
                         "Ventana normal, mouse libre y sin forzar foco; "
                         "no se modifica marcador ni RAM.")
-            self.game_process = subprocess.Popen(
-                command, cwd=str(chosen_exe.parent), env=env)
+            # Log local de MAME para verificar si realmente enumeró estos
+            # joysticks. No transmite ventanas, imágenes ni archivos por red.
+            mame_input_log = session / "MAME_XINPUT.log"
+            command.append("-verbose")
+            with mame_input_log.open("wb") as log_stream:
+                self.game_process = subprocess.Popen(
+                    command, cwd=str(chosen_exe.parent), env=env,
+                    stdout=log_stream, stderr=subprocess.STDOUT)
+            threading.Thread(
+                target=self._verify_mame_xinput_log,
+                args=(self.game_process, mame_input_log, xinput_slots),
+                daemon=True, name="KOF-Validacion-XInput").start()
             self.lua_monitor = LuaHealthMonitor(
                 process=self.game_process,
                 file_path=self.lua_state_path,
@@ -2446,6 +2581,41 @@ class HostGUI:
                         "sin modificación de RAM.")
         except Exception as ex:
             self.notify("log", "No se pudo abrir KOF: " + str(ex))
+
+    def _verify_mame_xinput_log(self, process, path, slots):
+        """Avisar si MAME 0.289 confirma la numeración real de mandos."""
+        content = ""
+        for _ in range(35):
+            if process.poll() is not None:
+                break
+            try:
+                if path.is_file():
+                    content = path.read_bytes()[-512 * 1024:].decode(
+                        "utf-8", errors="replace")
+            except OSError:
+                pass
+            if all(f"Remapped joystick #{i}: XInput Player {slot}" in content
+                   for i, slot in enumerate(slots, 1)):
+                break
+            time.sleep(0.2)
+        verified = all(
+            f"Remapped joystick #{i}: XInput Player {slot}" in content
+            for i, slot in enumerate(slots, 1))
+        if verified:
+            self.notify("log", "MAME XINPUT CONFIRMADO: ambos mandos remapeados "
+                        "a P1 y P2.")
+        else:
+            present = [
+                f"Player {slot}" for slot in slots
+                if f"XInput Player {slot}" in content]
+            self.notify("log",
+                        "MAME XINPUT SIN CONFIRMACIÓN: "
+                        + ("dispositivos visibles: " + ", ".join(present)
+                           if present else "no se hallaron dispositivos esperados")
+                        + ". Revisa " + str(path))
+        if process.poll() is not None:
+            self.notify("log", f"MAME finalizó al arrancar (código {process.returncode}); "
+                        f"revisa {path}.")
 
     def _start_auto_results(self, process, server):
         if self.auto_monitor is not None:
@@ -2694,6 +2864,27 @@ def run_selftest():
     assert VirtualPads.axes({"RIGHT", "UP"}) == (32767, 32767)
     assert VirtualPads.axes({"LEFT", "DOWN"}) == (-32767, -32767)
     assert VirtualPads.axes({"LEFT", "RIGHT"}) == (0, 0)
+    # Simular dispositivos cuyo orden REAL sea 3 y 1, no 1 y 2.
+    class MockButtons:
+        XUSB_GAMEPAD_A = 0x1000
+        XUSB_GAMEPAD_B = 0x2000
+
+    class MockPad:
+        def __init__(self):
+            self.mask = 0
+        def press_button(self, button):
+            self.mask |= button
+        def reset(self):
+            self.mask = 0
+        def update(self):
+            pass
+
+    mock_p1, mock_p2 = MockPad(), MockPad()
+    assert detect_virtual_xinput_slots(
+        [mock_p1, mock_p2], MockButtons,
+        read_states=lambda: {3: mock_p1.mask, 1: mock_p2.mask}
+    ) == (3, 1)
+    assert mock_p1.mask == mock_p2.mask == 0
     from tempfile import TemporaryDirectory
     from xml.etree import ElementTree
     with TemporaryDirectory() as tmp:
@@ -2707,6 +2898,13 @@ def run_selftest():
             ("XInput Player 1", "JOYCODE_1"),
             ("XInput Player 2", "JOYCODE_2")]
         assert modern_profile.name == "kof_arena_0289.cfg"
+        different = create_mame_virtual_profile(
+            pathlib.Path(tmp), modern=True, xinput_slots=(3, 1))
+        remapped = ElementTree.parse(different).getroot()
+        remap = [(e.attrib["device"], e.attrib["controller"])
+                 for e in remapped.findall("./system/input/mapdevice")]
+        assert remap == [("XInput Player 3", "JOYCODE_1"),
+                         ("XInput Player 1", "JOYCODE_2")]
         root = ElementTree.parse(profile).getroot()
         ports = {node.attrib["type"]: node.findtext("newseq") for node in root.findall("./system/input/port")}
         assert len(ports) == 20, len(ports)
