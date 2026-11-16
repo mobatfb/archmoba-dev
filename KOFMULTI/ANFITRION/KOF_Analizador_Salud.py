@@ -21,7 +21,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-ANALYZER_VERSION = "v1.1"
+ANALYZER_VERSION = "v1.2"
 PORT = 38724  # Solo 127.0.0.1; el anfitrion informa ataques, no resultados.
 MAX_SCAN_BYTES = 24 * 1024 * 1024
 BLOCK = 64 * 1024
@@ -41,73 +41,105 @@ TH32CS_SNAPPROCESS = 2
 
 
 class ScoreLearner:
-    """Aprendizaje por correlacion, NO detector confirmado de impacto."""
+    """Filtra cambios de salud contrastando DAÑO REAL frente a SIN DAÑO.
+
+    Una pulsación aislada no crea candidatos; se requieren al menos dos
+    muestras de daño confirmado y una muestra de control (golpe fallido).
+    """
 
     def __init__(self):
-        self.hits = collections.defaultdict(lambda: [0, 0, 0])
-        self.samples = [0, 0]
-        self.last_value = {}
+        # [bajadas por ataque P1, bajadas por ataque P2, ultimo valor,
+        #  cambios SIN daño P2, cambios SIN daño P1]
+        self.hits = collections.defaultdict(lambda: [0, 0, 0, 0, 0])
+        self.samples = [0, 0]    # acciones con daño confirmado
+        self.controls = [0, 0]   # acciones sin daño confirmado
+        self.rejected = set()    # descartadas manualmente, solo en memoria
         self.limit = 160000
 
-    def observe(self, before, after, attacker, width=1):
-        if attacker not in (1, 2):
+    def observe(self, before, after, attacker, width=1, confirmed=True):
+        if attacker not in (1, 2) or width not in (1, 2, 4):
             return 0
-        # Atacante P1 => buscar salud de P2, y viceversa.
-        self.samples[attacker - 1] += 1
-        positives = 0
+        index = attacker - 1
+        if confirmed:
+            self.samples[index] += 1
+        else:
+            self.controls[index] += 1
+        relevant = 0
         for start, prior in before.items():
             current = after.get(start)
-            if current is None:
+            if current is None or prior == current:
                 continue
             if isinstance(prior, int):
-                candidates = [(start, prior, current)]
-            elif prior == current:
-                continue
+                candidates = ((start, prior, current),)
             elif width == 1:
                 candidates = ((start + i, a, b)
                               for i, (a, b) in enumerate(zip(prior, current))
                               if a != b)
             else:
-                candidates = ((start + i, int.from_bytes(prior[i:i+width], "little"),
-                               int.from_bytes(current[i:i+width], "little"))
-                              for i in range(0, min(len(prior), len(current)) - width + 1, width)
-                              if prior[i:i+width] != current[i:i+width])
+                candidates = (
+                    (start + i, int.from_bytes(prior[i:i + width], "little"),
+                     int.from_bytes(current[i:i + width], "little"))
+                    for i in range(0, min(len(prior), len(current)) - width + 1, width)
+                    if prior[i:i + width] != current[i:i + width])
+            upper = 255 if width == 1 else (65535 if width == 2 else 10000000)
+            max_drop = 160 if width == 1 else (4096 if width == 2 else 400000)
             for address, old, new in candidates:
-                # Los medidores de salud son normalmente valores positivos
-                # que disminuyen; excluir cambios enormes y punteros.
-                upper = 255 if width == 1 else (65535 if width == 2 else 10000000)
-                max_drop = 160 if width == 1 else (4096 if width == 2 else 400000)
-                if not (5 <= old <= upper and 0 <= new < old
-                        and 1 <= old - new <= max_drop):
+                if (address in self.rejected or
+                        not (0 <= old <= upper and 0 <= new <= upper)):
+                    continue
+                if confirmed:
+                    # En daño confirmado solo interesan valores descendentes.
+                    if not (5 <= old and 0 <= new < old and
+                            1 <= old - new <= max_drop):
+                        continue
+                elif old == new:
                     continue
                 if address not in self.hits and len(self.hits) >= self.limit:
                     continue
                 record = self.hits[address]
-                record[attacker - 1] += 1
                 record[2] = new
-                self.last_value[address] = new
-                positives += 1
-        return positives
+                if confirmed:
+                    record[index] += 1
+                else:
+                    # Cualquier cambio cuando NO hay daño reduce la validez,
+                    # aunque la variable suba en vez de bajar.
+                    record[3 + index] += 1
+                relevant += 1
+        return relevant
+
+    def reject(self, address):
+        """Descarta una direccion elegida por el usuario en esta sesion."""
+        address = int(address)
+        self.rejected.add(address)
+        self.hits.pop(address, None)
 
     def top(self, n=45):
-        results = []
-        for address, (after_p1, after_p2, value) in self.hits.items():
-            # Una ubicacion de salud debe variar tras el atacante opuesto
-            # con mucha mayor frecuencia que tras el propio jugador.
-            for victim, matched, contrary, total in (
-                (2, after_p1, after_p2, self.samples[0]),
-                (1, after_p2, after_p1, self.samples[1]),
+        ranked = []
+        for address, (after_p1, after_p2, value, noise_p1, noise_p2) in self.hits.items():
+            if address in self.rejected:
+                continue
+            for victim, matched, other, noise, attack_index in (
+                (2, after_p1, after_p2, noise_p1, 0),
+                (1, after_p2, after_p1, noise_p2, 1),
             ):
-                if matched == 0:
+                good_total = self.samples[attack_index]
+                bad_total = self.controls[attack_index]
+                # Sin al menos una prueba en la que no haya daño, una
+                # correlacion con ALT no demuestra nada sobre la salud.
+                if matched < 2 or good_total < 2 or bad_total < 1:
                     continue
-                precision = matched / max(1, matched + contrary)
-                frequency = matched / max(1, total)
-                confidence = precision * frequency
-                rating = matched * precision - contrary * 0.6
-                results.append((rating, victim, address, value,
-                                matched, contrary, round(confidence * 100)))
-        results.sort(reverse=True)
-        return results[:n]
+                good_rate = matched / max(1, good_total)
+                bad_rate = noise / max(1, bad_total)
+                if bad_rate >= good_rate or noise >= matched:
+                    continue
+                contrast = good_rate - bad_rate
+                consistency = matched / max(1, matched + other + 2 * noise)
+                quality = max(0, min(100, round(contrast * consistency * 100)))
+                rating = matched * contrast * consistency - other - noise
+                ranked.append((rating, victim, address, value,
+                               matched, noise + other, quality))
+        ranked.sort(reverse=True)
+        return ranked[:n]
 
 
 if os.name == "nt":
