@@ -49,7 +49,7 @@ try:
 except ImportError:
     parse_combat_event = None
 
-APP_VERSION = "1.16.9"
+APP_VERSION = "1.16.10"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
@@ -86,6 +86,17 @@ try:
 except ImportError:
     ws_serve = None
     ws_connect = None
+
+
+# Opciones de ventana sin maximizar, captura del cursor ni cambios de foco.
+# El MAME moderno acepta joysticks virtuales incluso estando detrás de otras
+# ventanas. No utilizar -background_input en 0.132 sin verificar soporte.
+def mame_window_options(modern: bool = False) -> list[str]:
+    args = ["-window", "-nomaximize", "-nomouse", "-nolightgun"]
+    if modern:
+        args.extend(["-mouseprovider", "none", "-mouse_device", "none",
+                     "-background_input"])
+    return args
 
 
 # Los recursos del juego no se incluyen en el script; se leen del ZIP del usuario.
@@ -214,9 +225,9 @@ class NullInput:
 class MameKeyboard:
     """Puente de acciones P1/P2 a teclado Windows para MAME.
 
-    Preparación del foco, diagnóstico y tiempo mínimo de pulsación evitan
-    que los toques rápidos de un control táctil desaparezcan entre fotogramas.
-    Todas las teclas se envían EXCLUSIVAMENTE al juego iniciado por este host.
+    Diagnóstico y tiempo mínimo de pulsación evitan que los toques rápidos
+    desaparezcan entre fotogramas. No activa, restaura ni trae MAME al frente.
+    Las teclas especiales solo se envían si el usuario ya enfocó el juego.
     """
     VK = {
         "CTRL": 0xA2, "ALT": 0xA4, "SHIFT": 0xA0, "SPACE": 0x20,
@@ -251,7 +262,6 @@ class MameKeyboard:
         from ctypes import wintypes
         self.wintypes = wintypes
         self.user32 = ctypes.WinDLL("user32", use_last_error=True)
-        self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._process = game_process_provider
         self.status_notify = status_notify
         self.key_states: dict[str, bool] = {}
@@ -293,15 +303,6 @@ class MameKeyboard:
         self.user32.GetForegroundWindow.restype = wintypes.HWND
         self.user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
         self.user32.GetWindowThreadProcessId.restype = wintypes.DWORD
-        self.user32.IsWindowVisible.argtypes = [wintypes.HWND]
-        self.user32.IsWindowVisible.restype = wintypes.BOOL
-        self.user32.IsIconic.argtypes = [wintypes.HWND]
-        self.user32.SetForegroundWindow.argtypes = [wintypes.HWND]
-        self.user32.SetForegroundWindow.restype = wintypes.BOOL
-        self.user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-        self.user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
-        self.user32.AttachThreadInput.restype = wintypes.BOOL
-        self.kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 
     def _status(self, message: str, *, failed: bool = False) -> None:
         if failed:
@@ -330,57 +331,16 @@ class MameKeyboard:
         self.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         return pid.value == process.pid
 
-    def _find_game_window(self):
-        process = self._running_process()
-        if process is None:
-            return None
-        callback_type = ctypes.WINFUNCTYPE(self.wintypes.BOOL, self.wintypes.HWND, self.wintypes.LPARAM)
-        candidates = []
-
-        def enumerate_window(hwnd, _):
-            pid = self.wintypes.DWORD()
-            self.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if pid.value == process.pid and self.user32.IsWindowVisible(hwnd):
-                candidates.append(hwnd)
-                return False
-            return True
-
-        callback = callback_type(enumerate_window)
-        self.user32.EnumWindows(callback, 0)
-        return candidates[0] if candidates else None
-
     def _focus_mame(self) -> bool:
-        if self._game_has_focus():
-            return True
+        """Comprobar foco sin robarlo ni restaurar la ventana de MAME."""
         if self._running_process() is None:
-            self._status("MAME no está iniciado. Pulsa 3. INICIAR KOF en el anfitrión.", failed=True)
+            self._status("MAME no esta iniciado.", failed=True)
             return False
-        hwnd = self._find_game_window()
-        if not hwnd:
-            self._status("MAME está abierto pero no encuentro su ventana. Espera a que cargue.", failed=True)
-            return False
-        if self.user32.IsIconic(hwnd):
-            self.user32.ShowWindow(hwnd, 9)  # SW_RESTORE solamente si estaba minimizada.
-        self.user32.SetForegroundWindow(hwnd)
         if self._game_has_focus():
             return True
-        # Windows a veces prohíbe el foco desde el hilo WebSocket.
-        # Acoplar temporalmente su cola con la ventana en primer plano.
-        foreground = self.user32.GetForegroundWindow()
-        foreground_thread = (self.user32.GetWindowThreadProcessId(foreground, None)
-                             if foreground else 0)
-        this_thread = self.kernel32.GetCurrentThreadId()
-        attached = False
-        try:
-            if foreground_thread and foreground_thread != this_thread:
-                attached = bool(self.user32.AttachThreadInput(this_thread, foreground_thread, True))
-            self.user32.SetForegroundWindow(hwnd)
-        finally:
-            if attached:
-                self.user32.AttachThreadInput(this_thread, foreground_thread, False)
-        if self._game_has_focus():
-            return True
-        self._status("Windows no permitió activar MAME. Haz clic en la ventana del juego; comprueba también que MAME y Python tengan el mismo nivel de permisos.", failed=True)
+        self._status(
+            "MAME esta en segundo plano: no se fuerza el foco ni se envian "
+            "teclas globales sobre otras ventanas.", failed=True)
         return False
 
     def prepare(self, slot: int) -> bool:
@@ -784,32 +744,21 @@ class VirtualPads:
         self._pressed_at: dict[tuple[int, str], float] = {}
         self._release_timers: dict[tuple[int, str], threading.Timer] = {}
         self.MIN_HOLD = 0.11  # Toque tactil corto: mantener durante varios fotogramas
-        # Focus is best-effort: a virtual HID controller must not be rejected
-        # merely because SetForegroundWindow is disallowed for this thread.
+        # Los mandos virtuales no deben cambiar el foco del escritorio.
+        # No se usa teclado Win32, ni se trae MAME al frente cuando llegan
+        # pulsaciones desde un invitado remoto.
         self._process_provider = process_provider
-        self._focuser = MameKeyboard(process_provider, status_notify=None)
         self.status_notify = status_notify
         self.input_error = ""
-        self._warned_focus_at = 0.0
 
     def prepare(self, slot: int) -> bool:
+        """Validar que el juego exista sin enfocarlo ni tocar el cursor."""
         if slot not in (1, 2):
             return False
         game = self._process_provider()
         if game is None or game.poll() is not None:
-            self.input_error = "Primero inicia MAME en el anfitrión."
+            self.input_error = "Primero inicia MAME en el anfitrion."
             return False
-        try:
-            focused = self._focuser.prepare(slot)
-        except (OSError, AttributeError, RuntimeError):
-            focused = False
-        if not focused and self.status_notify is not None:
-            now = time.monotonic()
-            if now - self._warned_focus_at > 8:
-                self._warned_focus_at = now
-                self.status_notify("input_status", "Mandos virtuales activos; si MAME no responde, haz clic una vez en la ventana del juego. Las órdenes NO se bloquean por el foco.")
-        # HID virtual input is independent of SendInput and will be delivered
-        # whether or not Windows permits a focus change.
         self.input_error = ""
         return True
 
@@ -1287,7 +1236,8 @@ class HostServer:
             result = False
             self.ui_notify("log", f"Fallo al enviar F3: {ex}")
         self.ui_notify("log", "MAME: comando F3 de reinicio enviado." if result else
-                       "MAME: no se pudo enviar F3; revisa el foco de la ventana.")
+                       "MAME: no se envio F3 porque no estaba enfocado; "
+                       "nunca se trae el juego al frente automaticamente.")
         return result
 
     def _champion_left(self, slot: int, guest: Guest):
@@ -2289,7 +2239,7 @@ class HostGUI:
                 # Ruta antigua probada: no modificar comportamiento de MAME 0.132.
                 directory = get_game_folder()
                 command = [str(directory / "mame.exe"), "kf2k2mp2",
-                           "-window", "-maximize",
+                           *mame_window_options(),
                            "-state_directory", str(directory / STATE_FOLDER)]
                 profile = create_mame_virtual_profile(directory)
                 command.extend(["-ctrlr", profile.stem])
@@ -2353,7 +2303,8 @@ class HostGUI:
                 str(directory), str(directory / "roms"),
                 str(chosen_exe.parent / "roms"),
                 str(chosen_exe.parent))))
-            command = [str(chosen_exe), "kf2k2mp2", "-window", "-maximize",
+            command = [str(chosen_exe), "kf2k2mp2",
+                       *mame_window_options(modern=True),
                        "-rompath", os.pathsep.join(rom_paths),
                        "-state_directory", str(modern_state_dir),
                        "-ctrlrpath", str(profile.parent),
@@ -2380,7 +2331,8 @@ class HostGUI:
                 env[key] = str(session / filename)
             self.notify("log",
                         "Iniciando MAME 0.289 con Lua V3 y diagnóstico KO v1.5. "
-                        "No se modifica marcador ni RAM.")
+                        "Ventana normal, mouse libre y mandos en segundo plano; "
+                        "no se modifica marcador ni RAM.")
             self.game_process = subprocess.Popen(
                 command, cwd=str(chosen_exe.parent), env=env)
             self.lua_monitor = LuaHealthMonitor(
@@ -2507,6 +2459,22 @@ def main():
 
 def run_selftest():
     """Comprueba asignación P1/P2, lista FIFO y liberación automática."""
+    # La ventana y los mandos no deben capturar el cursor ni forzar el foco.
+    normal_args = mame_window_options()
+    modern_args = mame_window_options(modern=True)
+    assert "-window" in normal_args and "-nomaximize" in normal_args
+    assert "-nomouse" in normal_args and "-nolightgun" in normal_args
+    assert "-background_input" not in normal_args  # compatibilidad 0.132
+    assert "-background_input" in modern_args
+    assert modern_args[modern_args.index("-mouseprovider") + 1] == "none"
+    assert modern_args[modern_args.index("-mouse_device") + 1] == "none"
+    assert "SetForegroundWindow" not in MameKeyboard._focus_mame.__code__.co_names
+    test_pads = VirtualPads.__new__(VirtualPads)
+    test_pads._process_provider = lambda: type(
+        "GameReady", (), {"poll": lambda self: None})()
+    test_pads.input_error = "antes"
+    assert test_pads.prepare(1) and test_pads.input_error == ""
+    assert not test_pads.prepare(3)
     # Un resultado confirmado por el juego registra ambos lados y PERFECT;
     # los datos nunca cambian por pulsaciones ni por editarlos desde la tabla.
     simulator = HostServer.__new__(HostServer)
