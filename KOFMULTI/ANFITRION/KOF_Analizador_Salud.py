@@ -737,7 +737,7 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title(f"KOFMULTI | Salud ALT IZQUIERDO {ANALYZER_VERSION}")
-        self.root.geometry("1020x620")
+        self.root.geometry("1020x680")
         self.root.minsize(720, 450)
         self.root.configure(bg="#0b1323")
         theme = ttk.Style()
@@ -759,7 +759,11 @@ class App:
         self.sample_status = tk.StringVar(
             value="Muestras confirmadas: P2 daño 0 / sin daño 0 | P1 daño 0 / sin daño 0")
         self.p2_health_status = tk.StringVar(
-            value=f"VIDA P2 | 0x{P2_HP_ADDRESS:08X} | Byte | esperando MAME...")
+            value="VIDA P2 | Byte | sin dirección en esta sesión")
+        self.p2_address_var = tk.StringVar(value="")
+        self.current_p2_address = None
+        self.p1_hint = tk.StringVar(value="P1: aún no se ha identificado.")
+        self.near_radius_var = tk.StringVar(value="256 KiB")
         self.value_width = tk.IntVar(value=1)
 
         body = ttk.Frame(self.root)
@@ -775,6 +779,19 @@ class App:
         ttk.Label(body, textvariable=self.sample_status).pack(anchor="w", pady=(2, 0))
         ttk.Label(body, textvariable=self.p2_health_status,
                   font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(5, 1))
+        ttk.Label(body, textvariable=self.p1_hint).pack(anchor="w", pady=(0, 3))
+        calibration = ttk.Frame(body)
+        calibration.pack(fill="x", pady=(1, 5))
+        ttk.Label(calibration, text="Dirección actual de P2 (hex, Byte):").pack(
+            side="left", padx=(0, 6))
+        self.p2_entry = ttk.Entry(calibration, textvariable=self.p2_address_var,
+                                  width=18)
+        self.p2_entry.pack(side="left", padx=(0, 7))
+        self.p2_entry.bind("<Return>", lambda _event: self.calibrate_p2())
+        ttk.Button(calibration, text="CALIBRAR P2",
+                   command=self.calibrate_p2).pack(side="left")
+        ttk.Label(calibration, text="Se borra al cambiar de MAME.",
+                  style="TLabel").pack(side="right")
         actions = ttk.Frame(body)
         actions.pack(fill="x", pady=(9, 6))
         ttk.Button(actions, text="1. BUSCAR MAME.EXE",
@@ -786,13 +803,24 @@ class App:
         ttk.Button(actions, text="REINICIAR APRENDIZAJE",
                    command=lambda: self.worker.jobs.put(("reset",))).pack(side="right")
 
+        near_controls = ttk.Frame(body)
+        near_controls.pack(fill="x", pady=(0, 8))
+        ttk.Label(near_controls,
+                  text="Buscar P1 en RAM cercana a P2 | Radio:").pack(
+                      side="left", padx=(0, 8))
+        ttk.Combobox(near_controls, state="readonly", width=12,
+                     textvariable=self.near_radius_var,
+                     values=tuple(NEAR_P2_RADII.keys())).pack(
+                         side="left", padx=(0, 8))
+        ttk.Button(near_controls, text="BUSCAR SALUD P1 CERCA DE P2",
+                   command=self.search_p1_near).pack(side="left")
+
         ttk.Label(body, text="Opcional: pega direcciones ABSOLUTAS de Cheat Engine "
                             "(hexadecimal, una por línea):").pack(anchor="w")
         self.ce = tk.Text(body, height=3, bg="#142940", fg="#eaf0ff",
                           relief="flat", font=("Consolas", 10),
                           insertbackground="white")
         self.ce.pack(fill="x", pady=(4, 4))
-        self.ce.insert("1.0", f"0x{P2_HP_ADDRESS:08X}")
         ce_controls = ttk.Frame(body)
         ce_controls.pack(fill="x", pady=(0, 6))
         ttk.Radiobutton(ce_controls, text="Byte", value=1,
@@ -837,12 +865,13 @@ class App:
         ttk.Label(body, textvariable=self.state).pack(fill="x", pady=(0, 6))
         holder = ttk.Frame(body)
         holder.pack(fill="both", expand=True)
-        cols = ("health", "address", "value", "evidence", "opposite", "confidence")
+        cols = ("health", "address", "offset", "value", "evidence", "opposite", "confidence")
         self.table = ttk.Treeview(holder, columns=cols, show="headings")
         for name, title, width in (
             ("health", "Posible barra", 115),
-            ("address", "Dirección RAM", 190),
-            ("value", "Valor actual", 100),
+            ("address", "Dirección RAM", 148),
+            ("offset", "Offset desde P2", 128),
+            ("value", "Valor actual", 90),
             ("evidence", "Daño confirmado", 145),
             ("opposite", "Ruido / sin daño", 165),
             ("confidence", "Calidad orientativa", 130),
@@ -861,7 +890,7 @@ class App:
         self._line("Paso 1: CAPTURAR ANTES; paso 2: golpear con ALT y mirar la barra.")
         self._line("Paso 3: marcar P2 RECIBIÓ DAÑO o P2 SIN DAÑO según lo observado.")
         self._line("Repite con una nueva CAPTURAR ANTES en cada prueba. Mínimo 2 daños y 1 fallo.")
-        self._line("P2: Byte 0x13C1AA58 leído en vivo; úsalo como referencia, sin sumar puntos.")
+        self._line("P2 cambia de dirección al reiniciar. Calibra con la dirección actual de CE.")
         self._line("Descarta falsas direcciones seleccionándolas. NO se modifica MAME.")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.after(130, self.poll)
@@ -878,6 +907,23 @@ class App:
     def load_ce(self):
         self.worker.jobs.put((
             "learn", "ce", self.ce.get("1.0", "end"), int(self.value_width.get())))
+
+    def calibrate_p2(self):
+        value = self.p2_address_var.get().strip()
+        if not value:
+            self._line("P2: introduce la dirección ACTUAL de Cheat Engine.")
+            self.p2_entry.focus_set()
+            return
+        self.worker.jobs.put(("p2_address", value))
+
+    def search_p1_near(self):
+        if self.current_p2_address is None:
+            self._line("Primero calibra P2 con una dirección válida de esta sesión.")
+            return
+        self.value_width.set(1)  # Tipo Byte, igual que P2.
+        radius = self.near_radius_var.get()
+        self.p1_hint.set(f"P1: buscando alrededor de P2 (+/- {radius}).")
+        self.worker.jobs.put(("learn", "near_p2", radius, 1))
 
     def reject_selected(self):
         selected = self.table.selection()
@@ -912,15 +958,29 @@ class App:
                 self.sample_status.set(
                     f"Muestras: P2 daño {good[0]} / sin daño {bad[0]}"
                     f" | P1 daño {good[1]} / sin daño {bad[1]}")
+            elif kind == "p2_address":
+                self.current_p2_address = val
+                if val is None:
+                    self.p2_address_var.set("")
+                    self.p2_health_status.set(
+                        "VIDA P2 | Byte | dirección pendiente para el MAME actual")
+                    self.p1_hint.set("P1: pendiente. Primero calibra P2.")
+                else:
+                    self.p2_address_var.set(f"0x{val:08X}")
+                    self.p2_health_status.set(
+                        f"VIDA P2 | 0x{val:08X} | Byte | verificando...")
             elif kind == "p2_health":
                 value, delta = val
+                address = self.current_p2_address
+                if address is None:
+                    continue
                 suffix = (
-                    "sin lectura (revisar dirección o PID)" if value is None else
+                    "sin lectura (revisar PID y dirección)" if value is None else
                     f"valor {value} (Byte)" if delta is None else
-                    f"valor {value} (Byte)  |  cambio {delta:+d}"
+                    f"valor {value} (Byte) | cambio {delta:+d}"
                 )
                 self.p2_health_status.set(
-                    f"VIDA P2 | 0x{P2_HP_ADDRESS:08X} | Byte | {suffix}")
+                    f"VIDA P2 | 0x{address:08X} | Byte | {suffix}")
             elif kind == "rank":
                 selected = self.table.selection()
                 selection_value = (
@@ -928,9 +988,14 @@ class App:
                 for row in self.table.get_children():
                     self.table.delete(row)
                 for _, health, address, value, matched, contrary, conf in val:
+                    if self.current_p2_address is None:
+                        offset = "desconocido"
+                    else:
+                        delta = address - self.current_p2_address
+                        offset = f"{'+' if delta >= 0 else '-'}0x{abs(delta):X}"
                     row = self.table.insert("", "end", values=(
-                        f"Salud P{health}", f"0x{address:08X}", value,
-                        matched, contrary, f"{conf}/100 (orientativo)"))
+                        f"Salud P{health}", f"0x{address:08X}", offset,
+                        value, matched, contrary, f"{conf}/100 (orientativo)"))
                     if f"0x{address:08X}" == selection_value:
                         self.table.selection_set(row)
             elif kind == "snapshot":
@@ -978,8 +1043,9 @@ def selftest():
     assert all(row[2] != health_p2 for row in learner.top())
 
     # Lecturas multibyte de direcciones CE requieren también control sin daño.
-    assert P2_HP_ADDRESS == 0x13C1AA58 and P2_HP_BYTES == 1
-    assert parse_addresses("13C1AA58") == [P2_HP_ADDRESS]
+    assert P2_HP_HISTORICAL == 0x13C1AA58 and P2_HP_BYTES == 1
+    assert NEAR_P2_RADII["256 KiB"] == 0x40000
+    assert parse_addresses("13C1AA58") == [P2_HP_HISTORICAL]
     assert parse_addresses("00123000\n0x00124000") == [0x123000, 0x124000]
     for width, value, delta in ((2, 1200, 20), (4, 150000, 100)):
         model = ScoreLearner()
