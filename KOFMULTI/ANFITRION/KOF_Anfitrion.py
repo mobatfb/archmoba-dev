@@ -20,6 +20,7 @@ import pathlib
 import queue
 import random
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -49,12 +50,13 @@ try:
 except ImportError:
     parse_combat_event = None
 
-APP_VERSION = "1.16.12"
+APP_VERSION = "1.16.13"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 GAME_ARCHIVE = "KOF2022GAME.zip"
 GAME_FOLDER = "KOF2022GAME"
 DEFAULT_PORT = 8765
 API_POST_URL = "https://api.isupol.edu.ec/api/posturlkof"
+API_GET_URL = "https://api.isupol.edu.ec/api/geturlkof"
 MAX_GUESTS = 24
 MAX_INPUTS_PER_SECOND = 85
 HEALTH_ANALYZER_PORT = 38724  # Diagnóstico local 127.0.0.1 únicamente.
@@ -221,6 +223,34 @@ def publish_api_url(url: str, timeout: float = 8.0) -> dict:
     if not isinstance(result, dict) or result.get("status") != "success":
         raise RuntimeError("La API no confirmó la actualización del enlace.")
     return result
+
+
+def extract_room_url(reply: dict) -> str:
+    """Extraer la misma dirección que CONTROL obtiene de GET /geturlkof."""
+    if not isinstance(reply, dict) or reply.get("status") != "success":
+        raise ValueError("API GET no devuelve una sala válida.")
+    source = reply.get("data") if isinstance(reply.get("data"), dict) else reply
+    address = str(source.get("url") or source.get("email") or
+                  reply.get("url") or reply.get("email") or "").strip()
+    parsed = urlsplit(address)
+    if (parsed.scheme not in ("https", "wss") or not parsed.hostname or
+            parsed.username or parsed.password or
+            parsed.port not in (None, 443) or
+            not parsed.hostname.lower().endswith(".trycloudflare.com")):
+        raise ValueError("API GET no contiene una dirección válida de Cloudflare.")
+    return "https://" + parsed.hostname.lower()
+
+
+def read_published_room_url(timeout: float = 8.0) -> str:
+    """Consultar la URL que los clientes reciben, evitando respuestas cacheadas."""
+    request = Request(API_GET_URL, headers={
+        "Accept": "application/json",
+        "Cache-Control": "no-store, no-cache, max-age=0",
+        "Pragma": "no-cache",
+        "User-Agent": "KOF-Arena-Host/1.16",
+    })
+    with urlopen(request, timeout=timeout) as response:
+        return extract_room_url(json.load(response))
 
 
 def _json(obj: dict) -> str:
@@ -1333,6 +1363,8 @@ class HostServer:
                          input_observer=self._observe_attack)
         self.checkpoints.room = self.room
         self.bind_lan = bind_lan
+        # Identificador de la instancia, informativo (no es una contraseña).
+        self.room_id = secrets.token_hex(3).upper()
         self.process_provider = process_provider
         self.server = None
         self.thread = None
@@ -1552,10 +1584,12 @@ class HostServer:
                 ws.send(_json({"type": "error", "message": str(ex)}))
                 return
             ws.send(_json({"type": "welcome", "you": guest.uid, "version": APP_VERSION,
-                           "control_layout": "P1_UNIFICADO"}))
+                           "control_layout": "P1_UNIFICADO",
+                           "room_id": self.room_id}))
             threading.Thread(target=self._sender_loop, args=(guest,), daemon=True).start()
             self._broadcast_state()
-            self.ui_notify("log", f"{guest.name} entro como " + (f"P{guest.slot}" if guest.slot else "espera"))
+            self.ui_notify("log", f"{guest.name} conectó a la sala {self.room_id} como "
+                           + (f"P{guest.slot}" if guest.slot else "espera"))
             for raw in ws:
                 if not guest.active:
                     break
@@ -1652,7 +1686,8 @@ class HostServer:
             for guest, state in self.room.personalized_snapshots():
                 state.update({"players": roster["players"],
                               "last_winner": self.last_winner_name,
-                              "scores": dict(self.scores)})
+                              "scores": dict(self.scores),
+                              "room_id": self.room_id})
                 guest.tell(state)
             self.ui_notify("roster", roster)
 
@@ -1873,6 +1908,7 @@ class HostGUI:
             value="COMBATE: esperando diagnóstico KO y fin de equipo")
         self.host_url_var = tk.StringVar(value="Sala no publicada.")
         self.api_status_var = tk.StringVar(value="API: sala no publicada")
+        self.room_id_var = tk.StringVar(value="SALA ID: --")
         self.roster_count_var = tk.StringVar(
             value="0 conectados | P1 libre | P2 libre | En espera: 0")
         self.activity_visible = False
@@ -1949,7 +1985,9 @@ class HostGUI:
 
         address = ttk.Frame(body)
         address.pack(side="top", fill="x", pady=(0, 3))
-        ttk.Label(address, text="Sala:").pack(side="left", padx=(0, 5))
+        ttk.Label(address, textvariable=self.room_id_var,
+                  style="Muted.TLabel").pack(side="left", padx=(0, 8))
+        ttk.Label(address, text="Enlace:").pack(side="left", padx=(0, 5))
         ttk.Button(address, text="Copiar acceso",
                    command=self._copy_join).pack(side="right")
         ttk.Button(address, text="Reenviar API",
@@ -2043,8 +2081,25 @@ class HostGUI:
                     return
                 publish_api_url(url)
                 if url:
-                    self.notify("api_status", "API: enlace publicado correctamente en amo_users.email")
-                    self.notify("log", "API POST correcto: los jugadores ya pueden encontrar la sala.")
+                    # POST 200 no significa que GET apunte a esta sala.
+                    # Comprobar específicamente la misma ruta que usa CONTROL.py.
+                    actual = ""
+                    for attempt in range(3):
+                        actual = read_published_room_url()
+                        if actual.rstrip("/").lower() == url.rstrip("/").lower():
+                            break
+                        if attempt < 2:
+                            time.sleep(0.5)
+                    if actual.rstrip("/").lower() != url.rstrip("/").lower():
+                        self.notify("api_status",
+                                    "API: ERROR, GET APUNTA A OTRA SALA. Usa SALA en el control.")
+                        self.notify("log", "ATENCIÓN: POST aceptó " + url
+                                    + " pero GET devuelve " + actual
+                                    + ". CONTROL.py se conectará a OTRA sala."
+                                    " Pulsa SALA en el control y pega Copiar acceso.")
+                    else:
+                        self.notify("api_status", "API: POST y GET verificados, sala correcta")
+                        self.notify("log", "API VERIFICADA: CONTROL.py leerá esta misma sala.")
                 else:
                     self.notify("api_status", "API: enlace retirado (sala cerrada)")
                     self.notify("log", "API POST correcto: dirección pública despublicada.")
@@ -2250,7 +2305,9 @@ class HostGUI:
                              champion_exit_mode=MODE_RESTART)
             new.start()
             self.server = new
-            self._append("DOS JOYSTICKS VIRTUALES CREADOS. Verifica en joy.cpl y luego inicia el MAME ANTIGUO desde aquí.")
+            self.room_id_var.set(f"SALA ID: {new.room_id}")
+            self._append(f"IDENTIFICACIÓN: sala {new.room_id}. El control debe mostrar exactamente este ID.")
+            self._append("DOS JOYSTICKS VIRTUALES CREADOS. Verifica en joy.cpl y luego inicia el MAME.")
             self.input_diagnostic_var.set("LISTOS: 2 mandos virtuales. Pulsa VER MANDOS EN WINDOWS y después INICIAR KOF.")
             self.host_url_var.set(f"SOLO LOCAL: ws://127.0.0.1:{port} (publica para jugar por Internet)")
         except Exception as ex:
@@ -2678,6 +2735,7 @@ class HostGUI:
             self.server = None
             threading.Thread(target=old.stop, daemon=True).start()
         self.host_url_var.set("Sala cerrada. Abre una nueva sala para recibir jugadores.")
+        self.room_id_var.set("SALA ID: --")
         self._show_roster({"players": {"1": None, "2": None}, "queue": [], "spectators": []})
 
     def _kick_selected(self):
@@ -2725,6 +2783,19 @@ def main():
 
 def run_selftest():
     """Comprueba asignación P1/P2, lista FIFO y liberación automática."""
+    assert extract_room_url({
+        "status": "success", "data": {
+            "url": "https://Sala-Test.trycloudflare.com/"}
+    }) == "https://sala-test.trycloudflare.com"
+    assert extract_room_url({
+        "status": "success", "data": {
+            "email": "https://sala-test.trycloudflare.com"}
+    }) == "https://sala-test.trycloudflare.com"
+    try:
+        extract_room_url({"status": "success", "url": "https://example.net"})
+        raise AssertionError("La URL externa debió rechazarse")
+    except ValueError:
+        pass
     # Verificaciones de detección automática sin ejecutar el emulador real.
     from unittest import mock as mocked
     with mocked.patch(__name__ + ".subprocess.run",
