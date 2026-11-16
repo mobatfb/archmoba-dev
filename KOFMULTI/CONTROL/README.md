@@ -1,35 +1,52 @@
-# KOFMULTI — CONTROL v.0.0.2
+# KOFMULTI — CONTROL v.0.0.3
 
-Interfaz compacta de **520 × 240 píxeles**, con botones SVG de `assets/` y texto tipo consola **dentro de la ventana del mando**. Al iniciar, lo primero que aparece en ese panel es `v.0.0.2`.
+Interfaz gráfica compacta de **520 × 240 píxeles**, con botones SVG de `assets/`, cruceta, disposición de golpes **A S / Z X** y botón central dinámico.
 
-## Ejecutar sin consola negra de Python en Windows
+## Cambios de la versión 0.0.3
 
-**Recomendado:** haz doble clic en `KOF_Control.pyw`. Se abrirá únicamente el mando gráfico.
+- **Nombre del jugador**: campo encima del botón central; el nombre se envía al anfitrión al conectarse.
+- **Desconectado**: el botón central dice **CONECTAR**.
+- **Conectando**: muestra **CONECTANDO** y consulta `https://api.isupol.edu.ec/api/geturlkof`.
+- **Conectado**: se convierte en **START**. Cuando tienes P1 o P2, realiza **COIN + START** en una pulsación.
+- **Conectado sin mando**: START permite solicitar un turno si estás en modo espectador. Si estás en cola, conserva tu posición.
+- La versión `v.0.0.3` figura **solamente arriba, en la barra de la ventana**. La consola interna muestra exclusivamente mensajes de conexión, turno y avisos.
+- El mando no transmite video ni audio.
 
-**Alternativa:** haz doble clic en `ABRIR_CONTROL_SIN_CONSOLA.vbs`. Este iniciador utiliza `pyw -3 -B` y no muestra la consola.
+## Para abrir sin consola negra (Windows)
 
-El archivo `ABRIR_CONTROL.bat` también inicia la aplicación sin una consola de Python persistente, aunque Windows puede mostrar brevemente el CMD del propio BAT. Para evitar incluso ese destello, usa el `.pyw` o el `.vbs`.
+1. Instala PySide6 una sola vez: `py -m pip install --no-cache-dir PySide6`.
+2. Haz doble clic en `KOF_Control.pyw` (recomendado) o en `ABRIR_CONTROL_SIN_CONSOLA.vbs`.
 
-## Instalación inicial (solo una vez)
+`ABRIR_CONTROL.bat` también funciona, pero el propio CMD del archivo BAT puede verse un instante.
 
-```powershell
-py -m pip install --no-cache-dir PySide6
-```
+## Conexión
 
-Si falta PySide6, el iniciador `.pyw` muestra un aviso de Windows con el problema, sin escribir registros.
+1. En el PC anfitrión, inicia MAME y abre/publica la sala con Cloudflare.
+2. Abre `KOF_Control.pyw` en el PC del jugador.
+3. Escribe tu nombre y pulsa **CONECTAR**.
+4. El control consulta la API GET, convierte el enlace `https://*.trycloudflare.com` a WSS y establece el WebSocket, sin pedir contraseña ni escribir un enlace manualmente.
+5. El anfitrión asigna automáticamente P1, P2 o una posición en la cola.
 
-## Controles de prueba
+**Seguridad:** solo se aceptan URLs `*.trycloudflare.com` de HTTPS/WSS para evitar seguir destinos arbitrarios publicados en la API sin autenticación. Si cambias a un dominio propio más adelante, también deberás actualizar esta validación.
 
-- Flechas o cruceta: movimiento.
-- **A S** (fila superior) y **Z X** (fila inferior): cuatro acciones.
-- ENTER o botón START: acción START. Cuando se implemente la conexión, el anfitrión traducirá la acción en COIN y START según P1/P2.
-- Tecla 5: COIN de prueba.
+## Controles
 
-## Privacidad y almacenamiento
+| Tecla local | Acción del jugador | Acción transmitida |
+|---|---|---|
+| Flechas | Movimiento | UP/DOWN/LEFT/RIGHT |
+| A | Puñetazo leve | A |
+| S | Puñetazo fuerte | C |
+| Z | Patada leve | B |
+| X | Patada fuerte | D |
+| ENTER / botón central | Moneda + inicio | COIN_START |
+| 5 | Moneda manual | COIN |
 
-- Sin `QSettings`, historial, base de datos, preferencias locales ni registros de aplicación.
-- Las pulsaciones y los textos de la consola de la GUI solo viven en memoria.
-- Los lanzadores evitan generar archivos `__pycache__` del proyecto.
-- Esta versión todavía es un **prototipo local**: no envía pulsaciones a Internet ni se conecta al anfitrión.
+La traducción final a P1 o P2 sigue siendo responsabilidad exclusiva del anfitrión. El cliente nunca necesita saber las teclas internas de P2.
 
-Nota: la ventana de consola de esta interfaz es **un panel de texto dentro de la GUI**, no la consola negra externa de Python.
+## Sin caché ni archivos locales
+
+No se utilizan `QSettings`, bases de datos, logs, preferencias guardadas ni caché de disco. La API utiliza política `no-store`, la conexión se mantiene en memoria y los iniciadores evitan `__pycache__` del proyecto. El nombre debe escribirse de nuevo cada vez que abras el programa.
+
+## Verificación pendiente
+
+La conexión con el servicio público y el reconocimiento del joystick por MAME requieren una prueba real en Windows.
