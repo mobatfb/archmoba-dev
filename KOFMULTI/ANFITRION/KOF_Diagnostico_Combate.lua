@@ -31,6 +31,8 @@ local prev = nil
 local last_state_frame = -60
 local history, history_size, history_head, history_count = {}, 180, 1, 0
 local clip_id, follow_frames = 0, 0
+local last_clip_frame = -1
+local timer_zero_frame = nil
 local warning = {}
 
 local function report_error(what, detail)
@@ -139,7 +141,10 @@ local function event(kind, s, with_clip)
     append_line(events_path, table.concat({
         "KOF_DIAG_EVT1", one_line(s), kind, p1, p2, l1, l2, clock
     }, "\t"))
-    if with_clip then start_clip() end
+    if with_clip and last_clip_frame ~= frame then
+        start_clip()
+        last_clip_frame = frame
+    end
 end
 
 local allowed_marks = {
@@ -165,7 +170,43 @@ local function poll_command(s)
     end
 end
 
--- Cada fotograma: no depender del refresco lento de la ventana Python.
+-- Validacion de fotogramas del juego: MAME puede devolver 0x55/0xAA
+-- cuando arranca, y esos bytes NO son derrotas ni cambios de reloj.
+local function bcd_clock(value)
+    return value >= 0 and value <= 0x99 and
+           math.floor(value / 16) <= 9 and value % 16 <= 9
+end
+
+local function in_combat(s)
+    return s.lost1 <= 3 and s.lost2 <= 3 and
+           bcd_clock(s.timer) and
+           ((s.hp1 >= 1 and s.hp1 <= 102) or
+            (s.hp2 >= 1 and s.hp2 <= 102))
+end
+
+local function loss_event(player, previous_loss, new_loss, hp, s)
+    -- La secuencia real observada: 0 -> 1 (HP=255),
+    -- 1 -> 2 (derrota por tiempo, HP=35), 2 -> 3 (HP=254).
+    -- Son indicadores que requieren nueva validacion, no puntos.
+    if new_loss <= previous_loss then
+        return
+    end
+    if new_loss > 3 then
+        return
+    end
+    event("P" .. player .. "_PERSONAJE_PERDIDO", s, true)
+    if hp == 254 or hp == 255 then
+        event("P" .. player .. "_PERDIDA_ESTADO_" .. hp, s, false)
+    elseif timer_zero_frame and frame - timer_zero_frame <= 500
+           and s.timer == 0 then
+        event("P" .. player .. "_DERROTA_POR_TIEMPO_POSIBLE", s, false)
+    end
+    if previous_loss < 3 and new_loss == 3 then
+        event("POSIBLE_FIN_EQUIPO_P" .. player, s, false)
+    end
+end
+
+-- Cada fotograma: deteccion real de transiciones del juego.
 _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
     frame = frame + 1
     local ok, s = pcall(sample)
@@ -174,50 +215,56 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
         return
     end
 
-    -- Memoria del fotograma ACTUAL antes de emitir el clip.
     add_history(s)
 
-    if prev then
-        if s.hp1 == 254 and prev.hp1 ~= 254 then
-            ko1 = ko1 + 1  -- 254 observado: posible KO, NO punto.
-            event("P1_ENTRO_254", s, true)
+    local playing = in_combat(s)
+    if playing and prev then
+        if (s.hp1 == 254 or s.hp1 == 255) and
+           prev.hp1 <= 102 and prev.hp1 > 0 then
+            ko1 = ko1 + 1
+            event("P1_ENTRO_" .. s.hp1, s, true)
         end
-        if s.hp2 == 254 and prev.hp2 ~= 254 then
+        if (s.hp2 == 254 or s.hp2 == 255) and
+           prev.hp2 <= 102 and prev.hp2 > 0 then
             ko2 = ko2 + 1
-            event("P2_ENTRO_254", s, true)
+            event("P2_ENTRO_" .. s.hp2, s, true)
         end
         if s.hp1 < prev.hp1 and s.hp1 <= 102 and prev.hp1 <= 102 then
-            event("DANO_P1", s, false)
+            event("VIDA_P1_DISMINUYE", s, false)
         end
         if s.hp2 < prev.hp2 and s.hp2 <= 102 and prev.hp2 <= 102 then
-            event("DANO_P2", s, false)
+            event("VIDA_P2_DISMINUYE", s, false)
         end
         if s.lost1 ~= prev.lost1 then
-            event("CONTADOR_P1_CAMBIO", s, true)
+            event("CONTADOR_P1_CAMBIO", s, s.lost1 > prev.lost1)
+            if s.lost1 < prev.lost1 then
+                event("CONTADOR_P1_REINICIO", s, false)
+            else
+                loss_event(1, prev.lost1, s.lost1, s.hp1, s)
+            end
         end
         if s.lost2 ~= prev.lost2 then
-            event("CONTADOR_P2_CAMBIO", s, true)
+            event("CONTADOR_P2_CAMBIO", s, s.lost2 > prev.lost2)
+            if s.lost2 < prev.lost2 then
+                event("CONTADOR_P2_REINICIO", s, false)
+            else
+                loss_event(2, prev.lost2, s.lost2, s.hp2, s)
+            end
         end
         if s.timer ~= prev.timer then
             event("TIEMPO_CAMBIO", s, false)
         end
         if s.timer == 0 and prev.timer ~= 0 then
+            timer_zero_frame = frame
             event("TIEMPO_LLEGO_CERO", s, true)
         end
         if s.timer > prev.timer and s.timer - prev.timer >= 10 then
+            timer_zero_frame = nil
             event("TIEMPO_REINICIO_O_CAMBIO", s, false)
         end
-        if s.timer_aux ~= prev.timer_aux then
-            event("ESTADO_TIEMPO_CAMBIO", s, false)
-        end
-        if s.hp1 == 254 and s.lost1 >= 2 and
-                not (prev.hp1 == 254 and prev.lost1 >= 2) then
-            event("POSIBLE_FIN_EQUIPO_P1", s, true)
-        end
-        if s.hp2 == 254 and s.lost2 >= 2 and
-                not (prev.hp2 == 254 and prev.lost2 >= 2) then
-            event("POSIBLE_FIN_EQUIPO_P2", s, true)
-        end
+        -- El subreloj cambia en casi cada fotograma. Su valor completo ya
+        -- figura en la muestra de estado y en los clips de un evento critico.
+        -- No guardar un evento pesado para cada cambio del subreloj.
     end
 
     if follow_frames > 0 then
@@ -232,14 +279,20 @@ _G.kof_diagnostic_frame_subscription = emu.add_machine_frame_notifier(function()
     if frame % 6 == 0 or frame - last_state_frame >= 30 then
         write_heartbeat(s)
     end
-    prev = s
+    if playing then
+        prev = s
+    else
+        prev = nil
+    end
 end)
 
 _G.kof_diagnostic_reset_subscription = emu.add_machine_reset_notifier(function()
     prev = nil
     history, history_head, history_count = {}, 1, 0
     follow_frames = 0
-    -- Los contadores ko1/ko2 muestran eventos desde que se abrió MAME.
+    timer_zero_frame = nil
+    last_clip_frame = -1
+    -- ko1/ko2 cuentan transiciones 254/255 de esta instancia de MAME.
 end)
 
-emu.print_info("KOF_DIAG Lua activo. Registrando KO, fin de equipo y tiempo sin modificar RAM.")
+emu.print_info("KOF_DIAG Lua v1.1: estados 254/255, derrotas por tiempo y contador 0..3. SOLO LECTURA.")
