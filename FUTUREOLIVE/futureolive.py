@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-FUTUREO LIVE - Boceto funcional de escena para streaming.
-Pantalla/monitor en el centro + foto real o avatar a la derecha.
+FUTUREO LIVE - Escena futurista para streaming inspirada en el diseño de referencia.
+Gameplay principal + foto/avatar flotante + paneles de chat, metas, retos y alertas.
 
 Instalacion minima:
     python -m pip install pillow
 Captura mas rapida y seleccion de monitor (recomendado):
     python -m pip install mss
 Ejecucion:
-    python FUTUREO_LIVE.py
+    python futureolive.py
 
 IMPORTANTE: Este programa muestra una PREVISUALIZACION, no transmite ni graba.
 Para publicar en YouTube, captura la ventana de FUTUREO LIVE en OBS Studio.
@@ -41,7 +41,7 @@ except ImportError:
     mss = None  # Pillow ImageGrab funciona como alternativa sin mss.
 
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 BASE = Path(__file__).resolve().parent
 CONFIG_FILE = BASE / "futureo_config.json"
 DEFAULT_FOTO = BASE / "futureo_foto.jpg"
@@ -60,6 +60,8 @@ COL = {
     "yellow": "#FFC85C",
     "green": "#67E8A4",
     "danger": "#FF737E",
+    "purple": "#A356FF",
+    "pink": "#E45CDD",
 }
 
 
@@ -193,6 +195,7 @@ class FutureoLive:
         self.monitor_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Preparando vista previa ...")
         self.challenge_var = tk.StringVar(value=self.settings.get("reto", "¡El futuro se juega entre amigos!"))
+        self.goal_var = tk.StringVar(value=self.settings.get("meta", "Meta por configurar"))
         self.build_ui()
         self.read_photo()
         self.list_monitors()
@@ -222,58 +225,58 @@ class FutureoLive:
         return button
 
     def build_ui(self) -> None:
-        self.header = tk.Frame(self.root, bg=COL["bg"], height=86)
+        """Escena 16:9 inspirada en producciones de gaming, identidad FUTUREO."""
+        self.header = tk.Frame(self.root, bg=COL["bg"], height=72)
         self.header.pack(side="top", fill="x")
         self.header.pack_propagate(False)
+        tk.Frame(self.header, bg=COL["purple"], height=3).pack(side="top", fill="x")
 
         brand = tk.Frame(self.header, bg=COL["bg"])
-        brand.pack(side="left", padx=(26, 12), pady=13)
+        brand.pack(side="left", padx=(24, 20), pady=8)
         tk.Label(
             brand, text="F", fg=COL["cyan"], bg=COL["bg"],
-            font=("Segoe UI", 34, "bold"),
+            font=("Segoe UI", 32, "bold"),
         ).pack(side="left", padx=(0, 12))
-        name_group = tk.Frame(brand, bg=COL["bg"])
-        name_group.pack(side="left", pady=4)
+        brand_text = tk.Frame(brand, bg=COL["bg"])
+        brand_text.pack(side="left")
         tk.Label(
-            name_group, text="FUTUREO", fg=COL["white"], bg=COL["bg"],
-            font=("Segoe UI", 21, "bold"),
+            brand_text, text="FUTUREO", fg=COL["white"], bg=COL["bg"],
+            font=("Segoe UI", 22, "bold"),
         ).pack(anchor="w")
         tk.Label(
-            name_group, text="EL FUTURO SE JUEGA ENTRE AMIGOS", fg=COL["cyan"],
-            bg=COL["bg"], font=("Segoe UI", 8, "bold"),
+            brand_text, text="EL FUTURO SE JUEGA ENTRE AMIGOS",
+            fg=COL["cyan"], bg=COL["bg"], font=("Segoe UI", 8, "bold"),
         ).pack(anchor="w")
-
         tk.Label(
-            self.header, text="●  PREVISUALIZACIÓN DE STREAM", fg=COL["green"],
-            bg=COL["bg"], font=("Segoe UI", 10, "bold"),
-        ).pack(side="right", padx=28)
+            self.header, text="GAMEPLAYS    •    DIRECTOS    •    RETOS",
+            fg=COL["white"], bg=COL["bg"],
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="left", padx=14)
+        tk.Label(
+            self.header, text="@SoyFutureo    ● VISTA PREVIA",
+            fg=COL["cyan"], bg=COL["bg"],
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="right", padx=24)
 
-        thin_line = tk.Frame(self.root, height=2, bg=COL["line"])
-        thin_line.pack(side="top", fill="x")
-
-        self.footer = tk.Frame(self.root, bg=COL["panel"], height=75)
+        self.footer = tk.Frame(self.root, bg=COL["panel"], height=95)
         self.footer.pack(side="bottom", fill="x")
         self.footer.pack_propagate(False)
-
-        self.status_label = tk.Label(
-            self.footer, textvariable=self.status_var, bg=COL["panel"],
-            fg=COL["muted"], font=("Segoe UI", 9), anchor="w",
-        )
-        self.status_label.pack(side="bottom", fill="x", padx=23, pady=(0, 7))
-        footer_controls = tk.Frame(self.footer, bg=COL["panel"])
-        footer_controls.pack(side="top", fill="x", padx=18, pady=(10, 2))
-        self.play_button = self.style_button(footer_controls, "⏸  Pausar", self.toggle_capture)
-        self.play_button.pack(side="left", padx=(0, 8))
-        self.style_button(footer_controls, "📷  Cambiar foto", self.choose_photo).pack(side="left", padx=(0, 8))
-        self.style_button(footer_controls, "🖼  Avatar gamer", self.use_avatar).pack(side="left", padx=(0, 8))
-        self.style_button(footer_controls, "⛶  Modo escena (F11)", self.toggle_scene).pack(side="right", padx=(8, 0))
-
-        chooser = tk.Frame(footer_controls, bg=COL["panel"])
-        chooser.pack(side="right", padx=12)
+        tk.Frame(self.footer, bg=COL["cyan"], height=2).pack(side="top", fill="x")
+        controls = tk.Frame(self.footer, bg=COL["panel"])
+        controls.pack(side="top", fill="x", padx=16, pady=(7, 2))
+        self.play_button = self.style_button(controls, "⏸ Pausar", self.toggle_capture)
+        self.play_button.pack(side="left", padx=(0, 5))
+        self.style_button(controls, "📷 Foto", self.choose_photo).pack(side="left", padx=5)
+        self.style_button(controls, "Avatar", self.use_avatar).pack(side="left", padx=5)
+        self.style_button(controls, "✎ Reto", self.edit_challenge).pack(side="left", padx=5)
+        self.style_button(controls, "⚑ Meta", self.edit_goal).pack(side="left", padx=5)
+        self.style_button(controls, "⛶ Escena F11", self.toggle_scene).pack(side="right", padx=(5, 0))
+        chooser = tk.Frame(controls, bg=COL["panel"])
+        chooser.pack(side="right", padx=10)
         tk.Label(
-            chooser, text="CAPTURAR:", fg=COL["muted"], bg=COL["panel"],
+            chooser, text="MONITOR:", fg=COL["muted"], bg=COL["panel"],
             font=("Segoe UI", 9, "bold"),
-        ).pack(side="left", padx=(0, 10))
+        ).pack(side="left", padx=(0, 7))
         style = ttk.Style()
         try:
             style.theme_use("clam")
@@ -285,63 +288,158 @@ class FutureoLive:
             bordercolor=COL["line"], arrowcolor=COL["cyan"],
         )
         self.monitor_combo = ttk.Combobox(
-            chooser, textvariable=self.monitor_var, width=20,
+            chooser, textvariable=self.monitor_var, width=17,
             state="readonly", style="Futureo.TCombobox",
         )
         self.monitor_combo.pack(side="left")
         self.monitor_combo.bind("<<ComboboxSelected>>", self.monitor_selected)
+        tk.Label(
+            self.footer, textvariable=self.status_var, bg=COL["panel"],
+            fg=COL["muted"], font=("Segoe UI", 9), anchor="w",
+        ).pack(side="bottom", fill="x", padx=22, pady=(0, 4))
 
         self.body = tk.Frame(self.root, bg=COL["bg"])
-        self.body.pack(fill="both", expand=True, padx=18, pady=15)
+        self.body.pack(fill="both", expand=True, padx=12, pady=11)
         self.body.grid_columnconfigure(0, weight=1)
-        self.body.grid_columnconfigure(1, weight=0, minsize=305)
+        self.body.grid_columnconfigure(1, weight=0, minsize=286)
         self.body.grid_rowconfigure(0, weight=1)
 
-        main = tk.Frame(self.body, bg=COL["panel"], highlightbackground=COL["line"], highlightthickness=1)
-        main.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
-        tk.Label(
-            main, text="◉  PANTALLA / GAMEPLAY", fg=COL["white"], bg=COL["panel"],
-            font=("Segoe UI", 11, "bold"), anchor="w", pady=12, padx=16,
-        ).pack(fill="x")
-        self.screen_canvas = tk.Canvas(main, bg=COL["canvas"], bd=0, highlightthickness=0)
-        self.screen_canvas.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        game_frame = tk.Frame(
+            self.body, bg=COL["panel"], highlightbackground=COL["purple"],
+            highlightthickness=2,
+        )
+        game_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 11))
+        self.screen_canvas = tk.Canvas(
+            game_frame, bg=COL["canvas"], bd=0, highlightthickness=0,
+        )
+        self.screen_canvas.pack(fill="both", expand=True, padx=4, pady=4)
         self.screen_canvas.bind("<Configure>", lambda _event: self.draw_screen())
 
-        side = tk.Frame(self.body, width=310, bg=COL["panel"], highlightbackground=COL["line"], highlightthickness=1)
-        side.grid(row=0, column=1, sticky="nsew")
-        side.grid_propagate(False)
-        tk.Label(
-            side, text="★  TU ESPACIO", fg=COL["cyan"], bg=COL["panel"],
-            font=("Segoe UI", 11, "bold"), pady=14,
-        ).pack()
-        self.photo_canvas = tk.Canvas(side, height=365, bg=COL["panel"], bd=0, highlightthickness=0)
-        self.photo_canvas.pack(fill="x", padx=16)
-        self.photo_canvas.bind("<Configure>", lambda _event: self.draw_photo())
-        tk.Label(
-            side, text="FUTUREO", bg=COL["panel"], fg=COL["white"],
-            font=("Segoe UI", 28, "bold"), pady=7,
-        ).pack()
-        tk.Label(
-            side, text="🎮  GAMING  •  DIRECTOS  •  AMIGOS", bg=COL["panel"],
-            fg=COL["cyan"], font=("Segoe UI", 9, "bold"),
-        ).pack()
-        line = tk.Frame(side, bg=COL["line"], height=1)
-        line.pack(fill="x", padx=21, pady=16)
-        tk.Label(
-            side, text="RETO DE LA COMUNIDAD", fg=COL["yellow"], bg=COL["panel"],
-            font=("Segoe UI", 10, "bold"),
-        ).pack(padx=17, anchor="w")
-        self.challenge_text = tk.Label(
-            side, textvariable=self.challenge_var, fg=COL["white"], bg=COL["panel"],
-            font=("Segoe UI", 11), justify="left", wraplength=267,
+        # Camara / fotografia flotante encima del gameplay.
+        self.photo_frame = tk.Frame(
+            self.screen_canvas, bg=COL["bg"],
+            highlightbackground=COL["cyan"], highlightthickness=3,
         )
-        self.challenge_text.pack(padx=18, pady=(5, 11), anchor="w")
-        self.style_button(side, "✎  Editar reto", self.edit_challenge).pack(anchor="w", padx=18)
+        self.photo_frame.place(
+            relx=0.017, rely=0.033, relwidth=0.305, relheight=0.34,
+        )
         tk.Label(
-            side, text="Diseñado para mostrar tu pantalla y tu foto.\nNo inicia emisiones ni transmite audio.",
-            fg=COL["muted"], bg=COL["panel"], font=("Segoe UI", 8),
-            justify="center", pady=10,
-        ).pack(side="bottom", fill="x", padx=10)
+            self.photo_frame, text="◉  FUTUREO",
+            bg=COL["bg"], fg=COL["white"], font=("Segoe UI", 10, "bold"),
+            pady=3,
+        ).pack(side="bottom", fill="x")
+        self.photo_canvas = tk.Canvas(
+            self.photo_frame, bg=COL["panel_alt"], bd=0,
+            highlightthickness=0,
+        )
+        self.photo_canvas.pack(side="top", fill="both", expand=True)
+        self.photo_canvas.bind("<Configure>", lambda _event: self.draw_photo())
+
+        # El reto es un aviso manual. No inventa seguidores ni eventos.
+        alert = tk.Frame(
+            self.screen_canvas, bg=COL["panel"],
+            highlightbackground=COL["purple"], highlightthickness=2,
+        )
+        alert.place(
+            relx=0.39, rely=0.037, relwidth=0.56, relheight=0.16,
+        )
+        tk.Label(
+            alert, text="★ RETO DE LA COMUNIDAD",
+            fg=COL["cyan"], bg=COL["panel"],
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="center", pady=(5, 0))
+        tk.Label(
+            alert, textvariable=self.challenge_var,
+            fg=COL["white"], bg=COL["panel"],
+            font=("Segoe UI", 10, "bold"), wraplength=390,
+            justify="center",
+        ).pack(expand=True, fill="both", padx=8, pady=(0, 3))
+
+        sidebar = tk.Frame(self.body, width=286, bg=COL["bg"])
+        sidebar.grid(row=0, column=1, sticky="nsew")
+        sidebar.grid_propagate(False)
+        sidebar.grid_rowconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(1, weight=0)
+
+        chat = tk.Frame(
+            sidebar, bg=COL["panel"],
+            highlightbackground=COL["purple"], highlightthickness=2,
+        )
+        chat.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        tk.Label(
+            chat, text="☏  CHAT EN VIVO", fg=COL["cyan"], bg=COL["panel"],
+            font=("Segoe UI", 15, "bold"),
+        ).pack(anchor="w", padx=15, pady=(14, 8))
+        tk.Frame(chat, height=1, bg=COL["line"]).pack(fill="x", padx=14)
+        tk.Label(
+            chat, text="YOUTUBE • SIN CONECTAR",
+            fg=COL["yellow"], bg=COL["panel"],
+            font=("Segoe UI", 10, "bold"),
+        ).pack(pady=(32, 10))
+        tk.Label(
+            chat, text=(
+                "Aquí aparecerán los mensajes reales\n"
+                "cuando conectemos el chat.\n\n"
+                "Por ahora esta sección es una\n"
+                "vista de diseño."
+            ), fg=COL["muted"], bg=COL["panel"],
+            font=("Segoe UI", 10), justify="center",
+        ).pack(padx=10)
+        tk.Label(
+            chat, text="Sin mensajes recibidos",
+            fg=COL["cyan"], bg=COL["panel_alt"],
+            font=("Segoe UI", 9, "bold"),
+            pady=12,
+        ).pack(side="bottom", fill="x", padx=10, pady=12)
+
+        goal = tk.Frame(
+            sidebar, bg=COL["panel"],
+            highlightbackground=COL["cyan"], highlightthickness=2,
+            height=150,
+        )
+        goal.grid(row=1, column=0, sticky="ew")
+        goal.grid_propagate(False)
+        tk.Label(
+            goal, text="◎  META DEL DIRECTO",
+            fg=COL["white"], bg=COL["panel"],
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w", padx=14, pady=(13, 7))
+        tk.Label(
+            goal, text="Suscriptores • Dato manual",
+            fg=COL["muted"], bg=COL["panel"],
+            font=("Segoe UI", 9),
+        ).pack(anchor="w", padx=14)
+        tk.Label(
+            goal, textvariable=self.goal_var,
+            fg=COL["cyan"], bg=COL["panel"],
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w", padx=14, pady=(7, 2))
+        tk.Frame(goal, height=6, bg=COL["purple"]).pack(fill="x", padx=14, pady=8)
+
+        ticker = tk.Frame(self.body, bg=COL["bg"], height=82)
+        ticker.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        ticker.grid_propagate(False)
+        for item, (head, placeholder) in enumerate((
+            ("♡  ÚLTIMO FOLLOW", "Sin conectar"),
+            ("★  ÚLTIMO SUB", "Sin conectar"),
+            ("◈  ÚLTIMA DONACIÓN", "Sin conectar"),
+        )):
+            ticker.grid_columnconfigure(item, weight=1, uniform="status")
+            cell = tk.Frame(
+                ticker, bg=COL["panel"],
+                highlightbackground=COL["purple"] if item % 2 else COL["cyan"],
+                highlightthickness=2,
+            )
+            cell.grid(row=0, column=item, sticky="nsew", padx=(0 if item == 0 else 5, 0))
+            tk.Label(
+                cell, text=head, fg=COL["white"], bg=COL["panel"],
+                font=("Segoe UI", 10, "bold"),
+            ).pack(anchor="w", padx=13, pady=(10, 0))
+            tk.Label(
+                cell, text=placeholder, fg=COL["muted"], bg=COL["panel"],
+                font=("Segoe UI", 10),
+            ).pack(anchor="w", padx=13, pady=(2, 0))
+        ticker.grid_rowconfigure(0, weight=1)
 
     def list_monitors(self) -> None:
         try:
@@ -449,16 +547,22 @@ class FutureoLive:
             )
             self.screen_ref = ImageTk.PhotoImage(rendered)
             canvas.create_image(width / 2, height / 2, image=self.screen_ref, anchor="center")
-        # HUD de preview para que el resultado parezca una escena real.
-        canvas.create_rectangle(13, 13, 213, 50, fill=COL["bg"], outline=COL["cyan_dark"], width=1)
-        canvas.create_text(
-            28, 31, text="●  CAPTURA EN VIVO", fill=COL["green"],
-            anchor="w", font=("Segoe UI", 10, "bold"),
+        # Indicadores de previsualizacion; no simulamos una transmision activa.
+        canvas.create_rectangle(
+            13, height - 54, 252, height - 13,
+            fill=COL["bg"], outline=COL["cyan_dark"],
         )
-        canvas.create_rectangle(13, height - 57, 235, height - 14, fill=COL["bg"], outline=COL["cyan_dark"])
         canvas.create_text(
-            25, height - 36, text="FUTUREO   |   @SoyFutureo",
+            24, height - 33, text="FUTUREO   |   @SoyFutureo",
             fill=COL["cyan"], anchor="w", font=("Segoe UI", 10, "bold"),
+        )
+        canvas.create_rectangle(
+            width - 184, height - 54, width - 13, height - 13,
+            fill=COL["bg"], outline=COL["purple"],
+        )
+        canvas.create_text(
+            width - 22, height - 33, text="● VISTA PREVIA",
+            fill=COL["yellow"], anchor="e", font=("Segoe UI", 9, "bold"),
         )
 
     def start_capture(self) -> None:
@@ -523,6 +627,38 @@ class FutureoLive:
         self.style_button(editor, "Guardar reto", commit, primary=True).pack(pady=14)
         editor.bind("<Control-Return>", lambda _event: commit())
 
+    def edit_goal(self) -> None:
+        """Edita una meta manual sin aparentar sincronizacion con YouTube."""
+        editor = tk.Toplevel(self.root)
+        editor.title("Meta del directo (manual)")
+        editor.configure(bg=COL["panel"])
+        editor.geometry("440x195")
+        editor.transient(self.root)
+        editor.grab_set()
+        tk.Label(
+            editor, text="Meta que mostrarás en pantalla",
+            fg=COL["white"], bg=COL["panel"],
+            font=("Segoe UI", 12, "bold"),
+        ).pack(padx=20, pady=(20, 10))
+        goal_entry = tk.Entry(
+            editor, bg=COL["panel_alt"], fg=COL["white"],
+            insertbackground=COL["white"], relief="flat",
+            font=("Segoe UI", 12),
+        )
+        goal_entry.pack(fill="x", padx=20, ipady=8)
+        goal_entry.insert(0, self.goal_var.get())
+
+        def save():
+            value = goal_entry.get().strip()[:90]
+            if value:
+                self.goal_var.set(value)
+                self.settings["meta"] = value
+                save_settings(self.settings)
+            editor.destroy()
+
+        self.style_button(editor, "Guardar meta", save, primary=True).pack(pady=13)
+        editor.bind("<Return>", lambda _event: save())
+
     def toggle_scene(self) -> None:
         self.scene_mode = not self.scene_mode
         if self.scene_mode:
@@ -567,8 +703,8 @@ def render(parent):
 def main() -> None:
     root = tk.Tk()
     root.title("FUTUREO LIVE")
-    root.geometry("1440x860")
-    root.minsize(1030, 690)
+    root.geometry("1400x820")
+    root.minsize(1080, 690)
     widget = render(root)
     widget.pack(fill="both", expand=True)
     root.mainloop()
