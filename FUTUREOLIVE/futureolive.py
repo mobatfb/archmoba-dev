@@ -25,9 +25,10 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.4.1"
+VERSION = "2.4.2"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
+VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -148,15 +149,29 @@ class FondoFutureo(tk.Canvas):
     def _load_local(self) -> None:
         if not self._alive:
             return
+        if not VIDEO_BACKGROUND_ENABLED:
+            self._stop_playback()
+            self._mode = "static"
+            self._show_static_background()
+            return
         if not self._start_video():
             self._start_gif()
 
+    def _show_static_background(self) -> None:
+        """Fondo fijo sin MP4 ni GIF; permite conservar los rayos y el PNG."""
+        if not self._alive or not self.winfo_exists():
+            return
+        width, height = self._size
+        if width > 1 and height > 1:
+            self._present(Image.new("RGB", (width, height), FONDO))
+
     def _download_asset(self) -> None:
         """Descarga por separado la imagen PNG y los fondos con cache local."""
-        choices = [(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")] + (
-            [(VIDEO_URL, VIDEO_PATH, MAX_VIDEO_BYTES, "mp4")]
-            if cv2 is not None else []
-        ) + [(GIF_URL, GIF_PATH, MAX_GIF_BYTES, "gif")]
+        choices = [(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")]
+        if VIDEO_BACKGROUND_ENABLED:
+            if cv2 is not None:
+                choices.append((VIDEO_URL, VIDEO_PATH, MAX_VIDEO_BYTES, "mp4"))
+            choices.append((GIF_URL, GIF_PATH, MAX_GIF_BYTES, "gif"))
         try:
             for url, path, limit, kind in choices:
                 # Descargar solo el video si OpenCV funciona; GIF queda de respaldo.
@@ -218,6 +233,8 @@ class FondoFutureo(tk.Canvas):
         self._size = new_size
         self._lightning_cached = None
         self._lightning_cache_key = None
+        if not VIDEO_BACKGROUND_ENABLED:
+            self.after_idle(self._show_static_background)
         if self._neon_resize_job is not None:
             self.after_cancel(self._neon_resize_job)
         # Evita regenerar una imagen grande en cada pixel durante resize.
