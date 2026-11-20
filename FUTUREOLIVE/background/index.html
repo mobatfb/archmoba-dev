@@ -22,7 +22,7 @@
     .text-layer {
       display:flex;align-items:center;justify-content:center;text-align:center;
     }
-    video.layer { object-fit:fill; }
+    video.layer { object-fit:cover; background:#050A19; }
     /* La geometria y el diseño se conservan: las animaciones vienen de GitHub. */
     .layer.motion-active {
       animation-duration: var(--layer-duration, 10s);
@@ -61,6 +61,7 @@
     let currentStage = { width: 815, height: 286, background: "#202020" };
     let lastSignature = "";
     let installedStyles = [];
+    let refreshInProgress = false;
     const allowedMotionPresets = new Set([
       "ambient-pulse", "blue-glow", "violet-light", "cyan-light",
       "soft-bloom", "purple-atmosphere", "purple-smoke",
@@ -72,7 +73,8 @@
       if (event.code === "Space" && !event.repeat &&
           !["INPUT","TEXTAREA"].includes(document.activeElement?.tagName)) {
         event.preventDefault();
-        document.documentElement.classList.toggle("motion-paused");
+        const paused = document.documentElement.classList.toggle("motion-paused");
+        canvas.querySelectorAll("video").forEach(v => paused ? v.pause() : v.play().catch(()=>{}));
       }
     });
 
@@ -101,7 +103,7 @@
       return response.text();
     }
 
-    async function buildLayer(def,root,rev) {
+    async function buildLayer(def,root,rev,stageConfig) {
       if (!/^layer[0-9]+$/.test(def.id)) {
         throw new Error("ID de capa no valido");
       }
@@ -125,6 +127,9 @@
         video.loop = true;
         video.muted = true;
         video.playsInline = true;
+        video.preload = "auto";
+        video.controls = false;
+        video.style.objectFit = ["contain","cover","fill"].includes(def.fit) ? def.fit : "cover";
         video.src = url;
         element = video;
       } else {
@@ -145,6 +150,17 @@
         }
       }
       element.id = def.id;
+      if (["x","y","width","height"].some(k => def[k] !== undefined)) {
+        const sw = Number(stageConfig?.width) || 1920, sh = Number(stageConfig?.height) || 1080;
+        const x = Number(def.x ?? 0), y = Number(def.y ?? 0);
+        const w = Number(def.width ?? sw), h = Number(def.height ?? sh);
+        if (![x,y,w,h].every(Number.isFinite) || w <= 0 || h <= 0) throw new Error("Geometria invalida: " + def.id);
+        element.style.inset = "auto";
+        element.style.left = (x / sw * 100) + "%";
+        element.style.top = (y / sh * 100) + "%";
+        element.style.width = (w / sw * 100) + "%";
+        element.style.height = (h / sh * 100) + "%";
+      }
       element.style.zIndex = String(Number(def.order) || 0);
       element.style.opacity = String(
         Math.max(0,Math.min(1,Number(def.opacity ?? 1)))
@@ -164,6 +180,8 @@
     }
 
     async function refresh() {
+      if (refreshInProgress) return;
+      refreshInProgress = true;
       try {
         // Leer el .bg como texto porque GitHub puede servirlo con MIME octet-stream.
         const bg = JSON.parse(
@@ -185,7 +203,7 @@
         window._futureoMotionSpeed = Math.max(.25,Math.min(4,
           Number(bg.motion?.speed) || 1));
         const loaded = await Promise.all(
-          ordered.map(def=>buildLayer(def,root,bg.version || "1"))
+          ordered.map(def=>buildLayer(def,root,bg.version || "1",bg.stage))
         );
         // Las hojas de estilo tambien vienen del manifiesto remoto.
         const stylePaths = Array.isArray(bg.styles) ? bg.styles : [];
@@ -215,20 +233,25 @@
         };
         stage.style.background = currentStage.background;
         layout();
-        canvas.querySelectorAll("video").forEach(v=>v.play().catch(()=>{}));
+        canvas.querySelectorAll("video").forEach(v => {
+          if (document.documentElement.classList.contains("motion-paused") || document.documentElement.classList.contains("motion-off")) v.pause();
+          else v.play().catch(error => console.warn("[FUTUREO] Reproduccion pendiente", error));
+        });
         lastSignature=signature;
       } catch(error) {
         // Si no hay internet, mantener la ultima escena cargada.
         console.error("[FUTUREO] No se pudo actualizar fondo1.bg",error);
+      } finally {
+        refreshInProgress = false;
       }
     }
 
     window.FutureoBackground = {
       reload: refresh,
-      pause() { document.documentElement.classList.add("motion-paused"); },
-      resume() { document.documentElement.classList.remove("motion-paused"); },
-      still() { document.documentElement.classList.add("motion-off"); },
-      animate() { document.documentElement.classList.remove("motion-off"); }
+      pause() { document.documentElement.classList.add("motion-paused"); canvas.querySelectorAll("video").forEach(v => v.pause()); },
+      resume() { document.documentElement.classList.remove("motion-paused", "motion-off"); canvas.querySelectorAll("video").forEach(v => v.play().catch(()=>{})); },
+      still() { document.documentElement.classList.add("motion-off"); canvas.querySelectorAll("video").forEach(v => v.pause()); },
+      animate() { document.documentElement.classList.remove("motion-off"); if (!document.documentElement.classList.contains("motion-paused")) canvas.querySelectorAll("video").forEach(v => v.play().catch(()=>{})); }
     };
 
     layout();
