@@ -30,7 +30,7 @@ except ImportError as exc:
     ) from exc
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 900
 REPOSITORY = "mobatfb/archmoba-dev"
@@ -205,13 +205,14 @@ class FutureoLiveManager:
         pos_y = max(0, (self.root.winfo_screenheight() - WINDOW_HEIGHT) // 2)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{pos_x}+{pos_y}")
         self.root.minsize(1030, 690)
-        self.root.configure(bg="#081321")
+        self.root.configure(bg="#070A16")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
 
         # Barra unica superior: estado y refresco. Sin titulo ni pie inferiores.
         topbar = tk.Frame(root, bg="#ffffff", height=54)
-        topbar.pack(side="top", fill="x")
+        # Barra de control oculta: solo debe mostrarse el fondo completo.
+        # Los botones internos siguen disponibles para la logica de actualizacion.
         topbar.pack_propagate(False)
         self.status_var = tk.StringVar(value="Comprobando dependencias...")
         self.status_label = tk.Label(
@@ -232,9 +233,23 @@ class FutureoLiveManager:
         )
         self.update_button.pack(side="right", padx=(1, 10), pady=4)
 
-        # La barra original permanece visible para mostrar estado y refrescar.
-        self.body = tk.Frame(root, bg="#081321", bd=0, highlightthickness=0)
+        # La superficie de FUTUREO ocupa toda la ventana, sin barras visibles.
+        self.body = tk.Frame(root, bg="#070A16", bd=0, highlightthickness=0)
         self.body.pack(side="top", fill="both", expand=True)
+
+        # F5 verifica cambios sin mostrar ningun control.
+        self.root.bind("<F5>", lambda _event: self.check_for_updates())
+        # F11 / Escape permiten comprobar el fondo en pantalla completa.
+        self.root.bind(
+            "<F11>",
+            lambda _event: self.root.attributes(
+                "-fullscreen", not bool(self.root.attributes("-fullscreen"))
+            ),
+        )
+        self.root.bind(
+            "<Escape>",
+            lambda _event: self.root.attributes("-fullscreen", False),
+        )
 
         self.root.after(100, self._process_events)
         self._start("startup")
