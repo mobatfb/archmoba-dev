@@ -1,0 +1,26 @@
+{
+  "format": "futureo-bg/v1",
+  "version": "1.0.0",
+  "resourcesRoot": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/background/",
+  "stage": {
+    "width": 1920,
+    "height": 1080,
+    "background": "#050C1D"
+  },
+  "layers": [
+    {
+      "id": "layer0",
+      "order": 0,
+      "type": "css",
+      "resource": "layer0.css",
+      "visible": true
+    },
+    {
+      "id": "layer1",
+      "order": 1,
+      "type": "text",
+      "resource": "layer1.json",
+      "visible": true
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "text": "HOLA",
+  "color": "#FFFFFF",
+  "fontSize": "clamp(50px, 10vw, 160px)",
+  "fontWeight": 800,
+  "letterSpacing": "0.09em",
+  "fontFamily": "Arial, Helvetica, sans-serif",
+  "textShadow": "0 0 24px rgba(37, 182, 255, 0.34)"
+}

@@ -2,247 +2,119 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#050B1C">
-  <title>FUTUREO | Background remoto por capas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FUTUREO LIVE | Visor remoto</title>
   <style>
-    :root { color-scheme: dark; background-color: #050B1C; }
     *, *::before, *::after { box-sizing: border-box; }
-    html, body {
-      margin: 0; width: 100%; height: 100%; overflow: hidden;
-      background: #050B1C;
-    }
-    #escena {
-      position: fixed; inset: 0; overflow: hidden; isolation: isolate;
-      background: #050B1C;
-    }
-    .layer {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      display: block;
-      pointer-events: none; user-select: none;
-      transform-origin: center;
-    }
-    @keyframes futureo-pulse {
-      0%, 100% { opacity: var(--opacity-min, .65); }
-      50% { opacity: var(--opacity-max, 1); }
-    }
-    @keyframes futureo-drift {
-      0% { transform: translate3d(-1%, 1%, 0) scale(1.03); }
-      100% { transform: translate3d(1%, -1%, 0) scale(1.03); }
-    }
-    @keyframes futureo-glow {
-      0%, 100% { filter: brightness(.985) saturate(1); }
-      50% { filter: brightness(1.07) saturate(1.035); }
-    }
-    @keyframes futureo-twinkle {
-      0%, 100% { filter: brightness(.72); }
-      52% { filter: brightness(1.24); }
-    }
-    @keyframes futureo-float {
-      0% { transform: translateY(1.2%); }
-      100% { transform: translateY(-1.2%); }
-    }
-    #debug-panel {
-      position: fixed; z-index: 15000; top: 18px; right: 18px;
-      max-height: 82vh; overflow-y: auto; min-width: 230px;
-      padding: 14px 16px; color: #e8faff; background: #061124ed;
-      border: 1px solid #33a6e7; border-radius: 12px;
-      font: 13px/1.8 system-ui, sans-serif;
-      box-shadow: 0 8px 35px #0009; display: none;
-    }
-    body.debug #debug-panel { display: block; }
-    #debug-panel strong { display: block; margin-bottom: 8px; }
-    #debug-panel label { display: block; cursor: pointer; }
-    #debug-panel input { accent-color: #26d6ff; margin-right: 9px; }
-    @media (prefers-reduced-motion: reduce) {
-      .layer { animation: none !important; }
-    }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #050C1D; }
+    #stage { position: fixed; inset: 0; overflow: hidden; isolation: isolate; }
+    .layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .text-layer { display: flex; align-items: center; justify-content: center; text-align: center; }
   </style>
 </head>
 <body>
-  <main id="escena" aria-label="Escena de FUTUREO LIVE compuesta de capas remotas"></main>
-  <!-- Inspector opcional: index.html?debug=1, no se ve durante la transmision -->
-  <aside id="debug-panel" aria-label="Inspector de capas FUTUREO"></aside>
-
+  <main id="stage" aria-label="FUTUREO LIVE: escena remota por capas"></main>
   <script>
     "use strict";
+    // Esta es la UNICA ruta de GitHub configurada en el visor.
+    // fondo1.bg decide los recursos, el orden y el contenido de las capas.
+    const BG_MANIFEST_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/background/fondo1.bg";
+    const stage = document.getElementById("stage");
+    let lastRevision = "";
+    let installedStyles = [];
 
-    // El visor NO lee rutas relativas ni requiere archivos de imagen locales.
-    // Todas las capas y hojas CSS provienen de la rama main de GitHub.
-    const REMOTE_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/";
-    const MANIFEST = "FUTUREOLIVE/background/layers.json";
-    const FALLBACK_LAYER = "FUTUREOLIVE/background/layer0.svg";
-    const scene = document.getElementById("escena");
-    const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
-    const debugPanel = document.getElementById("debug-panel");
-    if (debugMode) document.body.classList.add("debug");
-    const allowedAnimations = new Set([
-      "none", "futureo-pulse", "futureo-drift", "futureo-float",
-      "futureo-glow", "futureo-twinkle"
-    ]);
-
-    let lastManifest = "";
-    let activeStyles = [];
-
-    function remoteUrl(file, cacheKey) {
-      // Evitar rutas externas y referencias que salgan del repositorio.
-      if (typeof file !== "string" ||
-          !/^[a-zA-Z0-9_./-]+$/.test(file) ||
-          file.startsWith("/") ||
-          file.split("/").includes("..")) {
-        throw new Error("Ruta no permitida en layers.json: " + String(file));
-      }
-      return REMOTE_ROOT +
-        file.split("/").map(encodeURIComponent).join("/") +
-        "?rev=" + encodeURIComponent(cacheKey);
+    async function fetchText(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("HTTP " + response.status + ": " + url);
+      return response.text();
     }
 
-    function makeLayer(def, rev) {
-      if (!def || def.visible === false || typeof def.file !== "string") {
-        return null;
+    function resourceUrl(base, relative, revision) {
+      if (typeof relative !== "string" ||
+          !/^[a-zA-Z0-9._/-]+$/.test(relative) ||
+          relative.startsWith("/") || relative.split("/").includes("..")) {
+        throw new Error("Ruta de recurso no permitida");
       }
-
-      const kind = String(def.type || "image").toLowerCase();
-      let node;
-      if (kind === "video") {
-        node = document.createElement("video");
-        node.autoplay = true;
-        node.loop = true;
-        node.muted = true;
-        node.playsInline = true;
-        node.preload = "auto";
-        node.disablePictureInPicture = true;
-      } else if (kind === "image" || kind === "svg" ||
-                 kind === "png" || kind === "webp" || kind === "gif") {
-        node = document.createElement("img");
-        node.alt = "";
-        node.decoding = "async";
-        node.draggable = false;
-      } else {
-        return null;
-      }
-
-      node.className = "layer";
-      node.setAttribute("aria-hidden", "true");
-      node.dataset.layer = String(def.id || "layer");
-      node.style.zIndex = String(Math.max(0, Math.min(9999, Number(def.z) || 0)));
-      node.style.opacity = String(Math.max(0, Math.min(1,
-        def.opacity == null ? 1 : Number(def.opacity) || 0)));
-      node.style.mixBlendMode = (
-        ["normal", "screen", "multiply", "overlay", "lighten", "soft-light"]
-          .includes(def.blend)
-      ) ? def.blend : "normal";
-      node.style.objectFit = (
-        ["cover", "contain", "fill"].includes(def.fit)
-      ) ? def.fit : "cover";
-
-      const animation = String(def.animation || "none");
-      if (allowedAnimations.has(animation) && animation !== "none") {
-        const seconds = Math.max(1, Math.min(90, Number(def.seconds) || 12));
-        node.style.animation = animation + " " + seconds +
-          "s ease-in-out infinite alternate";
-      }
-
-      node.src = remoteUrl(def.file, rev);
-      if (kind === "video") {
-        node.addEventListener("loadeddata", function () {
-          node.play().catch(function () { /* autoplay depende del navegador */ });
-        }, { once: true });
-      }
-      return node;
+      return new URL(relative + "?v=" + encodeURIComponent(revision), base).href;
     }
 
-    function applyManifest(manifest) {
-      if (!manifest || !Array.isArray(manifest.layers)) {
-        throw new Error("El manifiesto no contiene la lista layers.");
-      }
-      const signature = JSON.stringify(manifest);
-      if (signature === lastManifest) return;
-
-      const revision = String(manifest.version || "1");
-      const fragment = document.createDocumentFragment();
-      const ordered = manifest.layers.slice().sort(function (a, b) {
-        return (Number(a.z) || 0) - (Number(b.z) || 0);
-      });
-      for (const layer of ordered) {
-        const node = makeLayer(layer, revision);
-        if (node) fragment.appendChild(node);
-      }
-      if (!fragment.childNodes.length) {
-        throw new Error("No se encontraron capas visibles.");
-      }
-
-      const links = [];
-      const styles = (
-        manifest.resources && Array.isArray(manifest.resources.styles)
-      ) ? manifest.resources.styles : [];
-      for (const path of styles) {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = remoteUrl(path, revision);
-        links.push(link);
-      }
-
-      const bg = manifest.canvas && manifest.canvas.background;
-      if (typeof bg === "string" && /^#[0-9a-fA-F]{6}$/.test(bg)) {
-        scene.style.background = bg;
-      }
-      scene.replaceChildren(fragment);
-      if (debugMode) {
-        debugPanel.replaceChildren();
-        const title = document.createElement("strong");
-        title.textContent = "FUTUREO · CAPAS";
-        debugPanel.appendChild(title);
-        for (const def of ordered) {
-          const el = scene.querySelector('[data-layer="' + String(def.id || "layer") + '"]');
-          if (!el) continue;
-          const label = document.createElement("label");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = true;
-          checkbox.addEventListener("change", () => {
-            el.style.display = checkbox.checked ? "block" : "none";
-          });
-          label.appendChild(checkbox);
-          label.appendChild(document.createTextNode(String(def.id || def.file)));
-          debugPanel.appendChild(label);
-        }
-      }
-      for (const link of activeStyles) link.remove();
-      activeStyles = links;
-      for (const link of links) document.head.appendChild(link);
-      for (const video of scene.querySelectorAll("video")) {
-        video.play().catch(function () { /* autoplay silenciado */ });
-      }
-      lastManifest = signature;
-    }
-
-    async function updateFromGitHub() {
+    async function loadBackground() {
       try {
-        const url = remoteUrl(MANIFEST, String(Date.now()));
-        const response = await fetch(url, { cache: "no-store" });
-        if (!response.ok) throw new Error("GitHub HTTP " + response.status);
-        const manifest = await response.json();
-        applyManifest(manifest);
-      } catch (err) {
-        console.warn("[FUTUREO Background] No se pudo leer layers.json:", err);
-        // Si hay una version cargada, conservarla ante una caida temporal de red.
-        if (scene.childElementCount === 0) {
-          const first = document.createElement("img");
-          first.className = "layer";
-          first.alt = "";
-          first.src = remoteUrl(FALLBACK_LAYER, "layer0");
-          scene.appendChild(first);
+        // Un .bg se lee como texto JSON: no depende del MIME que devuelva GitHub.
+        const manifest = JSON.parse(
+          await fetchText(BG_MANIFEST_URL + "?t=" + Date.now())
+        );
+        if (manifest.format !== "futureo-bg/v1" ||
+            !Array.isArray(manifest.layers)) {
+          throw new Error("Formato de fondo1.bg no compatible");
         }
+
+        const signature = JSON.stringify(manifest);
+        if (signature === lastRevision) return;
+
+        // SOLO recursos remotos de esta carpeta del repositorio.
+        const base = new URL(manifest.resourcesRoot);
+        const expected = new URL("./", BG_MANIFEST_URL);
+        if (base.href !== expected.href) {
+          throw new Error("Origen remoto no autorizado en fondo1.bg");
+        }
+
+        const ordered = [...manifest.layers]
+          .filter(layer => layer.visible !== false)
+          .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+
+        const built = await Promise.all(ordered.map(async layer => {
+          if (!/^layer[0-9]+$/.test(layer.id)) {
+            throw new Error("Identificador de capa no valido");
+          }
+          const el = document.createElement("div");
+          el.id = layer.id;
+          el.className = "layer";
+          el.style.zIndex = String(Number(layer.order) || 0);
+          const url = resourceUrl(base, layer.resource, manifest.version);
+          if (layer.type === "css") {
+            const style = document.createElement("style");
+            style.dataset.layer = layer.id;
+            style.textContent = await fetchText(url);
+            return { el, style };
+          }
+          if (layer.type === "text") {
+            const config = JSON.parse(await fetchText(url));
+            el.classList.add("text-layer");
+            el.textContent = String(config.text ?? "");
+            el.style.color = config.color || "#FFFFFF";
+            el.style.fontSize = config.fontSize || "clamp(40px, 8vw, 140px)";
+            el.style.fontWeight = String(config.fontWeight || 700);
+            el.style.letterSpacing = config.letterSpacing || "normal";
+            el.style.fontFamily = config.fontFamily || "Arial, sans-serif";
+            el.style.textShadow = config.textShadow || "none";
+            return { el };
+          }
+          throw new Error("Tipo de capa no reconocido: " + layer.type);
+        }));
+
+        // Actualizar la escena solo cuando hayan cargado TODAS las capas.
+        const fragment = document.createDocumentFragment();
+        const nextStyles = [];
+        for (const { el, style } of built) {
+          fragment.appendChild(el);
+          if (style) nextStyles.push(style);
+        }
+        stage.replaceChildren(fragment);
+        for (const style of installedStyles) style.remove();
+        installedStyles = nextStyles;
+        for (const style of nextStyles) document.head.appendChild(style);
+        stage.style.background = manifest.stage?.background || "#050C1D";
+        lastRevision = signature;
+      } catch (error) {
+        // Conservar la ultima escena visible ante un fallo de red.
+        console.error("[FUTUREO] Error al cargar fondo1.bg:", error);
       }
     }
 
-    window.FutureoBackground = { reload: updateFromGitHub };
-    updateFromGitHub();
-
-    // Sin recargar el HTML: comprobar cambios publicados cada 60 segundos.
-    setInterval(updateFromGitHub, 60000);
+    loadBackground();
+    // Actualizacion remota sin recargar index.html.
+    setInterval(loadBackground, 60000);
   </script>
 </body>
 </html>

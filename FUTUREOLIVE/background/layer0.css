@@ -1,0 +1,7 @@
+/* FUTUREO - CAPA 0: solo fondo (sin imagenes, sin efectos extra). */
+#layer0 {
+  background:
+    radial-gradient(ellipse at 15% 80%, rgba(39, 18, 82, 0.38), transparent 55%),
+    radial-gradient(ellipse at 89% 25%, rgba(8, 58, 110, 0.32), transparent 60%),
+    linear-gradient(135deg, #060918 0%, #07142D 50%, #040918 100%);
+}
