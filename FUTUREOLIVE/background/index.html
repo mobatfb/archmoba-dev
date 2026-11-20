@@ -23,6 +23,29 @@
       display:flex;align-items:center;justify-content:center;text-align:center;
     }
     video.layer { object-fit:fill; }
+    /* La geometria y el diseño se conservan: las animaciones vienen de GitHub. */
+    .layer.motion-active {
+      animation-duration: var(--layer-duration, 10s);
+      animation-timing-function: ease-in-out;
+      animation-iteration-count: infinite;
+      animation-fill-mode: both;
+      animation-play-state: running;
+      transform-origin: center center;
+      will-change: transform, filter, opacity;
+    }
+    html.motion-paused .layer.motion-active { animation-play-state: paused !important; }
+    html.motion-off .layer.motion-active {
+      animation: none !important;
+      transform: none !important;
+      filter: none !important;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .layer.motion-active {
+        animation: none !important;
+        transform: none !important;
+        filter: none !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -38,6 +61,20 @@
     let currentStage = { width: 815, height: 286, background: "#202020" };
     let lastSignature = "";
     let installedStyles = [];
+    const allowedMotionPresets = new Set([
+      "ambient-pulse", "blue-glow", "violet-light", "cyan-light",
+      "soft-bloom", "purple-atmosphere", "purple-smoke",
+      "cyan-smoke", "particles"
+    ]);
+    const forceStill = new URLSearchParams(location.search).get("motion") === "off";
+    if (forceStill) document.documentElement.classList.add("motion-off");
+    window.addEventListener("keydown", event => {
+      if (event.code === "Space" && !event.repeat &&
+          !["INPUT","TEXTAREA"].includes(document.activeElement?.tagName)) {
+        event.preventDefault();
+        document.documentElement.classList.toggle("motion-paused");
+      }
+    });
 
     function layout() {
       const w = Math.max(1, Number(currentStage.width) || 815);
@@ -112,6 +149,17 @@
       element.style.opacity = String(
         Math.max(0,Math.min(1,Number(def.opacity ?? 1)))
       );
+      // El archivo fondo1.bg elige el efecto; index.html no modifica las imagenes.
+      const motion = def.motion;
+      if (motion && motion.enabled !== false &&
+          allowedMotionPresets.has(String(motion.preset))) {
+        const seconds = Number(motion.seconds);
+        const speed = Number(window._futureoMotionSpeed || 1);
+        element.classList.add("motion-active", "motion-" + motion.preset);
+        element.style.setProperty("--layer-duration",
+          (Number.isFinite(seconds) ? Math.max(2,Math.min(120,seconds)) : 10) /
+          Math.max(.25, Math.min(4,speed)) + "s");
+      }
       return {element,style};
     }
 
@@ -134,20 +182,31 @@
         if (signature === lastSignature) return;
         const ordered = bg.layers.filter(x=>x.visible !== false)
           .sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+        window._futureoMotionSpeed = Math.max(.25,Math.min(4,
+          Number(bg.motion?.speed) || 1));
         const loaded = await Promise.all(
           ordered.map(def=>buildLayer(def,root,bg.version || "1"))
         );
+        // Las hojas de estilo tambien vienen del manifiesto remoto.
+        const stylePaths = Array.isArray(bg.styles) ? bg.styles : [];
+        if (stylePaths.length > 8) throw new Error("Demasiados archivos CSS");
+        const remoteStyles = await Promise.all(stylePaths.map(async path => {
+          const node = document.createElement("style");
+          node.dataset.remote = path;
+          node.textContent = await getText(getUrl(root,path,bg.version || "1"));
+          return node;
+        }));
         const fragment = document.createDocumentFragment();
-        const nextStyles=[];
+        const nextStyles=[...remoteStyles];
         for (const {element,style} of loaded) {
           fragment.appendChild(element);
           if (style) nextStyles.push(style);
         }
-        // Reemplazo atomico: el visor muestra el fondo completo o conserva el viejo.
+        // Estilos y capas actualizados juntos sin dejar la escena vacia.
+        nextStyles.forEach(el=>document.head.appendChild(el));
         canvas.replaceChildren(fragment);
         installedStyles.forEach(el=>el.remove());
         installedStyles=nextStyles;
-        nextStyles.forEach(el=>document.head.appendChild(el));
         const s=bg.stage||{};
         currentStage={
           width:Number(s.width)||815,height:Number(s.height)||286,
@@ -163,6 +222,14 @@
         console.error("[FUTUREO] No se pudo actualizar fondo1.bg",error);
       }
     }
+
+    window.FutureoBackground = {
+      reload: refresh,
+      pause() { document.documentElement.classList.add("motion-paused"); },
+      resume() { document.documentElement.classList.remove("motion-paused"); },
+      still() { document.documentElement.classList.add("motion-off"); },
+      animate() { document.documentElement.classList.remove("motion-off"); }
+    };
 
     layout();
     refresh();
