@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" role="img" aria-label="FUTUREO: fondo de streaming animado, azul oscuro con marcos cian y magenta">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#090722"/><stop offset=".30" stop-color="#071329"/><stop offset=".72" stop-color="#06152e"/><stop offset="1" stop-color="#0e082b"/>
+  </linearGradient>
+  <radialGradient id="fogV"><stop stop-color="#ba28f2" stop-opacity=".37"/><stop offset=".5" stop-color="#8a18d8" stop-opacity=".16"/><stop offset="1" stop-color="#391667" stop-opacity="0"/></radialGradient>
+  <radialGradient id="fogC"><stop stop-color="#06c9ff" stop-opacity=".28"/><stop offset=".50" stop-color="#045ab8" stop-opacity=".10"/><stop offset="1" stop-color="#061a37" stop-opacity="0"/></radialGradient>
+  <linearGradient id="upper" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#a31eff"/><stop offset=".45" stop-color="#ed41ff"/><stop offset=".70" stop-color="#a832ff"/><stop offset="1" stop-color="#5725e4"/></linearGradient>
+  <linearGradient id="lower" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#06e7ff"/><stop offset=".48" stop-color="#317dff"/><stop offset=".75" stop-color="#f52dff"/><stop offset="1" stop-color="#00d8ff"/></linearGradient>
+  <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#0258c5"/><stop offset=".48" stop-color="#15d9ff"/><stop offset="1" stop-color="#033c9e"/></linearGradient>
+  <linearGradient id="mag" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#ad0de5"/><stop offset=".54" stop-color="#ef40ff"/><stop offset="1" stop-color="#772ee8"/></linearGradient>
+  <linearGradient id="wave" x1="0" y1="0" x2="1" y2=".05"><stop stop-color="#8125ed" stop-opacity="0"/><stop offset=".38" stop-color="#8256ff" stop-opacity=".4"/><stop offset=".72" stop-color="#e236ff" stop-opacity=".78"/><stop offset="1" stop-color="#00d2ff" stop-opacity="0"/></linearGradient>
+  <filter id="neon" x="-80%" y="-300%" width="260%" height="700%"><feGaussianBlur stdDeviation="6"/></filter>
+  <filter id="mist" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="24"/></filter>
+  <filter id="soft" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="8"/></filter>
+</defs>
+<style>
+  .glow{animation:glow 4.2s ease-in-out infinite alternate}
+  .glow2{animation:glow 5.8s ease-in-out -2s infinite alternate}
+  .mistL{transform-origin:0% 80%;animation:mistL 12s ease-in-out infinite alternate}
+  .mistR{transform-origin:100% 72%;animation:mistR 14s ease-in-out infinite alternate}
+  .wave{animation:wave 9s ease-in-out infinite alternate}
+  .wave2{animation:wave 11s ease-in-out -5s infinite alternate}
+  .spark{animation:drift 8s linear infinite}
+  .spark2{animation:drift 11s linear -4s infinite}
+  .dash{animation:dash 8s linear infinite}
+  .shine{animation:shine 6s ease-in-out infinite}
+  @keyframes glow{0%{opacity:.55}100%{opacity:1;filter:brightness(1.25)}}
+  @keyframes mistL{0%{transform:translate(-44px,28px) scale(.82);opacity:.45}100%{transform:translate(80px,-40px) scale(1.18);opacity:.85}}
+  @keyframes mistR{0%{transform:translate(30px,-40px) scale(.9);opacity:.34}100%{transform:translate(-60px,12px) scale(1.2);opacity:.75}}
+  @keyframes wave{0%{transform:translate(-110px,40px);opacity:.15}50%{opacity:.83}100%{transform:translate(135px,-18px);opacity:.23}}
+  @keyframes drift{0%{transform:translate(-50px,35px);opacity:0}30%{opacity:.82}85%{opacity:.55}100%{transform:translate(160px,-90px);opacity:0}}
+  @keyframes dash{to{stroke-dashoffset:-200}}
+  @keyframes shine{0%,100%{opacity:.18}48%{opacity:1}}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important}}
+</style>
+<rect width="1920" height="1080" fill="url(#bg)"/>
+<!-- Diagonal panels at the four corners leave a dark, clean central canvas -->
+<g fill="#142252" fill-opacity=".25">
+<path d="M0 0H620L0 670Z"/><path d="M200 0H980L0 950V680Z"/>
+<path d="M1920 0V790L1180 1080H1010Z"/><path d="M1920 300V1080H1320Z"/>
+</g>
+<g fill="#123970" fill-opacity=".12">
+<path d="M0 480L530 0H680L0 660Z"/><path d="M1360 1080L1920 480V630L1500 1080Z"/>
+</g>
+<!-- Animated violet and cyan vapor, confined to the perimeter -->
+<g class="mistL"><ellipse cx="120" cy="770" rx="490" ry="230" fill="url(#fogV)" filter="url(#mist)"/><ellipse cx="90" cy="330" rx="320" ry="260" fill="url(#fogV)" filter="url(#mist)"/></g>
+<g class="mistR"><ellipse cx="1850" cy="710" rx="450" ry="350" fill="url(#fogC)" filter="url(#mist)"/><ellipse cx="1840" cy="470" rx="400" ry="200" fill="url(#fogV)" filter="url(#mist)"/></g>
+<g stroke-linecap="round" stroke-linejoin="round" fill="none">
+<!-- TOP: strong reference-style magenta to cyan segmented light rail -->
+<path d="M0 37 H430 L455 64 H1120 L1180 0" stroke="#ba25fd" stroke-width="24" opacity=".3" filter="url(#neon)"/>
+<path class="glow" d="M0 37 H430 L455 64 H1120 L1180 0" stroke="url(#upper)" stroke-width="5"/>
+<path d="M1180 0 L1215 48 L1260 48 L1284 75 H1920" stroke="#06bcfa" stroke-width="26" opacity=".27" filter="url(#neon)"/>
+<path class="glow2" d="M1180 0 L1215 48 L1260 48 L1284 75 H1920" stroke="url(#blue)" stroke-width="5"/>
+<path d="M0 92H520M1340 100H1920" stroke="#b92dfe" stroke-opacity=".24" stroke-width="2"/>
+<!-- UPPER micro accents -->
+<path d="M1168 36H1240M1186 56H1258" stroke="#08caff" stroke-width="10" class="shine"/>
+<path d="M0 123L95 38 H250" stroke="#8a38ed" stroke-width="2" opacity=".45"/>
+<!-- SIDE corners -->
+<path d="M15 260L100 168H330M1905 270L1840 198H1600" stroke="#0acaff" stroke-width="4" opacity=".60"/>
+<path d="M8 920L95 835H330M1910 913L1834 840H1605" stroke="#a52cff" stroke-width="3" opacity=".72"/>
+<!-- Reference bottom angled wide panels -->
+<path d="M0 980L102 940H690L724 966H1170L1205 944H1818L1920 990" stroke="#cc30ff" stroke-width="24" opacity=".24" filter="url(#neon)"/>
+<path class="glow" d="M0 980L102 940H690L724 966H1170L1205 944H1818L1920 990" stroke="url(#mag)" stroke-width="5"/>
+<path d="M0 1048L86 1005H560L596 1060H1100L1144 1012H1834L1920 1050" stroke="#00cfff" stroke-width="25" opacity=".22" filter="url(#neon)"/>
+<path class="glow2" d="M0 1048L86 1005H560L596 1060H1100L1144 1012H1834L1920 1050" stroke="url(#lower)" stroke-width="6"/>
+<path d="M26 890H530L612 844M1912 888H1390L1310 840" stroke="#055bc9" stroke-opacity=".65" stroke-width="3"/>
+<path d="M45 950H635M1120 950H1880" stroke="#da2dff" stroke-opacity=".32" stroke-width="2"/>
+<!-- Bottom sweeping energy waves animate independently -->
+<g class="wave"><path d="M-80 800 C270 920 520 690 880 790 S1440 940 2020 670" stroke="url(#wave)" stroke-width="9" filter="url(#soft)"/>
+<path d="M-80 800 C270 920 520 690 880 790 S1440 940 2020 670" stroke="url(#wave)" stroke-width="3"/></g>
+<g class="wave2"><path d="M-80 830 C330 735 570 930 900 835S1500 680 2020 840" stroke="url(#blue)" stroke-opacity=".5" stroke-width="2"/></g>
+<!-- Faint corner traces -->
+<path d="M0 0L115 0L0 120M1920 0H1808L1920 116M0 1080H120L0 962M1920 1080H1805L1920 960" stroke="#5f2cc7" stroke-width="3" opacity=".5"/>
+<!-- moving electric particles -->
+<path class="dash" d="M190 1028H590M1320 1000H1680" stroke="#54eaff" stroke-opacity=".8" stroke-width="3" stroke-dasharray="20 68"/>
+</g>
+<g fill="#57ccff"><g class="spark"><circle cx="400" cy="735" r="3"/><circle cx="1380" cy="680" r="2.5"/><circle cx="1150" cy="580" r="2"/></g>
+<g class="spark2"><circle cx="700" cy="920" r="2"/><circle cx="1550" cy="830" r="3"/><circle cx="470" cy="540" r="2"/></g></g>
+</svg>
