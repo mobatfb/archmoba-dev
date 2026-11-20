@@ -25,8 +25,9 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.2.2"
+VERSION = "2.2.3"
 FONDO = "#050A19"
+VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -389,7 +390,7 @@ class FondoFutureo(tk.Canvas):
             if success:
                 # Decodificar el MP4 y pasarlo a Tkinter sin filtros añadidos.
                 self._draw_video(frame)
-                self._next_due += 1.0 / self._fps
+                self._next_due += 1.0 / (self._fps * VIDEO_SPEED)
                 now = time.monotonic()
                 if self._next_due < now - .2:
                     self._next_due = now
