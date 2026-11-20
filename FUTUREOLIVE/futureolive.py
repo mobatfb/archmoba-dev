@@ -25,7 +25,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
@@ -320,11 +320,6 @@ class FondoFutureo(tk.Canvas):
                           width=max(2, thick + 3))
                 draw.line((a,b), fill=(235, 251, 255, int(255 * intensity)),
                           width=thick)
-        tx, ty = self._lightning_target
-        radius = max(3, int(6 * scale))
-        draw.ellipse((tx-radius, ty-radius, tx+radius, ty+radius),
-                     fill=(247, 254, 255, int(250 * intensity)))
-
         # Fogonazo global corto: el propio fotograma se ilumina al impactar.
         if phase in (0, 2):
             flash = Image.new("RGBA", size,
