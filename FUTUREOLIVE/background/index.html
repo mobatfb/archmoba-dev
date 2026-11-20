@@ -2,39 +2,201 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#050B1C">
-  <title>FUTUREO — Background por capas</title>
+  <title>FUTUREO | Background remoto por capas</title>
   <style>
-    :root { --fondo: #050B1C; }
+    :root { color-scheme: dark; background-color: #050B1C; }
     *, *::before, *::after { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; background: var(--fondo); overflow: hidden; }
-    .escena {
-      position: fixed;
-      inset: 0;
-      overflow: hidden;
-      isolation: isolate;
-      background: var(--fondo);
+    html, body {
+      margin: 0; width: 100%; height: 100%; overflow: hidden;
+      background: #050B1C;
+    }
+    #escena {
+      position: fixed; inset: 0; overflow: hidden; isolation: isolate;
+      background: #050B1C;
     }
     .layer {
-      position: absolute;
-      inset: 0;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
       display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      pointer-events: none;
-      user-select: none;
+      pointer-events: none; user-select: none;
+      transform-origin: center;
     }
-    /* Añadiremos los demás archivos después de layer0, en orden ascendente.
-       La animación de humo, luces y partículas se aplicará a capas separadas. */
-    #layer0 { z-index: 0; }
+    @keyframes futureo-pulse {
+      0%, 100% { opacity: var(--opacity-min, .65); }
+      50% { opacity: var(--opacity-max, 1); }
+    }
+    @keyframes futureo-drift {
+      0% { transform: translate3d(-1%, 1%, 0) scale(1.03); }
+      100% { transform: translate3d(1%, -1%, 0) scale(1.03); }
+    }
+    @keyframes futureo-float {
+      0% { transform: translateY(1.2%); }
+      100% { transform: translateY(-1.2%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .layer { animation: none !important; }
+    }
   </style>
 </head>
 <body>
-  <main class="escena" aria-label="Fondo FUTUREO — lienzo 16:9 por capas">
-    <img class="layer" id="layer0" src="./layer0.svg" alt="Base azul oscuro de FUTUREO">
-    <!-- La siguiente capa será layer1 (detalles diagonales). -->
-  </main>
+  <main id="escena" aria-label="Escena de FUTUREO LIVE compuesta de capas remotas"></main>
+
+  <script>
+    "use strict";
+
+    // El visor NO lee rutas relativas ni requiere archivos de imagen locales.
+    // Todas las capas y hojas CSS provienen de la rama main de GitHub.
+    const REMOTE_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/";
+    const MANIFEST = "FUTUREOLIVE/background/layers.json";
+    const FALLBACK_LAYER = "FUTUREOLIVE/background/layer0.svg";
+    const scene = document.getElementById("escena");
+    const allowedAnimations = new Set([
+      "none", "futureo-pulse", "futureo-drift", "futureo-float"
+    ]);
+
+    let lastManifest = "";
+    let activeStyles = [];
+
+    function remoteUrl(file, cacheKey) {
+      // Evitar rutas externas y referencias que salgan del repositorio.
+      if (typeof file !== "string" ||
+          !/^[a-zA-Z0-9_./-]+$/.test(file) ||
+          file.startsWith("/") ||
+          file.split("/").includes("..")) {
+        throw new Error("Ruta no permitida en layers.json: " + String(file));
+      }
+      return REMOTE_ROOT +
+        file.split("/").map(encodeURIComponent).join("/") +
+        "?rev=" + encodeURIComponent(cacheKey);
+    }
+
+    function makeLayer(def, rev) {
+      if (!def || def.visible === false || typeof def.file !== "string") {
+        return null;
+      }
+
+      const kind = String(def.type || "image").toLowerCase();
+      let node;
+      if (kind === "video") {
+        node = document.createElement("video");
+        node.autoplay = true;
+        node.loop = true;
+        node.muted = true;
+        node.playsInline = true;
+        node.preload = "auto";
+        node.disablePictureInPicture = true;
+      } else if (kind === "image" || kind === "svg" ||
+                 kind === "png" || kind === "webp" || kind === "gif") {
+        node = document.createElement("img");
+        node.alt = "";
+        node.decoding = "async";
+        node.draggable = false;
+      } else {
+        return null;
+      }
+
+      node.className = "layer";
+      node.setAttribute("aria-hidden", "true");
+      node.dataset.layer = String(def.id || "layer");
+      node.style.zIndex = String(Math.max(0, Math.min(9999, Number(def.z) || 0)));
+      node.style.opacity = String(Math.max(0, Math.min(1,
+        def.opacity == null ? 1 : Number(def.opacity) || 0)));
+      node.style.mixBlendMode = (
+        ["normal", "screen", "multiply", "overlay", "lighten", "soft-light"]
+          .includes(def.blend)
+      ) ? def.blend : "normal";
+      node.style.objectFit = (
+        ["cover", "contain", "fill"].includes(def.fit)
+      ) ? def.fit : "cover";
+
+      const animation = String(def.animation || "none");
+      if (allowedAnimations.has(animation) && animation !== "none") {
+        const seconds = Math.max(1, Math.min(90, Number(def.seconds) || 12));
+        node.style.animation = animation + " " + seconds +
+          "s ease-in-out infinite alternate";
+      }
+
+      node.src = remoteUrl(def.file, rev);
+      if (kind === "video") {
+        node.addEventListener("loadeddata", function () {
+          node.play().catch(function () { /* autoplay depende del navegador */ });
+        }, { once: true });
+      }
+      return node;
+    }
+
+    function applyManifest(manifest) {
+      if (!manifest || !Array.isArray(manifest.layers)) {
+        throw new Error("El manifiesto no contiene la lista layers.");
+      }
+      const signature = JSON.stringify(manifest);
+      if (signature === lastManifest) return;
+
+      const revision = String(manifest.version || "1");
+      const fragment = document.createDocumentFragment();
+      const ordered = manifest.layers.slice().sort(function (a, b) {
+        return (Number(a.z) || 0) - (Number(b.z) || 0);
+      });
+      for (const layer of ordered) {
+        const node = makeLayer(layer, revision);
+        if (node) fragment.appendChild(node);
+      }
+      if (!fragment.childNodes.length) {
+        throw new Error("No se encontraron capas visibles.");
+      }
+
+      const links = [];
+      const styles = (
+        manifest.resources && Array.isArray(manifest.resources.styles)
+      ) ? manifest.resources.styles : [];
+      for (const path of styles) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = remoteUrl(path, revision);
+        links.push(link);
+      }
+
+      const bg = manifest.canvas && manifest.canvas.background;
+      if (typeof bg === "string" && /^#[0-9a-fA-F]{6}$/.test(bg)) {
+        scene.style.background = bg;
+      }
+      scene.replaceChildren(fragment);
+      for (const link of activeStyles) link.remove();
+      activeStyles = links;
+      for (const link of links) document.head.appendChild(link);
+      for (const video of scene.querySelectorAll("video")) {
+        video.play().catch(function () { /* autoplay silenciado */ });
+      }
+      lastManifest = signature;
+    }
+
+    async function updateFromGitHub() {
+      try {
+        const url = remoteUrl(MANIFEST, String(Date.now()));
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error("GitHub HTTP " + response.status);
+        const manifest = await response.json();
+        applyManifest(manifest);
+      } catch (err) {
+        console.warn("[FUTUREO Background] No se pudo leer layers.json:", err);
+        // Si hay una version cargada, conservarla ante una caida temporal de red.
+        if (scene.childElementCount === 0) {
+          const first = document.createElement("img");
+          first.className = "layer";
+          first.alt = "";
+          first.src = remoteUrl(FALLBACK_LAYER, "layer0");
+          scene.appendChild(first);
+        }
+      }
+    }
+
+    window.FutureoBackground = { reload: updateFromGitHub };
+    updateFromGitHub();
+
+    // Sin recargar el HTML: comprobar cambios publicados cada 60 segundos.
+    setInterval(updateFromGitHub, 60000);
+  </script>
 </body>
 </html>
