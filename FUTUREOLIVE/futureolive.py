@@ -25,7 +25,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 BASE = Path(__file__).resolve().parent
@@ -238,26 +238,47 @@ class FondoFutureo(tk.Canvas):
         self._draw_neon_window()
 
     def _draw_neon_window(self) -> None:
-        """Escala el PNG una sola vez por cambio de tamano y lo superpone."""
+        """Coloca la ventana PNG arriba a la izquierda, al 10% del area visible."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
             return
+
         width, height = self._size
         if self._neon_source is None or width < 160 or height < 120:
             if self._neon_item is not None:
                 self.itemconfigure(self._neon_item, state="hidden")
             return
+
+        # Escalar por area para mantener la proporcion real del PNG.
+        target_area = width * height * 0.10
+        src_w, src_h = self._neon_source.size
+        aspect = src_w / src_h if src_h else 1.0
+        new_w = int((target_area * aspect) ** 0.5)
+        new_h = int(new_w / aspect)
+
+        # Limitar el cuadro para no tapar una parte excesiva de la escena.
+        new_w = max(80, min(new_w, int(width * 0.45)))
+        new_h = max(45, min(new_h, int(height * 0.45)))
+
         frame = self._neon_source.resize(
-            (width, height), resample=Image.Resampling.LANCZOS
+            (new_w, new_h), resample=Image.Resampling.LANCZOS
         )
-        photo = ImageTk.PhotoImage(frame, master=self)
-        self._neon_photo = photo
+        self._neon_photo = ImageTk.PhotoImage(frame, master=self)
+
+        margin_x = int(width * 0.02)
+        margin_y = int(height * 0.02)
+
         if self._neon_item is None:
             self._neon_item = self.create_image(
-                0, 0, anchor="nw", image=photo, tags=("ventana_neon",)
+                margin_x, margin_y, anchor="nw",
+                image=self._neon_photo, tags=("ventana_neon",)
             )
         else:
-            self.itemconfigure(self._neon_item, image=photo, state="normal")
+            self.itemconfigure(
+                self._neon_item, image=self._neon_photo, state="normal"
+            )
+            self.coords(self._neon_item, margin_x, margin_y)
+
         self.tag_raise("ventana_neon")
 
     def _schedule_lightning(self, initial: bool = False) -> None:
