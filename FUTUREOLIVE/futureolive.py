@@ -1,251 +1,183 @@
-"""FUTUREO LIVE: fondo animado limpio y adaptable (sin paneles).
+"""FUTUREO LIVE: reproduce el GIF original como fondo de toda la ventana.
 
-El fondo web original esta en assets/fondo.html para navegadores y OBS.
-Tkinter no ejecuta CSS: esta clase dibuja una version animada nativa
-con la misma paleta, sin dependencias adicionales.
+Fondo: FUTUREOLIVE/assets/fondo_animado.gif (9 fotogramas, GIF animado).
+Si falta, se descarga del repositorio en un hilo; sin conexion usa la
+copia local. No se dibujan adornos, paneles ni animaciones alternativas.
 """
 from __future__ import annotations
 
-import math
-import random
+import hashlib
+import io
+import os
+from pathlib import Path
+import threading
 import tkinter as tk
+from urllib.request import Request, urlopen
 
-VERSION = "1.4.0"
-COLOR_SUPERIOR = "#050919"
-COLOR_INFERIOR = "#0C1830"
+from PIL import Image, ImageOps, ImageTk
 
-
-def _rgb(color: str) -> tuple[int, int, int]:
-    return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
-
-
-def _mezcla(a: str, b: str, factor: float) -> str:
-    izq, der = _rgb(a), _rgb(b)
-    valores = (round(x + (y - x) * factor) for x, y in zip(izq, der))
-    return "#{:02x}{:02x}{:02x}".format(*valores)
+VERSION = "1.5.0"
+FONDO = "#050A19"
+BASE = Path(__file__).resolve().parent
+ASSETS = BASE / "assets"
+GIF_PATH = ASSETS / "fondo_animado.gif"
+GIF_URL = (
+    "https://raw.githubusercontent.com/mobatfb/archmoba-dev/"
+    "main/FUTUREOLIVE/assets/fondo_animado.gif"
+)
+MAX_GIF_BYTES = 8 * 1024 * 1024
 
 
 class FondoFutureo(tk.Canvas):
-    """Fondo de toda la ventana, con animacion ligera a ~15 FPS."""
+    """Visualiza los fotogramas reales del GIF, adaptados al tamano actual."""
 
     def __init__(self, parent: tk.Misc) -> None:
-        super().__init__(parent, bg=COLOR_SUPERIOR, bd=0, highlightthickness=0)
-        self._time = 0.0
-        self._job: str | None = None
-        self._points: list[tuple[int, float, float, float, float]] = []
-        self._arcos: list[tuple[int, float]] = []
-        self._rayos: list[tuple[int, float, float]] = []
-        self._led: list[tuple[int, str]] = []
-        self.bind("<Configure>", self._redibujar)
-        self.bind("<Destroy>", self._limpiar, add="+")
-        self._job = self.after(66, self._animar)
+        super().__init__(parent, bg=FONDO, bd=0, highlightthickness=0)
+        self._frames: list[Image.Image] = []
+        self._durations: list[int] = []
+        self._frame_index = 0
+        self._photo: ImageTk.PhotoImage | None = None
+        self._animation_job: str | None = None
+        self._download_job: str | None = None
+        self._download_complete = threading.Event()
+        self._download_changed = False
+        self._size = (0, 0)
+        self.bind("<Configure>", self._resize)
+        self.bind("<Destroy>", self._destroy, add="+")
 
-    def _halo(self, x: float, y: float, radius: float, shade: str, base: str) -> None:
-        # Los contornos escalonados simulan brillo sin transparencias externas.
-        for i in range(19, 0, -1):
-            radio = radius * i / 19
-            fuerza = 0.025 + (1 - i / 19) * 0.085
-            self.create_oval(
-                x - radio, y - radio, x + radio, y + radio,
-                outline=_mezcla(base, shade, fuerza), width=2,
-            )
+        # La copia local se visualiza inmediatamente; la descarga posterior
+        # permite actualizar el GIF sin bloquear la ventana de streaming.
+        self.after_idle(self._load_local)
+        threading.Thread(
+            target=self._download_original, name="futureo-background",
+            daemon=True,
+        ).start()
+        self._download_job = self.after(300, self._check_download)
 
-    def _redibujar(self, event: tk.Event) -> None:
-        w, h = int(event.width), int(event.height)
-        if w < 10 or h < 10:
+    def _load_local(self) -> None:
+        if not GIF_PATH.is_file():
             return
-        self.delete("all")
-        self._points.clear()
-        self._arcos.clear()
-        self._rayos.clear()
-        self._led.clear()
-        bandas = min(140, h)
-        for i in range(bandas):
-            t = i / max(1, bandas - 1)
-            y0 = i * h // bandas
-            y1 = (i + 1) * h // bandas + 2
-            color = _mezcla(COLOR_SUPERIOR, COLOR_INFERIOR, t)
-            self.create_rectangle(0, y0, w + 2, y1, outline=color, fill=color)
+        try:
+            frames: list[Image.Image] = []
+            durations: list[int] = []
+            with Image.open(GIF_PATH) as gif:
+                count = getattr(gif, "n_frames", 1)
+                if count < 2 or count > 200:
+                    raise ValueError("El archivo debe ser un GIF animado valido.")
+                for index in range(count):
+                    gif.seek(index)
+                    frames.append(gif.convert("RGB").copy())
+                    durations.append(max(60, min(1000, int(gif.info.get("duration") or 220))))
+            self._frames = frames
+            self._durations = durations
+            self._frame_index = 0
+            self._refresh_animation()
+        except (OSError, ValueError, EOFError):
+            # La ventana se mantiene limpia en caso de archivo incompleto.
+            pass
 
-        # Paneles angulares azul medianoche que dejan el centro despejado.
-        self.create_polygon(
-            0, 0, w * .37, 0, 0, h * .70,
-            fill="#0A1435", outline="",
-        )
-        self.create_polygon(
-            w, 0, w, h * .78, w * .60, h,
-            fill="#091832", outline="",
-        )
-        self.create_polygon(
-            0, h * .49, w * .28, 0, w * .36, 0, 0, h * .67,
-            fill="#0C1C3E", outline="",
-        )
-
-        self._halo(w * 1.03, h * 0.01, max(w, h) * 0.49, "#11BDFF", "#091329")
-        self._halo(-w * 0.04, h * 1.0, max(w, h) * 0.46, "#8349E6", "#0A1028")
-        for x in range(0, w, 82):
-            self.create_line(x, 0, x, h, fill="#0D2138", width=1)
-        for y in range(0, h, 82):
-            self.create_line(0, y, w, y, fill="#10223A", width=1)
-
-        # Orbitas suaves en las esquinas, centro libre para el gameplay futuro.
-        arco1 = self.create_arc(
-            w * .58, -h * .68, w * 1.35, h * .66,
-            start=30, extent=135, style=tk.ARC, outline="#1373B5", width=2,
-        )
-        arco2 = self.create_arc(
-            -w * .31, h * .40, w * .39, h * 1.63,
-            start=210, extent=118, style=tk.ARC, outline="#5939A9", width=2,
-        )
-        self._arcos.extend(((arco1, 1.0), (arco2, -.65)))
-
-        # Luces que se desplazan lentamente por bordes opuestos.
-        for posicion, color in ((.12, "#1377A9"), (.81, "#6245A7")):
-            rayo = self.create_line(0, 0, 0, 0, fill=color, width=2)
-            self._rayos.append((rayo, posicion, 0.0 if posicion < .5 else 2.1))
-
-        # Particulas pequenas sin contenido textual ni indicadores falsos.
-        rng = random.Random(3000)
-        for _ in range(42):
-            x, y = rng.random() * w, rng.random() * h
-            radio = rng.choice((0.9, 1.2, 1.6))
-            fase = rng.random() * 2 * math.pi
-            part = self.create_oval(
-                x - radio, y - radio, x + radio, y + radio,
-                fill="#16415D", outline="",
+    def _download_original(self) -> None:
+        try:
+            request = Request(
+                GIF_URL,
+                headers={"User-Agent": "FUTUREO-LIVE/1.5", "Cache-Control": "no-cache"},
             )
-            self._points.append((part, x, y, radio, fase))
-
-        # Esquinas y filetes neon discretos.
-        borde = min(125, w * .11, h * .19)
-        margen = 18
-        self.create_line(
-            margen, margen + borde, margen, margen, margen + borde, margen,
-            fill="#1389CE", width=2, smooth=False,
-        )
-        self.create_line(
-            w - margen - borde, margen, w - margen, margen,
-            w - margen, margen + borde, fill="#7948C3", width=2,
-        )
-        self.create_line(
-            margen, h - margen - borde, margen, h - margen,
-            margen + borde, h - margen, fill="#7948C3", width=2,
-        )
-        self.create_line(
-            w - margen - borde, h - margen, w - margen, h - margen,
-            w - margen, h - margen - borde, fill="#1389CE", width=2,
-        )
-        self.create_line(w * .14, 1, w * .45, 1, fill="#0E9ACE", width=2)
-        self.create_line(w * .58, h - 2, w * .87, h - 2, fill="#7043B6", width=2)
-
-        # Rieles segmentados de neon: adaptacion nativa del fondo_animado.svg.
-        def riel(puntos, brillo, sombra):
-            self.create_line(
-                *puntos, fill=sombra, width=15, smooth=False,
-                joinstyle=tk.ROUND, capstyle=tk.ROUND,
-            )
-            self.create_line(
-                *puntos, fill=_mezcla(brillo, "#070918", .44), width=7,
-                smooth=False, joinstyle=tk.ROUND, capstyle=tk.ROUND,
-            )
-            foco = self.create_line(
-                *puntos, fill=brillo, width=3, smooth=False,
-                joinstyle=tk.ROUND, capstyle=tk.ROUND,
-            )
-            self._led.append((foco, brillo))
-
-        # Parte superior: violeta a la izquierda, cian a la derecha.
-        riel(
-            [0, h*.034, w*.22, h*.034, w*.235, h*.058,
-             w*.58, h*.058, w*.615, 0],
-            "#E62AFF", "#2D104F",
-        )
-        riel(
-            [w*.615, 0, w*.635, h*.050, w*.66, h*.050,
-             w*.678, h*.073, w, h*.073],
-            "#14DFFF", "#0B3055",
-        )
-        # Base escalonada con huecos y cambios de color.
-        riel(
-            [0, h*.925, w*.045, h*.885, w*.35, h*.885,
-             w*.385, h*.91, w*.62, h*.91],
-            "#D62CFD", "#361247",
-        )
-        riel(
-            [w*.62, h*.91, w*.66, h*.89, w*.95, h*.89,
-             w, h*.925],
-            "#15CFFF", "#0B3157",
-        )
-        riel(
-            [0, h*.977, w*.05, h*.93, w*.29, h*.93,
-             w*.32, h*.982, w*.56, h*.982],
-            "#14C9FF", "#103154",
-        )
-        riel(
-            [w*.56, h*.982, w*.60, h*.93, w*.965, h*.93,
-             w, h*.977],
-            "#E038FF", "#351146",
-        )
-        # Laterales oblicuos, sin recuadros para fotos ni chat.
-        riel([0, h*.28, w*.045, h*.185, w*.18, h*.185], "#11BFFB", "#09284C")
-        riel([w, h*.24, w*.96, h*.185, w*.84, h*.185], "#0DCFFF", "#09284C")
-        riel([0, h*.78, w*.05, h*.72, w*.18, h*.72], "#8030EA", "#251047")
-        riel([w, h*.80, w*.96, h*.72, w*.82, h*.72], "#A52AFE", "#35134E")
-
-
-    def _animar(self) -> None:
-        if not self.winfo_exists():
-            return
-        self._time += 0.066
-        for i, (ident, x, y, radio, fase) in enumerate(self._points):
-            brillo = (math.sin(self._time * .9 + fase) + 1) / 2
-            color = "#346B8E" if brillo > .7 else "#1B4669" if brillo > .3 else "#12314C"
-            self.itemconfigure(ident, fill=color)
-            dy = math.sin(self._time * .23 + fase) * 2
-            self.coords(ident, x - radio, y + dy - radio, x + radio, y + dy + radio)
-        for ident, rapidez in self._arcos:
-            self.itemconfigure(ident, start=(self._time * rapidez * 7) % 360)
-        w, h = max(self.winfo_width(), 1), max(self.winfo_height(), 1)
-        for ident, posicion, fase in self._rayos:
-            delta = math.sin(self._time * .24 + fase) * .11
-            centro = (posicion + delta) * w
-            self.coords(
-                ident, centro - w * .16, h * (.08 if posicion < .5 else .9),
-                centro + w * .11, h * (.04 if posicion < .5 else .85),
-            )
-        for led, base in self._led:
-            pulso = .16 + .33 * (1 + math.sin(self._time * 1.35 + led * .8)) / 2
-            self.itemconfigure(led, fill=_mezcla(base, "#FFFFFF", pulso))
-        self._job = self.after(66, self._animar)
-
-    def _limpiar(self, event: tk.Event) -> None:
-        if event.widget is self and self._job is not None:
+            with urlopen(request, timeout=12) as response:
+                data = response.read(MAX_GIF_BYTES + 1)
+            if len(data) > MAX_GIF_BYTES or not data.startswith((b"GIF89a", b"GIF87a")):
+                return
+            with Image.open(io.BytesIO(data)) as gif:
+                if getattr(gif, "n_frames", 1) < 2:
+                    return
+            if GIF_PATH.is_file():
+                previous = hashlib.sha256(GIF_PATH.read_bytes()).digest()
+                if hashlib.sha256(data).digest() == previous:
+                    return
+            ASSETS.mkdir(parents=True, exist_ok=True)
+            temporary = GIF_PATH.with_name(GIF_PATH.name + ".tmp")
             try:
-                self.after_cancel(self._job)
-            except tk.TclError:
-                pass
-            self._job = None
+                temporary.write_bytes(data)
+                os.replace(temporary, GIF_PATH)
+                self._download_changed = True
+            finally:
+                temporary.unlink(missing_ok=True)
+        except (OSError, ValueError, EOFError):
+            # Sin conexion se conserva el ultimo fondo descargado.
+            pass
+        finally:
+            self._download_complete.set()
+
+    def _check_download(self) -> None:
+        self._download_job = None
+        if self._download_complete.is_set():
+            if self._download_changed:
+                self._load_local()
+        elif self.winfo_exists():
+            self._download_job = self.after(300, self._check_download)
+
+    def _resize(self, event: tk.Event) -> None:
+        size = (max(1, int(event.width)), max(1, int(event.height)))
+        if size != self._size:
+            self._size = size
+            self._refresh_animation()
+
+    def _refresh_animation(self) -> None:
+        if self._animation_job is not None:
+            self.after_cancel(self._animation_job)
+            self._animation_job = None
+        if self._frames and self._size[0] > 1 and self._size[1] > 1:
+            self._show_frame()
+
+    def _show_frame(self) -> None:
+        self._animation_job = None
+        if not self._frames or not self.winfo_exists():
+            return
+        index = self._frame_index
+        frame = self._frames[index]
+        width, height = self._size
+        fitted = ImageOps.fit(
+            frame, (width, height), method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+        self._photo = ImageTk.PhotoImage(fitted, master=self)
+        self.delete("fondo")
+        self.create_image(
+            width // 2, height // 2, image=self._photo,
+            anchor="center", tags="fondo",
+        )
+        self._frame_index = (index + 1) % len(self._frames)
+        self._animation_job = self.after(self._durations[index], self._show_frame)
+
+    def _destroy(self, event: tk.Event) -> None:
+        if event.widget is self:
+            for job in (self._animation_job, self._download_job):
+                if job is not None:
+                    try:
+                        self.after_cancel(job)
+                    except tk.TclError:
+                        pass
+            self._animation_job = None
+            self._download_job = None
 
 
 def render(parent: tk.Misc) -> tk.Widget:
-    """API de integracion que usa app.py al descargar actualizaciones."""
+    """Integracion con el lanzador app.py del repositorio."""
     return FondoFutureo(parent)
 
 
 def main() -> None:
-    ventana = tk.Tk()
-    ventana.title("FUTUREO LIVE")
-    ventana.geometry("1366x768")
-    ventana.minsize(800, 450)
-    ventana.configure(bg=COLOR_SUPERIOR)
-
-    def pantalla_completa(_evento=None):
-        ventana.attributes("-fullscreen", not bool(ventana.attributes("-fullscreen")))
-
-    ventana.bind("<F11>", pantalla_completa)
-    ventana.bind("<Escape>", lambda _e: ventana.attributes("-fullscreen", False))
-    render(ventana).pack(fill="both", expand=True)
-    ventana.mainloop()
+    root = tk.Tk()
+    root.title("FUTUREO LIVE")
+    root.geometry("1366x768")
+    root.minsize(800, 450)
+    root.configure(bg=FONDO)
+    root.bind(
+        "<F11>",
+        lambda _e: root.attributes("-fullscreen", not bool(root.attributes("-fullscreen"))),
+    )
+    root.bind("<Escape>", lambda _e: root.attributes("-fullscreen", False))
+    render(root).pack(fill="both", expand=True)
+    root.mainloop()
 
 
 if __name__ == "__main__":
