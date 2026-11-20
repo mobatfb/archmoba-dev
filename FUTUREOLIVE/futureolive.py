@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import random
 from pathlib import Path
 import threading
 import time
@@ -24,7 +25,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
@@ -44,11 +45,11 @@ class FondoFutureo(tk.Canvas):
         super().__init__(parent, bg=FONDO, bd=0, highlightthickness=0)
         self._size = (0, 0)
         self._photo: ImageTk.PhotoImage | None = None
-        self._hello_layer = self.create_text(
-            0, 0, text="HOLA MUNDO", anchor="center",
-            fill="#FFFFFF", font=("Arial", 44, "bold"),
-            tags=("overlay", "hello_world"),
-        )
+        # Capa de tormenta completamente independiente del fondo MP4.
+        self._lightning_job: str | None = None
+        self._lightning_clear_job: str | None = None
+        self._lightning_path: list[float] = []
+        self._lightning_target = (0, 0)
         self._job: str | None = None
         self._check_job: str | None = None
         self._cap = None
@@ -66,6 +67,7 @@ class FondoFutureo(tk.Canvas):
         self.after_idle(self._load_local)
         threading.Thread(target=self._download_asset, name="futureo-mp4", daemon=True).start()
         self._check_job = self.after(350, self._check_download)
+        self._schedule_lightning(initial=True)
 
     def _stop_playback(self) -> None:
         if self._job is not None:
@@ -191,15 +193,99 @@ class FondoFutureo(tk.Canvas):
 
     def _resize(self, event: tk.Event) -> None:
         self._size = (max(1, int(event.width)), max(1, int(event.height)))
-        self._position_overlay()
-
-    def _position_overlay(self) -> None:
-        """Mantiene el texto centrado y siempre por encima del fondo."""
-        width, height = self._size
-        self.coords(self._hello_layer, width // 2, height // 2)
-        size = max(18, min(72, int(min(width / 18, height / 9))))
-        self.itemconfigure(self._hello_layer, font=("Arial", size, "bold"))
+        # El destello se regenera en la proxima descarga y respeta el nuevo tamano.
+        self.delete("lightning")
         self.tag_raise("overlay")
+
+    def _schedule_lightning(self, initial: bool = False) -> None:
+        """Genera un rayo nuevo cada 3 a 7 segundos, sin bloquear Tkinter."""
+        if not self._alive:
+            return
+        delay = random.randint(1200, 2500) if initial else random.randint(3000, 7000)
+        self._lightning_job = self.after(delay, self._strike_lightning)
+
+    def _strike_lightning(self) -> None:
+        self._lightning_job = None
+        if not self._alive:
+            return
+        width, height = self._size
+        if width < 160 or height < 120:
+            self._schedule_lightning()
+            return
+        self.delete("lightning")
+        # El punto de impacto se elige al azar dentro de la escena.
+        target_x = random.randint(int(width * .12), int(width * .88))
+        target_y = random.randint(int(height * .42), int(height * .90))
+        origin_x = max(0, min(width, target_x + random.randint(-width // 7, width // 7)))
+        points: list[float] = [origin_x, 0]
+        segments = random.randint(9, 15)
+        for i in range(1, segments):
+            progress = i / segments
+            x = origin_x + (target_x - origin_x) * progress
+            x += random.uniform(-width * .035, width * .035)
+            points.extend((max(0, min(width, x)), target_y * progress))
+        points.extend((target_x, target_y))
+        self._lightning_path = points
+        self._lightning_target = (target_x, target_y)
+        self._render_lightning(0)
+        self._schedule_lightning()
+
+    def _render_lightning(self, phase: int) -> None:
+        """Doble destello con halo azul, nucleo blanco y ramificaciones."""
+        self._lightning_clear_job = None
+        if not self._alive:
+            return
+        self.delete("lightning")
+        if phase == 3:
+            return
+        if phase == 1:
+            # Pausa muy breve: el rayo parpadea de forma natural.
+            self._lightning_clear_job = self.after(55, self._render_lightning, 2)
+            return
+        points = self._lightning_path
+        x, y = self._lightning_target
+        scale = max(1, min(self._size) / 700)
+        radius = 48 * scale if phase == 0 else 27 * scale
+        for multiple, color, stipple in (
+            (2.8, "#125387", "gray12"),
+            (1.8, "#237CC5", "gray25"),
+            (1.0, "#77DFFF", "gray50"),
+        ):
+            rr = radius * multiple
+            self.create_oval(x-rr, y-rr, x+rr, y+rr,
+                             fill=color, outline="", stipple=stipple,
+                             tags=("overlay", "lightning"))
+        for thickness, color in (
+            (15, "#1652A8"),
+            (9, "#287FD4"),
+            (5, "#69DFFF"),
+            (2, "#F5FFFF"),
+        ):
+            self.create_line(
+                *points, fill=color,
+                width=max(1, round(thickness * scale)),
+                joinstyle=tk.ROUND, capstyle=tk.ROUND,
+                tags=("overlay", "lightning"),
+            )
+        # Pequenas ramas laterales para romper la simetria.
+        if phase == 0:
+            for i in (4, 7, 10):
+                if 2 * i + 1 >= len(points) - 2:
+                    continue
+                bx, by = points[2*i:2*i+2]
+                ex = bx + random.choice((-1, 1)) * random.randint(15, max(16, int(self._size[0] * .055)))
+                ey = min(self._size[1], by + random.randint(12, max(13, int(self._size[1] * .075))))
+                self.create_line(bx, by, ex, ey, fill="#52C7FC",
+                                 width=max(1, round(2*scale)),
+                                 tags=("overlay", "lightning"))
+        self.create_oval(
+            x - 7*scale, y - 7*scale, x + 7*scale, y + 7*scale,
+            fill="#FFFFFF", outline="", tags=("overlay", "lightning"),
+        )
+        self.tag_raise("overlay")
+        delays = {0: 100, 2: 145}
+        self._lightning_clear_job = self.after(delays[phase], self._render_lightning,
+                                                1 if phase == 0 else 3)
 
     def _draw(self, image: Image.Image) -> None:
         if self._size[0] < 2 or self._size[1] < 2:
@@ -275,6 +361,12 @@ class FondoFutureo(tk.Canvas):
         if event.widget is not self:
             return
         self._alive = False
+        for job in (self._lightning_job, self._lightning_clear_job):
+            if job is not None:
+                try:
+                    self.after_cancel(job)
+                except tk.TclError:
+                    pass
         self._stop_playback()
         if self._check_job is not None:
             try:
