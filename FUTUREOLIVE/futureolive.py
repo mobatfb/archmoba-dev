@@ -25,7 +25,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.2.3"
+VERSION = "2.3.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 BASE = Path(__file__).resolve().parent
@@ -39,13 +39,125 @@ MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
 
 
+
+def create_neon_window(width: int, height: int) -> Image.Image:
+    """Genera por codigo una ventana HUD RGBA, con centro transparente."""
+    width, height = max(1, int(width)), max(1, int(height))
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    if width < 160 or height < 120:
+        return image
+
+    scale = max(.3, min(width / 1440.0, height / 900.0))
+
+    def px(value: float) -> int:
+        return max(1, int(round(value * scale)))
+
+    left = int(width * .055)
+    right = width - left
+    top = int(height * .055)
+    bottom = int(height * .82)
+    bevel = px(32)
+    outline = [
+        (left + bevel, top), (right - bevel, top),
+        (right, top + bevel), (right, bottom - bevel),
+        (right - bevel, bottom), (left + bevel, bottom),
+        (left, bottom - bevel), (left, top + bevel),
+    ]
+    closed = outline + [outline[0]]
+
+    # Halo difuso independiente del video; el centro nunca se rellena.
+    halo = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    hd = ImageDraw.Draw(halo, "RGBA")
+    hd.line(closed, fill=(4, 189, 255, 185), width=px(18), joint="curve")
+    hd.line(outline[2:6], fill=(181, 48, 255, 180),
+            width=px(17), joint="curve")
+    halo = halo.filter(ImageFilter.GaussianBlur(px(17)))
+    image = Image.alpha_composite(image, halo)
+
+    draw = ImageDraw.Draw(image, "RGBA")
+    draw.line(closed, fill=(6, 25, 70, 255),
+              width=px(13), joint="curve")
+    draw.line(closed, fill=(0, 173, 255, 240),
+              width=px(5), joint="curve")
+    draw.line(outline[2:6], fill=(173, 66, 255, 245),
+              width=px(4), joint="curve")
+    draw.line(closed, fill=(176, 239, 255, 125),
+              width=px(1), joint="curve")
+
+    # Segundo contorno tenue para efecto de panel tridimensional.
+    inset = px(10)
+    inner = [
+        (left + bevel, top + inset),
+        (right - bevel, top + inset),
+        (right - inset, top + bevel),
+        (right - inset, bottom - bevel),
+        (right - bevel, bottom - inset),
+        (left + bevel, bottom - inset),
+        (left + inset, bottom - bevel),
+        (left + inset, top + bevel),
+    ]
+    draw.line(inner + [inner[0]], fill=(27, 78, 146, 150),
+              width=px(2), joint="curve")
+
+    # Acentos tecnologicos y esquinas iluminadas.
+    draw.line([(left + bevel + px(16), top),
+               (left + bevel + px(175), top)],
+              fill=(176, 251, 255, 245), width=px(4))
+    draw.line([(right, bottom - bevel - px(115)),
+               (right, bottom - bevel - px(20))],
+              fill=(234, 144, 255, 235), width=px(4))
+    draw.line([(left, top + bevel + px(20)),
+               (left, top + bevel + px(90))],
+              fill=(107, 247, 255, 200), width=px(3))
+    draw.line([(left + bevel, bottom),
+               (left + bevel + px(130), bottom)],
+              fill=(34, 165, 249, 190), width=px(3))
+
+    # Placa inferior central, dibujada en la misma capa y sin archivos PNG.
+    plate_w = int((right - left) * .35)
+    plate_h = px(70)
+    plate_left = (width - plate_w) // 2
+    plate_top = bottom - px(9)
+    plate_bottom = min(height - px(20), plate_top + plate_h)
+    cut = px(24)
+    plate = [
+        (plate_left + cut, plate_top),
+        (plate_left + plate_w - cut, plate_top),
+        (plate_left + plate_w, (plate_top + plate_bottom) // 2),
+        (plate_left + plate_w - cut, plate_bottom),
+        (plate_left + cut, plate_bottom),
+        (plate_left, (plate_top + plate_bottom) // 2),
+    ]
+    plate_halo = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    pd = ImageDraw.Draw(plate_halo, "RGBA")
+    pd.line(plate + [plate[0]], fill=(155, 48, 255, 175),
+            width=px(14), joint="curve")
+    plate_halo = plate_halo.filter(ImageFilter.GaussianBlur(px(12)))
+    image = Image.alpha_composite(image, plate_halo)
+
+    draw = ImageDraw.Draw(image, "RGBA")
+    draw.polygon(plate, fill=(7, 13, 38, 232))
+    draw.line(plate + [plate[0]], fill=(145, 57, 255, 255),
+              width=px(4), joint="curve")
+    draw.line([plate[0], plate[1]], fill=(36, 224, 255, 255),
+              width=px(4))
+    draw.line([(plate_left + cut + px(15), plate_top + px(7)),
+               (plate_left + plate_w - cut - px(15), plate_top + px(7))],
+              fill=(131, 236, 255, 135), width=px(2))
+    return image
+
+
 class FondoFutureo(tk.Canvas):
-    """Renderiza el MP4 en un Canvas Tkinter; no muestra botones ni rótulos."""
+    """Renderiza el MP4, los relampagos y la ventana neon flotante."""
 
     def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent, bg=FONDO, bd=0, highlightthickness=0)
         self._size = (0, 0)
         self._photo: ImageTk.PhotoImage | None = None
+        # Ventana HUD procedimental; se calcula solo al redimensionar.
+        self._neon_photo: ImageTk.PhotoImage | None = None
+        self._neon_item: int | None = None
+        self._neon_resize_job: str | None = None
         # Capa de tormenta completamente independiente del fondo MP4.
         self._lightning_job: str | None = None
         self._lightning_clear_job: str | None = None
@@ -199,9 +311,37 @@ class FondoFutureo(tk.Canvas):
 
 
     def _resize(self, event: tk.Event) -> None:
-        self._size = (max(1, int(event.width)), max(1, int(event.height)))
+        new_size = (max(1, int(event.width)), max(1, int(event.height)))
+        if new_size == self._size:
+            return
+        self._size = new_size
         self._lightning_cached = None
         self._lightning_cache_key = None
+        if self._neon_resize_job is not None:
+            self.after_cancel(self._neon_resize_job)
+        # Evita regenerar una imagen grande en cada pixel durante resize.
+        self._neon_resize_job = self.after(90, self._draw_neon_window)
+
+    def _draw_neon_window(self) -> None:
+        """Mantiene la ventana flotando por encima del MP4 y los relampagos."""
+        self._neon_resize_job = None
+        if not self._alive or not self.winfo_exists():
+            return
+        width, height = self._size
+        if width < 160 or height < 120:
+            if self._neon_item is not None:
+                self.itemconfigure(self._neon_item, state="hidden")
+            return
+        frame = create_neon_window(width, height)
+        photo = ImageTk.PhotoImage(frame, master=self)
+        self._neon_photo = photo
+        if self._neon_item is None:
+            self._neon_item = self.create_image(
+                0, 0, anchor="nw", image=photo, tags=("ventana_neon",)
+            )
+        else:
+            self.itemconfigure(self._neon_item, image=photo, state="normal")
+        self.tag_raise("ventana_neon")
 
     def _schedule_lightning(self, initial: bool = False) -> None:
         """Intervalo aleatorio entre descargas."""
@@ -410,6 +550,12 @@ class FondoFutureo(tk.Canvas):
         if event.widget is not self:
             return
         self._alive = False
+        if self._neon_resize_job is not None:
+            try:
+                self.after_cancel(self._neon_resize_job)
+            except tk.TclError:
+                pass
+            self._neon_resize_job = None
         for job in (self._lightning_job, self._lightning_clear_job):
             if job is not None:
                 try:
