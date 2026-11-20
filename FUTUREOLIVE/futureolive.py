@@ -25,11 +25,14 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.4.3"
+VERSION = "2.5.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
-WINDOW_OVERLAY_ENABLED = False  # Cambiar a True para mostrar el cuadro neon PNG.
+WINDOW_OVERLAY_ENABLED = False  # Marco PNG anterior, desactivado.
+NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
+NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
+NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -57,6 +60,9 @@ class FondoFutureo(tk.Canvas):
         self._neon_photo: ImageTk.PhotoImage | None = None
         self._neon_item: int | None = None
         self._neon_resize_job: str | None = None
+        self._border_photo: ImageTk.PhotoImage | None = None
+        self._border_item: int | None = None
+        self._border_resize_job: str | None = None
         # Capa de tormenta completamente independiente del fondo MP4.
         self._lightning_job: str | None = None
         self._lightning_clear_job: str | None = None
@@ -244,6 +250,10 @@ class FondoFutureo(tk.Canvas):
         # Evita regenerar una imagen grande en cada pixel durante resize.
         if WINDOW_OVERLAY_ENABLED:
             self._neon_resize_job = self.after(90, self._draw_neon_window)
+        if self._border_resize_job is not None:
+            self.after_cancel(self._border_resize_job)
+        if NEON_BORDER_ENABLED:
+            self._border_resize_job = self.after(90, self._draw_neon_border)
 
     def _load_neon_overlay(self) -> None:
         """Abre el PNG local sin dibujar su geometria mediante codigo."""
@@ -306,6 +316,78 @@ class FondoFutureo(tk.Canvas):
             self.coords(self._neon_item, margin_x, margin_y)
 
         self.tag_raise("ventana_neon")
+
+    def _draw_neon_border(self) -> None:
+        """Marco neón con centro completamente transparente y esquinas redondeadas.
+
+        El marco ocupa el 80% del ancho y el 80% del alto del lienzo.
+        Se dibuja en memoria y no usa el PNG del marco anterior.
+        """
+        self._border_resize_job = None
+        if not self._alive or not self.winfo_exists():
+            return
+        if not NEON_BORDER_ENABLED:
+            if self._border_item is not None:
+                self.itemconfigure(self._border_item, state="hidden")
+            return
+
+        screen_w, screen_h = self._size
+        if screen_w < 160 or screen_h < 120:
+            return
+        border_w = max(120, int(screen_w * NEON_BORDER_WIDTH))
+        border_h = max(90, int(screen_h * NEON_BORDER_HEIGHT))
+        margin_x = int(screen_w * .02)
+        margin_y = int(screen_h * .02)
+
+        # Los bordes tienen margen interno para que el resplandor no se corte.
+        min_side = min(border_w, border_h)
+        padding = max(10, int(min_side * .025))
+        radius = max(16, int(min_side * .065))
+        stroke = max(3, int(min_side * .007))
+        bounds = (padding, padding, border_w - padding - 1,
+                  border_h - padding - 1)
+        size = (border_w, border_h)
+
+        # No existe relleno: todo lo que no sea borde mantiene alpha=0.
+        image = Image.new("RGBA", size, (0, 0, 0, 0))
+        mask = Image.new("L", size, 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            bounds, radius=radius, outline=255, width=stroke + 2
+        )
+
+        for blur, strength, color in (
+            (max(9, int(min_side * .025)), .58, (25, 95, 255)),
+            (max(3, int(min_side * .009)), .92, (0, 213, 255)),
+        ):
+            halo = Image.new("RGBA", size, (*color, 0))
+            alpha = mask.filter(ImageFilter.GaussianBlur(blur))
+            halo.putalpha(alpha.point(lambda v, strength=strength: int(v * strength)))
+            image.alpha_composite(halo)
+
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle(
+            bounds, radius=radius, outline=(20, 151, 255, 235),
+            width=stroke
+        )
+        inner = (padding + 2, padding + 2,
+                 border_w - padding - 3, border_h - padding - 3)
+        draw.rounded_rectangle(
+            inner, radius=max(1, radius - 2),
+            outline=(190, 246, 255, 255), width=max(1, stroke // 2)
+        )
+
+        self._border_photo = ImageTk.PhotoImage(image, master=self)
+        if self._border_item is None:
+            self._border_item = self.create_image(
+                margin_x, margin_y, anchor="nw",
+                image=self._border_photo, tags=("neon_border",)
+            )
+        else:
+            self.itemconfigure(
+                self._border_item, image=self._border_photo, state="normal"
+            )
+            self.coords(self._border_item, margin_x, margin_y)
+        self.tag_raise("neon_border")
 
     def _schedule_lightning(self, initial: bool = False) -> None:
         """Intervalo aleatorio entre descargas."""
@@ -514,6 +596,12 @@ class FondoFutureo(tk.Canvas):
         if event.widget is not self:
             return
         self._alive = False
+        if self._border_resize_job is not None:
+            try:
+                self.after_cancel(self._border_resize_job)
+            except tk.TclError:
+                pass
+            self._border_resize_job = None
         if self._neon_resize_job is not None:
             try:
                 self.after_cancel(self._neon_resize_job)
