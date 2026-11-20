@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1920" height="1080" viewBox="0 0 1920 1080"
+     preserveAspectRatio="xMidYMid slice"
+     role="img" aria-label="FUTUREO layer 0: base oscura azul marino">
+  <title>FUTUREO — Layer 0 | Fondo base</title>
+  <!--
+    LAYER 0: SOLO LA BASE CROMATICA
+    Escena de referencia: 1920 x 1080 (16:9).
+    Sin humo, rayos, partículas, líneas ni marcos.
+    Las siguientes capas se superpondran de manera independiente.
+  -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0"   stop-color="#07091D"/>
+      <stop offset=".32" stop-color="#051229"/>
+      <stop offset=".68" stop-color="#04122C"/>
+      <stop offset="1"   stop-color="#050B20"/>
+    </linearGradient>
+    <radialGradient id="luz-izquierda" cx="0" cy=".74" r=".84">
+      <stop offset="0" stop-color="#1D0E42" stop-opacity=".66"/>
+      <stop offset=".45" stop-color="#0C1035" stop-opacity=".36"/>
+      <stop offset="1" stop-color="#080C23" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="luz-derecha" cx="1" cy=".66" r=".82">
+      <stop offset="0" stop-color="#07385D" stop-opacity=".50"/>
+      <stop offset=".49" stop-color="#0A2350" stop-opacity=".26"/>
+      <stop offset="1" stop-color="#07142D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="centro" cx=".50" cy=".44" r=".65">
+      <stop offset="0" stop-color="#06152D" stop-opacity="0"/>
+      <stop offset=".68" stop-color="#06152D" stop-opacity=".09"/>
+      <stop offset="1" stop-color="#02040E" stop-opacity=".48"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#base)"/>
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#luz-izquierda)"/>
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#luz-derecha)"/>
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#centro)"/>
+</svg>
