@@ -31,10 +31,30 @@
       0% { transform: translate3d(-1%, 1%, 0) scale(1.03); }
       100% { transform: translate3d(1%, -1%, 0) scale(1.03); }
     }
+    @keyframes futureo-glow {
+      0%, 100% { filter: brightness(.985) saturate(1); }
+      50% { filter: brightness(1.07) saturate(1.035); }
+    }
+    @keyframes futureo-twinkle {
+      0%, 100% { filter: brightness(.72); }
+      52% { filter: brightness(1.24); }
+    }
     @keyframes futureo-float {
       0% { transform: translateY(1.2%); }
       100% { transform: translateY(-1.2%); }
     }
+    #debug-panel {
+      position: fixed; z-index: 15000; top: 18px; right: 18px;
+      max-height: 82vh; overflow-y: auto; min-width: 230px;
+      padding: 14px 16px; color: #e8faff; background: #061124ed;
+      border: 1px solid #33a6e7; border-radius: 12px;
+      font: 13px/1.8 system-ui, sans-serif;
+      box-shadow: 0 8px 35px #0009; display: none;
+    }
+    body.debug #debug-panel { display: block; }
+    #debug-panel strong { display: block; margin-bottom: 8px; }
+    #debug-panel label { display: block; cursor: pointer; }
+    #debug-panel input { accent-color: #26d6ff; margin-right: 9px; }
     @media (prefers-reduced-motion: reduce) {
       .layer { animation: none !important; }
     }
@@ -42,6 +62,8 @@
 </head>
 <body>
   <main id="escena" aria-label="Escena de FUTUREO LIVE compuesta de capas remotas"></main>
+  <!-- Inspector opcional: index.html?debug=1, no se ve durante la transmision -->
+  <aside id="debug-panel" aria-label="Inspector de capas FUTUREO"></aside>
 
   <script>
     "use strict";
@@ -52,8 +74,12 @@
     const MANIFEST = "FUTUREOLIVE/background/layers.json";
     const FALLBACK_LAYER = "FUTUREOLIVE/background/layer0.svg";
     const scene = document.getElementById("escena");
+    const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
+    const debugPanel = document.getElementById("debug-panel");
+    if (debugMode) document.body.classList.add("debug");
     const allowedAnimations = new Set([
-      "none", "futureo-pulse", "futureo-drift", "futureo-float"
+      "none", "futureo-pulse", "futureo-drift", "futureo-float",
+      "futureo-glow", "futureo-twinkle"
     ]);
 
     let lastManifest = "";
@@ -163,6 +189,26 @@
         scene.style.background = bg;
       }
       scene.replaceChildren(fragment);
+      if (debugMode) {
+        debugPanel.replaceChildren();
+        const title = document.createElement("strong");
+        title.textContent = "FUTUREO · CAPAS";
+        debugPanel.appendChild(title);
+        for (const def of ordered) {
+          const el = scene.querySelector('[data-layer="' + String(def.id || "layer") + '"]');
+          if (!el) continue;
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = true;
+          checkbox.addEventListener("change", () => {
+            el.style.display = checkbox.checked ? "block" : "none";
+          });
+          label.appendChild(checkbox);
+          label.appendChild(document.createTextNode(String(def.id || def.file)));
+          debugPanel.appendChild(label);
+        }
+      }
       for (const link of activeStyles) link.remove();
       activeStyles = links;
       for (const link of links) document.head.appendChild(link);

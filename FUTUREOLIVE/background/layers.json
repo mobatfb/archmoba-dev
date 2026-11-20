@@ -1,10 +1,12 @@
 {
   "schema": 1,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "canvas": {
-    "width": 1920,
-    "height": 1080,
-    "background": "#050B1C"
+    "width": 1357,
+    "height": 628,
+    "background": "#050B1C",
+    "fit": "fill",
+    "reference": "Imagen proporcionada por el usuario; recomposicion pixel a pixel en el lienzo nativo."
   },
   "resources": {
     "styles": []
@@ -18,8 +20,67 @@
       "visible": true,
       "opacity": 1,
       "blend": "normal",
-      "fit": "cover",
+      "fit": "fill",
       "animation": "none"
+    },
+    {
+      "id": "layer1_base",
+      "file": "FUTUREOLIVE/background/layers/layer1_base.png",
+      "type": "image",
+      "z": 1,
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "fit": "fill",
+      "animation": "none"
+    },
+    {
+      "id": "layer2_diagonales",
+      "file": "FUTUREOLIVE/background/layers/layer2_diagonales.png",
+      "type": "image",
+      "z": 2,
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "fit": "fill",
+      "animation": "futureo-glow",
+      "seconds": 6
+    },
+    {
+      "id": "layer3_humo_violeta",
+      "file": "FUTUREOLIVE/background/layers/layer3_humo_violeta.png",
+      "type": "image",
+      "z": 3,
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "fit": "fill",
+      "animation": "futureo-glow",
+      "seconds": 8
+    },
+    {
+      "id": "layer4_humo_cian",
+      "file": "FUTUREOLIVE/background/layers/layer4_humo_cian.png",
+      "type": "image",
+      "z": 4,
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "fit": "fill",
+      "animation": "futureo-glow",
+      "seconds": 10
+    },
+    {
+      "id": "layer5_particulas",
+      "file": "FUTUREOLIVE/background/layers/layer5_particulas.png",
+      "type": "image",
+      "z": 5,
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "fit": "fill",
+      "animation": "futureo-twinkle",
+      "seconds": 3
     }
   ]
 }
