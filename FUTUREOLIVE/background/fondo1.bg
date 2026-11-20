@@ -1,26 +1,114 @@
 {
   "format": "futureo-bg/v1",
-  "version": "1.0.0",
+  "version": "2.0.0-exact",
   "resourcesRoot": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/background/",
   "stage": {
-    "width": 1920,
-    "height": 1080,
-    "background": "#050C1D"
+    "width": 815,
+    "height": 286,
+    "background": "#202020",
+    "sizing": "contain"
+  },
+  "reference": {
+    "resource": "exact/referencia_original.png",
+    "sha256": "23d958badf6ab2b51bd1f5942aac877a1a0c23429584f20e0669e6650f868c78",
+    "expectedDifferentPixels": 0
   },
   "layers": [
     {
       "id": "layer0",
       "order": 0,
-      "type": "css",
-      "resource": "layer0.css",
-      "visible": true
+      "type": "image",
+      "resource": "exact/layer0_fondo.png",
+      "visible": true,
+      "opacity": 1
     },
     {
       "id": "layer1",
       "order": 1,
-      "type": "text",
-      "resource": "layer1.json",
-      "visible": true
+      "type": "image",
+      "resource": "exact/layer1_ambiente.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer2",
+      "order": 2,
+      "type": "image",
+      "resource": "exact/layer2_sombras.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer3",
+      "order": 3,
+      "type": "image",
+      "resource": "exact/layer3_diagonales_oscuras.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer4",
+      "order": 4,
+      "type": "image",
+      "resource": "exact/layer4_diagonales_azules.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer5",
+      "order": 5,
+      "type": "image",
+      "resource": "exact/layer5_luces_violetas.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer6",
+      "order": 6,
+      "type": "image",
+      "resource": "exact/layer6_luces_cian.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer7",
+      "order": 7,
+      "type": "image",
+      "resource": "exact/layer7_resplandores.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer8",
+      "order": 8,
+      "type": "image",
+      "resource": "exact/layer8_atmosfera_violeta.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer9",
+      "order": 9,
+      "type": "image",
+      "resource": "exact/layer9_humo_violeta.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer10",
+      "order": 10,
+      "type": "image",
+      "resource": "exact/layer10_humo_cian.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer11",
+      "order": 11,
+      "type": "image",
+      "resource": "exact/layer11_particulas.png",
+      "visible": true,
+      "opacity": 1
     }
   ]
 }

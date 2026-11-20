@@ -3,118 +3,170 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FUTUREO LIVE | Visor remoto</title>
+  <title>FUTUREO LIVE | Visor de capas remotas</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #050C1D; }
-    #stage { position: fixed; inset: 0; overflow: hidden; isolation: isolate; }
-    .layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .text-layer { display: flex; align-items: center; justify-content: center; text-align: center; }
+    *,*::before,*::after { box-sizing: border-box; }
+    html,body { width:100%;height:100%;margin:0;overflow:hidden;background:#202020; }
+    #stage { position:fixed;inset:0;overflow:hidden;isolation:isolate;background:#202020; }
+    #canvas {
+      position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+      overflow:hidden;isolation:isolate;
+    }
+    .layer {
+      position:absolute;inset:0;width:100%;height:100%;
+      pointer-events:none;user-select:none;display:block;
+    }
+    img.layer {
+      object-fit:fill;
+    }
+    .text-layer {
+      display:flex;align-items:center;justify-content:center;text-align:center;
+    }
+    video.layer { object-fit:fill; }
   </style>
 </head>
 <body>
-  <main id="stage" aria-label="FUTUREO LIVE: escena remota por capas"></main>
+  <main id="stage" aria-label="Escena remota FUTUREO LIVE">
+    <div id="canvas"></div>
+  </main>
   <script>
     "use strict";
-    // Esta es la UNICA ruta de GitHub configurada en el visor.
-    // fondo1.bg decide los recursos, el orden y el contenido de las capas.
+    // Unico enlace fijo del visor. TODO se obtiene de este manifiesto GitHub.
     const BG_MANIFEST_URL = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/background/fondo1.bg";
     const stage = document.getElementById("stage");
-    let lastRevision = "";
+    const canvas = document.getElementById("canvas");
+    let currentStage = { width: 815, height: 286, background: "#202020" };
+    let lastSignature = "";
     let installedStyles = [];
 
-    async function fetchText(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error("HTTP " + response.status + ": " + url);
+    function layout() {
+      const w = Math.max(1, Number(currentStage.width) || 815);
+      const h = Math.max(1, Number(currentStage.height) || 286);
+      // Respetar la proporcion nativa: no aplastar ni recortar la referencia.
+      const scale = Math.min(innerWidth / w, innerHeight / h);
+      canvas.style.width = (w * scale) + "px";
+      canvas.style.height = (h * scale) + "px";
+    }
+    window.addEventListener("resize", layout);
+
+    function getUrl(root, resource, revision) {
+      if (typeof resource !== "string" ||
+          !/^[a-zA-Z0-9_.\/-]+$/.test(resource) ||
+          resource.startsWith("/") || resource.split("/").includes("..")) {
+        throw new Error("Ruta remota no permitida: " + String(resource));
+      }
+      return new URL(resource + "?v=" + encodeURIComponent(revision), root).href;
+    }
+
+    async function getText(url) {
+      const response = await fetch(url,{cache:"no-store"});
+      if (!response.ok) throw new Error("Error HTTP " + response.status + " en " + url);
       return response.text();
     }
 
-    function resourceUrl(base, relative, revision) {
-      if (typeof relative !== "string" ||
-          !/^[a-zA-Z0-9._/-]+$/.test(relative) ||
-          relative.startsWith("/") || relative.split("/").includes("..")) {
-        throw new Error("Ruta de recurso no permitida");
+    async function buildLayer(def,root,rev) {
+      if (!/^layer[0-9]+$/.test(def.id)) {
+        throw new Error("ID de capa no valido");
       }
-      return new URL(relative + "?v=" + encodeURIComponent(revision), base).href;
+      let element = null;
+      let style = null;
+      const url = getUrl(root,def.resource,rev);
+
+      if (def.type === "image") {
+        const img = new Image();
+        img.className = "layer";
+        img.alt = "";
+        img.draggable = false;
+        img.decoding = "async";
+        img.src = url;
+        await img.decode(); // No mostrar una composicion a medias.
+        element = img;
+      } else if (def.type === "video") {
+        const video = document.createElement("video");
+        video.className = "layer";
+        video.autoplay = true;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.src = url;
+        element = video;
+      } else {
+        element = document.createElement("div");
+        element.className = "layer";
+        if (def.type === "css") {
+          style = document.createElement("style");
+          style.textContent = await getText(url);
+        } else if (def.type === "text") {
+          const txt = JSON.parse(await getText(url));
+          element.classList.add("text-layer");
+          element.textContent = String(txt.text || "");
+          element.style.color = txt.color || "white";
+          element.style.fontSize = txt.fontSize || "clamp(40px, 10vw, 160px)";
+          element.style.fontWeight = String(txt.fontWeight || 700);
+        } else {
+          throw new Error("Tipo de capa desconocido: " + def.type);
+        }
+      }
+      element.id = def.id;
+      element.style.zIndex = String(Number(def.order) || 0);
+      element.style.opacity = String(
+        Math.max(0,Math.min(1,Number(def.opacity ?? 1)))
+      );
+      return {element,style};
     }
 
-    async function loadBackground() {
+    async function refresh() {
       try {
-        // Un .bg se lee como texto JSON: no depende del MIME que devuelva GitHub.
-        const manifest = JSON.parse(
-          await fetchText(BG_MANIFEST_URL + "?t=" + Date.now())
+        // Leer el .bg como texto porque GitHub puede servirlo con MIME octet-stream.
+        const bg = JSON.parse(
+          await getText(BG_MANIFEST_URL + "?_=" + Date.now())
         );
-        if (manifest.format !== "futureo-bg/v1" ||
-            !Array.isArray(manifest.layers)) {
-          throw new Error("Formato de fondo1.bg no compatible");
+        if (bg.format !== "futureo-bg/v1" || !Array.isArray(bg.layers)
+            || bg.layers.length > 64) {
+          throw new Error("El archivo fondo1.bg no es valido");
         }
-
-        const signature = JSON.stringify(manifest);
-        if (signature === lastRevision) return;
-
-        // SOLO recursos remotos de esta carpeta del repositorio.
-        const base = new URL(manifest.resourcesRoot);
-        const expected = new URL("./", BG_MANIFEST_URL);
-        if (base.href !== expected.href) {
-          throw new Error("Origen remoto no autorizado en fondo1.bg");
+        const root = new URL(bg.resourcesRoot);
+        const allowedRoot = new URL("./",BG_MANIFEST_URL);
+        if (root.href !== allowedRoot.href) {
+          throw new Error("Origen remoto de capas no autorizado");
         }
-
-        const ordered = [...manifest.layers]
-          .filter(layer => layer.visible !== false)
-          .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-
-        const built = await Promise.all(ordered.map(async layer => {
-          if (!/^layer[0-9]+$/.test(layer.id)) {
-            throw new Error("Identificador de capa no valido");
-          }
-          const el = document.createElement("div");
-          el.id = layer.id;
-          el.className = "layer";
-          el.style.zIndex = String(Number(layer.order) || 0);
-          const url = resourceUrl(base, layer.resource, manifest.version);
-          if (layer.type === "css") {
-            const style = document.createElement("style");
-            style.dataset.layer = layer.id;
-            style.textContent = await fetchText(url);
-            return { el, style };
-          }
-          if (layer.type === "text") {
-            const config = JSON.parse(await fetchText(url));
-            el.classList.add("text-layer");
-            el.textContent = String(config.text ?? "");
-            el.style.color = config.color || "#FFFFFF";
-            el.style.fontSize = config.fontSize || "clamp(40px, 8vw, 140px)";
-            el.style.fontWeight = String(config.fontWeight || 700);
-            el.style.letterSpacing = config.letterSpacing || "normal";
-            el.style.fontFamily = config.fontFamily || "Arial, sans-serif";
-            el.style.textShadow = config.textShadow || "none";
-            return { el };
-          }
-          throw new Error("Tipo de capa no reconocido: " + layer.type);
-        }));
-
-        // Actualizar la escena solo cuando hayan cargado TODAS las capas.
+        const signature = JSON.stringify(bg);
+        if (signature === lastSignature) return;
+        const ordered = bg.layers.filter(x=>x.visible !== false)
+          .sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+        const loaded = await Promise.all(
+          ordered.map(def=>buildLayer(def,root,bg.version || "1"))
+        );
         const fragment = document.createDocumentFragment();
-        const nextStyles = [];
-        for (const { el, style } of built) {
-          fragment.appendChild(el);
+        const nextStyles=[];
+        for (const {element,style} of loaded) {
+          fragment.appendChild(element);
           if (style) nextStyles.push(style);
         }
-        stage.replaceChildren(fragment);
-        for (const style of installedStyles) style.remove();
-        installedStyles = nextStyles;
-        for (const style of nextStyles) document.head.appendChild(style);
-        stage.style.background = manifest.stage?.background || "#050C1D";
-        lastRevision = signature;
-      } catch (error) {
-        // Conservar la ultima escena visible ante un fallo de red.
-        console.error("[FUTUREO] Error al cargar fondo1.bg:", error);
+        // Reemplazo atomico: el visor muestra el fondo completo o conserva el viejo.
+        canvas.replaceChildren(fragment);
+        installedStyles.forEach(el=>el.remove());
+        installedStyles=nextStyles;
+        nextStyles.forEach(el=>document.head.appendChild(el));
+        const s=bg.stage||{};
+        currentStage={
+          width:Number(s.width)||815,height:Number(s.height)||286,
+          background:/^#[0-9A-Fa-f]{6}$/.test(s.background||"")
+            ? s.background:"#202020"
+        };
+        stage.style.background = currentStage.background;
+        layout();
+        canvas.querySelectorAll("video").forEach(v=>v.play().catch(()=>{}));
+        lastSignature=signature;
+      } catch(error) {
+        // Si no hay internet, mantener la ultima escena cargada.
+        console.error("[FUTUREO] No se pudo actualizar fondo1.bg",error);
       }
     }
 
-    loadBackground();
-    // Actualizacion remota sin recargar index.html.
-    setInterval(loadBackground, 60000);
+    layout();
+    refresh();
+    setInterval(refresh,60000);
   </script>
 </body>
 </html>
