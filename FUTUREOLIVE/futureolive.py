@@ -24,7 +24,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
@@ -44,6 +44,11 @@ class FondoFutureo(tk.Canvas):
         super().__init__(parent, bg=FONDO, bd=0, highlightthickness=0)
         self._size = (0, 0)
         self._photo: ImageTk.PhotoImage | None = None
+        self._hello_layer = self.create_text(
+            0, 0, text="HOLA MUNDO", anchor="center",
+            fill="#FFFFFF", font=("Arial", 44, "bold"),
+            tags=("overlay", "hello_world"),
+        )
         self._job: str | None = None
         self._check_job: str | None = None
         self._cap = None
@@ -186,6 +191,15 @@ class FondoFutureo(tk.Canvas):
 
     def _resize(self, event: tk.Event) -> None:
         self._size = (max(1, int(event.width)), max(1, int(event.height)))
+        self._position_overlay()
+
+    def _position_overlay(self) -> None:
+        """Mantiene el texto centrado y siempre por encima del fondo."""
+        width, height = self._size
+        self.coords(self._hello_layer, width // 2, height // 2)
+        size = max(18, min(72, int(min(width / 18, height / 9))))
+        self.itemconfigure(self._hello_layer, font=("Arial", size, "bold"))
+        self.tag_raise("overlay")
 
     def _draw(self, image: Image.Image) -> None:
         if self._size[0] < 2 or self._size[1] < 2:
@@ -200,6 +214,8 @@ class FondoFutureo(tk.Canvas):
             self._size[0] // 2, self._size[1] // 2,
             anchor="center", image=self._photo, tags="fondo",
         )
+        self.tag_lower("fondo")
+        self.tag_raise("overlay")
 
     def _draw_video(self, frame) -> None:
         """Ajusta el fotograma con OpenCV conservando su centro y nitidez."""
@@ -223,6 +239,8 @@ class FondoFutureo(tk.Canvas):
         self.delete("fondo")
         self.create_image(width // 2, height // 2, anchor="center",
                           image=self._photo, tags="fondo")
+        self.tag_lower("fondo")
+        self.tag_raise("overlay")
 
     def _next_frame(self) -> None:
         self._job = None
