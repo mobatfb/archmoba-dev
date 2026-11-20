@@ -25,10 +25,11 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.4.2"
+VERSION = "2.4.3"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
+WINDOW_OVERLAY_ENABLED = False  # Cambiar a True para mostrar el cuadro neon PNG.
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -81,7 +82,8 @@ class FondoFutureo(tk.Canvas):
         self.bind("<Configure>", self._resize)
         self.bind("<Destroy>", self._destroy, add="+")
         self.after_idle(self._load_local)
-        self.after_idle(self._load_neon_overlay)
+        if WINDOW_OVERLAY_ENABLED:
+            self.after_idle(self._load_neon_overlay)
         threading.Thread(target=self._download_asset, name="futureo-mp4", daemon=True).start()
         self._check_job = self.after(350, self._check_download)
         self._schedule_lightning(initial=True)
@@ -167,7 +169,8 @@ class FondoFutureo(tk.Canvas):
 
     def _download_asset(self) -> None:
         """Descarga por separado la imagen PNG y los fondos con cache local."""
-        choices = [(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")]
+        choices = ([(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")]
+                   if WINDOW_OVERLAY_ENABLED else [])
         if VIDEO_BACKGROUND_ENABLED:
             if cv2 is not None:
                 choices.append((VIDEO_URL, VIDEO_PATH, MAX_VIDEO_BYTES, "mp4"))
@@ -220,7 +223,8 @@ class FondoFutureo(tk.Canvas):
             return
         if self._download_ready.is_set():
             if self._download_changed:
-                self._load_neon_overlay()
+                if WINDOW_OVERLAY_ENABLED:
+                    self._load_neon_overlay()
                 self._load_local()
         else:
             self._check_job = self.after(350, self._check_download)
@@ -238,11 +242,12 @@ class FondoFutureo(tk.Canvas):
         if self._neon_resize_job is not None:
             self.after_cancel(self._neon_resize_job)
         # Evita regenerar una imagen grande en cada pixel durante resize.
-        self._neon_resize_job = self.after(90, self._draw_neon_window)
+        if WINDOW_OVERLAY_ENABLED:
+            self._neon_resize_job = self.after(90, self._draw_neon_window)
 
     def _load_neon_overlay(self) -> None:
         """Abre el PNG local sin dibujar su geometria mediante codigo."""
-        if not self._alive or not WINDOW_PATH.is_file():
+        if not WINDOW_OVERLAY_ENABLED or not self._alive or not WINDOW_PATH.is_file():
             return
         try:
             with Image.open(WINDOW_PATH) as source:
@@ -258,6 +263,10 @@ class FondoFutureo(tk.Canvas):
         """Coloca la ventana PNG arriba a la izquierda, al 10% del area visible."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
+            return
+        if not WINDOW_OVERLAY_ENABLED:
+            if self._neon_item is not None:
+                self.itemconfigure(self._neon_item, state="hidden")
             return
 
         width, height = self._size
