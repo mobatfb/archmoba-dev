@@ -18,14 +18,14 @@ import time
 import tkinter as tk
 from urllib.request import Request, urlopen
 
-from PIL import Image, ImageOps, ImageTk
+from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageTk
 
 try:
     import cv2
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
@@ -48,8 +48,13 @@ class FondoFutureo(tk.Canvas):
         # Capa de tormenta completamente independiente del fondo MP4.
         self._lightning_job: str | None = None
         self._lightning_clear_job: str | None = None
-        self._lightning_path: list[float] = []
+        self._lightning_path: list[tuple[int, int]] = []
+        self._lightning_branches: list[list[tuple[int, int]]] = []
         self._lightning_target = (0, 0)
+        self._lightning_phase = -1
+        self._lightning_cached: Image.Image | None = None
+        self._lightning_cache_key = None
+        self._last_frame: Image.Image | None = None
         self._job: str | None = None
         self._check_job: str | None = None
         self._cap = None
@@ -191,20 +196,21 @@ class FondoFutureo(tk.Canvas):
         else:
             self._check_job = self.after(350, self._check_download)
 
+
     def _resize(self, event: tk.Event) -> None:
         self._size = (max(1, int(event.width)), max(1, int(event.height)))
-        # El destello se regenera en la proxima descarga y respeta el nuevo tamano.
-        self.delete("lightning")
-        self.tag_raise("overlay")
+        self._lightning_cached = None
+        self._lightning_cache_key = None
 
     def _schedule_lightning(self, initial: bool = False) -> None:
-        """Genera un rayo nuevo cada 3 a 7 segundos, sin bloquear Tkinter."""
+        """Intervalo aleatorio entre descargas."""
         if not self._alive:
             return
-        delay = random.randint(1200, 2500) if initial else random.randint(3000, 7000)
+        delay = random.randint(1100, 2100) if initial else random.randint(3500, 7500)
         self._lightning_job = self.after(delay, self._strike_lightning)
 
     def _strike_lightning(self) -> None:
+        """Traza una descarga quebrada con ramificaciones de longitud variable."""
         self._lightning_job = None
         if not self._alive:
             return
@@ -212,80 +218,139 @@ class FondoFutureo(tk.Canvas):
         if width < 160 or height < 120:
             self._schedule_lightning()
             return
-        self.delete("lightning")
-        # El punto de impacto se elige al azar dentro de la escena.
-        target_x = random.randint(int(width * .12), int(width * .88))
-        target_y = random.randint(int(height * .42), int(height * .90))
-        origin_x = max(0, min(width, target_x + random.randint(-width // 7, width // 7)))
-        points: list[float] = [origin_x, 0]
-        segments = random.randint(9, 15)
-        for i in range(1, segments):
-            progress = i / segments
-            x = origin_x + (target_x - origin_x) * progress
-            x += random.uniform(-width * .035, width * .035)
-            points.extend((max(0, min(width, x)), target_y * progress))
-        points.extend((target_x, target_y))
-        self._lightning_path = points
-        self._lightning_target = (target_x, target_y)
-        self._render_lightning(0)
+        tx = random.randint(int(width * .15), int(width * .85))
+        ty = random.randint(int(height * .44), int(height * .9))
+        sx = max(1, min(width - 2, tx + random.randint(-width // 6, width // 6)))
+        count = random.randint(17, 27)
+        path = [(sx, 0)]
+        wander = 0.0
+        for i in range(1, count):
+            fraction = i / count
+            wander = max(-width * .07, min(width * .07,
+                         wander * .52 + random.gauss(0, width * .016)))
+            x = sx + (tx - sx) * fraction + wander
+            y = ty * fraction
+            path.append((int(max(0, min(width - 1, x))), int(y)))
+        path.append((tx, ty))
+        branches = []
+        for i in range(3, len(path) - 4):
+            if random.random() > .27:
+                continue
+            x, y = path[i]
+            direction = random.choice((-1, 1))
+            length = random.uniform(.06, .16) * min(width, height)
+            pieces = random.randint(3, 6)
+            branch = [(x, y)]
+            for j in range(1, pieces + 1):
+                fraction = j / pieces
+                bx = x + direction * length * fraction + random.gauss(0, width * .009)
+                by = y + length * fraction * random.uniform(.46, .85)
+                branch.append((int(max(0, min(width-1, bx))),
+                               int(min(height-1, by))))
+            branches.append(branch)
+        self._lightning_path = path
+        self._lightning_branches = branches
+        self._lightning_target = (tx, ty)
+        self._lightning_phase = 0
+        self._lightning_cached = None
+        self._lightning_cache_key = None
+        self._refresh_last_frame()
         self._schedule_lightning()
+        self._lightning_clear_job = self.after(55, self._advance_lightning, 1)
 
-    def _render_lightning(self, phase: int) -> None:
-        """Doble destello con halo azul, nucleo blanco y ramificaciones."""
+    def _advance_lightning(self, phase: int) -> None:
+        """Dos impulsos intensos seguidos por un resplandor que se desvanece."""
         self._lightning_clear_job = None
         if not self._alive:
             return
-        self.delete("lightning")
-        if phase == 3:
-            return
-        if phase == 1:
-            # Pausa muy breve: el rayo parpadea de forma natural.
-            self._lightning_clear_job = self.after(55, self._render_lightning, 2)
-            return
-        points = self._lightning_path
-        x, y = self._lightning_target
-        scale = max(1, min(self._size) / 700)
-        radius = 48 * scale if phase == 0 else 27 * scale
-        for multiple, color, stipple in (
-            (2.8, "#125387", "gray12"),
-            (1.8, "#237CC5", "gray25"),
-            (1.0, "#77DFFF", "gray50"),
-        ):
-            rr = radius * multiple
-            self.create_oval(x-rr, y-rr, x+rr, y+rr,
-                             fill=color, outline="", stipple=stipple,
-                             tags=("overlay", "lightning"))
-        for thickness, color in (
-            (15, "#1652A8"),
-            (9, "#287FD4"),
-            (5, "#69DFFF"),
-            (2, "#F5FFFF"),
-        ):
-            self.create_line(
-                *points, fill=color,
-                width=max(1, round(thickness * scale)),
-                joinstyle=tk.ROUND, capstyle=tk.ROUND,
-                tags=("overlay", "lightning"),
+        self._lightning_phase = phase if phase < 5 else -1
+        self._lightning_cached = None
+        self._lightning_cache_key = None
+        self._refresh_last_frame()
+        if phase < 5:
+            intervals = (55, 42, 95, 115, 125)
+            self._lightning_clear_job = self.after(
+                intervals[phase], self._advance_lightning, phase + 1
             )
-        # Pequenas ramas laterales para romper la simetria.
-        if phase == 0:
-            for i in (4, 7, 10):
-                if 2 * i + 1 >= len(points) - 2:
-                    continue
-                bx, by = points[2*i:2*i+2]
-                ex = bx + random.choice((-1, 1)) * random.randint(15, max(16, int(self._size[0] * .055)))
-                ey = min(self._size[1], by + random.randint(12, max(13, int(self._size[1] * .075))))
-                self.create_line(bx, by, ex, ey, fill="#52C7FC",
-                                 width=max(1, round(2*scale)),
-                                 tags=("overlay", "lightning"))
-        self.create_oval(
-            x - 7*scale, y - 7*scale, x + 7*scale, y + 7*scale,
-            fill="#FFFFFF", outline="", tags=("overlay", "lightning"),
-        )
-        self.tag_raise("overlay")
-        delays = {0: 100, 2: 145}
-        self._lightning_clear_job = self.after(delays[phase], self._render_lightning,
-                                                1 if phase == 0 else 3)
+
+    def _lightning_overlay(self, size: tuple[int, int]) -> Image.Image | None:
+        """Pinta brillo volumetrico y relampago antialias sobre RGBA."""
+        phase = self._lightning_phase
+        if phase < 0 or not self._lightning_path:
+            return None
+        key = (size, phase)
+        if self._lightning_cached is not None and self._lightning_cache_key == key:
+            return self._lightning_cached
+
+        w, h = size
+        scale = max(.5, min(w, h) / 700.0)
+        intensity = (.97, .16, 1.0, .34, .11)[phase]
+        core = Image.new("RGBA", size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(core, "RGBA")
+        path = self._lightning_path
+
+        # Atmosfera localizada con radios amplios y gradiente difuso.
+        cloud = Image.new("RGBA", size, (0, 0, 0, 0))
+        cd = ImageDraw.Draw(cloud, "RGBA")
+        for x, y in (path[4], path[len(path)//2], path[-1]):
+            radius = int(min(w, h) * .17)
+            cd.ellipse((x-radius, y-radius, x+radius, y+radius),
+                       fill=(45, 145, 255, int(64 * intensity)))
+        cloud = cloud.filter(ImageFilter.GaussianBlur(max(12, int(42 * scale))))
+
+        # Halo de los canales electricos; la difusion se realiza antes del nucleo.
+        glow = Image.new("RGBA", size, (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow, "RGBA")
+        for pts in [path] + self._lightning_branches:
+            thickness = (12 if pts is path else 6) * scale
+            gd.line(pts, fill=(39, 130, 255, int(195 * intensity)),
+                    width=max(2, int(thickness)), joint="curve")
+        glow = glow.filter(ImageFilter.GaussianBlur(max(3, int(12 * scale))))
+        cloud = Image.alpha_composite(cloud, glow)
+
+        # La descarga tiene un nucleo central muy fino y bordes azulados.
+        for pts in [path] + self._lightning_branches:
+            branch = pts is not path
+            for index in range(len(pts)-1):
+                t = index / max(1, len(pts)-1)
+                thick = max(1, int((2.8 if not branch else 1.35) * scale *
+                                   (1.15 - .55 * t)))
+                a, b = pts[index], pts[index+1]
+                draw.line((a,b), fill=(35, 156, 255, int(225 * intensity)),
+                          width=max(2, thick + 3))
+                draw.line((a,b), fill=(235, 251, 255, int(255 * intensity)),
+                          width=thick)
+        tx, ty = self._lightning_target
+        radius = max(3, int(6 * scale))
+        draw.ellipse((tx-radius, ty-radius, tx+radius, ty+radius),
+                     fill=(247, 254, 255, int(250 * intensity)))
+
+        # Fogonazo global corto: el propio fotograma se ilumina al impactar.
+        if phase in (0, 2):
+            flash = Image.new("RGBA", size,
+                              (175, 216, 255, int(23 * intensity)))
+            cloud = Image.alpha_composite(flash, cloud)
+        overlay = Image.alpha_composite(cloud, core)
+        self._lightning_cached = overlay
+        self._lightning_cache_key = key
+        return overlay
+
+    def _present(self, frame: Image.Image) -> None:
+        """Compone las luces sobre el fotograma, sin alterar el MP4 original."""
+        self._last_frame = frame
+        overlay = self._lightning_overlay(frame.size)
+        composed = (Image.alpha_composite(frame.convert("RGBA"), overlay)
+                    if overlay is not None else frame)
+        self._photo = ImageTk.PhotoImage(composed, master=self)
+        self.delete("fondo")
+        self.create_image(frame.width // 2, frame.height // 2,
+                          anchor="center", image=self._photo, tags="fondo")
+        self.tag_lower("fondo")
+
+    def _refresh_last_frame(self) -> None:
+        if self._last_frame is not None and self._alive:
+            self._present(self._last_frame)
+
 
     def _draw(self, image: Image.Image) -> None:
         if self._size[0] < 2 or self._size[1] < 2:
@@ -294,39 +359,27 @@ class FondoFutureo(tk.Canvas):
             image, self._size, method=Image.Resampling.BILINEAR,
             centering=(.5, .5),
         )
-        self._photo = ImageTk.PhotoImage(fitted, master=self)
-        self.delete("fondo")
-        self.create_image(
-            self._size[0] // 2, self._size[1] // 2,
-            anchor="center", image=self._photo, tags="fondo",
-        )
-        self.tag_lower("fondo")
-        self.tag_raise("overlay")
+        self._present(fitted)
 
     def _draw_video(self, frame) -> None:
-        """Ajusta el fotograma con OpenCV conservando su centro y nitidez."""
+        """Escala el fotograma y aplica luces sin bloquear la reproduccion."""
         width, height = self._size
         if width < 2 or height < 2:
             return
-        frame_height, frame_width = frame.shape[:2]
-        if frame_width * height > frame_height * width:
-            crop_width = max(1, frame_height * width // height)
-            offset = (frame_width - crop_width) // 2
-            frame = frame[:, offset:offset + crop_width]
-        elif frame_width * height < frame_height * width:
-            crop_height = max(1, frame_width * height // width)
-            offset = (frame_height - crop_height) // 2
-            frame = frame[offset:offset + crop_height, :]
+        fh, fw = frame.shape[:2]
+        if fw * height > fh * width:
+            cw = max(1, fh * width // height)
+            offset = (fw - cw) // 2
+            frame = frame[:, offset:offset + cw]
+        elif fw * height < fh * width:
+            ch = max(1, fw * height // width)
+            offset = (fh - ch) // 2
+            frame = frame[offset:offset + ch, :]
         if frame.shape[1] != width or frame.shape[0] != height:
             method = cv2.INTER_AREA if frame.shape[1] >= width else cv2.INTER_CUBIC
             frame = cv2.resize(frame, (width, height), interpolation=method)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        self._photo = ImageTk.PhotoImage(Image.fromarray(rgb), master=self)
-        self.delete("fondo")
-        self.create_image(width // 2, height // 2, anchor="center",
-                          image=self._photo, tags="fondo")
-        self.tag_lower("fondo")
-        self.tag_raise("overlay")
+        self._present(Image.fromarray(rgb))
 
     def _next_frame(self) -> None:
         self._job = None
