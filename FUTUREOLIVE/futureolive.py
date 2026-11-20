@@ -1,7 +1,7 @@
-"""FUTUREO LIVE - Fondo MP4 Full HD sin elementos superpuestos.
+"""FUTUREO LIVE - Fondo MP4 4K animado sin elementos superpuestos.
 
-Fuente principal: assets/fondo_animado.mp4 (H.264, 1920x1080).
-El video conserva exactamente la animacion del GIF original, convertido a MP4.
+Fuente principal: assets/fondo_animado_4k.mp4 (H.264, 3840x2160).
+La nueva animacion procede de una ilustracion recreada con mayor detalle.
 Se reproduce continuamente sin sonido, con la ventana completamente cubierta.
 Si OpenCV o el MP4 no estan disponibles, usa el GIF original como respaldo.
 Al abrirse, comprueba el MP4 en GitHub sin bloquear la interfaz.
@@ -24,14 +24,14 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
-VIDEO_PATH = ASSETS / "fondo_animado.mp4"
+VIDEO_PATH = ASSETS / "fondo_animado_4k.mp4"
 GIF_PATH = ASSETS / "fondo_animado.gif"
 URL_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/assets"
-VIDEO_URL = URL_ROOT + "/fondo_animado.mp4"
+VIDEO_URL = URL_ROOT + "/fondo_animado_4k.mp4"
 GIF_URL = URL_ROOT + "/fondo_animado.gif"
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
