@@ -25,7 +25,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
@@ -206,7 +206,7 @@ class FondoFutureo(tk.Canvas):
         """Intervalo aleatorio entre descargas."""
         if not self._alive:
             return
-        delay = random.randint(1100, 2100) if initial else random.randint(3500, 7500)
+        delay = random.randint(1100, 2100) if initial else random.randint(2000, 6000)
         self._lightning_job = self.after(delay, self._strike_lightning)
 
     def _strike_lightning(self) -> None:
