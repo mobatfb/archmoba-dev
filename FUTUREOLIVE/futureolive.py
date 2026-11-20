@@ -10,7 +10,7 @@ import math
 import random
 import tkinter as tk
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 COLOR_SUPERIOR = "#050919"
 COLOR_INFERIOR = "#0C1830"
 
@@ -35,6 +35,7 @@ class FondoFutureo(tk.Canvas):
         self._points: list[tuple[int, float, float, float, float]] = []
         self._arcos: list[tuple[int, float]] = []
         self._rayos: list[tuple[int, float, float]] = []
+        self._led: list[tuple[int, str]] = []
         self.bind("<Configure>", self._redibujar)
         self.bind("<Destroy>", self._limpiar, add="+")
         self._job = self.after(66, self._animar)
@@ -57,6 +58,7 @@ class FondoFutureo(tk.Canvas):
         self._points.clear()
         self._arcos.clear()
         self._rayos.clear()
+        self._led.clear()
         bandas = min(140, h)
         for i in range(bandas):
             t = i / max(1, bandas - 1)
@@ -65,10 +67,24 @@ class FondoFutureo(tk.Canvas):
             color = _mezcla(COLOR_SUPERIOR, COLOR_INFERIOR, t)
             self.create_rectangle(0, y0, w + 2, y1, outline=color, fill=color)
 
+        # Paneles angulares azul medianoche que dejan el centro despejado.
+        self.create_polygon(
+            0, 0, w * .37, 0, 0, h * .70,
+            fill="#0A1435", outline="",
+        )
+        self.create_polygon(
+            w, 0, w, h * .78, w * .60, h,
+            fill="#091832", outline="",
+        )
+        self.create_polygon(
+            0, h * .49, w * .28, 0, w * .36, 0, 0, h * .67,
+            fill="#0C1C3E", outline="",
+        )
+
         self._halo(w * 1.03, h * 0.01, max(w, h) * 0.49, "#11BDFF", "#091329")
         self._halo(-w * 0.04, h * 1.0, max(w, h) * 0.46, "#8349E6", "#0A1028")
         for x in range(0, w, 82):
-            self.create_line(x, 0, x, h, fill="#10223A", width=1)
+            self.create_line(x, 0, x, h, fill="#0D2138", width=1)
         for y in range(0, h, 82):
             self.create_line(0, y, w, y, fill="#10223A", width=1)
 
@@ -122,6 +138,61 @@ class FondoFutureo(tk.Canvas):
         self.create_line(w * .14, 1, w * .45, 1, fill="#0E9ACE", width=2)
         self.create_line(w * .58, h - 2, w * .87, h - 2, fill="#7043B6", width=2)
 
+        # Rieles segmentados de neon: adaptacion nativa del fondo_animado.svg.
+        def riel(puntos, brillo, sombra):
+            self.create_line(
+                *puntos, fill=sombra, width=15, smooth=False,
+                joinstyle=tk.ROUND, capstyle=tk.ROUND,
+            )
+            self.create_line(
+                *puntos, fill=_mezcla(brillo, "#070918", .44), width=7,
+                smooth=False, joinstyle=tk.ROUND, capstyle=tk.ROUND,
+            )
+            foco = self.create_line(
+                *puntos, fill=brillo, width=3, smooth=False,
+                joinstyle=tk.ROUND, capstyle=tk.ROUND,
+            )
+            self._led.append((foco, brillo))
+
+        # Parte superior: violeta a la izquierda, cian a la derecha.
+        riel(
+            [0, h*.034, w*.22, h*.034, w*.235, h*.058,
+             w*.58, h*.058, w*.615, 0],
+            "#E62AFF", "#2D104F",
+        )
+        riel(
+            [w*.615, 0, w*.635, h*.050, w*.66, h*.050,
+             w*.678, h*.073, w, h*.073],
+            "#14DFFF", "#0B3055",
+        )
+        # Base escalonada con huecos y cambios de color.
+        riel(
+            [0, h*.925, w*.045, h*.885, w*.35, h*.885,
+             w*.385, h*.91, w*.62, h*.91],
+            "#D62CFD", "#361247",
+        )
+        riel(
+            [w*.62, h*.91, w*.66, h*.89, w*.95, h*.89,
+             w, h*.925],
+            "#15CFFF", "#0B3157",
+        )
+        riel(
+            [0, h*.977, w*.05, h*.93, w*.29, h*.93,
+             w*.32, h*.982, w*.56, h*.982],
+            "#14C9FF", "#103154",
+        )
+        riel(
+            [w*.56, h*.982, w*.60, h*.93, w*.965, h*.93,
+             w, h*.977],
+            "#E038FF", "#351146",
+        )
+        # Laterales oblicuos, sin recuadros para fotos ni chat.
+        riel([0, h*.28, w*.045, h*.185, w*.18, h*.185], "#11BFFB", "#09284C")
+        riel([w, h*.24, w*.96, h*.185, w*.84, h*.185], "#0DCFFF", "#09284C")
+        riel([0, h*.78, w*.05, h*.72, w*.18, h*.72], "#8030EA", "#251047")
+        riel([w, h*.80, w*.96, h*.72, w*.82, h*.72], "#A52AFE", "#35134E")
+
+
     def _animar(self) -> None:
         if not self.winfo_exists():
             return
@@ -142,6 +213,9 @@ class FondoFutureo(tk.Canvas):
                 ident, centro - w * .16, h * (.08 if posicion < .5 else .9),
                 centro + w * .11, h * (.04 if posicion < .5 else .85),
             )
+        for led, base in self._led:
+            pulso = .16 + .33 * (1 + math.sin(self._time * 1.35 + led * .8)) / 2
+            self.itemconfigure(led, fill=_mezcla(base, "#FFFFFF", pulso))
         self._job = self.after(66, self._animar)
 
     def _limpiar(self, event: tk.Event) -> None:
