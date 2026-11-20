@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "version": "1.0.0",
+  "canvas": {
+    "width": 1920,
+    "height": 1080,
+    "background": "#050B1C"
+  },
+  "resources": {
+    "styles": []
+  },
+  "layers": [
+    {
+      "id": "layer0",
+      "file": "FUTUREOLIVE/background/layer0.svg",
+      "type": "image",
+      "z": 0,
+      "visible": true,
+      "opacity": 1,
+      "blend": "normal",
+      "fit": "cover",
+      "animation": "none"
+    }
+  ]
+}
