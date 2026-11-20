@@ -1,0 +1,167 @@
+{
+  "format": "futureo-bg/v1",
+  "version": "2.1.0-animado",
+  "resourcesRoot": "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/background/",
+  "stage": {
+    "width": 815,
+    "height": 286,
+    "background": "#202020",
+    "sizing": "contain"
+  },
+  "reference": {
+    "resource": "exact/referencia_original.png",
+    "sha256": "23d958badf6ab2b51bd1f5942aac877a1a0c23429584f20e0669e6650f868c78",
+    "expectedDifferentPixels": 0
+  },
+  "layers": [
+    {
+      "id": "layer0",
+      "order": 0,
+      "type": "image",
+      "resource": "exact/layer0_fondo.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer1",
+      "order": 1,
+      "type": "image",
+      "resource": "exact/layer1_ambiente.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "ambient-pulse",
+        "seconds": 18
+      }
+    },
+    {
+      "id": "layer2",
+      "order": 2,
+      "type": "image",
+      "resource": "exact/layer2_sombras.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer3",
+      "order": 3,
+      "type": "image",
+      "resource": "exact/layer3_diagonales_oscuras.png",
+      "visible": true,
+      "opacity": 1
+    },
+    {
+      "id": "layer4",
+      "order": 4,
+      "type": "image",
+      "resource": "exact/layer4_diagonales_azules.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "blue-glow",
+        "seconds": 9
+      }
+    },
+    {
+      "id": "layer5",
+      "order": 5,
+      "type": "image",
+      "resource": "exact/layer5_luces_violetas.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "violet-light",
+        "seconds": 6.5
+      }
+    },
+    {
+      "id": "layer6",
+      "order": 6,
+      "type": "image",
+      "resource": "exact/layer6_luces_cian.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "cyan-light",
+        "seconds": 7.5
+      }
+    },
+    {
+      "id": "layer7",
+      "order": 7,
+      "type": "image",
+      "resource": "exact/layer7_resplandores.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "soft-bloom",
+        "seconds": 11
+      }
+    },
+    {
+      "id": "layer8",
+      "order": 8,
+      "type": "image",
+      "resource": "exact/layer8_atmosfera_violeta.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "purple-atmosphere",
+        "seconds": 17
+      }
+    },
+    {
+      "id": "layer9",
+      "order": 9,
+      "type": "image",
+      "resource": "exact/layer9_humo_violeta.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "purple-smoke",
+        "seconds": 8.5
+      }
+    },
+    {
+      "id": "layer10",
+      "order": 10,
+      "type": "image",
+      "resource": "exact/layer10_humo_cian.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "cyan-smoke",
+        "seconds": 9.5
+      }
+    },
+    {
+      "id": "layer11",
+      "order": 11,
+      "type": "image",
+      "resource": "exact/layer11_particulas.png",
+      "visible": true,
+      "opacity": 1,
+      "motion": {
+        "enabled": true,
+        "preset": "particles",
+        "seconds": 3.8
+      }
+    }
+  ],
+  "styles": [
+    "animaciones.css"
+  ],
+  "motion": {
+    "enabled": true,
+    "speed": 1,
+    "description": "Movimiento moderado y en bucle sobre las capas originales; capa 0, sombras y diagonales oscuras permanecen inmoviles."
+  }
+}
