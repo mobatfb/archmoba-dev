@@ -171,7 +171,7 @@ class FondoFutureo(tk.Canvas):
                         data = resp.read(limit + 1)
                     if not data or len(data) > limit:
                         continue
-                    if kind == "png" and not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+                    if kind == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
                         continue
                     if kind == "mp4" and data[4:8] != b"ftyp":
                         continue
