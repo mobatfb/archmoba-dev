@@ -1,9 +1,9 @@
-"""FUTUREO LIVE - Fondo MP4 4K animado sin elementos superpuestos.
+"""FUTUREO LIVE - Fondo MP4 4K limpio, sin marcos ni paneles.
 
 Fuente principal: assets/fondo_animado_4k.mp4 (H.264, 3840x2160).
-La nueva animacion procede de una ilustracion recreada con mayor detalle.
+La escena usa humo luminoso azul y violeta sobre un centro despejado.
 Se reproduce continuamente sin sonido, con la ventana completamente cubierta.
-Si OpenCV o el MP4 no estan disponibles, usa el GIF original como respaldo.
+Si OpenCV o el MP4 no estan disponibles, usa el GIF del mismo fondo limpio.
 Al abrirse, comprueba el MP4 en GitHub sin bloquear la interfaz.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
@@ -141,7 +141,7 @@ class FondoFutureo(tk.Canvas):
                     break
                 try:
                     req = Request(url, headers={
-                        "User-Agent": "FUTUREO-LIVE/1.6",
+                        "User-Agent": "FUTUREO-LIVE/1.8",
                         "Cache-Control": "no-cache",
                     })
                     with urlopen(req, timeout=18) as resp:
@@ -231,7 +231,7 @@ class FondoFutureo(tk.Canvas):
         if self._mode == "mp4" and self._cap is not None and cv2 is not None:
             success, frame = self._cap.read()
             if not success:
-                # MP4 de 2 segundos repetido sin volver a abrir el archivo.
+                # MP4 en bucle continuo sin volver a abrir el archivo.
                 self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 success, frame = self._cap.read()
             if success:
