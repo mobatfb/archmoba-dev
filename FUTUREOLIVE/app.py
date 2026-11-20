@@ -1,0 +1,496 @@
+"""FUTUREOLIVE: lanzador con actualizaciones desde GitHub y dependencias automaticas."""
+
+from __future__ import annotations
+
+import ast
+import hashlib
+import importlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import queue
+import re
+import subprocess
+import sys
+import threading
+import time
+from urllib.request import Request, urlopen
+
+if sys.version_info < (3, 10):
+    raise SystemExit("Se requiere Python 3.10 o superior. En Windows ejecuta iniciar.bat.")
+
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+except ImportError as exc:
+    raise SystemExit(
+        "Falta tkinter. En Windows instala Python desde python.org con Tcl/Tk; "
+        "en Debian/Ubuntu instala python3-tk."
+    ) from exc
+
+
+APP_VERSION = "1.0.0"
+WINDOW_WIDTH = 1440
+WINDOW_HEIGHT = 900
+REPOSITORY = "mobatfb/archmoba-dev"
+BRANCH = "main"
+COMMITS_URL = (
+    f"https://api.github.com/repos/{REPOSITORY}/commits"
+    "?path=FUTUREOLIVE%2Ffutureolive.py&per_page=1"
+)
+BASE_DIR = Path(__file__).resolve().parent
+FUTUREOLIVE_PATH = BASE_DIR / "futureolive.py"
+STATE_PATH = BASE_DIR / ".futureolive_update.json"
+
+# Algunos nombres de importacion difieren del nombre del paquete en PyPI.
+PIP_NAMES = {
+    "PIL": "Pillow",
+    "cv2": "opencv-python",
+    "yaml": "PyYAML",
+    "bs4": "beautifulsoup4",
+    "serial": "pyserial",
+    "sklearn": "scikit-learn",
+    "dotenv": "python-dotenv",
+    "fitz": "PyMuPDF",
+    "Crypto": "pycryptodome",
+}
+
+
+def version_from_source(source: str) -> str:
+    """Lee VERSION (o __version__) sin ejecutar codigo remoto."""
+    tree = ast.parse(source, filename="futureolive.py")
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+            value = node.value
+        else:
+            continue
+        if ("VERSION" in names or "__version__" in names) and isinstance(value, ast.Constant):
+            if isinstance(value.value, str) and re.fullmatch(r"\d+(?:\.\d+)*", value.value):
+                return value.value
+    raise ValueError("futureolive.py debe declarar VERSION = '1.0.0' (version numerica).")
+
+
+def version_numbers(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def missing_packages(source: str) -> list[tuple[str, str]]:
+    """Detecta imports externos que no estan instalados, sin importar futureolive.py."""
+    tree = ast.parse(source, filename="futureolive.py")
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            roots.add(node.module.split(".")[0])
+
+    missing: list[tuple[str, str]] = []
+    for name in sorted(roots):
+        if name in sys.stdlib_module_names or name == "__future__":
+            continue
+        if (BASE_DIR / f"{name}.py").exists() or (BASE_DIR / name / "__init__.py").exists():
+            continue
+        try:
+            present = importlib.util.find_spec(name) is not None
+        except (ImportError, AttributeError, ValueError):
+            present = False
+        if not present:
+            missing.append((name, PIP_NAMES.get(name, name)))
+    return missing
+
+
+def run_command(args: list[str]) -> tuple[int, str]:
+    """Ejecuta pip sin abrir una consola adicional en Windows."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    completed = subprocess.run(
+        args,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=flags,
+        timeout=360,
+        check=False,
+    )
+    return completed.returncode, completed.stdout[-3000:]
+
+
+def atomic_write(path: Path, source: str) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        temporary.write_text(source, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def lock_mobile_window(window):
+    """Impide maximizar, ajustar o cambiar las dimensiones de la ventana."""
+    if getattr(window, "_archmoba_mobile_size_locked", False):
+        return
+    window._archmoba_mobile_size_locked = True
+    window.resizable(False, False)
+    window.minsize(WINDOW_WIDTH, WINDOW_HEIGHT)
+    window.maxsize(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    def restore_size():
+        try:
+            state = window.state()
+            if state == "zoomed":
+                window.state("normal")
+            if window.state() == "normal" and (
+                window.winfo_width() != WINDOW_WIDTH
+                or window.winfo_height() != WINDOW_HEIGHT
+            ):
+                window.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+        except tk.TclError:
+            pass
+
+    def on_resize(event):
+        if event.widget is window:
+            window.after_idle(restore_size)
+
+    window.bind("<Configure>", on_resize, add="+")
+    window.after_idle(restore_size)
+
+    if os.name == "nt":
+        def disable_maximize():
+            """Quita el boton maximizar y el ajuste Snap en Windows."""
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+                user32.GetAncestor.restype = wintypes.HWND
+                user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+                user32.GetWindowLongW.restype = ctypes.c_long
+                user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+                user32.SetWindowLongW.restype = ctypes.c_long
+                user32.SetWindowPos.argtypes = [
+                    wintypes.HWND, wintypes.HWND,
+                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                    wintypes.UINT,
+                ]
+                user32.SetWindowPos.restype = wintypes.BOOL
+
+                hwnd = user32.GetAncestor(wintypes.HWND(window.winfo_id()), 2)
+                if hwnd:
+                    style = user32.GetWindowLongW(hwnd, -16)
+                    # WS_MAXIMIZEBOX | WS_THICKFRAME
+                    fixed_style = style & ~0x00050000
+                    if fixed_style != style:
+                        user32.SetWindowLongW(hwnd, -16, fixed_style)
+                        # SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED
+                        user32.SetWindowPos(hwnd, wintypes.HWND(0), 0, 0, 0, 0, 0x27)
+            except (OSError, AttributeError, ValueError):
+                pass
+
+        window.after_idle(disable_maximize)
+
+
+class FutureoLiveManager:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title(f"FUTUREO LIVE - APP v{APP_VERSION}")
+        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+        self.root.update_idletasks()
+        pos_x = max(0, (self.root.winfo_screenwidth() - WINDOW_WIDTH) // 2)
+        pos_y = max(0, (self.root.winfo_screenheight() - WINDOW_HEIGHT) // 2)
+        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{pos_x}+{pos_y}")
+        self.root.minsize(1030, 690)
+        self.root.configure(bg="#081321")
+        self.events: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.busy = False
+
+        # Barra unica superior: estado y refresco. Sin titulo ni pie inferiores.
+        topbar = tk.Frame(root, bg="#ffffff", height=54)
+        topbar.pack(side="top", fill="x")
+        topbar.pack_propagate(False)
+        self.status_var = tk.StringVar(value="Comprobando dependencias...")
+        self.status_label = tk.Label(
+            topbar, textvariable=self.status_var,
+            bg="#ffffff", fg="#475467", anchor="w", justify="left",
+            font=("Segoe UI", 9), wraplength=294,
+        )
+        self.status_label.pack(side="left", fill="both", expand=True,
+                               padx=(9, 1), pady=5)
+
+        self.update_button = tk.Button(
+            topbar, text="↻", command=self.check_for_updates,
+            bg="#ffffff", fg="#087f91",
+            activebackground="#e9f6f7", activeforeground="#075e6e",
+            font=("Segoe UI Symbol", 20, "bold"),
+            relief="flat", bd=0, highlightthickness=0,
+            cursor="hand2", width=2, padx=3, pady=0,
+        )
+        self.update_button.pack(side="right", padx=(1, 10), pady=4)
+
+        # La barra original permanece visible para mostrar estado y refrescar.
+        self.body = tk.Frame(root, bg="#081321", bd=0, highlightthickness=0)
+        self.body.pack(side="top", fill="both", expand=True)
+
+        self.root.after(100, self._process_events)
+        self._start("startup")
+
+    def _tell(self, kind: str, value: object) -> None:
+        self.events.put((kind, value))
+
+    def _start(self, action: str) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self.update_button.config(state="disabled", text="⟳")
+        threading.Thread(target=self._worker, args=(action,), daemon=True).start()
+
+    def check_for_updates(self) -> None:
+        self._start("update")
+
+    def _ensure_dependencies(self, source: str) -> None:
+        packages = missing_packages(source)
+        if not packages:
+            return
+
+        self._tell("status", "Preparando instalacion de dependencias...")
+        code, output = run_command([sys.executable, "-m", "pip", "--version"])
+        if code != 0:
+            code, output = run_command([sys.executable, "-m", "ensurepip", "--upgrade"])
+            if code != 0:
+                raise RuntimeError("No se pudo activar pip: " + output[-400:])
+
+        for module, package in packages:
+            self._tell("status", f"Instalando {package} en segundo plano...")
+            code, output = run_command([
+                sys.executable, "-m", "pip", "install",
+                "--disable-pip-version-check", "--no-input", package
+            ])
+            if code != 0:
+                raise RuntimeError(f"No se pudo instalar {package}: {output[-600:]}")
+            importlib.invalidate_caches()
+            try:
+                installed = importlib.util.find_spec(module) is not None
+            except (ImportError, AttributeError, ValueError):
+                installed = False
+            if not installed:
+                raise RuntimeError(
+                    f"Se instalo {package}, pero no se encontro el import {module}. "
+                    "Comprueba el nombre del paquete."
+                )
+
+    @staticmethod
+    def _get_text(url: str, max_bytes: int = 1024 * 1024) -> str:
+        """Solicita contenido fresco a GitHub (con timeout) sin bloquear Tkinter."""
+        request = Request(
+            url,
+            headers={
+                "User-Agent": "ARCHMOBA-FUTUREOLIVE/1.1",
+                "Accept": "application/vnd.github+json",
+                "Cache-Control": "no-cache, no-store, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
+        with urlopen(request, timeout=10) as response:
+            data = response.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise ValueError("El archivo remoto excede el tamano permitido.")
+        return data.decode("utf-8-sig")
+
+    def _latest_futureolive_commit(self) -> str:
+        """Lee el commit mas reciente que modifico FUTUREOLIVE/futureolive.py."""
+        url = f"{COMMITS_URL}&cache_bust={time.time_ns()}"
+        items = json.loads(self._get_text(url, max_bytes=256 * 1024))
+        if not isinstance(items, list) or not items:
+            raise ValueError("GitHub no devolvio commits para futureolive.py.")
+        sha = items[0].get("sha", "")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("GitHub devolvio un commit no valido.")
+        return sha
+
+    @staticmethod
+    def _file_hash(source: str) -> str:
+        return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _read_state() -> dict:
+        try:
+            state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            return state if isinstance(state, dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    @staticmethod
+    def _save_state(commit: str, source: str) -> None:
+        data = {
+            "commit": commit,
+            "sha256": FutureoLiveManager._file_hash(source),
+            "version": version_from_source(source),
+        }
+        atomic_write(STATE_PATH, json.dumps(data, indent=2))
+
+    def _download_commit(self, commit: str) -> str:
+        """Descarga el archivo inmutable asociado a ese commit."""
+        url = (
+            f"https://raw.githubusercontent.com/{REPOSITORY}/"
+            f"{commit}/FUTUREOLIVE/futureolive.py"
+        )
+        return self._get_text(url)
+
+    def _worker(self, action: str) -> None:
+        local_loaded = False
+        try:
+            if action == "startup" and FUTUREOLIVE_PATH.exists():
+                try:
+                    local = FUTUREOLIVE_PATH.read_text(encoding="utf-8")
+                    version_from_source(local)
+                    self._ensure_dependencies(local)
+                    self._tell("show", (local, "Version local cargada. Comprobando GitHub..."))
+                    local_loaded = True
+                except Exception as exc:
+                    self._tell("status", f"Se recuperara la version local: {exc}")
+
+            self._tell("status", "Consultando ultimo commit de futureolive.py en GitHub...")
+            remote = None
+            try:
+                commit = self._latest_futureolive_commit()
+                self._tell("status", f"Commit {commit[:8]} encontrado. Comprobando cambios...")
+            except Exception:
+                # Respaldo si la API esta limitada o bloqueada.
+                self._tell(
+                    "status",
+                    "API de commits no disponible. Descargando archivo sin cache...",
+                )
+                direct_url = (
+                    f"https://raw.githubusercontent.com/{REPOSITORY}/{BRANCH}"
+                    f"/FUTUREOLIVE/futureolive.py?cache_bust={time.time_ns()}"
+                )
+                remote = self._get_text(direct_url)
+                commit = "direct-" + self._file_hash(remote)
+
+            local = FUTUREOLIVE_PATH.read_text(encoding="utf-8") if FUTUREOLIVE_PATH.exists() else None
+            state = self._read_state()
+
+            if (
+                local is not None
+                and remote is None
+                and state.get("commit") == commit
+                and state.get("sha256") == self._file_hash(local)
+            ):
+                version = version_from_source(local)
+                self._tell("show", (
+                    local,
+                    f"Sin cambios: v{version}, commit {commit[:8]}.",
+                ))
+                return
+
+            if remote is None:
+                self._tell("status", f"Descargando futureolive.py del commit {commit[:8]}...")
+                remote = self._download_commit(commit)
+            version = version_from_source(remote)
+            compile(remote, str(FUTUREOLIVE_PATH), "exec")
+
+            if local != remote:
+                self._ensure_dependencies(remote)
+                self._tell("apply", (remote, version, commit))
+            else:
+                self._tell("same", (remote, version, commit))
+        except Exception as exc:
+            # Cuando hay copia local funcional, el inicio puede continuar sin red.
+            if action == "startup" and local_loaded:
+                self._tell("warning", f"Sin actualizacion: {exc}")
+            else:
+                self._tell("error", f"No se pudo comprobar GitHub: {exc}")
+        finally:
+            self._tell("done", None)
+
+    def _show_source(self, source: str) -> None:
+        """Carga el codigo actualizado y muestra su widget dentro de la ventana."""
+        namespace: dict[str, object] = {
+            "__name__": "futureolive_embedded",
+            "__file__": str(FUTUREOLIVE_PATH),
+        }
+        old_widgets = set(self.body.winfo_children())
+        try:
+            exec(compile(source, str(FUTUREOLIVE_PATH), "exec"), namespace)
+            render = namespace.get("render")
+            if not callable(render):
+                raise ValueError("futureolive.py debe incluir una funcion render(parent).")
+            widget = render(self.body)
+            if not isinstance(widget, tk.Widget) or widget.master is not self.body:
+                raise TypeError("render(parent) debe devolver un widget hijo de parent.")
+        except Exception:
+            for child in self.body.winfo_children():
+                if child not in old_widgets:
+                    child.destroy()
+            raise
+
+        for old in old_widgets:
+            old.destroy()
+        widget.pack(fill="both", expand=True)
+
+    def _apply(self, remote: str, version: str, commit: str) -> None:
+        previous = FUTUREOLIVE_PATH.read_text(encoding="utf-8") if FUTUREOLIVE_PATH.exists() else None
+        try:
+            atomic_write(FUTUREOLIVE_PATH, remote)
+            self._show_source(remote)
+        except Exception:
+            if previous is None:
+                FUTUREOLIVE_PATH.unlink(missing_ok=True)
+            else:
+                atomic_write(FUTUREOLIVE_PATH, previous)
+            raise
+        self._save_state(commit, remote)
+        self.status_var.set(
+            f"Actualizado a v{version} desde commit {commit[:8]}. Interfaz recargada."
+        )
+
+    def _process_events(self) -> None:
+        try:
+            while True:
+                kind, value = self.events.get_nowait()
+                try:
+                    if kind == "status":
+                        self.status_var.set(str(value))
+                    elif kind == "show":
+                        source, status = value
+                        self._show_source(source)
+                        self.status_var.set(str(status))
+                    elif kind == "apply":
+                        source, version, commit = value
+                        self._apply(source, version, commit)
+                    elif kind == "same":
+                        source, version, commit = value
+                        self._show_source(source)
+                        self._save_state(commit, source)
+                        self.status_var.set(
+                            f"Sin cambios: v{version}, commit {commit[:8]}. Interfaz recargada."
+                        )
+                    elif kind == "warning":
+                        self.status_var.set(str(value))
+                    elif kind == "error":
+                        self.status_var.set("Error: " + str(value))
+                        messagebox.showerror("FUTUREOLIVE", str(value), parent=self.root)
+                    elif kind == "done":
+                        self.busy = False
+                        self.update_button.config(state="normal", text="↻")
+                except Exception as exc:
+                    self.status_var.set("Error: " + str(exc))
+                    messagebox.showerror("FUTUREOLIVE", str(exc), parent=self.root)
+        except queue.Empty:
+            pass
+        self.root.after(100, self._process_events)
+
+
+def main() -> None:
+    root = tk.Tk()
+    FutureoLiveManager(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
