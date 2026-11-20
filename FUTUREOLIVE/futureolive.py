@@ -1,6 +1,6 @@
 """FUTUREO LIVE - Fondo MP4 4K limpio, sin marcos ni paneles.
 
-Fuente principal: assets/fondo_animado_4k.mp4 (H.264, 3840x2160).
+Fuente principal: assets/fondo_sin_marcos_4k.mp4 (H.264, 3840x2160).
 La escena usa humo luminoso azul y violeta sobre un centro despejado.
 Se reproduce continuamente sin sonido, con la ventana completamente cubierta.
 Si OpenCV o el MP4 no estan disponibles, usa el GIF del mismo fondo limpio.
@@ -24,15 +24,15 @@ try:
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 FONDO = "#050A19"
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
-VIDEO_PATH = ASSETS / "fondo_animado_4k.mp4"
-GIF_PATH = ASSETS / "fondo_animado.gif"
+VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
+GIF_PATH = ASSETS / "fondo_sin_marcos.gif"
 URL_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/assets"
-VIDEO_URL = URL_ROOT + "/fondo_animado_4k.mp4"
-GIF_URL = URL_ROOT + "/fondo_animado.gif"
+VIDEO_URL = URL_ROOT + "/fondo_sin_marcos_4k.mp4"
+GIF_URL = URL_ROOT + "/fondo_sin_marcos.gif"
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
 
