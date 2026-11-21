@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.1"
+VERSION = "2.7.2"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -751,13 +751,10 @@ class FondoFutureo(tk.Canvas):
                     raise RuntimeError("Fuente de captura no valida")
 
                 if width > 20 and height > 20:
-                    thumb = ImageOps.contain(
-                        original, (width, height), Image.Resampling.BILINEAR
-                    )
-                    frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-                    frame.paste(
-                        thumb, ((width - thumb.width) // 2,
-                                (height - thumb.height) // 2)
+                    # Rellenar TODO el espacio del marco, sin bandas laterales.
+                    # La imagen se estira al ancho y alto exactos del cuadro.
+                    frame = original.convert("RGBA").resize(
+                        (width, height), resample=Image.Resampling.BILINEAR
                     )
                     mask = Image.new("L", (width, height), 0)
                     ImageDraw.Draw(mask).rounded_rectangle(
