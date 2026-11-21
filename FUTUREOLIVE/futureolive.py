@@ -34,13 +34,13 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.3"
+VERSION = "2.12.4"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
 STREAMER_AREA_RATIO = 0.08  # Ventana del hablante ligeramente mas pequena (antes 0.10).
-STREAMER_BORDER_THINNING_PX = 2  # Adelgaza 2 px por lado el marco PNG.
+STREAMER_BORDER_THINNING_PX = 0  # Conserva intactos los brillos y detalles del nuevo logo HD.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -54,11 +54,11 @@ BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
 GIF_PATH = ASSETS / "fondo_sin_marcos.gif"
-WINDOW_PATH = ASSETS / "ventana_neon.png"
+WINDOW_PATH = ASSETS / "ventana_futureo_hd.png"
 URL_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/assets"
 VIDEO_URL = URL_ROOT + "/fondo_sin_marcos_4k.mp4"
 GIF_URL = URL_ROOT + "/fondo_sin_marcos.gif"
-WINDOW_URL = URL_ROOT + "/ventana_neon.png"
+WINDOW_URL = URL_ROOT + "/ventana_futureo_hd.png"
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
 MAX_WINDOW_BYTES = 8 * 1024 * 1024
@@ -526,10 +526,17 @@ class FondoFutureo(tk.Canvas):
 
     def _load_neon_overlay(self) -> None:
         """Abre el PNG local sin dibujar su geometria mediante codigo."""
-        if not WINDOW_OVERLAY_ENABLED or not self._alive or not WINDOW_PATH.is_file():
+        if not WINDOW_OVERLAY_ENABLED or not self._alive:
+            return
+        # En la primera carga, conservar la imagen antigua como respaldo
+        # mientras se descarga automaticamente el marco FUTUREO.
+        source_path = WINDOW_PATH
+        if not source_path.is_file():
+            source_path = ASSETS / "ventana_neon.png"
+        if not source_path.is_file():
             return
         try:
-            with Image.open(WINDOW_PATH) as source:
+            with Image.open(source_path) as source:
                 source.load()
                 if source.width < 128 or source.height < 72:
                     raise ValueError("Imagen de ventana demasiado pequena")
