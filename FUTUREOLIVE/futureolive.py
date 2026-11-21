@@ -13,6 +13,7 @@ from ctypes import wintypes
 import hashlib
 import io
 import os
+import queue
 import random
 from pathlib import Path
 import threading
@@ -33,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.0"
+VERSION = "2.7.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -296,6 +297,8 @@ class FondoFutureo(tk.Canvas):
         self._screen_source: tuple[str, int] = ("monitor", 1)
         self._screen_after: str | None = None
         self._screen_grabber = None
+        self._window_capture_queue: queue.Queue = queue.Queue(maxsize=2)
+        self._window_capture_stop = threading.Event()
         self._capture_error: str | None = None
         self._source_dialog: tk.Toplevel | None = None
         self._host_root = self.winfo_toplevel()
@@ -343,6 +346,9 @@ class FondoFutureo(tk.Canvas):
         )
         self._screen_after = self.after(150, self._screen_tick)
         if os.name == "nt":
+            threading.Thread(target=self._window_capture_worker,
+                             name="futureo-window-capture",
+                             daemon=True).start()
             threading.Thread(target=self._global_insert_listener,
                              name="futureo-insert", daemon=True).start()
 
@@ -671,6 +677,33 @@ class FondoFutureo(tk.Canvas):
         except (AttributeError, OSError, ValueError):
             pass
 
+    def _window_capture_worker(self) -> None:
+        """Captura ventanas en un hilo para evitar bloquear la interfaz Tk."""
+        while not self._window_capture_stop.is_set():
+            source = self._screen_source
+            if source[0] != "window":
+                self._window_capture_stop.wait(.2)
+                continue
+            frame = None
+            error = None
+            try:
+                frame = _capture_app_window(source[1])
+            except Exception as exc:
+                error = str(exc)
+            packet = (source, frame, error)
+            try:
+                self._window_capture_queue.put_nowait(packet)
+            except queue.Full:
+                try:
+                    self._window_capture_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self._window_capture_queue.put_nowait(packet)
+                except queue.Full:
+                    pass
+            self._window_capture_stop.wait(1 / SCREEN_CAPTURE_FPS)
+
     def _screen_tick(self) -> None:
         """Visualiza pantalla o ventana real bajo el marco neon, sin controles."""
         self._screen_after = None
@@ -692,8 +725,18 @@ class FondoFutureo(tk.Canvas):
                 width, height = bw - inset * 2, bh - inset * 2
                 kind, index = self._screen_source
                 if kind == "window":
-                    # Captura verdadera por HWND; otra ventana encima no la tapa.
-                    original = _capture_app_window(index)
+                    # Recuperar solo el ultimo fotograma producido en otro hilo.
+                    latest = None
+                    try:
+                        while True:
+                            latest = self._window_capture_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    if latest is None or latest[0] != self._screen_source:
+                        return
+                    _source, original, window_error = latest
+                    if window_error is not None:
+                        raise RuntimeError(window_error)
                 elif kind == "monitor":
                     if grabber is None:
                         raise RuntimeError(
@@ -1114,6 +1157,7 @@ class FondoFutureo(tk.Canvas):
         if event.widget is not self:
             return
         self._alive = False
+        self._window_capture_stop.set()
         self._global_insert_stop.set()
         if self._global_insert_thread_id:
             try:
