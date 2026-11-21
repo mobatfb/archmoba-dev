@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.0 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.1 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -300,7 +300,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.0",
+            "User-Agent": "FutureoMensajes/1.2.1",
         },
         method="GET",
     )
@@ -348,7 +348,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -1015,7 +1015,7 @@ class FutureoMessagesApp:
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Panel FUTUREO de mensajes con 10 transiciones y 200 frases automáticas.")
+    parser = argparse.ArgumentParser(description="Panel FUTUREO de mensajes con 10 transiciones y 500 frases automáticas.")
     parser.add_argument("--config", type=Path, default=None,
                         help="Ruta opcional del archivo de configuración (normalmente no hace falta).")
     args = parser.parse_args()
