@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.2 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.3 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -301,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.2",
+            "User-Agent": "FutureoMensajes/1.2.3",
         },
         method="GET",
     )
@@ -349,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -488,7 +488,7 @@ class MessageBanner(tk.Canvas):
         left, top, right, bottom = self.content_rect()
         available_w = max(40, right - left - 24)
         available_h = max(20, bottom - top - 10)
-        lo, hi = 2, min(92, int(available_h * 0.69))
+        lo, hi = 2, min(58, int(available_h * 0.48))
         best = (2, self._wrap(text, self._font(2), available_w))
         while lo <= hi:
             mid = (lo + hi) // 2
@@ -694,8 +694,8 @@ class FutureoMessagesApp:
         self.last_origin = "initial"
         self.sent_count = 0
         root.title(f"FUTUREO · Mensajes {APP_VERSION}")
-        root.geometry("1020x315")
-        root.minsize(800, 255)
+        root.geometry("780x245")
+        root.minsize(690, 215)
         root.configure(bg="#070c1c")
         root.attributes("-topmost", True)  # Mantener esta ventana delante de las demás.
         root.rowconfigure(0, weight=1)
@@ -707,7 +707,7 @@ class FutureoMessagesApp:
         self.interval_var = tk.StringVar(root, value=str(self.interval_seconds))
         self.auto_var = tk.BooleanVar(root, value=False)
         self.banner = MessageBanner(root)
-        self.banner.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 8))
+        self.banner.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 5))
         self._build_controls()
         self.input_var.trace_add("write", self._input_changed)
         self.limit_var.trace_add("write", self._limit_changed)
@@ -718,10 +718,10 @@ class FutureoMessagesApp:
         self._start_message_load()
 
     def _build_controls(self):
-        panel = tk.Frame(self.root, bg="#0c1428", padx=17, pady=12)
+        panel = tk.Frame(self.root, bg="#0c1428", padx=10, pady=7)
         panel.grid(row=1, column=0, sticky="ew")
         panel.columnconfigure(0, weight=1)
-        label_options = dict(bg="#0c1428", fg="#9daecd", font=(self.ui_family, 9))
+        label_options = dict(bg="#0c1428", fg="#9daecd", font=(self.ui_family, 8))
         tk.Label(panel, text="MENSAJE", **label_options).grid(row=0, column=0, sticky="w", pady=(0, 5))
         tk.Label(panel, text="LÍMITE", **label_options).grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 5))
         tk.Label(panel, text="SEGUNDOS", **label_options).grid(row=0, column=2, sticky="w", padx=(12, 0), pady=(0, 5))
@@ -729,8 +729,8 @@ class FutureoMessagesApp:
                               insertbackground="#38c9ff", selectbackground="#244e7d",
                               selectforeground="#ffffff", relief="flat", highlightthickness=1,
                               highlightbackground="#233754", highlightcolor="#37bfff",
-                              font=(self.ui_family, 12))
-        self.entry.grid(row=1, column=0, sticky="ew", ipady=9)
+                              font=(self.ui_family, 10))
+        self.entry.grid(row=1, column=0, sticky="ew", ipady=5)
         self.entry.bind("<Return>", self.send_manual)
         self.entry.bind("<KP_Enter>", self.send_manual)
         self.entry.bind("<Control-a>", self._select_all)
@@ -742,8 +742,8 @@ class FutureoMessagesApp:
                                     bg="#101d36", fg="#e7f3ff", buttonbackground="#253a58",
                                     insertbackground="#ffffff", relief="flat", highlightthickness=1,
                                     highlightbackground="#233754", highlightcolor="#37bfff",
-                                    font=(self.ui_family, 12, "bold"))
-        self.limit_spin.grid(row=1, column=1, sticky="ns", padx=(12, 0), ipady=7)
+                                    font=(self.ui_family, 10, "bold"))
+        self.limit_spin.grid(row=1, column=1, sticky="ns", padx=(8, 0), ipady=4)
         self.limit_spin.bind("<FocusOut>", self._commit_limit)
         self.limit_spin.bind("<Return>", self._commit_limit)
         self.limit_spin.bind("<KP_Enter>", self._commit_limit)
@@ -755,8 +755,8 @@ class FutureoMessagesApp:
                                        bg="#101d36", fg="#e7f3ff", buttonbackground="#253a58",
                                        insertbackground="#ffffff", relief="flat", highlightthickness=1,
                                        highlightbackground="#233754", highlightcolor="#37bfff",
-                                       font=(self.ui_family, 12, "bold"))
-        self.interval_spin.grid(row=1, column=2, sticky="ns", padx=(12, 0), ipady=7)
+                                       font=(self.ui_family, 10, "bold"))
+        self.interval_spin.grid(row=1, column=2, sticky="ns", padx=(8, 0), ipady=4)
         self.interval_spin.bind("<FocusOut>", self._commit_interval)
         self.interval_spin.bind("<Return>", self._commit_interval)
         self.interval_spin.bind("<KP_Enter>", self._commit_interval)
@@ -766,12 +766,12 @@ class FutureoMessagesApp:
                                         command=self._toggle_auto, bg="#0c1428", fg="#dbe8ff",
                                         activebackground="#0c1428", activeforeground="#47d3ff",
                                         selectcolor="#173153", highlightthickness=0,
-                                        font=(self.ui_family, 11), cursor="hand2", state="disabled")
-        self.auto_check.grid(row=1, column=3, padx=(15, 11))
+                                        font=(self.ui_family, 10), cursor="hand2", state="disabled")
+        self.auto_check.grid(row=1, column=3, padx=(8, 6))
         self.send_button = tk.Button(panel, text="ENVIAR  ↵", command=self.send_manual,
                                      bg="#24bfff", fg="#041526", activebackground="#58d1ff",
                                      activeforeground="#041526", relief="flat", borderwidth=0,
-                                     font=(self.ui_family, 11, "bold"), padx=18, pady=10,
+                                     font=(self.ui_family, 10, "bold"), padx=10, pady=6,
                                      cursor="hand2")
         self.send_button.grid(row=1, column=4, sticky="ns")
         self.counter = tk.Label(panel, text="", **label_options)
