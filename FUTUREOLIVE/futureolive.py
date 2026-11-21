@@ -21,7 +21,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from urllib.request import Request, urlopen
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps, ImageTk
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageGrab, ImageOps, ImageTk
 
 try:
     import cv2
@@ -33,7 +33,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.6.2"
+VERSION = "2.6.3"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -75,37 +75,79 @@ def _win_rect(hwnd: int) -> dict | None:
     if not user.GetWindowRect(hwnd, ctypes.byref(rect)):
         return None
     w, h = rect.right - rect.left, rect.bottom - rect.top
-    if w < 120 or h < 80:
+    if w < 80 or h < 60:
         return None
     return {"left": rect.left, "top": rect.top, "width": w, "height": h}
 
 
 def _win_list() -> list[tuple[int, str]]:
-    """Ventanas que puede compartir el usuario."""
+    """Lista ventanas visibles con titulo real, excluyendo FUTUREO."""
     if os.name != "nt":
         return []
-    user = ctypes.windll.user32
-    cb = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    user.EnumWindows.argtypes = [cb, wintypes.LPARAM]
+    user = ctypes.WinDLL("user32", use_last_error=True)
+    cbtype = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user.EnumWindows.argtypes = [cbtype, wintypes.LPARAM]
     user.EnumWindows.restype = wintypes.BOOL
     user.GetWindowTextLengthW.argtypes = [wintypes.HWND]
     user.GetWindowTextLengthW.restype = ctypes.c_int
     user.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
-    result = []
+    user.GetWindowTextW.restype = ctypes.c_int
+    user.IsWindowVisible.argtypes = [wintypes.HWND]
+    user.IsWindowVisible.restype = wintypes.BOOL
+    user.IsIconic.argtypes = [wintypes.HWND]
+    user.IsIconic.restype = wintypes.BOOL
+    found = []
 
-    @cb
+    @cbtype
     def visit(hwnd, _):
-        n = user.GetWindowTextLengthW(hwnd)
-        if n and _win_rect(hwnd):
-            buf = ctypes.create_unicode_buffer(n + 1)
-            user.GetWindowTextW(hwnd, buf, n + 1)
-            title = buf.value.strip()
-            if title and "FUTUREO LIVE" not in title.upper():
-                result.append((int(hwnd), title[:110]))
+        try:
+            if not user.IsWindowVisible(hwnd):
+                return True
+            n = user.GetWindowTextLengthW(hwnd)
+            if n < 1:
+                return True
+            buffer = ctypes.create_unicode_buffer(min(n + 1, 512))
+            user.GetWindowTextW(hwnd, buffer, len(buffer))
+            title = buffer.value.strip()
+            if not title or "FUTUREO LIVE" in title.upper():
+                return True
+            hwnd_id = int(hwnd)
+            # Mostrar minimizadas en el selector, con aviso de restaurarlas.
+            if user.IsIconic(hwnd):
+                title += " (minimizada: restaurar para capturar)"
+            elif _win_rect(hwnd_id) is None:
+                return True
+            found.append((hwnd_id, title[:160]))
+        except (OSError, ValueError, TypeError):
+            pass
         return True
 
     user.EnumWindows(visit, 0)
-    return result
+    return found
+
+
+def _capture_app_window(hwnd: int) -> Image.Image:
+    """Captura una ventana por HWND sin usar las coordenadas del monitor.
+
+    Pillow 11.2.1+ admite ImageGrab.grab(window=HWND) en Windows.
+    Algunas apps aceleradas o con contenido protegido pueden devolver negro.
+    """
+    if os.name != "nt":
+        raise RuntimeError("La captura de ventanas requiere Windows")
+    if _win_rect(hwnd) is None:
+        raise RuntimeError("La ventana esta minimizada, cerrada o no visible")
+    try:
+        result = ImageGrab.grab(window=int(hwnd))
+    except TypeError as exc:
+        raise RuntimeError(
+            "Se requiere Pillow 11.2.1 o superior. "
+            "Ejecuta: python -m pip install --upgrade Pillow"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError("Windows no pudo capturar la ventana: " + str(exc)) from exc
+    if result.width < 2 or result.height < 2:
+        raise RuntimeError("La ventana no devolvio una imagen valida")
+    return result.convert("RGB")
 
 
 class FondoFutureo(tk.Canvas):
