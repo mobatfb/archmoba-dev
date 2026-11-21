@@ -35,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.0"
+VERSION = "2.12.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -331,8 +331,16 @@ class FondoFutureo(tk.Canvas):
         self._lightning_branches: list[list[tuple[int, int]]] = []
         self._lightning_target = (0, 0)
         self._lightning_phase = -1
-        self._lightning_cached: Image.Image | None = None
-        self._lightning_cache_key = None
+        # Los rayos se calculan en un hilo de PIL; Tkinter solo muestra
+        # imagenes RGBA preparadas, sin desenfoques ni fusion de pantalla.
+        self._lightning_generation = 0
+        self._lightning_waiting = False
+        self._lightning_results: queue.Queue = queue.Queue(maxsize=2)
+        self._lightning_poll_job: str | None = None
+        self._lightning_frames: list[tuple[int, int, Image.Image]] = []
+        self._lightning_photo: ImageTk.PhotoImage | None = None
+        self._lightning_item: int | None = None
+        self._background_item: int | None = None
         self._last_frame: Image.Image | None = None
         self._job: str | None = None
         self._check_job: str | None = None
@@ -515,8 +523,18 @@ class FondoFutureo(tk.Canvas):
         if new_size == self._size:
             return
         self._size = new_size
-        self._lightning_cached = None
-        self._lightning_cache_key = None
+        # Una imagen del tamano anterior nunca debe sustituir a la actual.
+        self._lightning_generation += 1
+        self._lightning_waiting = False
+        self._lightning_frames.clear()
+        self._lightning_phase = -1
+        self._hide_lightning_overlay()
+        if self._lightning_clear_job is not None:
+            self.after_cancel(self._lightning_clear_job)
+            self._lightning_clear_job = None
+        if self._lightning_poll_job is not None:
+            self.after_cancel(self._lightning_poll_job)
+            self._lightning_poll_job = None
         if not VIDEO_BACKGROUND_ENABLED:
             self.after_idle(self._show_static_background)
         if self._neon_resize_job is not None:
@@ -910,7 +928,8 @@ class FondoFutureo(tk.Canvas):
             return
 
         now = time.monotonic()
-        dt = min(.085, max(0.0, now - self._streamer_traffic_last))
+        # No perder tiempo real cuando otro dibujo retrase un fotograma.
+        dt = min(.22, max(0.0, now - self._streamer_traffic_last))
         self._streamer_traffic_last = now
         for signal in self._streamer_signals:
             state = self._streamer_signal_state(signal["lane"], now)
@@ -1412,7 +1431,7 @@ class FondoFutureo(tk.Canvas):
         self._lightning_job = self.after(delay, self._strike_lightning)
 
     def _strike_lightning(self) -> None:
-        """Traza una descarga quebrada con ramificaciones de longitud variable."""
+        """Genera una descarga, pero NO procesa desenfoques en Tkinter."""
         self._lightning_job = None
         if not self._alive:
             return
@@ -1447,107 +1466,254 @@ class FondoFutureo(tk.Canvas):
                 fraction = j / pieces
                 bx = x + direction * length * fraction + random.gauss(0, width * .009)
                 by = y + length * fraction * random.uniform(.46, .85)
-                branch.append((int(max(0, min(width-1, bx))),
-                               int(min(height-1, by))))
+                branch.append((int(max(0, min(width - 1, bx))),
+                               int(min(height - 1, by))))
             branches.append(branch)
+
         self._lightning_path = path
         self._lightning_branches = branches
         self._lightning_target = (tx, ty)
-        self._lightning_phase = 0
-        self._lightning_cached = None
-        self._lightning_cache_key = None
-        self._refresh_last_frame()
+        self._lightning_generation += 1
+        generation = self._lightning_generation
+        self._lightning_waiting = True
+        self._lightning_phase = -1
+        self._lightning_frames.clear()
+        self._hide_lightning_overlay()
+        if self._lightning_clear_job is not None:
+            self.after_cancel(self._lightning_clear_job)
+            self._lightning_clear_job = None
+
+        # El trabajador solo recibe datos simples e imagenes PIL; no usa Tk.
+        thread = threading.Thread(
+            target=self._lightning_render_worker,
+            args=(generation, (width, height), tuple(path),
+                  tuple(tuple(branch) for branch in branches)),
+            name="futureo-lightning", daemon=True,
+        )
+        thread.start()
+        if self._lightning_poll_job is None:
+            self._lightning_poll_job = self.after(
+                30, self._check_lightning_render
+            )
         self._schedule_lightning()
-        self._lightning_clear_job = self.after(55, self._advance_lightning, 1)
+
+    @staticmethod
+    def _rasterize_lightning(
+        size: tuple[int, int], path: tuple, branches: tuple
+    ) -> list[tuple[int, int, Image.Image]]:
+        """Precalcula los cinco destellos PIL, una sola vez por descarga.
+
+        La region se recorta alrededor del rayo y ambos desenfoques se
+        ejecutan una vez, no en cada fase como antes.
+        """
+        w, h = size
+        scale = max(.5, min(w, h) / 700.0)
+        padding = int(
+            min(w, h) * .17 + 3 * max(12, int(42 * scale)) + 12
+        )
+        all_points = list(path)
+        for branch in branches:
+            all_points.extend(branch)
+        x0 = max(0, min(x for x, _ in all_points) - padding)
+        y0 = max(0, min(y for _, y in all_points) - padding)
+        x1 = min(w, max(x for x, _ in all_points) + padding + 1)
+        y1 = min(h, max(y for _, y in all_points) + padding + 1)
+        cropped = (x1 - x0, y1 - y0)
+        if cropped[0] <= 0 or cropped[1] <= 0:
+            return []
+
+        bolt = [(x - x0, y - y0) for x, y in path]
+        branches_local = [
+            [(x - x0, y - y0) for x, y in branch]
+            for branch in branches
+        ]
+        layer_paths = [bolt] + branches_local
+
+        cloud = Image.new("RGBA", cropped, (0, 0, 0, 0))
+        cloud_draw = ImageDraw.Draw(cloud, "RGBA")
+        radius = int(min(w, h) * .17)
+        for x, y in (bolt[4], bolt[len(bolt) // 2], bolt[-1]):
+            cloud_draw.ellipse(
+                (x - radius, y - radius, x + radius, y + radius),
+                fill=(45, 145, 255, 64),
+            )
+        cloud = cloud.filter(
+            ImageFilter.GaussianBlur(max(12, int(42 * scale)))
+        )
+
+        glow = Image.new("RGBA", cropped, (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow, "RGBA")
+        for points in layer_paths:
+            thickness = (12 if points is bolt else 6) * scale
+            glow_draw.line(
+                points, fill=(39, 130, 255, 195),
+                width=max(2, int(thickness)), joint="curve",
+            )
+        glow = glow.filter(
+            ImageFilter.GaussianBlur(max(3, int(12 * scale)))
+        )
+
+        core = Image.new("RGBA", cropped, (0, 0, 0, 0))
+        core_draw = ImageDraw.Draw(core, "RGBA")
+        for points in layer_paths:
+            branch = points is not bolt
+            for index in range(len(points) - 1):
+                t = index / max(1, len(points) - 1)
+                thick = max(
+                    1, int((2.8 if not branch else 1.35) * scale
+                           * (1.15 - .55 * t))
+                )
+                a, b = points[index], points[index + 1]
+                core_draw.line(
+                    (a, b), fill=(35, 156, 255, 225),
+                    width=max(2, thick + 3),
+                )
+                core_draw.line(
+                    (a, b), fill=(235, 251, 255, 255),
+                    width=thick,
+                )
+
+        base = Image.alpha_composite(
+            Image.alpha_composite(cloud, glow), core
+        )
+        alpha = base.getchannel("A")
+        rendered = []
+        for phase, intensity in enumerate((.97, .16, 1.0, .34, .11)):
+            # Se reduce la opacidad para mantener las fases originales.
+            frame = base.copy()
+            table = [min(255, int(a * intensity)) for a in range(256)]
+            frame.putalpha(alpha.point(table))
+            if phase in (0, 2):
+                flash = Image.new(
+                    "RGBA", cropped, (175, 216, 255, int(23 * intensity))
+                )
+                frame = Image.alpha_composite(flash, frame)
+            rendered.append((x0, y0, frame))
+        return rendered
+
+    def _lightning_render_worker(
+        self, generation: int, size: tuple[int, int],
+        path: tuple, branches: tuple
+    ) -> None:
+        """Hilo auxiliar: jamas invoca funciones ni widgets de Tkinter."""
+        try:
+            frames = self._rasterize_lightning(size, path, branches)
+            error = None
+        except Exception as exc:
+            frames = []
+            error = str(exc)
+        message = (generation, size, frames, error)
+        try:
+            self._lightning_results.put_nowait(message)
+        except queue.Full:
+            try:
+                self._lightning_results.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._lightning_results.put_nowait(message)
+            except queue.Full:
+                pass
+
+    def _check_lightning_render(self) -> None:
+        """Recoge PIL desde el hilo y programa el destello en Tkinter."""
+        self._lightning_poll_job = None
+        if not self._alive or not self.winfo_exists():
+            return
+        newest = None
+        try:
+            while True:
+                result = self._lightning_results.get_nowait()
+                if result[0] == self._lightning_generation:
+                    newest = result
+        except queue.Empty:
+            pass
+
+        if newest is not None:
+            generation, size, frames, error = newest
+            self._lightning_waiting = False
+            if error:
+                print("[FUTUREO] Error de rayo:", error)
+            if frames and size == self._size:
+                self._lightning_frames = frames
+                self._lightning_phase = 0
+                self._show_lightning_frame(0)
+                self._lightning_clear_job = self.after(
+                    55, self._advance_lightning, 1
+                )
+            return
+        if self._lightning_waiting:
+            self._lightning_poll_job = self.after(
+                30, self._check_lightning_render
+            )
+
+    def _hide_lightning_overlay(self) -> None:
+        """Oculta la capa del rayo sin tocar fondo, carretera ni captura."""
+        if self._lightning_item is not None:
+            self.itemconfigure(self._lightning_item, state="hidden")
+        self._lightning_photo = None
+
+    def _show_lightning_frame(self, phase: int) -> None:
+        """Actualiza solo la capa de luz; se ejecuta en el hilo Tk."""
+        if phase >= len(self._lightning_frames):
+            self._hide_lightning_overlay()
+            return
+        x, y, overlay = self._lightning_frames[phase]
+        self._lightning_photo = ImageTk.PhotoImage(overlay, master=self)
+        if self._lightning_item is None:
+            self._lightning_item = self.create_image(
+                x, y, image=self._lightning_photo, anchor="nw",
+                tags=("rayos",),
+            )
+        else:
+            self.itemconfigure(
+                self._lightning_item, image=self._lightning_photo,
+                state="normal"
+            )
+            self.coords(self._lightning_item, x, y)
+        # El rayo se ve sobre el fondo pero debajo de la captura y los coches.
+        if self._background_item is not None:
+            self.tag_raise("rayos", "fondo")
+        else:
+            self.tag_lower("rayos")
 
     def _advance_lightning(self, phase: int) -> None:
-        """Dos impulsos intensos seguidos por un resplandor que se desvanece."""
+        """Muestra los destellos previamente calculados, sin filtros caros."""
         self._lightning_clear_job = None
         if not self._alive:
             return
         self._lightning_phase = phase if phase < 5 else -1
-        self._lightning_cached = None
-        self._lightning_cache_key = None
-        self._refresh_last_frame()
+        self._show_lightning_frame(phase)
         if phase < 5:
             intervals = (55, 42, 95, 115, 125)
             self._lightning_clear_job = self.after(
                 intervals[phase], self._advance_lightning, phase + 1
             )
 
-    def _lightning_overlay(self, size: tuple[int, int]) -> Image.Image | None:
-        """Pinta brillo volumetrico y relampago antialias sobre RGBA."""
-        phase = self._lightning_phase
-        if phase < 0 or not self._lightning_path:
-            return None
-        key = (size, phase)
-        if self._lightning_cached is not None and self._lightning_cache_key == key:
-            return self._lightning_cached
-
-        w, h = size
-        scale = max(.5, min(w, h) / 700.0)
-        intensity = (.97, .16, 1.0, .34, .11)[phase]
-        core = Image.new("RGBA", size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(core, "RGBA")
-        path = self._lightning_path
-
-        # Atmosfera localizada con radios amplios y gradiente difuso.
-        cloud = Image.new("RGBA", size, (0, 0, 0, 0))
-        cd = ImageDraw.Draw(cloud, "RGBA")
-        for x, y in (path[4], path[len(path)//2], path[-1]):
-            radius = int(min(w, h) * .17)
-            cd.ellipse((x-radius, y-radius, x+radius, y+radius),
-                       fill=(45, 145, 255, int(64 * intensity)))
-        cloud = cloud.filter(ImageFilter.GaussianBlur(max(12, int(42 * scale))))
-
-        # Halo de los canales electricos; la difusion se realiza antes del nucleo.
-        glow = Image.new("RGBA", size, (0, 0, 0, 0))
-        gd = ImageDraw.Draw(glow, "RGBA")
-        for pts in [path] + self._lightning_branches:
-            thickness = (12 if pts is path else 6) * scale
-            gd.line(pts, fill=(39, 130, 255, int(195 * intensity)),
-                    width=max(2, int(thickness)), joint="curve")
-        glow = glow.filter(ImageFilter.GaussianBlur(max(3, int(12 * scale))))
-        cloud = Image.alpha_composite(cloud, glow)
-
-        # La descarga tiene un nucleo central muy fino y bordes azulados.
-        for pts in [path] + self._lightning_branches:
-            branch = pts is not path
-            for index in range(len(pts)-1):
-                t = index / max(1, len(pts)-1)
-                thick = max(1, int((2.8 if not branch else 1.35) * scale *
-                                   (1.15 - .55 * t)))
-                a, b = pts[index], pts[index+1]
-                draw.line((a,b), fill=(35, 156, 255, int(225 * intensity)),
-                          width=max(2, thick + 3))
-                draw.line((a,b), fill=(235, 251, 255, int(255 * intensity)),
-                          width=thick)
-        # Fogonazo global corto: el propio fotograma se ilumina al impactar.
-        if phase in (0, 2):
-            flash = Image.new("RGBA", size,
-                              (175, 216, 255, int(23 * intensity)))
-            cloud = Image.alpha_composite(flash, cloud)
-        overlay = Image.alpha_composite(cloud, core)
-        self._lightning_cached = overlay
-        self._lightning_cache_key = key
-        return overlay
-
     def _present(self, frame: Image.Image) -> None:
-        """Compone las luces sobre el fotograma, sin alterar el MP4 original."""
+        """Solo actualiza el fotograma base; el rayo vive en otra capa."""
         self._last_frame = frame
-        overlay = self._lightning_overlay(frame.size)
-        composed = (Image.alpha_composite(frame.convert("RGBA"), overlay)
-                    if overlay is not None else frame)
-        self._photo = ImageTk.PhotoImage(composed, master=self)
-        self.delete("fondo")
-        self.create_image(frame.width // 2, frame.height // 2,
-                          anchor="center", image=self._photo, tags="fondo")
+        self._photo = ImageTk.PhotoImage(frame, master=self)
+        if self._background_item is None:
+            self._background_item = self.create_image(
+                frame.width // 2, frame.height // 2, anchor="center",
+                image=self._photo, tags=("fondo",)
+            )
+        else:
+            self.itemconfigure(
+                self._background_item, image=self._photo, state="normal"
+            )
+            self.coords(
+                self._background_item, frame.width // 2, frame.height // 2
+            )
         self.tag_lower("fondo")
+        if self._lightning_item is not None:
+            self.tag_raise("rayos", "fondo")
 
     def _refresh_last_frame(self) -> None:
+        """Refresca el fondo solo cuando cambia, nunca por cada rayo."""
         if self._last_frame is not None and self._alive:
             self._present(self._last_frame)
-
 
     def _draw(self, image: Image.Image) -> None:
         if self._size[0] < 2 or self._size[1] < 2:
@@ -1663,12 +1829,20 @@ class FondoFutureo(tk.Canvas):
             except tk.TclError:
                 pass
             self._streamer_traffic_job = None
-        for job in (self._lightning_job, self._lightning_clear_job):
+        self._lightning_generation += 1
+        self._lightning_waiting = False
+        for job in (
+            self._lightning_job, self._lightning_clear_job,
+            self._lightning_poll_job,
+        ):
             if job is not None:
                 try:
                     self.after_cancel(job)
                 except tk.TclError:
                     pass
+        self._lightning_poll_job = None
+        self._lightning_frames.clear()
+        self._lightning_photo = None
         self._stop_playback()
         if self._check_job is not None:
             try:
