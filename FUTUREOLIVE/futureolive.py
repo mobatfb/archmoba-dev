@@ -12,6 +12,7 @@ import ctypes
 from ctypes import wintypes
 import hashlib
 import io
+import json
 import os
 import queue
 import random
@@ -19,7 +20,7 @@ from pathlib import Path
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from urllib.request import Request, urlopen
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageGrab, ImageOps, ImageTk
@@ -34,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.6"
+VERSION = "2.13.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -1354,16 +1355,587 @@ class FondoFutureo(tk.Canvas):
             self._check_job = None
 
 
+
+# TikTok LIVE mode. Lives in futureolive.py so app.py can update it as one file.
+TIKTOK_SCENE_WIDTH = 720
+TIKTOK_SCENE_HEIGHT = 1280
+TIKTOK_SCENE_SETTINGS = BASE / 'tiktok_scene_settings.json'
+TIKTOK_SLOTS = {
+    'mini': (22, 128, 495, 333),
+    'qr': (515, 135, 689, 290),
+    'game': (22, 357, 698, 753),
+    'title': (26, 771, 694, 824),
+    'chat': (22, 880, 345, 1168),
+    'speaker': (366, 880, 698, 1168),
+    'footer': (22, 1181, 698, 1256),
+}
+TIKTOK_LABELS = {
+    'mini': 'Minijuego superior', 'qr': 'QR interactivo',
+    'game': 'Juego principal', 'title': 'Nombre del juego',
+    'chat': 'Zona libre: comentarios de TikTok',
+    'speaker': 'Hablante (derecha)', 'footer': 'Barra inferior',
+}
+TIKTOK_SOURCE_LABELS = {
+    'monitor': 'Pantalla completa', 'window': 'Ventana del PC',
+    'camera': 'Camara web', 'image': 'Archivo de imagen',
+    'url': 'Codigo QR con URL', 'text': 'Texto personalizado',
+    'none': 'Vacio / transparente',
+}
+
+
+class TikTokLiveScene(tk.Canvas):
+    '''Escena vertical configurable por region, con captura y QR reales.'''
+
+    def __init__(self, parent: tk.Misc):
+        super().__init__(parent, bg='#060918', bd=0, highlightthickness=0)
+        self._active = True
+        self._geometry = (0.0, 0.0, 1.0)
+        self._frame = None
+        self._static = self._create_backdrop()
+        self._static_photo = None
+        self._slot_items = {}
+        self._slot_photos = {}
+        self._slot_overlays = {}
+        self._cached_images = {}
+        self._latest_frames = {}
+        self._update_queue = queue.Queue(maxsize=12)
+        self._guard = threading.Lock()
+        self._stop = threading.Event()
+        self._config_dialog = None
+        self._right_click_menu = None
+        self._settings = self._read_config()
+        self._tick_job = None
+        self._resize_job = None
+        self.bind('<Configure>', self._on_resize, add='+')
+        self.bind('<Button-3>', self._show_popup, add='+')
+        self.bind('<Control-Button-1>', self._show_popup, add='+')
+        self.bind('<Destroy>', self._on_destroy, add='+')
+        self._host_root = self.winfo_toplevel()
+        self._insert_handle = self._host_root.bind('<Insert>', lambda _e: self._edit_slot('game'), add='+')
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop, daemon=True, name='futureo-tiktok-capture'
+        )
+        self._capture_thread.start()
+        self._download_thread = threading.Thread(
+            target=self._fetch_speaker_image, daemon=True, name='futureo-speaker-image'
+        )
+        self._download_thread.start()
+        self._tick_job = self.after(100, self._tick)
+
+    @staticmethod
+    def _defaults():
+        return {
+            'mini': {'type': 'none', 'value': ''},
+            'qr': {'type': 'url', 'value': ''},
+            'game': {'type': 'monitor', 'value': '1'},
+            'title': {'type': 'text', 'value': 'NOMBRE DEL JUEGO...'},
+            'chat': {'type': 'none', 'value': ''},
+            'speaker': {'type': 'image', 'value': str(SPEAKER_PHOTO_PATH)},
+            'footer': {'type': 'text', 'value': 'SÍGUEME   •   DALE LIKE   •   COMPARTE'},
+        }
+
+    def _read_config(self):
+        data = self._defaults()
+        try:
+            restored = json.loads(TIKTOK_SCENE_SETTINGS.read_text(encoding='utf-8'))
+            if isinstance(restored, dict):
+                for key, cfg in restored.items():
+                    if (key in data and isinstance(cfg, dict)
+                            and cfg.get('type') in TIKTOK_SOURCE_LABELS):
+                        data[key] = {
+                            'type': cfg['type'], 'value': str(cfg.get('value', ''))[:2048]
+                        }
+        except (OSError, ValueError, TypeError):
+            pass
+        return data
+
+    def _save_config(self):
+        try:
+            tmp = TIKTOK_SCENE_SETTINGS.with_suffix('.json.tmp')
+            tmp.write_text(json.dumps(self._settings, ensure_ascii=False, indent=2),
+                           encoding='utf-8')
+            tmp.replace(TIKTOK_SCENE_SETTINGS)
+        except OSError as exc:
+            print('[FUTUREO] No se pudo guardar la configuracion:', exc)
+
+    @staticmethod
+    def _font(px, bold=False):
+        from PIL import ImageFont
+        options = (['C:/Windows/Fonts/arialbd.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf']
+                   if bold else ['C:/Windows/Fonts/arial.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'])
+        for font in options:
+            try:
+                return ImageFont.truetype(font, px)
+            except OSError:
+                pass
+        return ImageFont.load_default()
+
+    @classmethod
+    def _create_backdrop(cls):
+        '''Produce tech neon panels once in PIL; never redraw expensive effects per frame.'''
+        from PIL import Image, ImageDraw, ImageFilter
+        w, h = TIKTOK_SCENE_WIDTH, TIKTOK_SCENE_HEIGHT
+        base = Image.new('RGBA', (w, h), '#06071B')
+        pixels = ImageDraw.Draw(base)
+        for y in range(h):
+            z = y / h
+            pixels.line((0, y, w, y), fill=(int(5 + 5*z), int(10 + 4*z), int(32 + 20*z), 255))
+        # Smoky purple effects at the bottom, independent of livestream content.
+        haze = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        hz = ImageDraw.Draw(haze, 'RGBA')
+        for x,y,r,col in [(-20,1070,250,(128,24,230,120)), (650,1110,240,(80,9,222,90)),
+                          (200,1220,190,(54,18,167,70)),(440,60,200,(0,72,171,55))]:
+            hz.ellipse((x-r,y-r,x+r,y+r), fill=col)
+        haze = haze.filter(ImageFilter.GaussianBlur(84))
+        base = Image.alpha_composite(base,haze)
+        d = ImageDraw.Draw(base,'RGBA')
+        # Semi-transparent diagonal energy fragments.
+        for k in range(25):
+            y = 48 + k * 50
+            x = (k * 79) % 740 - 120
+            d.polygon([(x,y),(x+18,y),(x+90,y-90),(x+74,y-90)],
+                      fill=(16,68,132,32))
+        # Header, footer and angular frame bodies.
+        def panel(box, name, fill=(7,14,38,245), tint=(27,209,255,255)):
+            x0,y0,x1,y1=box
+            c=15
+            poly=[(x0+c,y0),(x1-c,y0),(x1,y0+c),(x1,y1-c),
+                  (x1-c,y1),(x0+c,y1),(x0,y1-c),(x0,y0+c)]
+            d.polygon(poly,fill=fill)
+            d.line(poly+[poly[0]],fill=(10,47,91,255),width=13,joint='curve')
+            d.line(poly+[poly[0]],fill=(4,102,226,255),width=7,joint='curve')
+            d.line(poly+[poly[0]],fill=tint,width=3,joint='curve')
+            for xx, yy in ((x0+32,y0+3),(x1-44,y1-3)):
+                d.line((xx,yy,xx+18,yy), fill=(210,252,255,225),width=3)
+        panel((15,11,706,105),'header', fill=(4,10,28,250),tint=(0,190,255,255))
+        panel((16,119,501,340),'mini')
+        panel((508,119,704,343),'qr', fill=(8,12,31,250),tint=(91,207,255,255))
+        panel((14,350,706,760),'game')
+        panel((17,768,703,831),'title', fill=(2,33,72,250))
+        panel((16,844,352,1175),'chat',fill=(16,8,43,220),tint=(129,50,255,255))
+        panel((359,844,704,1175),'speaker',fill=(3,16,52,255),tint=(21,226,254,255))
+        panel((15,1182,705,1265),'footer',fill=(4,12,37,250),tint=(138,60,255,255))
+        # Geometric stripes of header, title & footer.
+        for a in range(3):
+            d.polygon([(29+a*18,43),(40+a*18,43),(23+a*18,65),(12+a*18,65)],
+                      fill=(0,240,255,250))
+            d.polygon([(646+a*18,44),(657+a*18,44),(640+a*18,65),(629+a*18,65)],
+                      fill=(0,240,255,250))
+        # Logo highlights, crown, and live pill.
+        d.text((105,20),'FUTUREO',font=cls._font(49,True),fill=(23,110,220,255),stroke_width=5,stroke_fill=(1,2,12))
+        d.text((102,15),'FUTUREO',font=cls._font(49,True),fill=(238,249,255,255),stroke_width=1,stroke_fill=(42,155,255))
+        d.polygon([(268,25),(279,7),(290,22),(306,3),(319,23),(334,11),(341,36),(274,36)],
+                  fill=(245,169,6,255))
+        d.line([(271,36),(339,36)],fill=(255,249,167,255),width=5)
+        d.rounded_rectangle((472,32,603,81),radius=18,fill=(225,31,64,255),outline=(255,145,159,255),width=2)
+        d.text((490,39),'● LIVE',font=cls._font(28,True),fill='white')
+        d.text((527,307),'ESCANEA Y JUEGA',font=cls._font(15,True),fill=(219,250,255,255))
+        d.text((35,777),'◀',font=cls._font(27,True),fill=(37,216,255,255))
+        d.text((662,777),'▶',font=cls._font(27,True),fill=(37,216,255,255))
+        d.text((35,854),'CHAT DE TIKTOK',font=cls._font(17,True),fill=(132,154,210,225))
+        d.text((367,854),'HABLANTE',font=cls._font(17,True),fill=(91,232,255,230))
+        d.text((28,1205),'TikTok',font=cls._font(31,True),fill=(250,250,255,255))
+        d.rounded_rectangle((147,1210,221,1244),radius=7,fill=(224,24,66,255))
+        d.text((158,1214),'LIVE',font=cls._font(20,True),fill='white')
+        # Focus bars above content, subtle accents.
+        d.line((20,348,700,348),fill=(91,13,239,245),width=2)
+        d.line((20,844,702,844),fill=(20,180,246,255),width=3)
+        return base
+
+    def _scene_rect(self, key):
+        x0,y0,x1,y1 = TIKTOK_SLOTS[key]
+        ox,oy,s = self._geometry
+        return (round(ox+x0*s),round(oy+y0*s),round(ox+x1*s),round(oy+y1*s))
+
+    def _on_resize(self, event):
+        if not self._active or event.width < 100 or event.height < 100:
+            return
+        if self._resize_job is not None:
+            self.after_cancel(self._resize_job)
+        self._resize_job = self.after(100, self._layout)
+
+    def _layout(self):
+        self._resize_job = None
+        if not self._active:
+            return
+        w, h = self.winfo_width(), self.winfo_height()
+        factor = min(w/TIKTOK_SCENE_WIDTH, h/TIKTOK_SCENE_HEIGHT)
+        left = (w - factor*TIKTOK_SCENE_WIDTH)/2
+        top = (h - factor*TIKTOK_SCENE_HEIGHT)/2
+        if factor <= 0: return
+        self._geometry = (left, top, factor)
+        self.delete('tiktok_stage')
+        self._slot_items.clear()
+        self._slot_overlays.clear()
+        self._slot_photos.clear()
+        ww = max(1, round(TIKTOK_SCENE_WIDTH*factor))
+        hh = max(1, round(TIKTOK_SCENE_HEIGHT*factor))
+        bg = self._static.resize((ww,hh),Image.Resampling.LANCZOS)
+        self._static_photo = ImageTk.PhotoImage(bg, master=self)
+        self.create_image(left,top,image=self._static_photo,anchor='nw',tags=('tiktok_stage','tiktok_base'))
+        for key in TIKTOK_SLOTS:
+            self._render_slot(key)
+
+    def _render_slot(self,key):
+        if not self._active: return
+        cfg = self._settings.get(key,{'type':'none','value':''})
+        source, value = cfg['type'],cfg['value']
+        if key in ('title','footer'):
+            self._draw_slot_text(key, value if source=='text' else '')
+            return
+        if source=='text':
+            self._draw_slot_text(key,value)
+            return
+        if source=='none' or (source=='url' and not value):
+            if key!='chat':
+                message = ('CLIC DERECHO PARA CONFIGURAR' if key!='qr'
+                           else 'CONFIGURA UNA URL CON CLIC DERECHO')
+                self._draw_slot_text(key,message,dim=True)
+            return
+        if source=='image':
+            path = Path(value).expanduser()
+            if path.is_file():
+                try:
+                    cached = self._cached_images.get(str(path))
+                    if cached is None:
+                        with Image.open(path) as im:
+                            cached=im.convert('RGB').copy()
+                        self._cached_images[str(path)]=cached
+                    self._set_slot_image(key,cached)
+                except (OSError,ValueError):
+                    self._draw_slot_text(key,'IMAGEN NO DISPONIBLE',dim=True)
+            else:
+                self._draw_slot_text(key,'DESCARGANDO IMAGEN...' if key=='speaker' else 'IMAGEN NO ENCONTRADA',dim=True)
+        elif source=='url':
+            self._set_qr(key,value)
+        elif source in ('monitor','window','camera'):
+            image = self._latest_frames.get(key)
+            if image is not None:
+                self._set_slot_image(key,image)
+            else:
+                self._draw_slot_text(key,'ESPERANDO FUENTE...',dim=True)
+
+    def _draw_slot_text(self,key,value,dim=False):
+        if key in self._slot_overlays:
+            self.delete(self._slot_overlays[key])
+        x0,y0,x1,y1=self._scene_rect(key)
+        fs = max(9, min(30, round(26*self._geometry[2])))
+        if key=='footer':
+            self._slot_overlays[key]=self.create_text(
+                x0+round(230*self._geometry[2]),(y0+y1)/2,
+                anchor='w',text=value or '',fill='#EAFBFF',
+                font=('Arial',max(8,round(15*self._geometry[2])),'bold'),
+                width=max(50,x1-x0-round(245*self._geometry[2])),
+                tags=('tiktok_stage','slot_text'),
+            )
+            return
+        if key=='chat' and not value: return
+        self._slot_overlays[key]=self.create_text(
+            (x0+x1)/2,(y0+y1)/2,text=value,
+            fill=('#6E9FBA' if dim else '#EAFBFF'),
+            font=('Arial',max(9,fs if key=='title' else round(fs*.55)),'bold'),
+            width=max(30,x1-x0-22),justify='center',
+            tags=('tiktok_stage','slot_text'),
+        )
+
+    def _set_slot_image(self,key,img):
+        x0,y0,x1,y1=self._scene_rect(key)
+        border=max(2,round(5*self._geometry[2]))
+        if key=='qr':
+            border=max(2,round(6*self._geometry[2]))
+        px,py=x0+border,y0+border
+        w,h=max(1,x1-x0-2*border),max(1,y1-y0-2*border)
+        if key=='qr':
+            img=ImageOps.contain(img,(w,h),Image.Resampling.NEAREST)
+        elif key=='speaker':
+            # Keep all the branding visible in the portrait, not a hard crop.
+            img=ImageOps.contain(img,(w,h),Image.Resampling.LANCZOS)
+        else:
+            img=ImageOps.fit(img,(w,h),method=Image.Resampling.BILINEAR)
+        photo=ImageTk.PhotoImage(img,master=self)
+        self._slot_photos[key]=photo
+        if key not in self._slot_items:
+            self._slot_items[key]=self.create_image(
+                px+(w-img.width)//2,py+(h-img.height)//2,
+                image=photo,anchor='nw',tags=('tiktok_stage','slot_image'),
+            )
+        else:
+            self.itemconfigure(self._slot_items[key],image=photo,state='normal')
+            self.coords(self._slot_items[key],px+(w-img.width)//2,py+(h-img.height)//2)
+        if key in self._slot_overlays:
+            self.delete(self._slot_overlays.pop(key))
+
+    def _set_qr(self,key,value):
+        if not (value.startswith('https://') or value.startswith('http://')):
+            self._draw_slot_text(key,'URL DEBE COMENZAR CON HTTPS://',dim=True)
+            return
+        try:
+            import qrcode
+            code=qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
+                               border=2,box_size=6)
+            code.add_data(value)
+            code.make(fit=True)
+            img=code.make_image(fill_color='black',back_color='white').convert('RGB')
+            self._set_slot_image(key,img)
+        except (ImportError,ValueError,RuntimeError) as exc:
+            self._draw_slot_text(key,'QR NO DISPONIBLE: '+str(exc)[:80],dim=True)
+
+    def _capture_loop(self):
+        '''Grab multiple sources on a worker. Never invokes Tk APIs.'''
+        cameras={}
+        last_error=None
+        last_report=0.0
+        try:
+            while not self._stop.is_set():
+                with self._guard:
+                    current={key:dict(cfg) for key,cfg in self._settings.items()}
+                sources={k:cfg for k,cfg in current.items()
+                         if cfg['type'] in ('monitor','window','camera')}
+                if not sources:
+                    self._stop.wait(.4)
+                    continue
+                try:
+                    for key,cfg in sources.items():
+                        if self._stop.is_set():break
+                        typ,val=cfg['type'],cfg['value']
+                        img=None
+                        if typ=='monitor' and mss is not None:
+                            with mss.mss() as grabber:
+                                monitors=grabber.monitors
+                                number=int(val or 1)
+                                if 0 < number < len(monitors):
+                                    shot=grabber.grab(dict(monitors[number]))
+                                    img=Image.frombytes('RGB',shot.size,shot.rgb)
+                        elif typ=='window' and os.name=='nt':
+                            img=_capture_app_window(int(val))
+                        elif typ=='camera' and cv2 is not None:
+                            number=int(val or 0)
+                            if number not in cameras:
+                                cameras[number]=cv2.VideoCapture(number)
+                            ok,frame=cameras[number].read()
+                            if ok:
+                                img=Image.fromarray(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB))
+                        if img is not None:
+                            rect=TIKTOK_SLOTS[key]
+                            iw,ih=rect[2]-rect[0],rect[3]-rect[1]
+                            img=ImageOps.fit(img,(iw,ih),method=Image.Resampling.BILINEAR)
+                            if self._update_queue.full():
+                                try:self._update_queue.get_nowait()
+                                except queue.Empty:pass
+                            self._update_queue.put_nowait((key,typ,val,img))
+                except (OSError,ValueError,RuntimeError,AttributeError,IndexError) as exc:
+                    if str(exc)!=last_error or time.monotonic()-last_report>20:
+                        print('[FUTUREO] Fuente de TikTok:',exc)
+                        last_error=str(exc)
+                        last_report=time.monotonic()
+                self._stop.wait(.10)
+        finally:
+            for stream in cameras.values():
+                try:stream.release()
+                except Exception:pass
+
+    def _fetch_speaker_image(self):
+        if SPEAKER_PHOTO_PATH.exists(): return
+        try:
+            request=Request(SPEAKER_PHOTO_URL,headers={'User-Agent':'FUTUREO-LIVE/2.13'})
+            with urlopen(request,timeout=12) as resp:
+                data=resp.read(MAX_SPEAKER_PHOTO_BYTES+1)
+            if not (4<len(data)<=MAX_SPEAKER_PHOTO_BYTES and data[:2]==b'\xff\xd8'
+                    and data[-2:]==b'\xff\xd9'): return
+            ASSETS.mkdir(parents=True,exist_ok=True)
+            tmp=SPEAKER_PHOTO_PATH.with_suffix('.jpg.tmp')
+            tmp.write_bytes(data)
+            os.replace(tmp,SPEAKER_PHOTO_PATH)
+        except (OSError,ValueError,TimeoutError):pass
+
+    def _tick(self):
+        if not self._active:return
+        changed=set()
+        try:
+            while True:
+                key,typ,val,img=self._update_queue.get_nowait()
+                with self._guard:
+                    cfg=self._settings.get(key,{})
+                    current=(cfg.get('type'),cfg.get('value'))
+                if current==(typ,val):
+                    self._latest_frames[key]=img
+                    changed.add(key)
+        except queue.Empty:pass
+        for key in changed:
+            self._set_slot_image(key,self._latest_frames[key])
+        if self._settings['speaker']['type']=='image' and 'speaker' not in self._slot_items:
+            if SPEAKER_PHOTO_PATH.is_file():
+                self._render_slot('speaker')
+        self._tick_job=self.after(100,self._tick)
+
+    def _zone_at(self,x,y):
+        ox,oy,s=self._geometry
+        if s<=0:return 'game'
+        px,py=(x-ox)/s,(y-oy)/s
+        for key,(a,b,c,d) in TIKTOK_SLOTS.items():
+            if a<=px<=c and b<=py<=d:return key
+        return 'game'
+
+    def _show_popup(self,event):
+        key=self._zone_at(event.x,event.y)
+        m=tk.Menu(self,tearoff=0,bg='#10162F',fg='white',activebackground='#13548B',activeforeground='white')
+        m.add_command(label='Zona: '+TIKTOK_LABELS[key],state='disabled')
+        m.add_separator()
+        m.add_command(label='Configurar esta zona...',command=lambda k=key:self._edit_slot(k))
+        m.add_command(label='Elegir una imagen...',command=lambda k=key:self._select_image(k))
+        m.add_command(label='Dejar esta zona vacia',command=lambda k=key:self._save_slot(k,'none',''))
+        zones=tk.Menu(m,tearoff=0)
+        for zone,label in TIKTOK_LABELS.items():
+            zones.add_command(label=label,command=lambda k=zone:self._edit_slot(k))
+        m.add_cascade(label='Configurar otra zona',menu=zones)
+        m.add_separator()
+        m.add_command(label='Ayuda: las selecciones se guardan automaticamente',state='disabled')
+        try:m.tk_popup(event.x_root,event.y_root)
+        finally:m.grab_release()
+        return 'break'
+
+    def _select_image(self,key):
+        path=filedialog.askopenfilename(parent=self.winfo_toplevel(),
+             title='Imagen para '+TIKTOK_LABELS[key],
+             filetypes=[('Imagenes','*.png *.jpg *.jpeg *.webp *.gif *.bmp'),('Todos','*.*')])
+        if path:self._save_slot(key,'image',path)
+
+    def _save_slot(self,key,typ,value):
+        value=str(value).strip()
+        if typ=='url' and value and not value.lower().startswith(('https://','http://')):
+            messagebox.showwarning('FUTUREO','Introduce una URL completa https://...',parent=self.winfo_toplevel())
+            return
+        with self._guard:
+            self._settings[key]={'type':typ,'value':value}
+            self._latest_frames.pop(key,None)
+        self._save_config()
+        self._cached_images.clear()
+        if self._resize_job is not None:
+            self.after_cancel(self._resize_job)
+        self._resize_job=self.after(70,self._layout)
+
+    def _edit_slot(self,key):
+        '''Right-click configuration: each region chooses its own source.'''
+        top=tk.Toplevel(self)
+        top.title('FUTUREO LIVE - '+TIKTOK_LABELS[key])
+        top.configure(bg='#0A1327')
+        top.geometry('520x290')
+        top.resizable(False,False)
+        top.transient(self.winfo_toplevel())
+        top.grab_set()
+        for i in range(3):top.grid_columnconfigure(i,weight=1 if i==1 else 0)
+        label_fg='#D9F6FF'
+        tk.Label(top,text='CONFIGURAR CONTENIDO DE LA ZONA',bg='#0A1327',fg='#42D8FF',
+                 font=('Arial',13,'bold')).grid(row=0,column=0,columnspan=3,pady=12,padx=14,sticky='w')
+        tk.Label(top,text='Zona:',bg='#0A1327',fg=label_fg).grid(row=1,column=0,padx=15,pady=8,sticky='e')
+        zone_var=tk.StringVar(value=TIKTOK_LABELS[key])
+        zones={label:zone for zone,label in TIKTOK_LABELS.items()}
+        zone_box=ttk.Combobox(top,textvariable=zone_var,state='readonly',values=list(zones),width=35)
+        zone_box.grid(row=1,column=1,columnspan=2,sticky='ew',padx=15)
+        tk.Label(top,text='Mostrar:',bg='#0A1327',fg=label_fg).grid(row=2,column=0,padx=15,pady=8,sticky='e')
+        back={v:k for k,v in TIKTOK_SOURCE_LABELS.items()}
+        typ_var=tk.StringVar(value=TIKTOK_SOURCE_LABELS.get(self._settings[key]['type'],'Vacio / transparente'))
+        type_box=ttk.Combobox(top,textvariable=typ_var,state='readonly',values=list(back),width=35)
+        type_box.grid(row=2,column=1,columnspan=2,sticky='ew',padx=15)
+        tk.Label(top,text='Fuente/valor:',bg='#0A1327',fg=label_fg).grid(row=3,column=0,padx=15,pady=8,sticky='e')
+        value_var=tk.StringVar(value=self._settings[key]['value'])
+        value_box=ttk.Combobox(top,textvariable=value_var,width=35)
+        value_box.grid(row=3,column=1,sticky='ew',padx=(15,4))
+        browse=tk.Button(top,text='Examinar',command=lambda:self._browse_for_dialog(value_var),
+                          bg='#134A79',fg='white',relief='flat')
+        browse.grid(row=3,column=2,padx=(0,15),sticky='ew')
+        help_var=tk.StringVar()
+        tk.Label(top,textvariable=help_var,bg='#0A1327',fg='#8AA9C6',justify='left',
+                 wraplength=460).grid(row=4,column=0,columnspan=3,pady=13,padx=16,sticky='w')
+        def source_changed(*_):
+            typ=back.get(typ_var.get(),'none')
+            if typ=='monitor':
+                names=['1']
+                if mss is not None:
+                    try:
+                        with mss.mss() as grab:
+                            names=[str(i) for i in range(1,len(grab.monitors))] or ['1']
+                    except (OSError,ValueError):pass
+                value_box.configure(values=names)
+                help_var.set('Selecciona el monitor. 1 es la pantalla principal.')
+            elif typ=='window':
+                found=_win_list()
+                mappings={f'{title}  [HWND:{hwnd}]':str(hwnd) for hwnd,title in found}
+                value_box.configure(values=list(mappings))
+                help_var.set('Elige una ventana abierta; el programa la capturara en vivo.')
+                value_box._window_map=mappings
+            elif typ=='camera':
+                value_box.configure(values=['0','1','2','3'])
+                help_var.set('Indice de camara. 0 suele ser la camara integrada.')
+            elif typ=='image':
+                value_box.configure(values=[])
+                help_var.set('Archivo PNG, JPG o WEBP. Usa Examinar.')
+            elif typ=='url':
+                value_box.configure(values=[])
+                help_var.set('URL real del sitio que abriran quienes escaneen el QR.')
+            elif typ=='text':
+                value_box.configure(values=[])
+                help_var.set('Escribe el texto que aparecera en esta zona.')
+            else:
+                value_box.configure(values=[])
+                help_var.set('Deja espacio libre para los comentarios reales de TikTok.')
+            if typ!=self._settings[zones.get(zone_var.get(),key)]['type']:
+                value_var.set('')
+        def zone_changed(*_):
+            z=zones.get(zone_var.get(),key)
+            c=self._settings[z]
+            typ_var.set(TIKTOK_SOURCE_LABELS.get(c['type'],TIKTOK_SOURCE_LABELS['none']))
+            value_var.set(c['value'])
+        zone_box.bind('<<ComboboxSelected>>',zone_changed)
+        type_box.bind('<<ComboboxSelected>>',source_changed)
+        source_changed()
+        def apply():
+            z=zones.get(zone_var.get(),key)
+            typ=back.get(typ_var.get(),'none')
+            val=value_var.get()
+            if typ=='window':
+                val=getattr(value_box,'_window_map',{}).get(val,val)
+                if not str(val).isdigit():
+                    messagebox.showwarning('FUTUREO','Selecciona una ventana valida.',parent=top)
+                    return
+            if typ in ('monitor','camera') and not str(val).isdigit():
+                messagebox.showwarning('FUTUREO','Selecciona un numero de pantalla/camara.',parent=top)
+                return
+            self._save_slot(z,typ,val)
+            top.destroy()
+        tk.Button(top,text='GUARDAR ZONA',command=apply,bg='#0587C4',fg='white',
+                  relief='flat',font=('Arial',10,'bold')).grid(row=5,column=1,padx=15,pady=12,sticky='ew')
+        tk.Button(top,text='CANCELAR',command=top.destroy,bg='#202945',fg='white',
+                  relief='flat').grid(row=5,column=2,padx=(0,15),sticky='ew')
+
+    def _browse_for_dialog(self,value_var):
+        path=filedialog.askopenfilename(parent=self.winfo_toplevel(),
+             title='Escoge una imagen',filetypes=[('Imagenes','*.png *.jpg *.jpeg *.webp *.gif *.bmp'),('Todos','*.*')])
+        if path:value_var.set(path)
+
+    def _on_destroy(self,event):
+        if event.widget is not self:return
+        self._active=False
+        self._stop.set()
+        for job in (self._tick_job,self._resize_job):
+            if job is not None:
+                try:self.after_cancel(job)
+                except tk.TclError:pass
+        if self._insert_handle:
+            try:self._host_root.unbind('<Insert>',self._insert_handle)
+            except tk.TclError:pass
+
+
 def render(parent: tk.Misc) -> tk.Widget:
     """Entrada compatible con el lanzador app.py del repositorio."""
-    return FondoFutureo(parent)
+    return TikTokLiveScene(parent)
 
 
 def main() -> None:
     root = tk.Tk()
     root.title("FUTUREO LIVE")
-    root.geometry("1366x768")
-    root.minsize(800, 450)
+    root.geometry("620x1050")
+    root.minsize(450, 720)
     root.configure(bg=FONDO)
     root.bind(
         "<F11>",
