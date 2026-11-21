@@ -35,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.10.1"
+VERSION = "2.11.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -43,8 +43,10 @@ STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
 STREAMER_SIDE_RATIO = 0.27  # Altura del marco en proporcion al lienzo.
 STREAMER_ASPECT_RATIO = 1.35  # Rectangulo 12.5% mas ancho que en v2.8.3.
 STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
-STREAMER_LIGHT_COUNT = 6  # Destellos independientes recorriendo el perimetro.
-STREAMER_LIGHT_FPS = 24  # Animacion suave sin saturar Tkinter.
+STREAMER_CARS_PER_LANE = 5  # Coches circulan en ambos sentidos.
+STREAMER_TRAFFIC_FPS = 24  # Movimiento suave y semaforos dinamicos.
+STREAMER_LANE_SPACING = 14  # Dos carriles paralelos con linea central.
+STREAMER_FOLLOW_DISTANCE = 23  # Separacion minima entre vehiculos.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -295,11 +297,12 @@ class FondoFutureo(tk.Canvas):
         # Id de los trazos del cuadrado neon dibujado en el Canvas.
         self._neon_item: int | None = None
         self._neon_resize_job: str | None = None
-        self._streamer_light_job: str | None = None
-        self._streamer_light_last = 0.0
-        self._streamer_segments: list[tuple[float, float, float, float, float]] = []
-        self._streamer_perimeter = 0.0
-        self._streamer_lights: list[dict] = []
+        self._streamer_traffic_job: str | None = None
+        self._streamer_traffic_last = 0.0
+        self._streamer_signal_epoch = time.monotonic()
+        self._streamer_paths: list[dict] = []
+        self._streamer_cars: list[dict] = []
+        self._streamer_signals: list[dict] = []
         self._border_photo: ImageTk.PhotoImage | None = None
         self._border_item: int | None = None
         self._border_resize_job: str | None = None
@@ -524,19 +527,18 @@ class FondoFutureo(tk.Canvas):
             self._border_resize_job = self.after(90, self._draw_neon_border)
 
     def _draw_neon_window(self) -> None:
-        """Dibuja un marco neon ligeramente rectangular, sin PNG."""
+        """Carretera neon de dos carriles; ida y vuelta, con semaforos."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
             return
 
-        # Al redimensionar, cancelar la animacion y reconstruir el perimetro.
-        if self._streamer_light_job is not None:
-            self.after_cancel(self._streamer_light_job)
-            self._streamer_light_job = None
+        if self._streamer_traffic_job is not None:
+            self.after_cancel(self._streamer_traffic_job)
+            self._streamer_traffic_job = None
         self.delete("ventana_neon")
-        self._streamer_lights.clear()
-        self._streamer_segments.clear()
-        self._streamer_perimeter = 0.0
+        self._streamer_paths.clear()
+        self._streamer_cars.clear()
+        self._streamer_signals.clear()
         self._neon_item = None
         if not STREAMER_NEON_ENABLED:
             return
@@ -545,31 +547,21 @@ class FondoFutureo(tk.Canvas):
         if width < 160 or height < 120:
             return
 
-        # Mantener la altura previa y ampliar un poco mas el ancho (ratio 1.35).
-        # Los limites impiden cortar el marco cuando la ventana es pequena.
         frame_h = max(110, int(min(width, height) * STREAMER_SIDE_RATIO))
         frame_h = min(
-            frame_h,
-            height - 2 * STREAMER_MARGIN_PX - 8,
+            frame_h, height - 2 * STREAMER_MARGIN_PX - 8,
             int((width - 2 * STREAMER_MARGIN_PX - 8) / STREAMER_ASPECT_RATIO),
         )
         if frame_h < 60:
             return
         frame_w = int(round(frame_h * STREAMER_ASPECT_RATIO))
 
-        # Un margen real de 5 px incluye el halo externo.
-        x0 = STREAMER_MARGIN_PX + 4
-        y0 = STREAMER_MARGIN_PX + 4
-        x1 = x0 + frame_w - 8
-        y1 = y0 + frame_h - 8
-
-        # Esquinas CUADRADAS achaflanadas, como la referencia:
-        # cada punta tiene un corte recto diagonal de 45 grados, nunca arcos.
+        x0, y0 = STREAMER_MARGIN_PX + 4, STREAMER_MARGIN_PX + 4
+        x1, y1 = x0 + frame_w - 8, y0 + frame_h - 8
         bevel = max(7, min(18, int(min(frame_w, frame_h) * .10)))
 
         def polygon_points(inset: int = 0) -> tuple[int, ...]:
-            left, top = x0 + inset, y0 + inset
-            right, bottom = x1 - inset, y1 - inset
+            left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
             cut = min(max(3, bevel - inset),
                       (right - left) // 3, (bottom - top) // 3)
             return (
@@ -580,148 +572,266 @@ class FondoFutureo(tk.Canvas):
                 left + cut, top,
             )
 
-        # El mismo contorno poligonal se repite para el halo y el trazo fino.
-        # Tkinter dibuja lineas rectas: no se usan arcos ni esquinas redondas.
-        for stroke, color in (
-            (8, "#082D57"),
-            (6, "#12578D"),
-            (4, "#167BC3"),
-            (2, "#36D8FF"),
-            (1, "#C4FAFF"),
-        ):
-            item = self.create_line(
-                *polygon_points(), fill=color, width=stroke,
-                joinstyle=tk.MITER, capstyle=tk.BUTT, smooth=False,
-                tags=("ventana_neon",),
-            )
-            if self._neon_item is None:
-                self._neon_item = item
+        # Dos pistas visibles: azul-cian por fuera, violeta por dentro.
+        # Cada carril es un circuito independiente con sentido opuesto.
+        lane_layout = (
+            (0, ((7, "#0C2C52"), (4, "#14639C"), (2, "#5BE8FF"))),
+            (STREAMER_LANE_SPACING,
+             ((7, "#271849"), (4, "#7251A8"), (2, "#C3A1FF"))),
+        )
+        for inset, effects in lane_layout:
+            outline = polygon_points(inset)
+            for stroke, color in effects:
+                item = self.create_line(
+                    *outline, fill=color, width=stroke, smooth=False,
+                    joinstyle=tk.MITER, capstyle=tk.BUTT,
+                    tags=("ventana_neon", "streamer_road"),
+                )
+                if self._neon_item is None:
+                    self._neon_item = item
+            self._streamer_paths.append(self._streamer_build_path(outline))
 
-        # Acento violeta en los cuatro cortes diagonales, sin redondearlos.
-        inner_x0, inner_y0 = x0 + 3, y0 + 3
-        inner_x1, inner_y1 = x1 - 3, y1 - 3
-        cut = max(3, bevel - 3)
-        for coords in (
-            (inner_x0, inner_y0 + cut, inner_x0 + cut, inner_y0),
-            (inner_x1 - cut, inner_y0, inner_x1, inner_y0 + cut),
-            (inner_x1, inner_y1 - cut, inner_x1 - cut, inner_y1),
-            (inner_x0 + cut, inner_y1, inner_x0, inner_y1 - cut),
-        ):
+        # Linea discontinua central que sugiere una via de doble sentido.
+        self.create_line(
+            *polygon_points(STREAMER_LANE_SPACING // 2),
+            fill="#4C719A", width=1, dash=(5, 8), smooth=False,
+            joinstyle=tk.MITER, tags=("ventana_neon", "streamer_road"),
+        )
+
+        # Dos zonas de detencion: arriba para ida y abajo para vuelta.
+        outer, inner = self._streamer_paths
+        outer["stop"] = outer["segments"][0][4] * .53
+        bottom_offset = (sum(seg[4] for seg in inner["segments"][:4])
+                         + inner["segments"][4][4] * .48)
+        inner["stop"] = (inner["length"] - bottom_offset) % inner["length"]
+
+        for lane, path in enumerate(self._streamer_paths):
+            sx, sy, _, _ = self._streamer_lane_point(lane, path["stop"])
+            housing_y = sy + 26 if lane == 0 else sy - 26
+
+            # Barra clara de detencion perpendicular a la circulacion.
             self.create_line(
-                *coords, fill="#A16BFF", width=1,
-                capstyle=tk.BUTT, tags=("ventana_neon",),
+                sx, sy - 5, sx, sy + 5,
+                fill="#D7F4FF", width=2, tags=("ventana_neon", "streamer_road"),
             )
-        # Las luces siguen exactamente el mismo poligono de ocho lados.
-        # Se incluyen los cuatro chaflanes de 45 grados.
-        flat = polygon_points()
+            self.create_rectangle(
+                sx - 17, housing_y - 8, sx + 17, housing_y + 8,
+                fill="#071223", outline="#406B92", width=1,
+                tags=("ventana_neon", "streamer_signal"),
+            )
+            lamps = []
+            for offset in (-10, 0, 10):
+                lamp = self.create_oval(
+                    sx + offset - 3, housing_y - 3,
+                    sx + offset + 3, housing_y + 3,
+                    fill="#203046", outline="",
+                    tags=("ventana_neon", "streamer_signal"),
+                )
+                lamps.append(lamp)
+            self._streamer_signals.append({"lane": lane, "lamps": lamps})
+
+        self._start_streamer_traffic()
+        self.tag_raise("ventana_neon")
+
+    @staticmethod
+    def _streamer_build_path(flat: tuple[int, ...]) -> dict:
+        """Conserva las longitudes de los 8 tramos del poligono cerrado."""
         vertices = [
             (float(flat[i]), float(flat[i + 1]))
             for i in range(0, len(flat) - 2, 2)
         ]
-        closed = vertices + [vertices[0]]
-        for (ax, ay), (bx, by) in zip(closed, closed[1:]):
-            length = math.hypot(bx - ax, by - ay)
-            if length > 0:
-                self._streamer_segments.append((ax, ay, bx, by, length))
-                self._streamer_perimeter += length
-        self._start_streamer_lights()
-        self.tag_raise("ventana_neon")
+        segments = []
+        total = 0.0
+        for index, (ax, ay) in enumerate(vertices):
+            bx, by = vertices[(index + 1) % len(vertices)]
+            distance = math.hypot(bx - ax, by - ay)
+            if distance > 0:
+                segments.append((ax, ay, bx, by, distance))
+                total += distance
+        return {"segments": segments, "length": total, "stop": 0.0}
 
-    def _streamer_point_at(self, distance: float) -> tuple[float, float]:
-        """Punto en el perimetro achaflanado, con cierre continuo."""
-        if self._streamer_perimeter <= 0 or not self._streamer_segments:
-            return (0.0, 0.0)
-        distance %= self._streamer_perimeter
-        for ax, ay, bx, by, length in self._streamer_segments:
+    def _streamer_lane_point(
+        self, lane: int, progress: float
+    ) -> tuple[float, float, float, float]:
+        """Posicion y orientacion sobre un carril, respetando su sentido."""
+        path = self._streamer_paths[lane]
+        perimeter = path["length"]
+        if perimeter <= 0:
+            return (0.0, 0.0, 1.0, 0.0)
+        distance = (progress if lane == 0 else -progress) % perimeter
+        for ax, ay, bx, by, length in path["segments"]:
             if distance <= length:
-                f = distance / length
-                return (ax + (bx - ax) * f, ay + (by - ay) * f)
-            distance -= length
-        ax, ay, _, _, _ = self._streamer_segments[0]
-        return (ax, ay)
-
-    def _streamer_trail(self, position: float, direction: int,
-                        length: float) -> list[float]:
-        """Dibuja el rastro por las rectas y chaflanes, sin atajos diagonales."""
-        # Muestras cada ~4 px para que el destello doble todas las esquinas.
-        count = max(3, int(length / 4))
-        points = []
-        for i in range(count + 1):
-            distance = position - direction * length * (1 - i / count)
-            x, y = self._streamer_point_at(distance)
-            points.extend((x, y))
-        return points
-
-    def _start_streamer_lights(self) -> None:
-        """Crea varios cometas independientes y programa un solo reloj."""
-        if not STREAMER_NEON_ENABLED or self._streamer_perimeter <= 0:
-            return
-
-        self._streamer_lights.clear()
-        # El halo, la estela y el nucleo se dibujan solo una vez.
-        # En cada fotograma solo se actualizan sus coordenadas.
-        for _ in range(STREAMER_LIGHT_COUNT):
-            violet = random.random() < .33
-            palette = (("#44256C", "#B86AFF", "#F7DEFF") if violet else
-                       ("#0C507E", "#39CAFF", "#F1FFFF"))
-            items = []
-            for width, color in ((8, palette[0]), (4, palette[1]),
-                                 (2, palette[2])):
-                item = self.create_line(
-                    0, 0, 1, 1, fill=color, width=width,
-                    capstyle=tk.ROUND, joinstyle=tk.ROUND, smooth=False,
-                    tags=("ventana_neon", "streamer_light"),
+                ratio = distance / length
+                direction = 1 if lane == 0 else -1
+                return (
+                    ax + (bx - ax) * ratio,
+                    ay + (by - ay) * ratio,
+                    direction * (bx - ax) / length,
+                    direction * (by - ay) / length,
                 )
-                items.append(item)
-            self._streamer_lights.append({
-                "position": random.uniform(0, self._streamer_perimeter),
-                "direction": random.choice((-1, 1)),
-                "speed": random.uniform(45.0, 120.0),
-                "length": random.uniform(20.0, 37.0),
-                "items": items,
-            })
+            distance -= length
+        ax, ay, bx, by, length = path["segments"][0]
+        direction = 1 if lane == 0 else -1
+        return (ax, ay, direction * (bx - ax) / length,
+                direction * (by - ay) / length)
 
-        self._streamer_light_last = time.monotonic()
-        self._streamer_light_job = self.after(35, self._streamer_light_tick)
+    @staticmethod
+    def _streamer_car_shape(
+        x: float, y: float, tx: float, ty: float, length: float, width: float
+    ) -> tuple[float, ...]:
+        """Carroceria rotada conforme al sentido del tramo."""
+        front_x, front_y = tx * length * .5, ty * length * .5
+        side_x, side_y = -ty * width * .5, tx * width * .5
+        return (
+            x - front_x - side_x, y - front_y - side_y,
+            x + front_x - side_x, y + front_y - side_y,
+            x + front_x + side_x, y + front_y + side_y,
+            x - front_x + side_x, y - front_y + side_y,
+        )
 
-    def _streamer_light_tick(self) -> None:
-        """Desplaza destellos aleatorios de forma fluida por el marco."""
-        self._streamer_light_job = None
+    def _streamer_show_car(self, car: dict) -> None:
+        """Mueve carroceria, parabrisas y luces sin recrear el widget."""
+        x, y, tx, ty = self._streamer_lane_point(
+            car["lane"], car["progress"]
+        )
+        self.coords(
+            car["body"],
+            *self._streamer_car_shape(x, y, tx, ty, 13, 6),
+        )
+        self.coords(
+            car["glass"],
+            *self._streamer_car_shape(
+                x + tx * 1.0, y + ty * 1.0, tx, ty, 5.0, 4.0
+            ),
+        )
+        hx, hy = x + tx * 6.5, y + ty * 6.5
+        rx, ry = x - tx * 6.5, y - ty * 6.5
+        for item, px, py, radius in (
+            (car["head"], hx, hy, 1.8),
+            (car["tail"], rx, ry, 1.5),
+        ):
+            self.coords(item, px - radius, py - radius,
+                        px + radius, py + radius)
+
+    def _streamer_signal_state(self, lane: int, now: float) -> str:
+        """Semaforos desfasados: verde, amarillo y rojo en ciclos regulares."""
+        elapsed = now - self._streamer_signal_epoch
+        phase = (elapsed + lane * 5.5) % 11.0
+        if phase < 4.8:
+            return "green"
+        if phase < 5.8:
+            return "yellow"
+        return "red"
+
+    def _start_streamer_traffic(self) -> None:
+        """Crea automoviles de distinto color y velocidad en ambas vias."""
+        palette = (
+            "#FFB53D", "#42D5FF", "#FF679B", "#96FF77",
+            "#E4F4FF", "#BB8AFF", "#FF6947",
+        )
+        now = time.monotonic()
+        self._streamer_signal_epoch = now
+        for lane, path in enumerate(self._streamer_paths):
+            distance = path["length"]
+            if distance <= 80:
+                continue
+            count = min(STREAMER_CARS_PER_LANE, max(3, int(distance / 135)))
+            for i in range(count):
+                # Espaciado inicial con variacion aleatoria; evita choques.
+                position = distance * (i + random.uniform(.22, .67)) / count
+                body = self.create_polygon(
+                    0, 0, 1, 0, 1, 1, 0, 1, fill=random.choice(palette),
+                    outline="#061121", width=1,
+                    tags=("ventana_neon", "streamer_car"),
+                )
+                glass = self.create_polygon(
+                    0, 0, 1, 0, 1, 1, 0, 1, fill="#DBF8FF", outline="",
+                    tags=("ventana_neon", "streamer_car"),
+                )
+                head = self.create_oval(
+                    0, 0, 1, 1, fill="#FFFFCB", outline="",
+                    tags=("ventana_neon", "streamer_car"),
+                )
+                tail = self.create_oval(
+                    0, 0, 1, 1, fill="#FF344D", outline="",
+                    tags=("ventana_neon", "streamer_car"),
+                )
+                self._streamer_cars.append({
+                    "lane": lane, "progress": position,
+                    "speed": 0.0, "cruise": random.uniform(30.0, 59.0),
+                    "body": body, "glass": glass,
+                    "head": head, "tail": tail,
+                })
+
+        self._streamer_traffic_last = time.monotonic()
+        self._streamer_traffic_tick()
+
+    def _streamer_traffic_tick(self) -> None:
+        """Circulacion bidireccional real: frenado en rojo y distancia segura."""
+        self._streamer_traffic_job = None
         if (not self._alive or not self.winfo_exists()
-                or not STREAMER_NEON_ENABLED or self._streamer_perimeter <= 0):
+                or not STREAMER_NEON_ENABLED or not self._streamer_paths):
             return
 
         now = time.monotonic()
-        delta = min(.08, max(.001, now - self._streamer_light_last))
-        self._streamer_light_last = now
-        for light in self._streamer_lights:
-            # Las velocidades varian suavemente; los cambios de sentido
-            # y los saltos de aparicion son ocasionales e independientes.
-            light["speed"] = max(35.0, min(
-                165.0, light["speed"] + random.uniform(-25.0, 25.0) * delta
-            ))
-            if random.random() < .004:
-                light["direction"] *= -1
-            if random.random() < .002:
-                light["position"] = random.uniform(0, self._streamer_perimeter)
-                light["speed"] = random.uniform(45.0, 120.0)
-
-            light["position"] = (
-                light["position"] + light["direction"] * light["speed"] * delta
-            ) % self._streamer_perimeter
-            position, direction = light["position"], light["direction"]
-            trail = light["length"]
-
-            # Halo largo, franja luminosa y cabeza blanca muy corta.
-            for item, part in zip(light["items"], (1.0, .55, .20)):
-                coords = self._streamer_trail(
-                    position, direction, max(4.0, trail * part)
+        dt = min(.085, max(0.0, now - self._streamer_traffic_last))
+        self._streamer_traffic_last = now
+        for signal in self._streamer_signals:
+            state = self._streamer_signal_state(signal["lane"], now)
+            bright = ("#FF364E", "#FFD539", "#34FF82")
+            muted = ("#471724", "#4A3A14", "#153D27")
+            active = {"red": 0, "yellow": 1, "green": 2}[state]
+            for j, lamp in enumerate(signal["lamps"]):
+                self.itemconfigure(
+                    lamp, fill=bright[j] if j == active else muted[j]
                 )
-                self.coords(item, *coords)
+
+        for lane, path in enumerate(self._streamer_paths):
+            perimeter = path["length"]
+            cars = sorted(
+                (c for c in self._streamer_cars if c["lane"] == lane),
+                key=lambda c: c["progress"], reverse=True,
+            )
+            if not cars or perimeter <= 0:
+                continue
+            red = self._streamer_signal_state(lane, now) != "green"
+            for i, car in enumerate(cars):
+                # El de delante avanza primero. No se puede adelantar.
+                leader = cars[i - 1] if i else cars[-1]
+                gap = (leader["progress"] - car["progress"]) % perimeter
+                if len(cars) == 1:
+                    gap = perimeter
+                free = max(0.0, gap - STREAMER_FOLLOW_DISTANCE)
+                target = car["cruise"]
+                if gap < 90:
+                    target = min(target, free * 1.8)
+
+                distance_to_light = (
+                    path["stop"] - car["progress"]
+                ) % perimeter
+                must_stop = red and distance_to_light < 135
+                if must_stop:
+                    remaining = max(0.0, distance_to_light - 12.0)
+                    # v^2=2*a*d: desaceleracion progresiva antes del rojo.
+                    target = min(target, math.sqrt(2 * 145.0 * remaining))
+
+                if target < car["speed"]:
+                    car["speed"] = max(target, car["speed"] - 145.0 * dt)
+                else:
+                    car["speed"] = min(target, car["speed"] + 75.0 * dt)
+
+                advance = min(car["speed"] * dt, free)
+                if must_stop:
+                    advance = min(
+                        advance, max(0.0, distance_to_light - 12.0)
+                    )
+                car["progress"] = (car["progress"] + advance) % perimeter
+                self._streamer_show_car(car)
 
         self.tag_raise("ventana_neon")
-        self._streamer_light_job = self.after(
-            max(25, int(1000 / STREAMER_LIGHT_FPS)), self._streamer_light_tick
+        self._streamer_traffic_job = self.after(
+            max(25, int(1000 / STREAMER_TRAFFIC_FPS)),
+            self._streamer_traffic_tick,
         )
 
     def _draw_neon_border(self) -> None:
@@ -1369,12 +1479,12 @@ class FondoFutureo(tk.Canvas):
             except tk.TclError:
                 pass
             self._neon_resize_job = None
-        if self._streamer_light_job is not None:
+        if self._streamer_traffic_job is not None:
             try:
-                self.after_cancel(self._streamer_light_job)
+                self.after_cancel(self._streamer_traffic_job)
             except tk.TclError:
                 pass
-            self._streamer_light_job = None
+            self._streamer_traffic_job = None
         for job in (self._lightning_job, self._lightning_clear_job):
             if job is not None:
                 try:
