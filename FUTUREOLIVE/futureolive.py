@@ -12,7 +12,6 @@ import ctypes
 from ctypes import wintypes
 import hashlib
 import io
-import math
 import os
 import queue
 import random
@@ -35,21 +34,13 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.2"
+VERSION = "2.12.3"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
-STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
-STREAMER_SIDE_RATIO = 0.27  # Altura del marco en proporcion al lienzo.
-STREAMER_ASPECT_RATIO = 1.35  # Rectangulo 12.5% mas ancho que en v2.8.3.
-STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
-STREAMER_CARS_PER_LANE = 5  # Coches circulan en ambos sentidos.
-STREAMER_TRAFFIC_FPS = 24  # Movimiento suave y semaforos dinamicos.
-STREAMER_LANE_SPACING = 14  # Dos carriles paralelos con linea central.
-STREAMER_FOLLOW_DISTANCE = 23  # Separacion minima entre vehiculos.
-STREAMER_TURN_PROBABILITY = 0.42  # Probabilidad de cambiar de carril en verde.
-STREAMER_TURN_DURATION = 0.85  # Segundos para completar un giro en U.
-STREAMER_TURN_CLEARANCE = 70  # Espacio libre antes de cambiar de carril.
+WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
+STREAMER_AREA_RATIO = 0.08  # Ventana del hablante ligeramente mas pequena (antes 0.10).
+STREAMER_BORDER_THINNING_PX = 2  # Adelgaza 2 px por lado el marco PNG.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -63,11 +54,14 @@ BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
 GIF_PATH = ASSETS / "fondo_sin_marcos.gif"
+WINDOW_PATH = ASSETS / "ventana_neon.png"
 URL_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/assets"
 VIDEO_URL = URL_ROOT + "/fondo_sin_marcos_4k.mp4"
 GIF_URL = URL_ROOT + "/fondo_sin_marcos.gif"
+WINDOW_URL = URL_ROOT + "/ventana_neon.png"
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
+MAX_WINDOW_BYTES = 8 * 1024 * 1024
 
 
 
@@ -297,15 +291,11 @@ class FondoFutureo(tk.Canvas):
         super().__init__(parent, bg=FONDO, bd=0, highlightthickness=0)
         self._size = (0, 0)
         self._photo: ImageTk.PhotoImage | None = None
-        # Id de los trazos del cuadrado neon dibujado en el Canvas.
+        # Imagen PNG transparente cargada desde assets, separada del video.
+        self._neon_source: Image.Image | None = None
+        self._neon_photo: ImageTk.PhotoImage | None = None
         self._neon_item: int | None = None
         self._neon_resize_job: str | None = None
-        self._streamer_traffic_job: str | None = None
-        self._streamer_traffic_last = 0.0
-        self._streamer_signal_epoch = time.monotonic()
-        self._streamer_paths: list[dict] = []
-        self._streamer_cars: list[dict] = []
-        self._streamer_signals: list[dict] = []
         self._border_photo: ImageTk.PhotoImage | None = None
         self._border_item: int | None = None
         self._border_resize_job: str | None = None
@@ -331,22 +321,8 @@ class FondoFutureo(tk.Canvas):
         self._lightning_branches: list[list[tuple[int, int]]] = []
         self._lightning_target = (0, 0)
         self._lightning_phase = -1
-        # Los rayos se calculan en un hilo de PIL; Tkinter solo muestra
-        # imagenes RGBA preparadas, sin desenfoques ni fusion de pantalla.
-        self._lightning_generation = 0
-        self._lightning_waiting = False
-        self._lightning_results: queue.Queue = queue.Queue(maxsize=2)
-        self._lightning_poll_job: str | None = None
-        self._lightning_frames: list[tuple[int, int, Image.Image]] = []
-        self._lightning_photo: ImageTk.PhotoImage | None = None
-        self._lightning_item: int | None = None
-        # Fogonazo visible encima de la captura y vista previa inmediata.
-        self._lightning_flash_photo: ImageTk.PhotoImage | None = None
-        self._lightning_flash_item: int | None = None
-        self._lightning_flash_size = (0, 0)
-        self._lightning_preview_active = False
-        self._lightning_preview_job: str | None = None
-        self._background_item: int | None = None
+        self._lightning_cached: Image.Image | None = None
+        self._lightning_cache_key = None
         self._last_frame: Image.Image | None = None
         self._job: str | None = None
         self._check_job: str | None = None
@@ -363,8 +339,8 @@ class FondoFutureo(tk.Canvas):
         self.bind("<Configure>", self._resize)
         self.bind("<Destroy>", self._destroy, add="+")
         self.after_idle(self._load_local)
-        if STREAMER_NEON_ENABLED:
-            self.after_idle(self._draw_neon_window)
+        if WINDOW_OVERLAY_ENABLED:
+            self.after_idle(self._load_neon_overlay)
         threading.Thread(target=self._download_asset, name="futureo-mp4", daemon=True).start()
         self._check_job = self.after(350, self._check_download)
         self._schedule_lightning(initial=True)
@@ -467,8 +443,9 @@ class FondoFutureo(tk.Canvas):
             self._present(Image.new("RGB", (width, height), FONDO))
 
     def _download_asset(self) -> None:
-        """Descarga fondos opcionales. El cuadro del streamer no necesita PNG."""
-        choices = []
+        """Descarga por separado la imagen PNG y los fondos con cache local."""
+        choices = ([(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")]
+                   if WINDOW_OVERLAY_ENABLED else [])
         if VIDEO_BACKGROUND_ENABLED:
             if cv2 is not None:
                 choices.append((VIDEO_URL, VIDEO_PATH, MAX_VIDEO_BYTES, "mp4"))
@@ -486,6 +463,8 @@ class FondoFutureo(tk.Canvas):
                     with urlopen(req, timeout=18) as resp:
                         data = resp.read(limit + 1)
                     if not data or len(data) > limit:
+                        continue
+                    if kind == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
                         continue
                     if kind == "mp4" and data[4:8] != b"ftyp":
                         continue
@@ -519,6 +498,8 @@ class FondoFutureo(tk.Canvas):
             return
         if self._download_ready.is_set():
             if self._download_changed:
+                if WINDOW_OVERLAY_ENABLED:
+                    self._load_neon_overlay()
                 self._load_local()
         else:
             self._check_job = self.after(350, self._check_download)
@@ -529,516 +510,94 @@ class FondoFutureo(tk.Canvas):
         if new_size == self._size:
             return
         self._size = new_size
-        # Una imagen del tamano anterior nunca debe sustituir a la actual.
-        self._lightning_generation += 1
-        self._lightning_waiting = False
-        self._lightning_frames.clear()
-        self._lightning_phase = -1
-        self._hide_lightning_overlay()
-        self._hide_lightning_preview()
-        self._lightning_flash_photo = None
-        self._lightning_flash_size = (0, 0)
-        if self._lightning_clear_job is not None:
-            self.after_cancel(self._lightning_clear_job)
-            self._lightning_clear_job = None
-        if self._lightning_poll_job is not None:
-            self.after_cancel(self._lightning_poll_job)
-            self._lightning_poll_job = None
+        self._lightning_cached = None
+        self._lightning_cache_key = None
         if not VIDEO_BACKGROUND_ENABLED:
             self.after_idle(self._show_static_background)
         if self._neon_resize_job is not None:
             self.after_cancel(self._neon_resize_job)
         # Evita regenerar una imagen grande en cada pixel durante resize.
-        if STREAMER_NEON_ENABLED:
+        if WINDOW_OVERLAY_ENABLED:
             self._neon_resize_job = self.after(90, self._draw_neon_window)
         if self._border_resize_job is not None:
             self.after_cancel(self._border_resize_job)
         if NEON_BORDER_ENABLED:
             self._border_resize_job = self.after(90, self._draw_neon_border)
 
+    def _load_neon_overlay(self) -> None:
+        """Abre el PNG local sin dibujar su geometria mediante codigo."""
+        if not WINDOW_OVERLAY_ENABLED or not self._alive or not WINDOW_PATH.is_file():
+            return
+        try:
+            with Image.open(WINDOW_PATH) as source:
+                source.load()
+                if source.width < 128 or source.height < 72:
+                    raise ValueError("Imagen de ventana demasiado pequena")
+                overlay = source.convert("RGBA")
+                # Adelgazar los bordes del marco del streamer SIN afectar
+                # al borde principal, colores originales ni tamano del PNG.
+                if STREAMER_BORDER_THINNING_PX > 0:
+                    radius = max(1, int(STREAMER_BORDER_THINNING_PX))
+                    radius = min(radius, 8)
+                    alpha = overlay.getchannel("A")
+                    # Erosion de transparencia: cada lado del trazo pierde 2 px.
+                    core = alpha.filter(ImageFilter.MinFilter(2 * radius + 1))
+                    # Un halo muy sutil conserva la iluminacion cyan/violeta.
+                    halo = alpha.point(lambda value: int(value * 0.16))
+                    overlay.putalpha(ImageChops.lighter(core, halo))
+                self._neon_source = overlay.copy()
+        except (OSError, ValueError, EOFError):
+            return
+        self._draw_neon_window()
+
     def _draw_neon_window(self) -> None:
-        """Carretera neon de dos carriles; ida y vuelta, con semaforos."""
+        """Coloca la ventana del hablante arriba a la izquierda, con tamano reducido."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
             return
-
-        if self._streamer_traffic_job is not None:
-            self.after_cancel(self._streamer_traffic_job)
-            self._streamer_traffic_job = None
-        self.delete("ventana_neon")
-        self._streamer_paths.clear()
-        self._streamer_cars.clear()
-        self._streamer_signals.clear()
-        self._neon_item = None
-        if not STREAMER_NEON_ENABLED:
+        if not WINDOW_OVERLAY_ENABLED:
+            if self._neon_item is not None:
+                self.itemconfigure(self._neon_item, state="hidden")
             return
 
         width, height = self._size
-        if width < 160 or height < 120:
+        if self._neon_source is None or width < 160 or height < 120:
+            if self._neon_item is not None:
+                self.itemconfigure(self._neon_item, state="hidden")
             return
 
-        frame_h = max(110, int(min(width, height) * STREAMER_SIDE_RATIO))
-        frame_h = min(
-            frame_h, height - 2 * STREAMER_MARGIN_PX - 8,
-            int((width - 2 * STREAMER_MARGIN_PX - 8) / STREAMER_ASPECT_RATIO),
+        # Escalar por area para mantener la proporcion real del PNG.
+        target_area = width * height * STREAMER_AREA_RATIO
+        src_w, src_h = self._neon_source.size
+        aspect = src_w / src_h if src_h else 1.0
+        new_w = int((target_area * aspect) ** 0.5)
+        new_h = int(new_w / aspect)
+
+        # Limitar el cuadro para no tapar una parte excesiva de la escena.
+        new_w = max(80, min(new_w, int(width * 0.45)))
+        new_h = max(45, min(new_h, int(height * 0.45)))
+
+        frame = self._neon_source.resize(
+            (new_w, new_h), resample=Image.Resampling.LANCZOS
         )
-        if frame_h < 60:
-            return
-        frame_w = int(round(frame_h * STREAMER_ASPECT_RATIO))
+        self._neon_photo = ImageTk.PhotoImage(frame, master=self)
 
-        x0, y0 = STREAMER_MARGIN_PX + 4, STREAMER_MARGIN_PX + 4
-        x1, y1 = x0 + frame_w - 8, y0 + frame_h - 8
-        bevel = max(7, min(18, int(min(frame_w, frame_h) * .10)))
+        # Ventana del hablante anclada a 5 px del borde superior e izquierdo.
+        margin_x = 5
+        margin_y = 5
 
-        def polygon_points(inset: int = 0) -> tuple[int, ...]:
-            left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
-            cut = min(max(3, bevel - inset),
-                      (right - left) // 3, (bottom - top) // 3)
-            return (
-                left + cut, top, right - cut, top,
-                right, top + cut, right, bottom - cut,
-                right - cut, bottom, left + cut, bottom,
-                left, bottom - cut, left, top + cut,
-                left + cut, top,
+        if self._neon_item is None:
+            self._neon_item = self.create_image(
+                margin_x, margin_y, anchor="nw",
+                image=self._neon_photo, tags=("ventana_neon",)
             )
-
-        # Dos pistas visibles: azul-cian por fuera, violeta por dentro.
-        # Cada carril es un circuito independiente con sentido opuesto.
-        lane_layout = (
-            (0, ((7, "#0C2C52"), (4, "#14639C"), (2, "#5BE8FF"))),
-            (STREAMER_LANE_SPACING,
-             ((7, "#271849"), (4, "#7251A8"), (2, "#C3A1FF"))),
-        )
-        for inset, effects in lane_layout:
-            outline = polygon_points(inset)
-            for stroke, color in effects:
-                item = self.create_line(
-                    *outline, fill=color, width=stroke, smooth=False,
-                    joinstyle=tk.MITER, capstyle=tk.BUTT,
-                    tags=("ventana_neon", "streamer_road"),
-                )
-                if self._neon_item is None:
-                    self._neon_item = item
-            self._streamer_paths.append(self._streamer_build_path(outline))
-
-        # Linea discontinua central que sugiere una via de doble sentido.
-        self.create_line(
-            *polygon_points(STREAMER_LANE_SPACING // 2),
-            fill="#4C719A", width=1, dash=(5, 8), smooth=False,
-            joinstyle=tk.MITER, tags=("ventana_neon", "streamer_road"),
-        )
-
-        # Dos zonas de detencion: arriba para ida y abajo para vuelta.
-        outer, inner = self._streamer_paths
-        outer["stop"] = outer["segments"][0][4] * .53
-        bottom_offset = (sum(seg[4] for seg in inner["segments"][:4])
-                         + inner["segments"][4][4] * .48)
-        inner["stop"] = (inner["length"] - bottom_offset) % inner["length"]
-
-        for lane, path in enumerate(self._streamer_paths):
-            sx, sy, _, _ = self._streamer_lane_point(lane, path["stop"])
-
-            # Las 3 bombillas van DENTRO de la carretera: entre la linea
-            # exterior y la interior, sin caja flotante ni marco de semaforo.
-            # Arriba la via interior queda abajo; abajo la via exterior
-            # tambien queda abajo. Por eso ambas suman medio ancho.
-            road_y = sy + STREAMER_LANE_SPACING / 2
-            signal_x = sx + (18 if lane == 0 else -18)
-
-            # Linea de alto, al lado de las luces y dentro de su carril.
-            self.create_line(
-                sx, road_y - 4, sx, road_y + 4,
-                fill="#D7F4FF", width=2,
-                tags=("ventana_neon", "streamer_road"),
+        else:
+            self.itemconfigure(
+                self._neon_item, image=self._neon_photo, state="normal"
             )
-
-            lamps = []
-            halos = []
-            for offset in (-9, 0, 9):
-                cx = signal_x + offset
-                cy = road_y
-                halo = self.create_oval(
-                    cx - 4.2, cy - 4.2, cx + 4.2, cy + 4.2,
-                    fill="#102035", outline="",
-                    tags=("ventana_neon", "streamer_signal"),
-                )
-                lamp = self.create_oval(
-                    cx - 2.7, cy - 2.7, cx + 2.7, cy + 2.7,
-                    fill="#203046", outline="",
-                    tags=("ventana_neon", "streamer_signal"),
-                )
-                halos.append(halo)
-                lamps.append(lamp)
-            self._streamer_signals.append({
-                "lane": lane, "lamps": lamps, "halos": halos,
-            })
-
-        self._start_streamer_traffic()
-        self.tag_raise("ventana_neon")
-
-    @staticmethod
-    def _streamer_build_path(flat: tuple[int, ...]) -> dict:
-        """Conserva las longitudes de los 8 tramos del poligono cerrado."""
-        vertices = [
-            (float(flat[i]), float(flat[i + 1]))
-            for i in range(0, len(flat) - 2, 2)
-        ]
-        segments = []
-        total = 0.0
-        for index, (ax, ay) in enumerate(vertices):
-            bx, by = vertices[(index + 1) % len(vertices)]
-            distance = math.hypot(bx - ax, by - ay)
-            if distance > 0:
-                segments.append((ax, ay, bx, by, distance))
-                total += distance
-        return {"segments": segments, "length": total, "stop": 0.0}
-
-    def _streamer_lane_point(
-        self, lane: int, progress: float
-    ) -> tuple[float, float, float, float]:
-        """Posicion y orientacion sobre un carril, respetando su sentido."""
-        path = self._streamer_paths[lane]
-        perimeter = path["length"]
-        if perimeter <= 0:
-            return (0.0, 0.0, 1.0, 0.0)
-        distance = (progress if lane == 0 else -progress) % perimeter
-        for ax, ay, bx, by, length in path["segments"]:
-            if distance <= length:
-                ratio = distance / length
-                direction = 1 if lane == 0 else -1
-                return (
-                    ax + (bx - ax) * ratio,
-                    ay + (by - ay) * ratio,
-                    direction * (bx - ax) / length,
-                    direction * (by - ay) / length,
-                )
-            distance -= length
-        ax, ay, bx, by, length = path["segments"][0]
-        direction = 1 if lane == 0 else -1
-        return (ax, ay, direction * (bx - ax) / length,
-                direction * (by - ay) / length)
-
-    @staticmethod
-    def _streamer_car_shape(
-        x: float, y: float, tx: float, ty: float, length: float, width: float
-    ) -> tuple[float, ...]:
-        """Carroceria rotada conforme al sentido del tramo."""
-        front_x, front_y = tx * length * .5, ty * length * .5
-        side_x, side_y = -ty * width * .5, tx * width * .5
-        return (
-            x - front_x - side_x, y - front_y - side_y,
-            x + front_x - side_x, y + front_y - side_y,
-            x + front_x + side_x, y + front_y + side_y,
-            x - front_x + side_x, y - front_y + side_y,
-        )
-
-    def _streamer_show_car(self, car: dict, pose=None) -> None:
-        """Mueve carroceria y luces; admite poses intermedias durante un giro."""
-        x, y, tx, ty = (pose if pose is not None else
-                         self._streamer_lane_point(car["lane"], car["progress"]))
-        self.coords(
-            car["body"],
-            *self._streamer_car_shape(x, y, tx, ty, 13, 6),
-        )
-        self.coords(
-            car["glass"],
-            *self._streamer_car_shape(
-                x + tx * 1.0, y + ty * 1.0, tx, ty, 5.0, 4.0
-            ),
-        )
-        hx, hy = x + tx * 6.5, y + ty * 6.5
-        rx, ry = x - tx * 6.5, y - ty * 6.5
-        for item, px, py, radius in (
-            (car["head"], hx, hy, 1.8),
-            (car["tail"], rx, ry, 1.5),
-        ):
-            self.coords(item, px - radius, py - radius,
-                        px + radius, py + radius)
-
-    def _streamer_signal_state(self, lane: int, now: float) -> str:
-        """Semaforos desfasados: verde, amarillo y rojo en ciclos regulares."""
-        elapsed = now - self._streamer_signal_epoch
-        phase = (elapsed + lane * 5.5) % 11.0
-        if phase < 4.8:
-            return "green"
-        if phase < 5.8:
-            return "yellow"
-        return "red"
-
-    def _start_streamer_traffic(self) -> None:
-        """Crea automoviles de distinto color y velocidad en ambas vias."""
-        palette = (
-            "#FFB53D", "#42D5FF", "#FF679B", "#96FF77",
-            "#E4F4FF", "#BB8AFF", "#FF6947",
-        )
-        now = time.monotonic()
-        self._streamer_signal_epoch = now
-        for lane, path in enumerate(self._streamer_paths):
-            distance = path["length"]
-            if distance <= 80:
-                continue
-            count = min(STREAMER_CARS_PER_LANE, max(3, int(distance / 135)))
-            for i in range(count):
-                # Espaciado inicial con variacion aleatoria; evita choques.
-                position = distance * (i + random.uniform(.22, .67)) / count
-                body = self.create_polygon(
-                    0, 0, 1, 0, 1, 1, 0, 1, fill=random.choice(palette),
-                    outline="#061121", width=1,
-                    tags=("ventana_neon", "streamer_car"),
-                )
-                glass = self.create_polygon(
-                    0, 0, 1, 0, 1, 1, 0, 1, fill="#DBF8FF", outline="",
-                    tags=("ventana_neon", "streamer_car"),
-                )
-                head = self.create_oval(
-                    0, 0, 1, 1, fill="#FFFFCB", outline="",
-                    tags=("ventana_neon", "streamer_car"),
-                )
-                tail = self.create_oval(
-                    0, 0, 1, 1, fill="#FF344D", outline="",
-                    tags=("ventana_neon", "streamer_car"),
-                )
-                self._streamer_cars.append({
-                    "lane": lane, "progress": position,
-                    "speed": 0.0, "cruise": random.uniform(30.0, 59.0),
-                    "turn": None, "turn_attempted": False,
-                    "last_turn": -1000.0,
-                    "body": body, "glass": glass,
-                    "head": head, "tail": tail,
-                })
-
-        self._streamer_traffic_last = time.monotonic()
-        self._streamer_traffic_tick()
-
-    def _streamer_nearest_progress(
-        self, lane: int, x: float, y: float
-    ) -> float:
-        """Proyecta una ubicacion al carril opuesto respetando su sentido."""
-        path = self._streamer_paths[lane]
-        best_distance = float("inf")
-        best_progress = 0.0
-        elapsed = 0.0
-        for ax, ay, bx, by, segment_length in path["segments"]:
-            vx, vy = bx - ax, by - ay
-            ratio = max(0.0, min(
-                1.0, ((x - ax) * vx + (y - ay) * vy)
-                / max(segment_length * segment_length, .001)
-            ))
-            px, py = ax + vx * ratio, ay + vy * ratio
-            distance = (x - px) ** 2 + (y - py) ** 2
-            if distance < best_distance:
-                best_distance = distance
-                best_progress = elapsed + ratio * segment_length
-            elapsed += segment_length
-        return (best_progress if lane == 0 else
-                path["length"] - best_progress) % path["length"]
-
-    def _streamer_turn_is_safe(
-        self, car: dict, target_lane: int, target_progress: float
-    ) -> bool:
-        """Requiere un espacio libre amplio en ambos sentidos del otro carril."""
-        # Solo un coche gira al mismo tiempo; evita conflictos de trayectorias.
-        if any(other["turn"] is not None for other in self._streamer_cars):
-            return False
-        perimeter = self._streamer_paths[target_lane]["length"]
-        if perimeter <= 0:
-            return False
-        for other in self._streamer_cars:
-            if other is car or other["lane"] != target_lane:
-                continue
-            forward = (target_progress - other["progress"]) % perimeter
-            backward = (other["progress"] - target_progress) % perimeter
-            # La separacion incluye la longitud del giro y el frenado
-            # anticipado de los coches que llegan al punto de incorporacion.
-            if min(forward, backward) < STREAMER_TURN_CLEARANCE:
-                return False
-        return True
-
-    @staticmethod
-    def _streamer_turn_pose(turn: dict, fraction: float):
-        """Curva cubica: inicio y fin tangentes a sus respectivos carriles."""
-        t = max(0.0, min(1.0, fraction))
-        sx, sy, stx, sty = turn["start"]
-        ex, ey, etx, ety = turn["end"]
-        control = max(13.0, STREAMER_LANE_SPACING * .85)
-        p0 = (sx, sy)
-        p1 = (sx + stx * control, sy + sty * control)
-        p2 = (ex - etx * control, ey - ety * control)
-        p3 = (ex, ey)
-        inv = 1.0 - t
-        x = (inv ** 3 * p0[0] + 3 * inv * inv * t * p1[0]
-             + 3 * inv * t * t * p2[0] + t ** 3 * p3[0])
-        y = (inv ** 3 * p0[1] + 3 * inv * inv * t * p1[1]
-             + 3 * inv * t * t * p2[1] + t ** 3 * p3[1])
-        dx = (3 * inv * inv * (p1[0] - p0[0])
-              + 6 * inv * t * (p2[0] - p1[0])
-              + 3 * t * t * (p3[0] - p2[0]))
-        dy = (3 * inv * inv * (p1[1] - p0[1])
-              + 6 * inv * t * (p2[1] - p1[1])
-              + 3 * t * t * (p3[1] - p2[1]))
-        magnitude = math.hypot(dx, dy)
-        if magnitude < .001:
-            return (x, y, etx, ety)
-        return (x, y, dx / magnitude, dy / magnitude)
-
-    def _streamer_begin_turn(
-        self, car: dict, now: float, target_lane: int,
-        target_progress: float
-    ) -> None:
-        """Reserva el carril opuesto y comienza un giro visible de 180 grados."""
-        car["turn"] = {
-            "begin": now, "duration": STREAMER_TURN_DURATION,
-            "from_lane": car["lane"], "target_lane": target_lane,
-            "target_progress": target_progress,
-            "start": self._streamer_lane_point(car["lane"], car["progress"]),
-            "end": self._streamer_lane_point(target_lane, target_progress),
-        }
-        car["speed"] = 0.0
-        car["turn_attempted"] = True
-
-    def _streamer_advance_turns(self, now: float) -> None:
-        """Anima cambios de carril con orientacion continua y sin teletransportes."""
-        for car in self._streamer_cars:
-            turn = car["turn"]
-            if turn is None:
-                continue
-            elapsed = (now - turn["begin"]) / turn["duration"]
-            if elapsed >= 1.0:
-                car["lane"] = turn["target_lane"]
-                car["progress"] = turn["target_progress"]
-                car["turn"] = None
-                car["last_turn"] = now
-                car["turn_attempted"] = True
-                car["speed"] = 0.0
-                self._streamer_show_car(car)
-            else:
-                self._streamer_show_car(
-                    car, pose=self._streamer_turn_pose(turn, elapsed)
-                )
-
-    def _streamer_merge_clearance(self, car: dict, perimeter: float) -> float:
-        """Bloquea temporalmente la incorporacion para coches del otro sentido."""
-        free = perimeter
-        for other in self._streamer_cars:
-            turn = other["turn"]
-            if turn is None or turn["target_lane"] != car["lane"]:
-                continue
-            # Obstaculo virtual en el punto de incorporacion mientras gira.
-            ahead = (turn["target_progress"] - car["progress"]) % perimeter
-            if ahead < 140:
-                free = min(free, max(0.0, ahead - STREAMER_FOLLOW_DISTANCE))
-        return free
-
-    def _streamer_traffic_tick(self) -> None:
-        """Circulacion bidireccional real: frenado en rojo y distancia segura."""
-        self._streamer_traffic_job = None
-        if (not self._alive or not self.winfo_exists()
-                or not STREAMER_NEON_ENABLED or not self._streamer_paths):
-            return
-
-        now = time.monotonic()
-        # No perder tiempo real cuando otro dibujo retrase un fotograma.
-        dt = min(.22, max(0.0, now - self._streamer_traffic_last))
-        self._streamer_traffic_last = now
-        for signal in self._streamer_signals:
-            state = self._streamer_signal_state(signal["lane"], now)
-            bright = ("#FF364E", "#FFD539", "#34FF82")
-            muted = ("#471724", "#4A3A14", "#153D27")
-            active = {"red": 0, "yellow": 1, "green": 2}[state]
-            halo_colors = ("#521925", "#55431A", "#15553C")
-            for j, lamp in enumerate(signal["lamps"]):
-                self.itemconfigure(
-                    lamp, fill=bright[j] if j == active else muted[j]
-                )
-                self.itemconfigure(
-                    signal["halos"][j],
-                    fill=halo_colors[j] if j == active else "#102035",
-                )
-
-        # Los giros se animan antes de calcular el trafico restante.
-        self._streamer_advance_turns(now)
-
-        for lane, path in enumerate(self._streamer_paths):
-            perimeter = path["length"]
-            cars = sorted(
-                (c for c in self._streamer_cars if c["lane"] == lane),
-                key=lambda c: c["progress"], reverse=True,
-            )
-            if not cars or perimeter <= 0:
-                continue
-
-            red = self._streamer_signal_state(lane, now) != "green"
-            for i, car in enumerate(cars):
-                if car["turn"] is not None:
-                    # Se mantiene en el carril de origen como obstaculo
-                    # hasta que termine de entrar en el otro carril.
-                    continue
-
-                leader = cars[i - 1] if i else cars[-1]
-                gap = (leader["progress"] - car["progress"]) % perimeter
-                if len(cars) == 1:
-                    gap = perimeter
-                free = max(0.0, gap - STREAMER_FOLLOW_DISTANCE)
-                free = min(free, self._streamer_merge_clearance(car, perimeter))
-                target = car["cruise"]
-                if free < 70:
-                    target = min(target, free * 1.8)
-
-                distance_to_light = (
-                    path["stop"] - car["progress"]
-                ) % perimeter
-                # Se vuelve a sortear solamente en la siguiente vuelta.
-                if distance_to_light > 55:
-                    car["turn_attempted"] = False
-
-                must_stop = red and distance_to_light < 135
-                if must_stop:
-                    remaining = max(0.0, distance_to_light - 12.0)
-                    target = min(target, math.sqrt(2 * 145.0 * remaining))
-
-                # Solo al llegar al semaforo, con luz verde, se decide
-                # aleatoriamente si realizar un giro en U hacia el otro carril.
-                if (not red and not car["turn_attempted"]
-                        and 8 <= distance_to_light <= 19
-                        and now - car["last_turn"] > 4.0):
-                    car["turn_attempted"] = True
-                    if random.random() < STREAMER_TURN_PROBABILITY:
-                        other_lane = 1 - lane
-                        x, y, _, _ = self._streamer_lane_point(
-                            lane, car["progress"]
-                        )
-                        other_progress = self._streamer_nearest_progress(
-                            other_lane, x, y
-                        )
-                        if self._streamer_turn_is_safe(
-                            car, other_lane, other_progress
-                        ):
-                            self._streamer_begin_turn(
-                                car, now, other_lane, other_progress
-                            )
-                            self._streamer_show_car(
-                                car, pose=car["turn"]["start"]
-                            )
-                            continue
-
-                if target < car["speed"]:
-                    car["speed"] = max(target, car["speed"] - 145.0 * dt)
-                else:
-                    car["speed"] = min(target, car["speed"] + 75.0 * dt)
-
-                advance = min(car["speed"] * dt, free)
-                if must_stop:
-                    advance = min(
-                        advance, max(0.0, distance_to_light - 12.0)
-                    )
-                car["progress"] = (car["progress"] + advance) % perimeter
-                self._streamer_show_car(car)
+            self.coords(self._neon_item, margin_x, margin_y)
 
         self.tag_raise("ventana_neon")
-        self._streamer_traffic_job = self.after(
-            max(25, int(1000 / STREAMER_TRAFFIC_FPS)),
-            self._streamer_traffic_tick,
-        )
 
     def _draw_neon_border(self) -> None:
         """Marco neón con centro completamente transparente y esquinas redondeadas.
@@ -1111,7 +670,7 @@ class FondoFutureo(tk.Canvas):
             )
             self.coords(self._border_item, margin_x, margin_y)
         self.tag_raise("neon_border")
-        if STREAMER_NEON_ENABLED and self._neon_item is not None:
+        if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
             self.tag_raise("ventana_neon")
 
 
@@ -1263,12 +822,8 @@ class FondoFutureo(tk.Canvas):
                     if self._border_item is not None:
                         self.tag_raise("neon_border")
                     # Ventana del hablante sobre captura y marco.
-                    if STREAMER_NEON_ENABLED and self._neon_item is not None:
+                    if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
                         self.tag_raise("ventana_neon")
-                    # La captura se refresca continuamente: el rayo siempre
-                    # debe quedar por encima o desapareceria detras de ella.
-                    if self._lightning_phase >= 0 or self._lightning_preview_active:
-                        self._raise_lightning_layers()
                     self._capture_error = None
         except Exception as exc:
             # No ocultar errores: disponibles en Insert y en la consola.
@@ -1444,7 +999,7 @@ class FondoFutureo(tk.Canvas):
         self._lightning_job = self.after(delay, self._strike_lightning)
 
     def _strike_lightning(self) -> None:
-        """Genera una descarga, pero NO procesa desenfoques en Tkinter."""
+        """Traza una descarga quebrada con ramificaciones de longitud variable."""
         self._lightning_job = None
         if not self._alive:
             return
@@ -1479,327 +1034,107 @@ class FondoFutureo(tk.Canvas):
                 fraction = j / pieces
                 bx = x + direction * length * fraction + random.gauss(0, width * .009)
                 by = y + length * fraction * random.uniform(.46, .85)
-                branch.append((int(max(0, min(width - 1, bx))),
-                               int(min(height - 1, by))))
+                branch.append((int(max(0, min(width-1, bx))),
+                               int(min(height-1, by))))
             branches.append(branch)
-
         self._lightning_path = path
         self._lightning_branches = branches
         self._lightning_target = (tx, ty)
-        self._lightning_generation += 1
-        generation = self._lightning_generation
-        self._lightning_waiting = True
-        self._lightning_phase = -1
-        self._lightning_frames.clear()
-        self._hide_lightning_overlay()
-        # El rayo se ve al instante, incluso si su halo PIL tarda en salir.
-        self._show_lightning_preview(path, branches)
-        if self._lightning_clear_job is not None:
-            self.after_cancel(self._lightning_clear_job)
-            self._lightning_clear_job = None
-
-        # El trabajador solo recibe datos simples e imagenes PIL; no usa Tk.
-        thread = threading.Thread(
-            target=self._lightning_render_worker,
-            args=(generation, (width, height), tuple(path),
-                  tuple(tuple(branch) for branch in branches)),
-            name="futureo-lightning", daemon=True,
-        )
-        thread.start()
-        if self._lightning_poll_job is None:
-            self._lightning_poll_job = self.after(
-                30, self._check_lightning_render
-            )
+        self._lightning_phase = 0
+        self._lightning_cached = None
+        self._lightning_cache_key = None
+        self._refresh_last_frame()
         self._schedule_lightning()
-
-    @staticmethod
-    def _rasterize_lightning(
-        size: tuple[int, int], path: tuple, branches: tuple
-    ) -> list[tuple[int, int, Image.Image]]:
-        """Precalcula los cinco destellos PIL, una sola vez por descarga.
-
-        La region se recorta alrededor del rayo y ambos desenfoques se
-        ejecutan una vez, no en cada fase como antes.
-        """
-        w, h = size
-        scale = max(.5, min(w, h) / 700.0)
-        padding = int(
-            min(w, h) * .17 + 3 * max(12, int(42 * scale)) + 12
-        )
-        all_points = list(path)
-        for branch in branches:
-            all_points.extend(branch)
-        x0 = max(0, min(x for x, _ in all_points) - padding)
-        y0 = max(0, min(y for _, y in all_points) - padding)
-        x1 = min(w, max(x for x, _ in all_points) + padding + 1)
-        y1 = min(h, max(y for _, y in all_points) + padding + 1)
-        cropped = (x1 - x0, y1 - y0)
-        if cropped[0] <= 0 or cropped[1] <= 0:
-            return []
-
-        bolt = [(x - x0, y - y0) for x, y in path]
-        branches_local = [
-            [(x - x0, y - y0) for x, y in branch]
-            for branch in branches
-        ]
-        layer_paths = [bolt] + branches_local
-
-        cloud = Image.new("RGBA", cropped, (0, 0, 0, 0))
-        cloud_draw = ImageDraw.Draw(cloud, "RGBA")
-        radius = int(min(w, h) * .17)
-        for x, y in (bolt[4], bolt[len(bolt) // 2], bolt[-1]):
-            cloud_draw.ellipse(
-                (x - radius, y - radius, x + radius, y + radius),
-                fill=(45, 145, 255, 64),
-            )
-        cloud = cloud.filter(
-            ImageFilter.GaussianBlur(max(12, int(42 * scale)))
-        )
-
-        glow = Image.new("RGBA", cropped, (0, 0, 0, 0))
-        glow_draw = ImageDraw.Draw(glow, "RGBA")
-        for points in layer_paths:
-            thickness = (12 if points is bolt else 6) * scale
-            glow_draw.line(
-                points, fill=(39, 130, 255, 195),
-                width=max(2, int(thickness)), joint="curve",
-            )
-        glow = glow.filter(
-            ImageFilter.GaussianBlur(max(3, int(12 * scale)))
-        )
-
-        core = Image.new("RGBA", cropped, (0, 0, 0, 0))
-        core_draw = ImageDraw.Draw(core, "RGBA")
-        for points in layer_paths:
-            branch = points is not bolt
-            for index in range(len(points) - 1):
-                t = index / max(1, len(points) - 1)
-                thick = max(
-                    1, int((2.8 if not branch else 1.35) * scale
-                           * (1.15 - .55 * t))
-                )
-                a, b = points[index], points[index + 1]
-                core_draw.line(
-                    (a, b), fill=(35, 156, 255, 225),
-                    width=max(2, thick + 3),
-                )
-                core_draw.line(
-                    (a, b), fill=(235, 251, 255, 255),
-                    width=thick,
-                )
-
-        base = Image.alpha_composite(
-            Image.alpha_composite(cloud, glow), core
-        )
-        alpha = base.getchannel("A")
-        rendered = []
-        for phase, intensity in enumerate((.97, .16, 1.0, .34, .11)):
-            # Se reduce la opacidad para mantener las fases originales.
-            frame = base.copy()
-            table = [min(255, int(a * intensity)) for a in range(256)]
-            frame.putalpha(alpha.point(table))
-            if phase in (0, 2):
-                flash = Image.new(
-                    "RGBA", cropped, (175, 216, 255, int(23 * intensity))
-                )
-                frame = Image.alpha_composite(flash, frame)
-            rendered.append((x0, y0, frame))
-        return rendered
-
-    def _lightning_render_worker(
-        self, generation: int, size: tuple[int, int],
-        path: tuple, branches: tuple
-    ) -> None:
-        """Hilo auxiliar: jamas invoca funciones ni widgets de Tkinter."""
-        try:
-            frames = self._rasterize_lightning(size, path, branches)
-            error = None
-        except Exception as exc:
-            frames = []
-            error = str(exc)
-        message = (generation, size, frames, error)
-        try:
-            self._lightning_results.put_nowait(message)
-        except queue.Full:
-            try:
-                self._lightning_results.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                self._lightning_results.put_nowait(message)
-            except queue.Full:
-                pass
-
-    def _check_lightning_render(self) -> None:
-        """Recoge PIL desde el hilo y programa el destello en Tkinter."""
-        self._lightning_poll_job = None
-        if not self._alive or not self.winfo_exists():
-            return
-        newest = None
-        try:
-            while True:
-                result = self._lightning_results.get_nowait()
-                if result[0] == self._lightning_generation:
-                    newest = result
-        except queue.Empty:
-            pass
-
-        if newest is not None:
-            generation, size, frames, error = newest
-            self._lightning_waiting = False
-            if error:
-                print("[FUTUREO] Error de rayo:", error)
-            if frames and size == self._size:
-                self._lightning_frames = frames
-                self._lightning_phase = 0
-                self._show_lightning_frame(0)
-                self._lightning_clear_job = self.after(
-                    55, self._advance_lightning, 1
-                )
-            return
-        if self._lightning_waiting:
-            self._lightning_poll_job = self.after(
-                30, self._check_lightning_render
-            )
-
-    def _set_lightning_flash(self, visible: bool) -> None:
-        """Fogonazo de pantalla completa; se genera una sola vez por tamano."""
-        if not visible:
-            if self._lightning_flash_item is not None:
-                self.itemconfigure(self._lightning_flash_item, state="hidden")
-            return
-        w, h = self._size
-        if w < 2 or h < 2:
-            return
-        if self._lightning_flash_photo is None or self._lightning_flash_size != (w, h):
-            # RGBA ligero y reutilizable: no se regenera cada 55 ms.
-            image = Image.new("RGBA", (w, h), (152, 210, 255, 83))
-            self._lightning_flash_photo = ImageTk.PhotoImage(image, master=self)
-            self._lightning_flash_size = (w, h)
-        if self._lightning_flash_item is None:
-            self._lightning_flash_item = self.create_image(
-                0, 0, image=self._lightning_flash_photo, anchor="nw",
-                tags=("rayos", "rayos_flash"),
-            )
-        else:
-            self.itemconfigure(
-                self._lightning_flash_item, image=self._lightning_flash_photo,
-                state="normal",
-            )
-            self.coords(self._lightning_flash_item, 0, 0)
-
-    def _raise_lightning_layers(self) -> None:
-        """Rayo y fogonazo arriba de la captura, marco y carretera."""
-        # El orden importa: el fogonazo queda debajo del nucleo luminoso.
-        self.tag_raise("rayos_flash")
-        self.tag_raise("rayos_overlay")
-        self.tag_raise("lightning_preview")
-
-    def _show_lightning_preview(self, path: list, branches: list) -> None:
-        """Destello vectorial inmediato, sin filtros ni procesamiento costoso."""
-        if self._lightning_preview_job is not None:
-            self.after_cancel(self._lightning_preview_job)
-            self._lightning_preview_job = None
-        self.delete("lightning_preview")
-        self._lightning_preview_active = True
-        self._set_lightning_flash(True)
-        for points in [path] + branches:
-            if len(points) < 2:
-                continue
-            coords = [value for point in points for value in point]
-            for thickness, color in (
-                (9, "#134D88"),
-                (5, "#30ABFF"),
-                (2, "#F3FCFF"),
-            ):
-                self.create_line(
-                    *coords, fill=color, width=thickness, smooth=False,
-                    joinstyle=tk.ROUND, capstyle=tk.ROUND,
-                    tags=("rayos", "lightning_preview"),
-                )
-        self._raise_lightning_layers()
-        # Una descarga corta, no un trazo fijo mientras el hilo termina.
-        self._lightning_preview_job = self.after(
-            185, self._hide_lightning_preview
-        )
-
-    def _hide_lightning_preview(self) -> None:
-        self._lightning_preview_job = None
-        self.delete("lightning_preview")
-        self._lightning_preview_active = False
-        if self._lightning_phase < 0:
-            self._set_lightning_flash(False)
-
-    def _hide_lightning_overlay(self) -> None:
-        """Oculta la capa del rayo sin tocar fondo, carretera ni captura."""
-        if self._lightning_item is not None:
-            self.itemconfigure(self._lightning_item, state="hidden")
-        self._lightning_photo = None
-        if not self._lightning_preview_active:
-            self._set_lightning_flash(False)
-
-    def _show_lightning_frame(self, phase: int) -> None:
-        """Actualiza solo la capa de luz; se ejecuta en el hilo Tk."""
-        if phase >= len(self._lightning_frames):
-            self._hide_lightning_overlay()
-            return
-        # La vista previa acaba al sustituirse por la composicion final.
-        if self._lightning_preview_active:
-            self._hide_lightning_preview()
-        x, y, overlay = self._lightning_frames[phase]
-        self._lightning_photo = ImageTk.PhotoImage(overlay, master=self)
-        if self._lightning_item is None:
-            self._lightning_item = self.create_image(
-                x, y, image=self._lightning_photo, anchor="nw",
-                tags=("rayos", "rayos_overlay"),
-            )
-        else:
-            self.itemconfigure(
-                self._lightning_item, image=self._lightning_photo,
-                state="normal"
-            )
-            self.coords(self._lightning_item, x, y)
-        # Restaurar el fogonazo global en fases fuertes (0 y 2).
-        self._set_lightning_flash(phase in (0, 2))
-        self._raise_lightning_layers()
+        self._lightning_clear_job = self.after(55, self._advance_lightning, 1)
 
     def _advance_lightning(self, phase: int) -> None:
-        """Muestra los destellos previamente calculados, sin filtros caros."""
+        """Dos impulsos intensos seguidos por un resplandor que se desvanece."""
         self._lightning_clear_job = None
         if not self._alive:
             return
         self._lightning_phase = phase if phase < 5 else -1
-        self._show_lightning_frame(phase)
+        self._lightning_cached = None
+        self._lightning_cache_key = None
+        self._refresh_last_frame()
         if phase < 5:
             intervals = (55, 42, 95, 115, 125)
             self._lightning_clear_job = self.after(
                 intervals[phase], self._advance_lightning, phase + 1
             )
 
+    def _lightning_overlay(self, size: tuple[int, int]) -> Image.Image | None:
+        """Pinta brillo volumetrico y relampago antialias sobre RGBA."""
+        phase = self._lightning_phase
+        if phase < 0 or not self._lightning_path:
+            return None
+        key = (size, phase)
+        if self._lightning_cached is not None and self._lightning_cache_key == key:
+            return self._lightning_cached
+
+        w, h = size
+        scale = max(.5, min(w, h) / 700.0)
+        intensity = (.97, .16, 1.0, .34, .11)[phase]
+        core = Image.new("RGBA", size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(core, "RGBA")
+        path = self._lightning_path
+
+        # Atmosfera localizada con radios amplios y gradiente difuso.
+        cloud = Image.new("RGBA", size, (0, 0, 0, 0))
+        cd = ImageDraw.Draw(cloud, "RGBA")
+        for x, y in (path[4], path[len(path)//2], path[-1]):
+            radius = int(min(w, h) * .17)
+            cd.ellipse((x-radius, y-radius, x+radius, y+radius),
+                       fill=(45, 145, 255, int(64 * intensity)))
+        cloud = cloud.filter(ImageFilter.GaussianBlur(max(12, int(42 * scale))))
+
+        # Halo de los canales electricos; la difusion se realiza antes del nucleo.
+        glow = Image.new("RGBA", size, (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow, "RGBA")
+        for pts in [path] + self._lightning_branches:
+            thickness = (12 if pts is path else 6) * scale
+            gd.line(pts, fill=(39, 130, 255, int(195 * intensity)),
+                    width=max(2, int(thickness)), joint="curve")
+        glow = glow.filter(ImageFilter.GaussianBlur(max(3, int(12 * scale))))
+        cloud = Image.alpha_composite(cloud, glow)
+
+        # La descarga tiene un nucleo central muy fino y bordes azulados.
+        for pts in [path] + self._lightning_branches:
+            branch = pts is not path
+            for index in range(len(pts)-1):
+                t = index / max(1, len(pts)-1)
+                thick = max(1, int((2.8 if not branch else 1.35) * scale *
+                                   (1.15 - .55 * t)))
+                a, b = pts[index], pts[index+1]
+                draw.line((a,b), fill=(35, 156, 255, int(225 * intensity)),
+                          width=max(2, thick + 3))
+                draw.line((a,b), fill=(235, 251, 255, int(255 * intensity)),
+                          width=thick)
+        # Fogonazo global corto: el propio fotograma se ilumina al impactar.
+        if phase in (0, 2):
+            flash = Image.new("RGBA", size,
+                              (175, 216, 255, int(23 * intensity)))
+            cloud = Image.alpha_composite(flash, cloud)
+        overlay = Image.alpha_composite(cloud, core)
+        self._lightning_cached = overlay
+        self._lightning_cache_key = key
+        return overlay
+
     def _present(self, frame: Image.Image) -> None:
-        """Solo actualiza el fotograma base; el rayo vive en otra capa."""
+        """Compone las luces sobre el fotograma, sin alterar el MP4 original."""
         self._last_frame = frame
-        self._photo = ImageTk.PhotoImage(frame, master=self)
-        if self._background_item is None:
-            self._background_item = self.create_image(
-                frame.width // 2, frame.height // 2, anchor="center",
-                image=self._photo, tags=("fondo",)
-            )
-        else:
-            self.itemconfigure(
-                self._background_item, image=self._photo, state="normal"
-            )
-            self.coords(
-                self._background_item, frame.width // 2, frame.height // 2
-            )
+        overlay = self._lightning_overlay(frame.size)
+        composed = (Image.alpha_composite(frame.convert("RGBA"), overlay)
+                    if overlay is not None else frame)
+        self._photo = ImageTk.PhotoImage(composed, master=self)
+        self.delete("fondo")
+        self.create_image(frame.width // 2, frame.height // 2,
+                          anchor="center", image=self._photo, tags="fondo")
         self.tag_lower("fondo")
-        if self._lightning_phase >= 0 or self._lightning_preview_active:
-            self._raise_lightning_layers()
 
     def _refresh_last_frame(self) -> None:
-        """Refresca el fondo solo cuando cambia, nunca por cada rayo."""
         if self._last_frame is not None and self._alive:
             self._present(self._last_frame)
+
 
     def _draw(self, image: Image.Image) -> None:
         if self._size[0] < 2 or self._size[1] < 2:
@@ -1909,33 +1244,12 @@ class FondoFutureo(tk.Canvas):
             except tk.TclError:
                 pass
             self._neon_resize_job = None
-        if self._streamer_traffic_job is not None:
-            try:
-                self.after_cancel(self._streamer_traffic_job)
-            except tk.TclError:
-                pass
-            self._streamer_traffic_job = None
-        self._lightning_generation += 1
-        self._lightning_waiting = False
-        for job in (
-            self._lightning_job, self._lightning_clear_job,
-            self._lightning_poll_job,
-        ):
+        for job in (self._lightning_job, self._lightning_clear_job):
             if job is not None:
                 try:
                     self.after_cancel(job)
                 except tk.TclError:
                     pass
-        self._lightning_poll_job = None
-        if self._lightning_preview_job is not None:
-            try:
-                self.after_cancel(self._lightning_preview_job)
-            except tk.TclError:
-                pass
-            self._lightning_preview_job = None
-        self._lightning_frames.clear()
-        self._lightning_photo = None
-        self._lightning_flash_photo = None
         self._stop_playback()
         if self._check_job is not None:
             try:
