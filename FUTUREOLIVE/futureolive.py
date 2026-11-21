@@ -8,6 +8,8 @@ Al abrirse, comprueba el MP4 en GitHub sin bloquear la interfaz.
 """
 from __future__ import annotations
 
+import ctypes
+from ctypes import wintypes
 import hashlib
 import io
 import os
@@ -16,16 +18,22 @@ from pathlib import Path
 import threading
 import time
 import tkinter as tk
+from tkinter import messagebox, ttk
 from urllib.request import Request, urlopen
 
-from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageTk
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps, ImageTk
 
 try:
     import cv2
 except (ImportError, OSError):
     cv2 = None
 
-VERSION = "2.5.0"
+try:
+    import mss
+except (ImportError, OSError):
+    mss = None
+
+VERSION = "2.6.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -33,6 +41,7 @@ WINDOW_OVERLAY_ENABLED = False  # Marco PNG anterior, desactivado.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
+SCREEN_CAPTURE_FPS = 12  # Captura local, no transmision a Internet.
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -46,6 +55,57 @@ MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
 MAX_WINDOW_BYTES = 8 * 1024 * 1024
 
+
+
+
+def _win_rect(hwnd: int) -> dict | None:
+    """Rectangulo visible de una ventana Windows."""
+    if os.name != "nt":
+        return None
+    user = ctypes.windll.user32
+    user.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user.GetWindowRect.restype = wintypes.BOOL
+    for name in ("IsWindow", "IsWindowVisible", "IsIconic"):
+        fn = getattr(user, name)
+        fn.argtypes = [wintypes.HWND]
+        fn.restype = wintypes.BOOL
+    if not user.IsWindow(hwnd) or not user.IsWindowVisible(hwnd) or user.IsIconic(hwnd):
+        return None
+    rect = wintypes.RECT()
+    if not user.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return None
+    w, h = rect.right - rect.left, rect.bottom - rect.top
+    if w < 120 or h < 80:
+        return None
+    return {"left": rect.left, "top": rect.top, "width": w, "height": h}
+
+
+def _win_list() -> list[tuple[int, str]]:
+    """Ventanas que puede compartir el usuario."""
+    if os.name != "nt":
+        return []
+    user = ctypes.windll.user32
+    cb = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user.EnumWindows.argtypes = [cb, wintypes.LPARAM]
+    user.EnumWindows.restype = wintypes.BOOL
+    user.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user.GetWindowTextLengthW.restype = ctypes.c_int
+    user.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    result = []
+
+    @cb
+    def visit(hwnd, _):
+        n = user.GetWindowTextLengthW(hwnd)
+        if n and _win_rect(hwnd):
+            buf = ctypes.create_unicode_buffer(n + 1)
+            user.GetWindowTextW(hwnd, buf, n + 1)
+            title = buf.value.strip()
+            if title and "FUTUREO LIVE" not in title.upper():
+                result.append((int(hwnd), title[:110]))
+        return True
+
+    user.EnumWindows(visit, 0)
+    return result
 
 
 class FondoFutureo(tk.Canvas):
@@ -63,6 +123,14 @@ class FondoFutureo(tk.Canvas):
         self._border_photo: ImageTk.PhotoImage | None = None
         self._border_item: int | None = None
         self._border_resize_job: str | None = None
+        self._screen_photo: ImageTk.PhotoImage | None = None
+        self._screen_item: int | None = None
+        self._screen_source: tuple[str, int] = ("monitor", 1)
+        self._screen_after: str | None = None
+        self._screen_grabber = None
+        self._source_dialog: tk.Toplevel | None = None
+        self._host_root = self.winfo_toplevel()
+        self._insert_binding: str | None = None
         # Capa de tormenta completamente independiente del fondo MP4.
         self._lightning_job: str | None = None
         self._lightning_clear_job: str | None = None
@@ -93,6 +161,15 @@ class FondoFutureo(tk.Canvas):
         threading.Thread(target=self._download_asset, name="futureo-mp4", daemon=True).start()
         self._check_job = self.after(350, self._check_download)
         self._schedule_lightning(initial=True)
+        try:
+            self._screen_grabber = mss.mss() if mss is not None else None
+        except (OSError, RuntimeError):
+            self._screen_grabber = None
+        # El dialogo solo aparece al presionar Insert.
+        self._insert_binding = self._host_root.bind(
+            "<Insert>", self._open_source_dialog, add="+"
+        )
+        self._screen_after = self.after(150, self._screen_tick)
 
     def _stop_playback(self) -> None:
         if self._job is not None:
@@ -389,6 +466,220 @@ class FondoFutureo(tk.Canvas):
             self.coords(self._border_item, margin_x, margin_y)
         self.tag_raise("neon_border")
 
+
+    def _screen_tick(self) -> None:
+        """Dibuja la captura bajo el borde, sin mostrar controles."""
+        self._screen_after = None
+        if not self._alive:
+            return
+        try:
+            sw, sh = self._size
+            grabber = self._screen_grabber
+            if grabber is not None and sw >= 160 and sh >= 120:
+                bw = max(120, int(sw * NEON_BORDER_WIDTH))
+                bh = max(90, int(sh * NEON_BORDER_HEIGHT))
+                side = min(bw, bh)
+                inset = (max(10, int(side * .025))
+                         + max(3, int(side * .007)) + max(5, int(side * .008)))
+                left, top = int(sw * .02) + inset, int(sh * .02) + inset
+                width, height = bw - inset * 2, bh - inset * 2
+                kind, index = self._screen_source
+                if kind == "monitor":
+                    monitors = grabber.monitors
+                    region = (dict(monitors[index]) if 0 < index < len(monitors)
+                              else None)
+                else:
+                    region = _win_rect(index)
+                    if region is not None:
+                        desktop = grabber.monitors[0]
+                        x0 = max(region["left"], desktop["left"])
+                        y0 = max(region["top"], desktop["top"])
+                        x1 = min(region["left"] + region["width"],
+                                 desktop["left"] + desktop["width"])
+                        y1 = min(region["top"] + region["height"],
+                                 desktop["top"] + desktop["height"])
+                        region = ({"left": x0, "top": y0,
+                                   "width": x1 - x0, "height": y1 - y0}
+                                  if x1 > x0 and y1 > y0 else None)
+                if region is not None and width > 20 and height > 20:
+                    shot = grabber.grab(region)
+                    original = Image.frombytes("RGB", shot.size, shot.rgb)
+                    thumb = ImageOps.contain(
+                        original, (width, height), Image.Resampling.BILINEAR
+                    )
+                    frame = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                    frame.paste(
+                        thumb, ((width - thumb.width) // 2,
+                                (height - thumb.height) // 2)
+                    )
+                    mask = Image.new("L", (width, height), 0)
+                    ImageDraw.Draw(mask).rounded_rectangle(
+                        (0, 0, width - 1, height - 1),
+                        radius=max(10, int(min(width, height) * .038)),
+                        fill=255
+                    )
+                    frame.putalpha(ImageChops.multiply(
+                        frame.getchannel("A"), mask
+                    ))
+                    self._screen_photo = ImageTk.PhotoImage(frame, master=self)
+                    if self._screen_item is None:
+                        self._screen_item = self.create_image(
+                            left, top, image=self._screen_photo, anchor="nw",
+                            tags=("screen_capture",)
+                        )
+                    else:
+                        self.itemconfigure(
+                            self._screen_item, image=self._screen_photo,
+                            state="normal"
+                        )
+                        self.coords(self._screen_item, left, top)
+                    self.tag_raise("screen_capture")
+                    if self._border_item is not None:
+                        self.tag_raise("neon_border")
+                elif self._screen_item is not None:
+                    self.itemconfigure(self._screen_item, state="hidden")
+        except (OSError, ValueError, RuntimeError):
+            if self._screen_item is not None:
+                self.itemconfigure(self._screen_item, state="hidden")
+        finally:
+            if self._alive:
+                self._screen_after = self.after(
+                    max(40, int(1000 / SCREEN_CAPTURE_FPS)), self._screen_tick
+                )
+
+    def _open_source_dialog(self, _event=None) -> None:
+        """Dialogo con fuentes disponibles: aparece solo al presionar Insert."""
+        if not self._alive:
+            return
+        if self._source_dialog is not None:
+            try:
+                if self._source_dialog.winfo_exists():
+                    self._source_dialog.lift()
+                    self._source_dialog.focus_force()
+                    return
+            except tk.TclError:
+                pass
+        dialog = tk.Toplevel(self._host_root)
+        self._source_dialog = dialog
+        dialog.title("FUTUREO LIVE - Configurar captura")
+        dialog.geometry("530x330")
+        dialog.resizable(False, False)
+        dialog.configure(bg="#0A142B")
+        dialog.transient(self._host_root)
+        dialog.attributes("-topmost", True)
+        mode = tk.StringVar(master=dialog, value=self._screen_source[0])
+        screens = []
+        if self._screen_grabber is not None:
+            for i, monitor in enumerate(self._screen_grabber.monitors[1:], 1):
+                name = (f"Pantalla {i} - {monitor['width']}x{monitor['height']} "
+                        f"(X:{monitor['left']}, Y:{monitor['top']})")
+                screens.append((name, i))
+        windows = []
+        body = tk.Frame(dialog, bg="#0A142B", padx=20, pady=18)
+        body.pack(fill="both", expand=True)
+        tk.Label(body, text="CONFIGURACION DE CAPTURA",
+                 bg="#0A142B", fg="#6FDCFF",
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 12))
+        common = {"bg": "#0A142B", "fg": "#F4F8FF",
+                  "selectcolor": "#173153", "activebackground": "#0A142B"}
+        tk.Radiobutton(
+            body, text="Pantalla completa", variable=mode, value="monitor",
+            **common
+        ).pack(anchor="w")
+        screen_box = ttk.Combobox(body, state="readonly", width=63)
+        screen_box["values"] = [label for label, _idx in screens]
+        screen_box.pack(fill="x", pady=(4, 12))
+        if screens:
+            selected = self._screen_source[1] if mode.get() == "monitor" else 1
+            screen_box.current(next(
+                (i for i, (_name, idx) in enumerate(screens) if idx == selected), 0
+            ))
+        window_radio = tk.Radiobutton(
+            body, text="Ventana especifica", variable=mode, value="window",
+            **common
+        )
+        window_radio.pack(anchor="w")
+        window_box = ttk.Combobox(body, state="readonly", width=63)
+        window_box.pack(fill="x", pady=(4, 6))
+
+        def refresh():
+            nonlocal windows
+            windows = [(f"{name}  [0x{hwnd:X}]", hwnd)
+                       for hwnd, name in _win_list()]
+            window_box["values"] = [name for name, _hwnd in windows]
+            if windows:
+                previously = (self._screen_source[1]
+                              if self._screen_source[0] == "window" else None)
+                window_box.current(next(
+                    (i for i, (_name, hwnd) in enumerate(windows)
+                     if hwnd == previously), 0
+                ))
+            else:
+                window_box.set("No se encontraron ventanas")
+        refresh()
+        tk.Button(body, text="Actualizar ventanas", command=refresh,
+                  bg="#13314E", fg="white", relief="flat").pack(anchor="w")
+
+        def change_mode(*_args):
+            screen_box.configure(
+                state="readonly" if mode.get() == "monitor" else "disabled"
+            )
+            window_box.configure(
+                state="readonly" if mode.get() == "window" else "disabled"
+            )
+        mode.trace_add("write", change_mode)
+        if os.name != "nt":
+            window_radio.configure(state="disabled")
+            mode.set("monitor")
+        change_mode()
+
+        def close():
+            if self._source_dialog is dialog:
+                self._source_dialog = None
+            try:
+                dialog.grab_release()
+            except tk.TclError:
+                pass
+            dialog.destroy()
+
+        def apply():
+            if mode.get() == "monitor":
+                idx = screen_box.current()
+                if idx < 0 or idx >= len(screens):
+                    messagebox.showwarning(
+                        "FUTUREO LIVE", "Selecciona una pantalla.", parent=dialog
+                    )
+                    return
+                chosen = ("monitor", screens[idx][1])
+            else:
+                idx = window_box.current()
+                if idx < 0 or idx >= len(windows):
+                    messagebox.showwarning(
+                        "FUTUREO LIVE", "Selecciona una ventana.", parent=dialog
+                    )
+                    return
+                chosen = ("window", windows[idx][1])
+            self._screen_source = chosen
+            if self._screen_item is not None:
+                self.itemconfigure(self._screen_item, state="hidden")
+            close()
+
+        footer = tk.Frame(body, bg="#0A142B")
+        footer.pack(side="bottom", fill="x", pady=(9, 0))
+        tk.Button(footer, text="Cancelar", command=close, bg="#22334C",
+                  fg="white", padx=18).pack(side="right", padx=(8, 0))
+        tk.Button(footer, text="Aplicar", command=apply, bg="#007BB9",
+                  fg="white", padx=18).pack(side="right")
+        dialog.protocol("WM_DELETE_WINDOW", close)
+        dialog.grab_set()
+        dialog.focus_force()
+        if self._screen_grabber is None:
+            messagebox.showwarning(
+                "FUTUREO LIVE",
+                "Captura no disponible. Instala la dependencia: pip install mss",
+                parent=dialog
+            )
+
     def _schedule_lightning(self, initial: bool = False) -> None:
         """Intervalo aleatorio entre descargas."""
         if not self._alive:
@@ -596,6 +887,26 @@ class FondoFutureo(tk.Canvas):
         if event.widget is not self:
             return
         self._alive = False
+        if self._screen_after is not None:
+            try:
+                self.after_cancel(self._screen_after)
+            except tk.TclError:
+                pass
+            self._screen_after = None
+        if self._screen_grabber is not None:
+            self._screen_grabber.close()
+            self._screen_grabber = None
+        if self._insert_binding:
+            try:
+                self._host_root.unbind("<Insert>", self._insert_binding)
+            except tk.TclError:
+                pass
+        if self._source_dialog is not None:
+            try:
+                self._source_dialog.destroy()
+            except tk.TclError:
+                pass
+            self._source_dialog = None
         if self._border_resize_job is not None:
             try:
                 self.after_cancel(self._border_resize_job)
