@@ -34,12 +34,13 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.8.0"
+VERSION = "2.8.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
-STREAMER_SIDE_RATIO = 0.27  # Lado del cuadrado en proporcion al lienzo.
+STREAMER_SIDE_RATIO = 0.27  # Altura del marco en proporcion al lienzo.
+STREAMER_ASPECT_RATIO = 1.20  # Rectangulo horizontal suave: 20% mas ancho que alto.
 STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
@@ -515,7 +516,7 @@ class FondoFutureo(tk.Canvas):
             self._border_resize_job = self.after(90, self._draw_neon_border)
 
     def _draw_neon_window(self) -> None:
-        """Dibuja un cuadro neon cuadrado con centro transparente, sin PNG."""
+        """Dibuja un marco neon ligeramente rectangular, sin PNG."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
             return
@@ -530,17 +531,23 @@ class FondoFutureo(tk.Canvas):
         if width < 160 or height < 120:
             return
 
-        side = max(110, int(min(width, height) * STREAMER_SIDE_RATIO))
-        side = min(side, width - 2 * STREAMER_MARGIN_PX - 8,
-                   height - 2 * STREAMER_MARGIN_PX - 8)
-        if side < 60:
+        # Mantener la altura previa y ampliar solo un 20% el ancho.
+        # Los limites impiden cortar el marco cuando la ventana es pequena.
+        frame_h = max(110, int(min(width, height) * STREAMER_SIDE_RATIO))
+        frame_h = min(
+            frame_h,
+            height - 2 * STREAMER_MARGIN_PX - 8,
+            int((width - 2 * STREAMER_MARGIN_PX - 8) / STREAMER_ASPECT_RATIO),
+        )
+        if frame_h < 60:
             return
+        frame_w = int(round(frame_h * STREAMER_ASPECT_RATIO))
 
         # Un margen real de 5 px incluye el halo externo.
         x0 = STREAMER_MARGIN_PX + 4
         y0 = STREAMER_MARGIN_PX + 4
-        x1 = x0 + side - 8
-        y1 = y0 + side - 8
+        x1 = x0 + frame_w - 8
+        y1 = y0 + frame_h - 8
 
         # Dibujado nativo Tkinter: contorno fino y resplandor azul-cian.
         # fill="" conserva el centro completamente transparente.
