@@ -34,13 +34,13 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.10"
+VERSION = "2.8.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
-WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
-STREAMER_AREA_RATIO = 0.08  # Ventana del hablante ligeramente mas pequena (antes 0.10).
-STREAMER_BORDER_THINNING_PX = 2  # Adelgaza 2 px por lado el marco PNG.
+STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
+STREAMER_SIDE_RATIO = 0.27  # Lado del cuadrado en proporcion al lienzo.
+STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -54,14 +54,11 @@ BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
 GIF_PATH = ASSETS / "fondo_sin_marcos.gif"
-WINDOW_PATH = ASSETS / "ventana_neon.png"
 URL_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/assets"
 VIDEO_URL = URL_ROOT + "/fondo_sin_marcos_4k.mp4"
 GIF_URL = URL_ROOT + "/fondo_sin_marcos.gif"
-WINDOW_URL = URL_ROOT + "/ventana_neon.png"
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
-MAX_WINDOW_BYTES = 8 * 1024 * 1024
 
 
 
@@ -291,9 +288,7 @@ class FondoFutureo(tk.Canvas):
         super().__init__(parent, bg=FONDO, bd=0, highlightthickness=0)
         self._size = (0, 0)
         self._photo: ImageTk.PhotoImage | None = None
-        # Imagen PNG transparente cargada desde assets, separada del video.
-        self._neon_source: Image.Image | None = None
-        self._neon_photo: ImageTk.PhotoImage | None = None
+        # Id de los trazos del cuadrado neon dibujado en el Canvas.
         self._neon_item: int | None = None
         self._neon_resize_job: str | None = None
         self._border_photo: ImageTk.PhotoImage | None = None
@@ -339,8 +334,8 @@ class FondoFutureo(tk.Canvas):
         self.bind("<Configure>", self._resize)
         self.bind("<Destroy>", self._destroy, add="+")
         self.after_idle(self._load_local)
-        if WINDOW_OVERLAY_ENABLED:
-            self.after_idle(self._load_neon_overlay)
+        if STREAMER_NEON_ENABLED:
+            self.after_idle(self._draw_neon_window)
         threading.Thread(target=self._download_asset, name="futureo-mp4", daemon=True).start()
         self._check_job = self.after(350, self._check_download)
         self._schedule_lightning(initial=True)
@@ -443,9 +438,8 @@ class FondoFutureo(tk.Canvas):
             self._present(Image.new("RGB", (width, height), FONDO))
 
     def _download_asset(self) -> None:
-        """Descarga por separado la imagen PNG y los fondos con cache local."""
-        choices = ([(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")]
-                   if WINDOW_OVERLAY_ENABLED else [])
+        """Descarga fondos opcionales. El cuadro del streamer no necesita PNG."""
+        choices = []
         if VIDEO_BACKGROUND_ENABLED:
             if cv2 is not None:
                 choices.append((VIDEO_URL, VIDEO_PATH, MAX_VIDEO_BYTES, "mp4"))
@@ -463,8 +457,6 @@ class FondoFutureo(tk.Canvas):
                     with urlopen(req, timeout=18) as resp:
                         data = resp.read(limit + 1)
                     if not data or len(data) > limit:
-                        continue
-                    if kind == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
                         continue
                     if kind == "mp4" and data[4:8] != b"ftyp":
                         continue
@@ -498,8 +490,6 @@ class FondoFutureo(tk.Canvas):
             return
         if self._download_ready.is_set():
             if self._download_changed:
-                if WINDOW_OVERLAY_ENABLED:
-                    self._load_neon_overlay()
                 self._load_local()
         else:
             self._check_job = self.after(350, self._check_download)
@@ -517,86 +507,60 @@ class FondoFutureo(tk.Canvas):
         if self._neon_resize_job is not None:
             self.after_cancel(self._neon_resize_job)
         # Evita regenerar una imagen grande en cada pixel durante resize.
-        if WINDOW_OVERLAY_ENABLED:
+        if STREAMER_NEON_ENABLED:
             self._neon_resize_job = self.after(90, self._draw_neon_window)
         if self._border_resize_job is not None:
             self.after_cancel(self._border_resize_job)
         if NEON_BORDER_ENABLED:
             self._border_resize_job = self.after(90, self._draw_neon_border)
 
-    def _load_neon_overlay(self) -> None:
-        """Abre el PNG local sin dibujar su geometria mediante codigo."""
-        if not WINDOW_OVERLAY_ENABLED or not self._alive or not WINDOW_PATH.is_file():
-            return
-        try:
-            with Image.open(WINDOW_PATH) as source:
-                source.load()
-                if source.width < 128 or source.height < 72:
-                    raise ValueError("Imagen de ventana demasiado pequena")
-                overlay = source.convert("RGBA")
-                # Adelgazar los bordes del marco del streamer SIN afectar
-                # al borde principal, colores originales ni tamano del PNG.
-                if STREAMER_BORDER_THINNING_PX > 0:
-                    radius = max(1, int(STREAMER_BORDER_THINNING_PX))
-                    radius = min(radius, 8)
-                    alpha = overlay.getchannel("A")
-                    # Erosion de transparencia: cada lado del trazo pierde 2 px.
-                    core = alpha.filter(ImageFilter.MinFilter(2 * radius + 1))
-                    # Un halo muy sutil conserva la iluminacion cyan/violeta.
-                    halo = alpha.point(lambda value: int(value * 0.16))
-                    overlay.putalpha(ImageChops.lighter(core, halo))
-                self._neon_source = overlay.copy()
-        except (OSError, ValueError, EOFError):
-            return
-        self._draw_neon_window()
-
     def _draw_neon_window(self) -> None:
-        """Coloca la ventana del hablante arriba a la izquierda, con tamano reducido."""
+        """Dibuja un cuadro neon cuadrado con centro transparente, sin PNG."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
             return
-        if not WINDOW_OVERLAY_ENABLED:
-            if self._neon_item is not None:
-                self.itemconfigure(self._neon_item, state="hidden")
+
+        # Los trazos antiguos se retiran antes de reconstruir el contorno.
+        self.delete("ventana_neon")
+        self._neon_item = None
+        if not STREAMER_NEON_ENABLED:
             return
 
         width, height = self._size
-        if self._neon_source is None or width < 160 or height < 120:
-            if self._neon_item is not None:
-                self.itemconfigure(self._neon_item, state="hidden")
+        if width < 160 or height < 120:
             return
 
-        # Escalar por area para mantener la proporcion real del PNG.
-        target_area = width * height * STREAMER_AREA_RATIO
-        src_w, src_h = self._neon_source.size
-        aspect = src_w / src_h if src_h else 1.0
-        new_w = int((target_area * aspect) ** 0.5)
-        new_h = int(new_w / aspect)
+        side = max(110, int(min(width, height) * STREAMER_SIDE_RATIO))
+        side = min(side, width - 2 * STREAMER_MARGIN_PX - 8,
+                   height - 2 * STREAMER_MARGIN_PX - 8)
+        if side < 60:
+            return
 
-        # Limitar el cuadro para no tapar una parte excesiva de la escena.
-        new_w = max(80, min(new_w, int(width * 0.45)))
-        new_h = max(45, min(new_h, int(height * 0.45)))
+        # Un margen real de 5 px incluye el halo externo.
+        x0 = STREAMER_MARGIN_PX + 4
+        y0 = STREAMER_MARGIN_PX + 4
+        x1 = x0 + side - 8
+        y1 = y0 + side - 8
 
-        frame = self._neon_source.resize(
-            (new_w, new_h), resample=Image.Resampling.LANCZOS
+        # Dibujado nativo Tkinter: contorno fino y resplandor azul-cian.
+        # fill="" conserva el centro completamente transparente.
+        for stroke, color in (
+            (8, "#0A274A"),
+            (5, "#155A88"),
+            (3, "#008FBB"),
+            (2, "#4CEBFF"),
+        ):
+            item = self.create_rectangle(
+                x0, y0, x1, y1, outline=color, width=stroke,
+                fill="", tags=("ventana_neon",)
+            )
+            if self._neon_item is None:
+                self._neon_item = item
+
+        self.create_rectangle(
+            x0 + 1, y0 + 1, x1 - 1, y1 - 1,
+            outline="#B3FAFF", width=1, fill="", tags=("ventana_neon",)
         )
-        self._neon_photo = ImageTk.PhotoImage(frame, master=self)
-
-        # Ventana del hablante anclada a 5 px del borde superior e izquierdo.
-        margin_x = 5
-        margin_y = 5
-
-        if self._neon_item is None:
-            self._neon_item = self.create_image(
-                margin_x, margin_y, anchor="nw",
-                image=self._neon_photo, tags=("ventana_neon",)
-            )
-        else:
-            self.itemconfigure(
-                self._neon_item, image=self._neon_photo, state="normal"
-            )
-            self.coords(self._neon_item, margin_x, margin_y)
-
         self.tag_raise("ventana_neon")
 
     def _draw_neon_border(self) -> None:
@@ -670,7 +634,7 @@ class FondoFutureo(tk.Canvas):
             )
             self.coords(self._border_item, margin_x, margin_y)
         self.tag_raise("neon_border")
-        if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
+        if STREAMER_NEON_ENABLED and self._neon_item is not None:
             self.tag_raise("ventana_neon")
 
 
@@ -822,7 +786,7 @@ class FondoFutureo(tk.Canvas):
                     if self._border_item is not None:
                         self.tag_raise("neon_border")
                     # Ventana del hablante sobre captura y marco.
-                    if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
+                    if STREAMER_NEON_ENABLED and self._neon_item is not None:
                         self.tag_raise("ventana_neon")
                     self._capture_error = None
         except Exception as exc:
