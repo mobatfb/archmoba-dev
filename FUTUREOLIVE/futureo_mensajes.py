@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.8 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.9 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -301,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.8",
+            "User-Agent": "FutureoMensajes/1.2.9",
         },
         method="GET",
     )
@@ -349,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.8"
+APP_VERSION = "1.2.9"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -545,21 +545,8 @@ class MessageBanner(tk.Canvas):
             self.create_image(round(x0), round(y0), image=patch, anchor="nw")
 
     def _draw_frame(self):
-        # Compact, fixed-size neon frame with no overlay on the message area.
-        w, h = self.w, self.h
-        if w <= 0 or h <= 0:
-            return
-        inset = 2
-        for color, width in (("#15345b", 4), ("#31bfff", 1)):
-            self.create_line(inset, h - inset, inset + 12, inset,
-                             w * 0.52, inset, fill=color, width=width, joinstyle="round")
-        for color, width in (("#291349", 4), ("#c044f0", 1)):
-            self.create_line(w * 0.52, inset, w - 13, inset,
-                             w - inset, h - inset, fill=color, width=width, joinstyle="round")
-        self.create_line(inset, h - inset, w * 0.52, h - inset,
-                         fill="#287acb", width=1)
-        self.create_line(w * 0.52, h - inset, w - inset, h - inset,
-                         fill="#a73de2", width=1)
+        # Sin bordes decorativos: conservar intactos el margen y el padding.
+        return
 
     def _progress(self):
         return min(1.0, max(0.0, (time.perf_counter() - self.started_at) / self.duration))
