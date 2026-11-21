@@ -170,6 +170,7 @@ class FondoFutureo(tk.Canvas):
         self._screen_source: tuple[str, int] = ("monitor", 1)
         self._screen_after: str | None = None
         self._screen_grabber = None
+        self._capture_error: str | None = None
         self._source_dialog: tk.Toplevel | None = None
         self._host_root = self.winfo_toplevel()
         self._insert_binding: str | None = None
@@ -545,7 +546,7 @@ class FondoFutureo(tk.Canvas):
             pass
 
     def _screen_tick(self) -> None:
-        """Dibuja la captura bajo el borde, sin mostrar controles."""
+        """Visualiza pantalla o ventana real bajo el marco neon, sin controles."""
         self._screen_after = None
         if not self._alive:
             return
@@ -555,7 +556,7 @@ class FondoFutureo(tk.Canvas):
         try:
             sw, sh = self._size
             grabber = self._screen_grabber
-            if grabber is not None and sw >= 160 and sh >= 120:
+            if sw >= 160 and sh >= 120:
                 bw = max(120, int(sw * NEON_BORDER_WIDTH))
                 bh = max(90, int(sh * NEON_BORDER_HEIGHT))
                 side = min(bw, bh)
@@ -564,26 +565,23 @@ class FondoFutureo(tk.Canvas):
                 left, top = int(sw * .02) + inset, int(sh * .02) + inset
                 width, height = bw - inset * 2, bh - inset * 2
                 kind, index = self._screen_source
-                if kind == "monitor":
+                if kind == "window":
+                    # Captura verdadera por HWND; otra ventana encima no la tapa.
+                    original = _capture_app_window(index)
+                elif kind == "monitor":
+                    if grabber is None:
+                        raise RuntimeError(
+                            "No se encontro mss. Instala: python -m pip install mss"
+                        )
                     monitors = grabber.monitors
-                    region = (dict(monitors[index]) if 0 < index < len(monitors)
-                              else None)
-                else:
-                    region = _win_rect(index)
-                    if region is not None:
-                        desktop = grabber.monitors[0]
-                        x0 = max(region["left"], desktop["left"])
-                        y0 = max(region["top"], desktop["top"])
-                        x1 = min(region["left"] + region["width"],
-                                 desktop["left"] + desktop["width"])
-                        y1 = min(region["top"] + region["height"],
-                                 desktop["top"] + desktop["height"])
-                        region = ({"left": x0, "top": y0,
-                                   "width": x1 - x0, "height": y1 - y0}
-                                  if x1 > x0 and y1 > y0 else None)
-                if region is not None and width > 20 and height > 20:
-                    shot = grabber.grab(region)
+                    if not (0 < index < len(monitors)):
+                        raise RuntimeError("El monitor seleccionado no esta conectado")
+                    shot = grabber.grab(dict(monitors[index]))
                     original = Image.frombytes("RGB", shot.size, shot.rgb)
+                else:
+                    raise RuntimeError("Fuente de captura no valida")
+
+                if width > 20 and height > 20:
                     thumb = ImageOps.contain(
                         original, (width, height), Image.Resampling.BILINEAR
                     )
@@ -616,16 +614,19 @@ class FondoFutureo(tk.Canvas):
                     self.tag_raise("screen_capture")
                     if self._border_item is not None:
                         self.tag_raise("neon_border")
-                elif self._screen_item is not None:
-                    self.itemconfigure(self._screen_item, state="hidden")
-        except Exception:
-            # La aplicacion sigue operando si una ventana deja de capturarse.
+                    self._capture_error = None
+        except Exception as exc:
+            # No ocultar errores: disponibles en Insert y en la consola.
+            error = str(exc)
+            if error != self._capture_error:
+                print("[FUTUREO] Error de captura:", error)
+            self._capture_error = error
             if self._screen_item is not None:
                 self.itemconfigure(self._screen_item, state="hidden")
         finally:
             if self._alive:
                 self._screen_after = self.after(
-                    max(40, int(1000 / SCREEN_CAPTURE_FPS)), self._screen_tick
+                    max(50, int(1000 / SCREEN_CAPTURE_FPS)), self._screen_tick
                 )
 
     def _open_source_dialog(self, _event=None) -> None:
@@ -648,7 +649,7 @@ class FondoFutureo(tk.Canvas):
         dialog = tk.Toplevel(self._host_root)
         self._source_dialog = dialog
         dialog.title("FUTUREO LIVE - Configurar captura")
-        dialog.geometry("550x380")
+        dialog.geometry("550x410")
         dialog.resizable(False, False)
         dialog.configure(bg="#0A142B")
         dialog.transient(self._host_root)
@@ -745,6 +746,13 @@ class FondoFutureo(tk.Canvas):
                     )
                     return
                 chosen = ("window", windows[idx][1])
+                if _win_rect(chosen[1]) is None:
+                    messagebox.showwarning(
+                        "FUTUREO LIVE",
+                        "Restaura esa ventana: las minimizadas no pueden capturarse.",
+                        parent=dialog
+                    )
+                    return
             self._screen_source = chosen
             if self._screen_item is not None:
                 self.itemconfigure(self._screen_item, state="hidden")
@@ -759,12 +767,19 @@ class FondoFutureo(tk.Canvas):
         dialog.protocol("WM_DELETE_WINDOW", close)
         dialog.grab_set()
         dialog.focus_force()
-        if self._screen_grabber is None:
+        if self._screen_grabber is None and os.name != "nt":
             messagebox.showwarning(
                 "FUTUREO LIVE",
-                "Captura no disponible. Instala la dependencia: pip install mss",
+                "Captura de monitor no disponible. Instala: pip install mss",
                 parent=dialog
             )
+        elif self._capture_error:
+            tk.Label(
+                body, text="Captura: " + self._capture_error[:100],
+                bg="#0A142B", fg="#FFBC94",
+                wraplength=490, justify="left",
+                font=("Segoe UI", 9)
+            ).pack(anchor="w", pady=(6, 0))
 
     def _schedule_lightning(self, initial: bool = False) -> None:
         """Intervalo aleatorio entre descargas."""
