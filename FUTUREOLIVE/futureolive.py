@@ -33,7 +33,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.6.0"
+VERSION = "2.6.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -131,6 +131,9 @@ class FondoFutureo(tk.Canvas):
         self._source_dialog: tk.Toplevel | None = None
         self._host_root = self.winfo_toplevel()
         self._insert_binding: str | None = None
+        self._global_insert_event = threading.Event()
+        self._global_insert_stop = threading.Event()
+        self._global_insert_thread_id = 0
         # Capa de tormenta completamente independiente del fondo MP4.
         self._lightning_job: str | None = None
         self._lightning_clear_job: str | None = None
@@ -170,6 +173,9 @@ class FondoFutureo(tk.Canvas):
             "<Insert>", self._open_source_dialog, add="+"
         )
         self._screen_after = self.after(150, self._screen_tick)
+        if os.name == "nt":
+            threading.Thread(target=self._global_insert_listener,
+                             name="futureo-insert", daemon=True).start()
 
     def _stop_playback(self) -> None:
         if self._job is not None:
@@ -467,11 +473,43 @@ class FondoFutureo(tk.Canvas):
         self.tag_raise("neon_border")
 
 
+    def _global_insert_listener(self) -> None:
+        """Atajo Insert global para Windows, con respaldo local de Tkinter."""
+        try:
+            user = ctypes.WinDLL("user32", use_last_error=True)
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            user.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int,
+                                            wintypes.UINT, wintypes.UINT]
+            user.RegisterHotKey.restype = wintypes.BOOL
+            user.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+            user.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG),
+                                          wintypes.HWND, wintypes.UINT, wintypes.UINT]
+            user.GetMessageW.restype = ctypes.c_int
+            kernel.GetCurrentThreadId.restype = wintypes.DWORD
+            hotkey_id = 0x3609
+            self._global_insert_thread_id = int(kernel.GetCurrentThreadId())
+            if not user.RegisterHotKey(None, hotkey_id, 0x4000, 0x2D):
+                return
+            try:
+                msg = wintypes.MSG()
+                while not self._global_insert_stop.is_set():
+                    if user.GetMessageW(ctypes.byref(msg), None, 0, 0) <= 0:
+                        break
+                    if msg.message == 0x0312 and msg.wParam == hotkey_id:
+                        self._global_insert_event.set()
+            finally:
+                user.UnregisterHotKey(None, hotkey_id)
+        except (AttributeError, OSError, ValueError):
+            pass
+
     def _screen_tick(self) -> None:
         """Dibuja la captura bajo el borde, sin mostrar controles."""
         self._screen_after = None
         if not self._alive:
             return
+        if self._global_insert_event.is_set():
+            self._global_insert_event.clear()
+            self._open_source_dialog()
         try:
             sw, sh = self._size
             grabber = self._screen_grabber
@@ -887,6 +925,14 @@ class FondoFutureo(tk.Canvas):
         if event.widget is not self:
             return
         self._alive = False
+        self._global_insert_stop.set()
+        if self._global_insert_thread_id:
+            try:
+                ctypes.windll.user32.PostThreadMessageW(
+                    self._global_insert_thread_id, 0x0012, 0, 0
+                )
+            except (AttributeError, OSError):
+                pass
         if self._screen_after is not None:
             try:
                 self.after_cancel(self._screen_after)
