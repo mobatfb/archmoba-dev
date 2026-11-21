@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.3"
+VERSION = "2.7.4"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -42,9 +42,11 @@ WINDOW_OVERLAY_ENABLED = False  # Marco PNG anterior, desactivado.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
+NEON_CORNER_RADIUS_RATIO = 0.045  # Esquinas 31% menos redondeadas que antes.
 SCREEN_CAPTURE_FPS = 12  # Captura local, no transmision a Internet.
-SCREEN_CAPTURE_BLEED_PX = 2  # Solapa 2 px debajo del marco neon.
+SCREEN_CAPTURE_BLEED_PX = 3  # Solapa 3 px debajo del marco, sin ranuras.
 SCREEN_SOURCE_CROP_PX = 2  # Elimina 2 px exteriores de cada ventana capturada.
+SCREEN_CAPTURE_CORNER_OVERLAP_PX = 2  # Cubre tambien la curva interna del marco.
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -602,7 +604,7 @@ class FondoFutureo(tk.Canvas):
         # Los bordes tienen margen interno para que el resplandor no se corte.
         min_side = min(border_w, border_h)
         padding = max(10, int(min_side * .025))
-        radius = max(16, int(min_side * .065))
+        radius = max(12, int(min_side * NEON_CORNER_RADIUS_RATIO))
         stroke = max(3, int(min_side * .007))
         bounds = (padding, padding, border_w - padding - 1,
                   border_h - padding - 1)
@@ -722,15 +724,15 @@ class FondoFutureo(tk.Canvas):
                 bh = max(90, int(sh * NEON_BORDER_HEIGHT))
                 side = min(bw, bh)
                 # Coincidir con la geometria de _draw_neon_border.
-                # La captura solapa dos pixeles debajo del borde luminoso.
+                # La captura solapa todo el borde interior, incluso las esquinas.
                 padding = max(10, int(side * .025))
                 stroke = max(3, int(side * .007))
-                radius = max(16, int(side * .065))
+                radius = max(12, int(side * NEON_CORNER_RADIUS_RATIO))
                 inset = max(1, padding + stroke - SCREEN_CAPTURE_BLEED_PX)
                 left = int(sw * .02) + inset
                 top = int(sh * .02) + inset
                 width, height = bw - 2 * inset, bh - 2 * inset
-                clip_radius = max(1, radius - (inset - padding))
+                clip_radius = max(1, radius - (inset - padding) - SCREEN_CAPTURE_CORNER_OVERLAP_PX)
                 kind, index = self._screen_source
                 if kind == "window":
                     # Recuperar solo el ultimo fotograma producido en otro hilo.
@@ -772,7 +774,7 @@ class FondoFutureo(tk.Canvas):
                         original.convert("RGBA"), (width, height),
                         method=Image.Resampling.BILINEAR, centering=(.5, .5),
                     )
-                    # Misma curvatura del marco, con solapamiento de 2 px.
+                    # Recorte redondeado menos pronunciado y extendido bajo el borde neon.
                     mask = Image.new("L", (width, height), 0)
                     ImageDraw.Draw(mask).rounded_rectangle(
                         (0, 0, width - 1, height - 1),
