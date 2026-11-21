@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.5"
+VERSION = "2.12.6"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -56,13 +56,16 @@ ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
 GIF_PATH = ASSETS / "fondo_sin_marcos.gif"
 WINDOW_PATH = ASSETS / "ventana_futureo_hd.png"
+SPEAKER_PHOTO_PATH = ASSETS / "hablante_futureo.jpg"
 URL_ROOT = "https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/FUTUREOLIVE/assets"
 VIDEO_URL = URL_ROOT + "/fondo_sin_marcos_4k.mp4"
 GIF_URL = URL_ROOT + "/fondo_sin_marcos.gif"
 WINDOW_URL = URL_ROOT + "/ventana_futureo_hd.png"
+SPEAKER_PHOTO_URL = URL_ROOT + "/hablante_futureo.jpg"
 MAX_VIDEO_BYTES = 32 * 1024 * 1024
 MAX_GIF_BYTES = 8 * 1024 * 1024
 MAX_WINDOW_BYTES = 8 * 1024 * 1024
+MAX_SPEAKER_PHOTO_BYTES = 3 * 1024 * 1024
 
 
 
@@ -297,6 +300,10 @@ class FondoFutureo(tk.Canvas):
         self._neon_photo: ImageTk.PhotoImage | None = None
         self._neon_item: int | None = None
         self._neon_resize_job: str | None = None
+        # Imagen fija del hablante en capa independiente, debajo del marco.
+        self._speaker_source: Image.Image | None = None
+        self._speaker_photo: ImageTk.PhotoImage | None = None
+        self._speaker_item: int | None = None
         self._border_photo: ImageTk.PhotoImage | None = None
         self._border_item: int | None = None
         self._border_resize_job: str | None = None
@@ -342,6 +349,7 @@ class FondoFutureo(tk.Canvas):
         self.after_idle(self._load_local)
         if WINDOW_OVERLAY_ENABLED:
             self.after_idle(self._load_neon_overlay)
+            self.after_idle(self._load_speaker_image)
         threading.Thread(target=self._download_asset, name="futureo-mp4", daemon=True).start()
         self._check_job = self.after(350, self._check_download)
         self._schedule_lightning(initial=True)
@@ -445,8 +453,11 @@ class FondoFutureo(tk.Canvas):
 
     def _download_asset(self) -> None:
         """Descarga por separado la imagen PNG y los fondos con cache local."""
-        choices = ([(WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png")]
-                   if WINDOW_OVERLAY_ENABLED else [])
+        choices = ([
+            (WINDOW_URL, WINDOW_PATH, MAX_WINDOW_BYTES, "png"),
+            (SPEAKER_PHOTO_URL, SPEAKER_PHOTO_PATH,
+             MAX_SPEAKER_PHOTO_BYTES, "jpg"),
+        ] if WINDOW_OVERLAY_ENABLED else [])
         if VIDEO_BACKGROUND_ENABLED:
             if cv2 is not None:
                 choices.append((VIDEO_URL, VIDEO_PATH, MAX_VIDEO_BYTES, "mp4"))
@@ -466,6 +477,10 @@ class FondoFutureo(tk.Canvas):
                     if not data or len(data) > limit:
                         continue
                     if kind == "png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
+                        continue
+                    if kind == "jpg" and not (
+                        data.startswith(b"\xff\xd8") and data.endswith(b"\xff\xd9")
+                    ):
                         continue
                     if kind == "mp4" and data[4:8] != b"ftyp":
                         continue
@@ -501,6 +516,7 @@ class FondoFutureo(tk.Canvas):
             if self._download_changed:
                 if WINDOW_OVERLAY_ENABLED:
                     self._load_neon_overlay()
+                    self._load_speaker_image()
                 self._load_local()
         else:
             self._check_job = self.after(350, self._check_download)
@@ -558,6 +574,60 @@ class FondoFutureo(tk.Canvas):
             return
         self._draw_neon_window()
 
+    def _load_speaker_image(self) -> None:
+        """Lee la foto descargada; el marco FUTUREO HD se conserva por encima."""
+        if not WINDOW_OVERLAY_ENABLED or not self._alive:
+            return
+        if not SPEAKER_PHOTO_PATH.is_file():
+            return
+        try:
+            with Image.open(SPEAKER_PHOTO_PATH) as photo:
+                photo.load()
+                if photo.width < 80 or photo.height < 45:
+                    return
+                self._speaker_source = photo.convert("RGB").copy()
+        except (OSError, ValueError, EOFError) as exc:
+            print("[FUTUREO] No se pudo abrir la imagen del hablante:", exc)
+            return
+        self._draw_neon_window()
+
+    def _draw_speaker_background(
+        self, margin_x: int, margin_y: int, new_w: int, new_h: int
+    ) -> None:
+        """Coloca la foto solo en la apertura, debajo de los bordes de la imagen."""
+        if self._speaker_source is None:
+            if self._speaker_item is not None:
+                self.itemconfigure(self._speaker_item, state="hidden")
+            return
+
+        # Margenes interiores: el contenido no se sale del marco transparente.
+        inset_x = max(5, round(new_w * .065))
+        inset_y = max(8, round(new_h * .12))
+        photo_w = max(1, new_w - 2 * inset_x)
+        photo_h = max(1, new_h - 2 * inset_y)
+        fitted = ImageOps.fit(
+            self._speaker_source, (photo_w, photo_h),
+            method=Image.Resampling.LANCZOS, centering=(.5, .5),
+        )
+        self._speaker_photo = ImageTk.PhotoImage(fitted, master=self)
+        px, py = margin_x + inset_x, margin_y + inset_y
+        if self._speaker_item is None:
+            self._speaker_item = self.create_image(
+                px, py, image=self._speaker_photo, anchor="nw",
+                tags=("speaker_background",),
+            )
+        else:
+            self.itemconfigure(
+                self._speaker_item, image=self._speaker_photo,
+                state="normal"
+            )
+            self.coords(self._speaker_item, px, py)
+
+        # Fondo encima de captura, pero siempre bajo el PNG del marco.
+        self.tag_raise("speaker_background")
+        if self._neon_item is not None:
+            self.tag_raise("ventana_neon")
+
     def _draw_neon_window(self) -> None:
         """Coloca la ventana del hablante arriba a la izquierda, con tamano reducido."""
         self._neon_resize_job = None
@@ -566,12 +636,16 @@ class FondoFutureo(tk.Canvas):
         if not WINDOW_OVERLAY_ENABLED:
             if self._neon_item is not None:
                 self.itemconfigure(self._neon_item, state="hidden")
+            if self._speaker_item is not None:
+                self.itemconfigure(self._speaker_item, state="hidden")
             return
 
         width, height = self._size
         if self._neon_source is None or width < 160 or height < 120:
             if self._neon_item is not None:
                 self.itemconfigure(self._neon_item, state="hidden")
+            if self._speaker_item is not None:
+                self.itemconfigure(self._speaker_item, state="hidden")
             return
 
         # Escalar por area para mantener la proporcion real del PNG.
@@ -597,6 +671,9 @@ class FondoFutureo(tk.Canvas):
         # Ventana del hablante anclada a 5 px del borde superior e izquierdo.
         margin_x = 5
         margin_y = 5
+
+        # Primero se dibuja la fotografia; despues el PNG que la enmarca.
+        self._draw_speaker_background(margin_x, margin_y, new_w, new_h)
 
         if self._neon_item is None:
             self._neon_item = self.create_image(
@@ -682,8 +759,11 @@ class FondoFutureo(tk.Canvas):
             )
             self.coords(self._border_item, margin_x, margin_y)
         self.tag_raise("neon_border")
-        if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
-            self.tag_raise("ventana_neon")
+        if WINDOW_OVERLAY_ENABLED:
+            if self._speaker_item is not None:
+                self.tag_raise("speaker_background")
+            if self._neon_item is not None:
+                self.tag_raise("ventana_neon")
 
 
     def _global_insert_listener(self) -> None:
@@ -833,9 +913,12 @@ class FondoFutureo(tk.Canvas):
                     self.tag_raise("screen_capture")
                     if self._border_item is not None:
                         self.tag_raise("neon_border")
-                    # Ventana del hablante sobre captura y marco.
-                    if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
-                        self.tag_raise("ventana_neon")
+                    # Foto y marco sobre la captura: el PNG debe ir encima.
+                    if WINDOW_OVERLAY_ENABLED:
+                        if self._speaker_item is not None:
+                            self.tag_raise("speaker_background")
+                        if self._neon_item is not None:
+                            self.tag_raise("ventana_neon")
                     self._capture_error = None
         except Exception as exc:
             # No ocultar errores: disponibles en Insert y en la consola.
