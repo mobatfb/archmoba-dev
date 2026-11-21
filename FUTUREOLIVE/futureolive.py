@@ -35,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.10.0"
+VERSION = "2.10.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -43,18 +43,8 @@ STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
 STREAMER_SIDE_RATIO = 0.27  # Altura del marco en proporcion al lienzo.
 STREAMER_ASPECT_RATIO = 1.35  # Rectangulo 12.5% mas ancho que en v2.8.3.
 STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
-STREAMER_LIGHT_COUNT = 12  # LED multicolor independientes estilo luces navidenas.
+STREAMER_LIGHT_COUNT = 6  # Destellos independientes recorriendo el perimetro.
 STREAMER_LIGHT_FPS = 24  # Animacion suave sin saturar Tkinter.
-STREAMER_LED_COLORS = (
-    "#FF2C48",  # rojo
-    "#37FF74",  # verde
-    "#38DFFF",  # cian
-    "#FFD93D",  # amarillo
-    "#FF55DE",  # rosa
-    "#AD70FF",  # violeta
-    "#FF8533",  # naranja
-    "#4C82FF",  # azul
-)
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -650,48 +640,44 @@ class FondoFutureo(tk.Canvas):
         ax, ay, _, _, _ = self._streamer_segments[0]
         return (ax, ay)
 
-    @staticmethod
-    def _streamer_led_shade(color: str, strength: float) -> str:
-        """Simula un halo LED mezclando un color con el fondo nocturno."""
-        strength = max(0.0, min(1.0, strength))
-        base = (5, 10, 25)
-        rgb = tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
-        result = (
-            int(b + (v - b) * strength)
-            for b, v in zip(base, rgb)
-        )
-        return "#" + "".join(f"{value:02X}" for value in result)
+    def _streamer_trail(self, position: float, direction: int,
+                        length: float) -> list[float]:
+        """Dibuja el rastro por las rectas y chaflanes, sin atajos diagonales."""
+        # Muestras cada ~4 px para que el destello doble todas las esquinas.
+        count = max(3, int(length / 4))
+        points = []
+        for i in range(count + 1):
+            distance = position - direction * length * (1 - i / count)
+            x, y = self._streamer_point_at(distance)
+            points.extend((x, y))
+        return points
 
     def _start_streamer_lights(self) -> None:
-        """Crea bombillas LED: se detienen, brillan y cambian de lugar y color."""
+        """Crea varios cometas independientes y programa un solo reloj."""
         if not STREAMER_NEON_ENABLED or self._streamer_perimeter <= 0:
             return
 
         self._streamer_lights.clear()
-        now = time.monotonic()
-        for index in range(STREAMER_LIGHT_COUNT):
-            color = random.choice(STREAMER_LED_COLORS)
-            # Cinco anillos concentricos: halo, brillo, bombilla y nucleo.
+        # El halo, la estela y el nucleo se dibujan solo una vez.
+        # En cada fotograma solo se actualizan sus coordenadas.
+        for _ in range(STREAMER_LIGHT_COUNT):
+            violet = random.random() < .33
+            palette = (("#44256C", "#B86AFF", "#F7DEFF") if violet else
+                       ("#0C507E", "#39CAFF", "#F1FFFF"))
             items = []
-            for radius in (11, 8, 6, 4, 2):
-                item = self.create_oval(
-                    0, 0, 1, 1, fill=color, outline="",
+            for width, color in ((8, palette[0]), (4, palette[1]),
+                                 (2, palette[2])):
+                item = self.create_line(
+                    0, 0, 1, 1, fill=color, width=width,
+                    capstyle=tk.ROUND, joinstyle=tk.ROUND, smooth=False,
                     tags=("ventana_neon", "streamer_light"),
                 )
-                items.append((item, radius))
+                items.append(item)
             self._streamer_lights.append({
-                "position": (self._streamer_perimeter *
-                             (index + random.uniform(.05, .95)) /
-                             STREAMER_LIGHT_COUNT),
+                "position": random.uniform(0, self._streamer_perimeter),
                 "direction": random.choice((-1, 1)),
-                "speed": random.uniform(55.0, 145.0),
-                "remaining": 0.0,
-                "hold_until": now + random.uniform(.20, 1.7),
-                "color": color,
-                "color_until": now + random.uniform(.25, 1.6),
-                "blink_until": 0.0,
-                "pulse_speed": random.uniform(4.0, 9.0),
-                "pulse_phase": random.uniform(0.0, math.tau),
+                "speed": random.uniform(45.0, 120.0),
+                "length": random.uniform(20.0, 37.0),
                 "items": items,
             })
 
@@ -699,7 +685,7 @@ class FondoFutureo(tk.Canvas):
         self._streamer_light_job = self.after(35, self._streamer_light_tick)
 
     def _streamer_light_tick(self) -> None:
-        """Luces navidenas: colores vivos, parpadeo y viajes aleatorios."""
+        """Desplaza destellos aleatorios de forma fluida por el marco."""
         self._streamer_light_job = None
         if (not self._alive or not self.winfo_exists()
                 or not STREAMER_NEON_ENABLED or self._streamer_perimeter <= 0):
@@ -708,59 +694,30 @@ class FondoFutureo(tk.Canvas):
         now = time.monotonic()
         delta = min(.08, max(.001, now - self._streamer_light_last))
         self._streamer_light_last = now
-
         for light in self._streamer_lights:
-            # La bombilla permanece quieta durante instantes aleatorios;
-            # luego recorre una distancia aleatoria por el contorno.
-            if light["remaining"] > 0:
-                step = min(light["remaining"], light["speed"] * delta)
-                light["position"] = (
-                    light["position"] + light["direction"] * step
-                ) % self._streamer_perimeter
-                light["remaining"] -= step
-                if light["remaining"] <= .001:
-                    light["remaining"] = 0.0
-                    light["hold_until"] = now + random.uniform(.4, 2.1)
-            elif now >= light["hold_until"]:
-                light["remaining"] = random.uniform(
-                    25.0, max(60.0, self._streamer_perimeter * .27)
+            # Las velocidades varian suavemente; los cambios de sentido
+            # y los saltos de aparicion son ocasionales e independientes.
+            light["speed"] = max(35.0, min(
+                165.0, light["speed"] + random.uniform(-25.0, 25.0) * delta
+            ))
+            if random.random() < .004:
+                light["direction"] *= -1
+            if random.random() < .002:
+                light["position"] = random.uniform(0, self._streamer_perimeter)
+                light["speed"] = random.uniform(45.0, 120.0)
+
+            light["position"] = (
+                light["position"] + light["direction"] * light["speed"] * delta
+            ) % self._streamer_perimeter
+            position, direction = light["position"], light["direction"]
+            trail = light["length"]
+
+            # Halo largo, franja luminosa y cabeza blanca muy corta.
+            for item, part in zip(light["items"], (1.0, .55, .20)):
+                coords = self._streamer_trail(
+                    position, direction, max(4.0, trail * part)
                 )
-                light["speed"] = random.uniform(55.0, 145.0)
-                light["direction"] = random.choice((-1, 1))
-
-            # Cada LED cambia de color independientemente, como una guirnalda.
-            if now >= light["color_until"]:
-                choices = [
-                    color for color in STREAMER_LED_COLORS
-                    if color != light["color"]
-                ]
-                light["color"] = random.choice(choices)
-                light["color_until"] = now + random.uniform(.35, 1.6)
-
-            # Pequenos apagados y encendidos aleatorios, sin sincronizacion.
-            if random.random() < .012:
-                light["blink_until"] = now + random.uniform(.06, .22)
-
-            pulse = .78 + .22 * math.sin(
-                now * light["pulse_speed"] + light["pulse_phase"]
-            )
-            if now < light["blink_until"]:
-                pulse *= .18
-
-            x, y = self._streamer_point_at(light["position"])
-            for (item, radius), strength in zip(
-                light["items"], (.23, .43, .68, 1.0, 1.0)
-            ):
-                self.coords(item, x - radius, y - radius,
-                            x + radius, y + radius)
-                if radius == 2:
-                    # Un punto blanco intensifica el destello de la bombilla.
-                    led_color = self._streamer_led_shade("#FFFFFF", pulse)
-                else:
-                    led_color = self._streamer_led_shade(
-                        light["color"], strength * pulse
-                    )
-                self.itemconfigure(item, fill=led_color)
+                self.coords(item, *coords)
 
         self.tag_raise("ventana_neon")
         self._streamer_light_job = self.after(
