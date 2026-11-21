@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.7 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.8 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -301,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.7",
+            "User-Agent": "FutureoMensajes/1.2.8",
         },
         method="GET",
     )
@@ -349,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.7"
+APP_VERSION = "1.2.8"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -412,7 +412,7 @@ class MessageBanner(tk.Canvas):
         self._resize_id = None
         if self._closed:
             return
-        self.w, self.h = max(200, self.winfo_width()), max(95, self.winfo_height())
+        self.w, self.h = self.winfo_width(), self.winfo_height()
         self._layouts.clear()
         rows = []
         for y in range(self.h):
@@ -432,8 +432,8 @@ class MessageBanner(tk.Canvas):
         self._render(self._progress() if self.active else 1.0)
 
     def content_rect(self):
-        margin_x = min(42, max(22, self.w // 24))
-        margin_y = min(16, max(10, self.h // 10))
+        margin_x = 10
+        margin_y = 3
         return margin_x, margin_y, self.w - margin_x, self.h - margin_y
 
     def _crop_background(self, x0, y0, x1, y1):
@@ -486,9 +486,9 @@ class MessageBanner(tk.Canvas):
         if text in self._layouts:
             return self._layouts[text]
         left, top, right, bottom = self.content_rect()
-        available_w = max(40, right - left - 24)
-        available_h = max(20, bottom - top - 10)
-        lo, hi = 2, min(32, int(available_h * 0.48))
+        available_w = max(40, right - left - 12)
+        available_h = max(12, bottom - top - 6)
+        lo, hi = 2, min(28, int(available_h * 0.65))
         best = (2, self._wrap(text, self._font(2), available_w))
         while lo <= hi:
             mid = (lo + hi) // 2
@@ -545,20 +545,21 @@ class MessageBanner(tk.Canvas):
             self.create_image(round(x0), round(y0), image=patch, anchor="nw")
 
     def _draw_frame(self):
-        for x, y, patch in self._margin_patches:
-            self.create_image(x, y, image=patch, anchor="nw")
+        # Compact, fixed-size neon frame with no overlay on the message area.
         w, h = self.w, self.h
-        bevel = min(30, h * 0.18)
-        left = [10, h / 2, 10 + bevel, 12, w * 0.55, 12]
-        right = [w * 0.45, h - 12, w - 10 - bevel, h - 12, w - 10, h / 2]
-        left_bottom = [10, h / 2, 10 + bevel, h - 12, w * 0.45, h - 12]
-        right_top = [w * 0.55, 12, w - 10 - bevel, 12, w - 10, h / 2]
-        for points, halo, color in ((left, "#0b2452", "#2ebcff"),
-                                     (left_bottom, "#071d45", "#2466b7"),
-                                     (right, "#211045", "#b940f6"),
-                                     (right_top, "#1a123c", "#6047aa")):
-            self.create_line(*points, fill=halo, width=5, joinstyle="round")
-            self.create_line(*points, fill=color, width=1.3, joinstyle="round")
+        if w <= 0 or h <= 0:
+            return
+        inset = 2
+        for color, width in (("#15345b", 4), ("#31bfff", 1)):
+            self.create_line(inset, h - inset, inset + 12, inset,
+                             w * 0.52, inset, fill=color, width=width, joinstyle="round")
+        for color, width in (("#291349", 4), ("#c044f0", 1)):
+            self.create_line(w * 0.52, inset, w - 13, inset,
+                             w - inset, h - inset, fill=color, width=width, joinstyle="round")
+        self.create_line(inset, h - inset, w * 0.52, h - inset,
+                         fill="#287acb", width=1)
+        self.create_line(w * 0.52, h - inset, w - inset, h - inset,
+                         fill="#a73de2", width=1)
 
     def _progress(self):
         return min(1.0, max(0.0, (time.perf_counter() - self.started_at) / self.duration))
@@ -694,11 +695,11 @@ class FutureoMessagesApp:
         self.last_origin = "initial"
         self.sent_count = 0
         root.title(f"FUTUREO · Mensajes {APP_VERSION}")
-        root.geometry("390x300")
-        root.minsize(390, 290)
+        root.geometry("390x245")
+        root.minsize(390, 245)
         root.configure(bg="#070c1c")
         root.attributes("-topmost", True)  # Mantener esta ventana delante de las demás.
-        root.rowconfigure(0, weight=1, minsize=95)
+        root.rowconfigure(0, weight=0, minsize=50)
         root.columnconfigure(0, weight=1)
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.ui_family = choose_family(root, ("Segoe UI", "Arial", "Liberation Sans", "DejaVu Sans"))
@@ -706,8 +707,8 @@ class FutureoMessagesApp:
         self.limit_var = tk.StringVar(root, value=str(self.limit))
         self.interval_var = tk.StringVar(root, value=str(self.interval_seconds))
         self.auto_var = tk.BooleanVar(root, value=False)
-        self.banner = MessageBanner(root, height=106)
-        self.banner.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 5))
+        self.banner = MessageBanner(root, width=350, height=50)
+        self.banner.grid(row=0, column=0, sticky="", padx=0, pady=(6, 4))
         self._build_controls()
         self.input_var.trace_add("write", self._input_changed)
         self.limit_var.trace_add("write", self._limit_changed)
