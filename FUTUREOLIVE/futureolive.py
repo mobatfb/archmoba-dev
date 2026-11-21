@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.8"
+VERSION = "2.7.9"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -309,6 +309,7 @@ class FondoFutureo(tk.Canvas):
         self._source_dialog: tk.Toplevel | None = None
         self._host_root = self.winfo_toplevel()
         self._insert_binding: str | None = None
+        self._right_click_binding: str | None = None
         self._global_insert_event = threading.Event()
         self._global_insert_stop = threading.Event()
         self._global_insert_thread_id = 0
@@ -346,9 +347,12 @@ class FondoFutureo(tk.Canvas):
             self._screen_grabber = mss.mss() if mss is not None else None
         except (OSError, RuntimeError):
             self._screen_grabber = None
-        # El dialogo solo aparece al presionar Insert.
+        # Insert o clic derecho en FUTUREO abren el mismo selector de fuentes.
         self._insert_binding = self._host_root.bind(
             "<Insert>", self._open_source_dialog, add="+"
+        )
+        self._right_click_binding = self._host_root.bind(
+            "<Button-3>", self._open_source_dialog, add="+"
         )
         self._screen_after = self.after(150, self._screen_tick)
         if os.name == "nt":
@@ -835,7 +839,7 @@ class FondoFutureo(tk.Canvas):
                 )
 
     def _open_source_dialog(self, _event=None) -> None:
-        """Dialogo con fuentes disponibles: aparece solo al presionar Insert."""
+        """Dialogo de fuentes: se abre mediante Insert o clic derecho."""
         if not self._alive:
             return
         if self._source_dialog is not None:
@@ -1214,6 +1218,11 @@ class FondoFutureo(tk.Canvas):
         if self._insert_binding:
             try:
                 self._host_root.unbind("<Insert>", self._insert_binding)
+            except tk.TclError:
+                pass
+        if self._right_click_binding:
+            try:
+                self._host_root.unbind("<Button-3>", self._right_click_binding)
             except tk.TclError:
                 pass
         if self._source_dialog is not None:
