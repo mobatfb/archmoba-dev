@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.3 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.4 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -301,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.3",
+            "User-Agent": "FutureoMensajes/1.2.4",
         },
         method="GET",
     )
@@ -349,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -1015,6 +1015,28 @@ class FutureoMessagesApp:
         self.root.destroy()
 
 
+def hide_windows_console():
+    """Oculta la consola creada al abrir este .py con Python en Windows.
+
+    No intenta cerrar una consola compartida con otros procesos; en ese caso
+    la deja intacta para no ocultar el terminal del usuario.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        hwnd = kernel32.GetConsoleWindow()
+        if not hwnd:
+            return
+        members = (ctypes.c_ulong * 16)()
+        number = kernel32.GetConsoleProcessList(members, len(members))
+        if number == 1:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    except (OSError, AttributeError, ValueError):
+        pass
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Panel FUTUREO de mensajes con 10 transiciones y 500 frases automáticas.")
@@ -1027,6 +1049,7 @@ def main():
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):
             pass
+    hide_windows_console()
     root = tk.Tk()
     FutureoMessagesApp(root, store=ConfigStore(args.config))
     root.mainloop()
