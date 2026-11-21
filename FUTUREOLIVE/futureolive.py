@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.8.1"
+VERSION = "2.8.2"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -549,25 +549,75 @@ class FondoFutureo(tk.Canvas):
         x1 = x0 + frame_w - 8
         y1 = y0 + frame_h - 8
 
-        # Dibujado nativo Tkinter: contorno fino y resplandor azul-cian.
-        # fill="" conserva el centro completamente transparente.
-        for stroke, color in (
-            (8, "#0A274A"),
-            (5, "#155A88"),
-            (3, "#008FBB"),
-            (2, "#4CEBFF"),
-        ):
-            item = self.create_rectangle(
-                x0, y0, x1, y1, outline=color, width=stroke,
-                fill="", tags=("ventana_neon",)
-            )
-            if self._neon_item is None:
-                self._neon_item = item
+        # Puntas curvas con brillo en varias capas, como la referencia.
+        # Solo usamos lineas y arcos nativos de Tkinter: nada de PNG.
+        corner = max(10, min(23, int(min(frame_w, frame_h) * .13)))
 
-        self.create_rectangle(
-            x0 + 1, y0 + 1, x1 - 1, y1 - 1,
-            outline="#B3FAFF", width=1, fill="", tags=("ventana_neon",)
-        )
+        def outline(inset: int, stroke: int, color: str) -> None:
+            left, top = x0 + inset, y0 + inset
+            right, bottom = x1 - inset, y1 - inset
+            radius = min(corner - inset, (right - left) // 2,
+                         (bottom - top) // 2)
+            if radius < 3:
+                return
+            tag = ("ventana_neon",)
+            # Lados rectos: comienzan donde termina el arco.
+            segments = (
+                (left + radius, top, right - radius, top),
+                (right, top + radius, right, bottom - radius),
+                (right - radius, bottom, left + radius, bottom),
+                (left, bottom - radius, left, top + radius),
+            )
+            for coords in segments:
+                item = self.create_line(*coords, fill=color, width=stroke,
+                                        capstyle=tk.ROUND, tags=tag)
+                if self._neon_item is None:
+                    self._neon_item = item
+            # Arcos de 90 grados: las cuatro esquinas forman una curva continua.
+            arcs = (
+                (left, top, left + 2 * radius, top + 2 * radius, 90),
+                (right - 2 * radius, top, right, top + 2 * radius, 0),
+                (right - 2 * radius, bottom - 2 * radius,
+                 right, bottom, 270),
+                (left, bottom - 2 * radius,
+                 left + 2 * radius, bottom, 180),
+            )
+            for ax0, ay0, ax1, ay1, start_angle in arcs:
+                self.create_arc(
+                    ax0, ay0, ax1, ay1,
+                    start=start_angle, extent=90, style=tk.ARC,
+                    outline=color, width=stroke, tags=tag,
+                )
+
+        # Halo oscuro, brillo azul y linea central cian muy fina.
+        for stroke, color in (
+            (8, "#082D57"),
+            (6, "#12578D"),
+            (4, "#167BC3"),
+            (2, "#36D8FF"),
+            (1, "#C4FAFF"),
+        ):
+            outline(0, stroke, color)
+
+        # Brillo violeta interior en las puntas, como la muestra.
+        # Se coloca por dentro para no agrandar el marco ni moverlo.
+        inset = 3
+        radius = corner - inset
+        for ax0, ay0, ax1, ay1, angle in (
+            (x0 + inset, y0 + inset, x0 + inset + 2 * radius,
+             y0 + inset + 2 * radius, 90),
+            (x1 - inset - 2 * radius, y0 + inset, x1 - inset,
+             y0 + inset + 2 * radius, 0),
+            (x1 - inset - 2 * radius, y1 - inset - 2 * radius,
+             x1 - inset, y1 - inset, 270),
+            (x0 + inset, y1 - inset - 2 * radius,
+             x0 + inset + 2 * radius, y1 - inset, 180),
+        ):
+            self.create_arc(
+                ax0, ay0, ax1, ay1, start=angle, extent=90,
+                style=tk.ARC, outline="#A16BFF",
+                width=1, tags=("ventana_neon",),
+            )
         self.tag_raise("ventana_neon")
 
     def _draw_neon_border(self) -> None:
