@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.1.0 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.0 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -13,9 +13,10 @@ la aplicación para reintentar. Auto se habilita cuando hay frases remotas
 que caben en el límite establecido. No incluye un banco local alternativo.
 
 Arriba: únicamente el mensaje publicado en un banner azul de estilo neón.
-Abajo: editor, límite de caracteres, Auto cada 5 segundos y botón Enviar.
-Enter envía desde el editor. Solo el límite se guarda en la caché del usuario.
-Auto no borra el borrador. Un envío manual reinicia sus 5 segundos.
+Abajo: editor, límite de caracteres, intervalo en segundos, Auto y Enviar.
+Enter envía desde el editor. El intervalo predeterminado es de 10 segundos.
+El límite y el intervalo se guardan en la caché del usuario.
+Auto no borra el borrador. Un envío manual reinicia el intervalo elegido.
 """
 
 """Núcleo sin GUI para FUTUREO Mensajes. Solo usa la biblioteca estándar."""
@@ -32,6 +33,9 @@ from pathlib import Path
 DEFAULT_LIMIT = 80
 MIN_LIMIT = 1
 MAX_LIMIT = 9999
+DEFAULT_INTERVAL_SECONDS = 10
+MIN_INTERVAL_SECONDS = 1
+MAX_INTERVAL_SECONDS = 9999
 
 
 def normalize_text(value: str) -> str:
@@ -57,7 +61,7 @@ def normalize_text(value: str) -> str:
 
 
 def _integer_value(value):
-    """Devuelve un entero inequívoco, o None; bool no es un límite válido."""
+    """Devuelve un entero inequívoco, o None; bool no es un ajuste válido."""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -86,6 +90,17 @@ def clamp_limit(value, default=DEFAULT_LIMIT) -> int:
     return max(MIN_LIMIT, min(MAX_LIMIT, parsed))
 
 
+def clamp_interval(value, default=DEFAULT_INTERVAL_SECONDS) -> int:
+    """Convierte y acota el intervalo de Auto, expresado en segundos."""
+    fallback = _integer_value(default)
+    if fallback is None:
+        fallback = DEFAULT_INTERVAL_SECONDS
+    parsed = _integer_value(value)
+    if parsed is None:
+        parsed = fallback
+    return max(MIN_INTERVAL_SECONDS, min(MAX_INTERVAL_SECONDS, parsed))
+
+
 def config_path() -> Path:
     """Ubicación de la caché del usuario, independiente del directorio del .py."""
     if sys.platform == "win32":
@@ -100,41 +115,63 @@ def config_path() -> Path:
 
 
 class ConfigStore:
-    """Persiste únicamente el límite, con reemplazo atómico y errores no fatales."""
+    """Persiste límite e intervalo, con reemplazo atómico y errores no fatales."""
 
     def __init__(self, path=None):
         self.path = Path(path) if path is not None else config_path()
         self.last_error = None
 
-    def load_limit(self) -> int:
+    def load_settings(self) -> tuple:
+        """Lee schema 2; schema 1 conserva su límite y adopta un intervalo de 10 s."""
         self.last_error = None
+        defaults = (DEFAULT_LIMIT, DEFAULT_INTERVAL_SECONDS)
         try:
             with self.path.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)
         except FileNotFoundError:
-            return DEFAULT_LIMIT
+            return defaults
         except (OSError, UnicodeError, ValueError) as error:
             self.last_error = str(error)
-            return DEFAULT_LIMIT
+            return defaults
         if not isinstance(data, dict):
             self.last_error = "La configuración guardada no es válida."
-            return DEFAULT_LIMIT
+            return defaults
         schema = data.get("schema", 1)
-        if isinstance(schema, bool) or schema != 1:
+        if isinstance(schema, bool) or schema not in (1, 2):
             self.last_error = "La versión de la configuración no es compatible."
-            return DEFAULT_LIMIT
+            return defaults
         value = _integer_value(data.get("character_limit"))
         if value is None:
             self.last_error = "El límite guardado no es válido."
-            return DEFAULT_LIMIT
-        return clamp_limit(value)
+            return defaults
+        if schema == 1:
+            return (clamp_limit(value), DEFAULT_INTERVAL_SECONDS)
+        interval = _integer_value(data.get("auto_interval_seconds"))
+        if interval is None:
+            self.last_error = "El intervalo guardado no es válido."
+            return defaults
+        return (clamp_limit(value), clamp_interval(interval))
+
+    def load_limit(self) -> int:
+        """Compatibilidad: devuelve solo el límite de la configuración completa."""
+        return self.load_settings()[0]
 
     def save_limit(self, limit) -> bool:
+        """Compatibilidad: actualiza el límite sin borrar el intervalo existente."""
+        _, interval = self.load_settings()
+        return self.save_settings(limit, interval)
+
+    def save_settings(self, limit, interval) -> bool:
+        """Guarda ambos ajustes en una única escritura atómica de schema 2."""
         self.last_error = None
         temporary_path = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            data = {"schema": 1, "character_limit": clamp_limit(limit)}
+            data = {
+                "schema": 2,
+                "character_limit": clamp_limit(limit),
+                "auto_interval_seconds": clamp_interval(interval),
+            }
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 encoding="utf-8",
@@ -263,7 +300,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.1.0",
+            "User-Agent": "FutureoMensajes/1.2.0",
         },
         method="GET",
     )
@@ -311,8 +348,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.1.0"
-AUTO_INTERVAL_MS = 5000
+APP_VERSION = "1.2.0"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -636,11 +672,12 @@ class FutureoMessagesApp:
     def __init__(self, root, store=None):
         self.root = root
         self.store = store or ConfigStore()
-        self.limit = self.store.load_limit()
+        self.limit, self.interval_seconds = self.store.load_settings()
         self.message_bank = AutoMessageBank(())
         self.message_bank.set_limit(self.limit)
         self._editing = False
         self._editing_limit = False
+        self._editing_interval = False
         self._closed = False
         self._save_job = None
         self._auto_job = None
@@ -657,7 +694,7 @@ class FutureoMessagesApp:
         self.sent_count = 0
         root.title(f"FUTUREO · Mensajes {APP_VERSION}")
         root.geometry("1020x315")
-        root.minsize(720, 255)
+        root.minsize(800, 255)
         root.configure(bg="#070c1c")
         root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
@@ -665,12 +702,14 @@ class FutureoMessagesApp:
         self.ui_family = choose_family(root, ("Segoe UI", "Arial", "Liberation Sans", "DejaVu Sans"))
         self.input_var = tk.StringVar(root)
         self.limit_var = tk.StringVar(root, value=str(self.limit))
+        self.interval_var = tk.StringVar(root, value=str(self.interval_seconds))
         self.auto_var = tk.BooleanVar(root, value=False)
         self.banner = MessageBanner(root)
         self.banner.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 8))
         self._build_controls()
         self.input_var.trace_add("write", self._input_changed)
         self.limit_var.trace_add("write", self._limit_changed)
+        self.interval_var.trace_add("write", self._interval_changed)
         self._update_counter()
         self._update_status()
         root.after_idle(self.entry.focus_set)
@@ -683,6 +722,7 @@ class FutureoMessagesApp:
         label_options = dict(bg="#0c1428", fg="#9daecd", font=(self.ui_family, 9))
         tk.Label(panel, text="MENSAJE", **label_options).grid(row=0, column=0, sticky="w", pady=(0, 5))
         tk.Label(panel, text="LÍMITE", **label_options).grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 5))
+        tk.Label(panel, text="SEGUNDOS", **label_options).grid(row=0, column=2, sticky="w", padx=(12, 0), pady=(0, 5))
         self.entry = tk.Entry(panel, textvariable=self.input_var, bg="#071023", fg="#f5f8ff",
                               insertbackground="#38c9ff", selectbackground="#244e7d",
                               selectforeground="#ffffff", relief="flat", highlightthickness=1,
@@ -707,22 +747,35 @@ class FutureoMessagesApp:
         self.limit_spin.bind("<KP_Enter>", self._commit_limit)
         self.limit_spin.bind("<Control-a>", self._select_all)
         self.limit_spin.bind("<Control-A>", self._select_all)
-        self.auto_check = tk.Checkbutton(panel, text="Auto · 5 s", variable=self.auto_var,
+        self.interval_spin = tk.Spinbox(panel, from_=MIN_INTERVAL_SECONDS, to=MAX_INTERVAL_SECONDS,
+                                       textvariable=self.interval_var, command=self._commit_interval,
+                                       width=5, justify="center", validate="key", validatecommand=valid_number,
+                                       bg="#101d36", fg="#e7f3ff", buttonbackground="#253a58",
+                                       insertbackground="#ffffff", relief="flat", highlightthickness=1,
+                                       highlightbackground="#233754", highlightcolor="#37bfff",
+                                       font=(self.ui_family, 12, "bold"))
+        self.interval_spin.grid(row=1, column=2, sticky="ns", padx=(12, 0), ipady=7)
+        self.interval_spin.bind("<FocusOut>", self._commit_interval)
+        self.interval_spin.bind("<Return>", self._commit_interval)
+        self.interval_spin.bind("<KP_Enter>", self._commit_interval)
+        self.interval_spin.bind("<Control-a>", self._select_all)
+        self.interval_spin.bind("<Control-A>", self._select_all)
+        self.auto_check = tk.Checkbutton(panel, text="Auto", variable=self.auto_var,
                                         command=self._toggle_auto, bg="#0c1428", fg="#dbe8ff",
                                         activebackground="#0c1428", activeforeground="#47d3ff",
                                         selectcolor="#173153", highlightthickness=0,
                                         font=(self.ui_family, 11), cursor="hand2", state="disabled")
-        self.auto_check.grid(row=1, column=2, padx=(15, 11))
+        self.auto_check.grid(row=1, column=3, padx=(15, 11))
         self.send_button = tk.Button(panel, text="ENVIAR  ↵", command=self.send_manual,
                                      bg="#24bfff", fg="#041526", activebackground="#58d1ff",
                                      activeforeground="#041526", relief="flat", borderwidth=0,
                                      font=(self.ui_family, 11, "bold"), padx=18, pady=10,
                                      cursor="hand2")
-        self.send_button.grid(row=1, column=3, sticky="ns")
+        self.send_button.grid(row=1, column=4, sticky="ns")
         self.counter = tk.Label(panel, text="", **label_options)
         self.counter.grid(row=2, column=0, sticky="w", pady=(7, 0))
         self.status = tk.Label(panel, text="", **label_options)
-        self.status.grid(row=2, column=1, columnspan=3, sticky="e", pady=(7, 0))
+        self.status.grid(row=2, column=1, columnspan=4, sticky="e", pady=(7, 0))
 
     def _select_all(self, event=None):
         widget = event.widget if event is not None else self.entry
@@ -754,10 +807,10 @@ class FutureoMessagesApp:
         elif self.message_bank.eligible_count == 0:
             text, color = "Aumenta el límite para usar Auto", "#ffc773"
         elif self._cache_failed:
-            text, color = "No se pudo guardar el límite", "#ffc773"
+            text, color = "No se pudieron guardar los ajustes", "#ffc773"
         elif self.auto_var.get():
             count = self.message_bank.eligible_count
-            text = f"Auto cada 5 s · {count} frases disponibles"
+            text = f"Auto cada {self.interval_seconds} s · {count} frases disponibles"
             color = "#54cfff"
         else:
             text, color = f"Enter para enviar · {self._messages_count} mensajes en Auto", "#9daecd"
@@ -841,26 +894,55 @@ class FutureoMessagesApp:
             self.message_bank.set_limit(value)
             self._sync_auto_availability()
             self._input_changed()
-            if self._save_job is not None:
-                self.root.after_cancel(self._save_job)
-            self._save_job = self.root.after(250, self._save_limit)
+            self._schedule_settings_save()
         self._update_counter()
         self._update_status()
         if event is not None and event.type == tk.EventType.KeyPress:
             self.entry.focus_set()
         return "break" if event is not None and event.type == tk.EventType.KeyPress else None
 
-    def _save_limit(self):
+    def _interval_changed(self, *args):
+        if self._editing_interval or self._closed:
+            return
+        raw = self.interval_var.get()
+        valid = raw.isdecimal() and MIN_INTERVAL_SECONDS <= int(raw) <= MAX_INTERVAL_SECONDS
+        self.interval_spin.configure(highlightbackground="#233754" if valid else "#d19d56")
+
+    def _commit_interval(self, event=None):
+        raw = self.interval_var.get()
+        value = (int(raw) if raw.isdecimal() and MIN_INTERVAL_SECONDS <= int(raw) <= MAX_INTERVAL_SECONDS
+                 else self.interval_seconds)
+        self._editing_interval = True
+        self.interval_var.set(str(value))
+        self._editing_interval = False
+        self.interval_spin.configure(highlightbackground="#233754")
+        if value != self.interval_seconds:
+            self.interval_seconds = value
+            self._schedule_settings_save()
+            if self.auto_var.get():
+                self._restart_auto()
+        self._update_status()
+        if event is not None and event.type == tk.EventType.KeyPress:
+            self.entry.focus_set()
+        return "break" if event is not None and event.type == tk.EventType.KeyPress else None
+
+    def _schedule_settings_save(self):
+        if self._save_job is not None:
+            self.root.after_cancel(self._save_job)
+        self._save_job = self.root.after(250, self._save_settings)
+
+    def _save_settings(self):
         self._save_job = None
         if self._closed:
             return
-        self._cache_failed = not self.store.save_limit(self.limit)
+        self._cache_failed = not self.store.save_settings(self.limit, self.interval_seconds)
         self._update_status()
 
     def send_manual(self, event=None):
         if self._closed:
             return "break"
         self._commit_limit()
+        self._commit_interval()
         message = normalize_text(self.input_var.get()).strip()[:self.limit]
         if not message:
             self.entry.focus_set()
@@ -887,9 +969,10 @@ class FutureoMessagesApp:
         self._cancel_auto()
         if not self._closed and self.auto_var.get() and self._can_auto():
             token = self._auto_generation
-            self._auto_job = self.root.after(AUTO_INTERVAL_MS, lambda: self._auto_tick(token))
+            self._auto_job = self.root.after(self.interval_seconds * 1000, lambda: self._auto_tick(token))
 
     def _toggle_auto(self):
+        self._commit_interval()
         if not self._can_auto():
             self.auto_var.set(False)
         self._restart_auto()
@@ -905,13 +988,14 @@ class FutureoMessagesApp:
         self.last_origin = "auto"
         self.sent_count += 1
         # Leave both the draft and keyboard focus untouched during automatic sending.
-        self._auto_job = self.root.after(AUTO_INTERVAL_MS, lambda: self._auto_tick(token))
+        self._auto_job = self.root.after(self.interval_seconds * 1000, lambda: self._auto_tick(token))
 
     def close(self):
         if self._closed:
             return
         self._commit_limit()
-        self.store.save_limit(self.limit)
+        self._commit_interval()
+        self.store.save_settings(self.limit, self.interval_seconds)
         self._closed = True
         self._cancel_auto()
         if self._remote_poll_job is not None:
