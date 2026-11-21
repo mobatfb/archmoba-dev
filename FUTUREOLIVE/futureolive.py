@@ -34,12 +34,13 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.4"
+VERSION = "2.12.5"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
-STREAMER_AREA_RATIO = 0.08  # Ventana del hablante ligeramente mas pequena (antes 0.10).
+STREAMER_AREA_RATIO = 0.08  # Area base del cuadro del hablante.
+STREAMER_SIZE_SCALE = 0.80  # Reduce ancho y alto un 20% respecto de v2.12.4.
 STREAMER_BORDER_THINNING_PX = 0  # Conserva intactos los brillos y detalles del nuevo logo HD.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
@@ -583,6 +584,10 @@ class FondoFutureo(tk.Canvas):
         # Limitar el cuadro para no tapar una parte excesiva de la escena.
         new_w = max(80, min(new_w, int(width * 0.45)))
         new_h = max(45, min(new_h, int(height * 0.45)))
+
+        # Reduccion uniforme del 20% respecto al cuadro anterior.
+        new_w = max(1, round(new_w * STREAMER_SIZE_SCALE))
+        new_h = max(1, round(new_h * STREAMER_SIZE_SCALE))
 
         frame = self._neon_source.resize(
             (new_w, new_h), resample=Image.Resampling.LANCZOS
