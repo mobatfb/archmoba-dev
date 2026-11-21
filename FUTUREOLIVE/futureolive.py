@@ -12,6 +12,7 @@ import ctypes
 from ctypes import wintypes
 import hashlib
 import io
+import math
 import os
 import queue
 import random
@@ -34,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.8.4"
+VERSION = "2.9.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -42,6 +43,8 @@ STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
 STREAMER_SIDE_RATIO = 0.27  # Altura del marco en proporcion al lienzo.
 STREAMER_ASPECT_RATIO = 1.35  # Rectangulo 12.5% mas ancho que en v2.8.3.
 STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
+STREAMER_LIGHT_COUNT = 6  # Destellos independientes recorriendo el perimetro.
+STREAMER_LIGHT_FPS = 24  # Animacion suave sin saturar Tkinter.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -292,6 +295,11 @@ class FondoFutureo(tk.Canvas):
         # Id de los trazos del cuadrado neon dibujado en el Canvas.
         self._neon_item: int | None = None
         self._neon_resize_job: str | None = None
+        self._streamer_light_job: str | None = None
+        self._streamer_light_last = 0.0
+        self._streamer_segments: list[tuple[float, float, float, float, float]] = []
+        self._streamer_perimeter = 0.0
+        self._streamer_lights: list[dict] = []
         self._border_photo: ImageTk.PhotoImage | None = None
         self._border_item: int | None = None
         self._border_resize_job: str | None = None
@@ -521,8 +529,14 @@ class FondoFutureo(tk.Canvas):
         if not self._alive or not self.winfo_exists():
             return
 
-        # Los trazos antiguos se retiran antes de reconstruir el contorno.
+        # Al redimensionar, cancelar la animacion y reconstruir el perimetro.
+        if self._streamer_light_job is not None:
+            self.after_cancel(self._streamer_light_job)
+            self._streamer_light_job = None
         self.delete("ventana_neon")
+        self._streamer_lights.clear()
+        self._streamer_segments.clear()
+        self._streamer_perimeter = 0.0
         self._neon_item = None
         if not STREAMER_NEON_ENABLED:
             return
@@ -597,7 +611,118 @@ class FondoFutureo(tk.Canvas):
                 *coords, fill="#A16BFF", width=1,
                 capstyle=tk.BUTT, tags=("ventana_neon",),
             )
+        # Las luces siguen exactamente el mismo poligono de ocho lados.
+        # Se incluyen los cuatro chaflanes de 45 grados.
+        flat = polygon_points()
+        vertices = [
+            (float(flat[i]), float(flat[i + 1]))
+            for i in range(0, len(flat) - 2, 2)
+        ]
+        closed = vertices + [vertices[0]]
+        for (ax, ay), (bx, by) in zip(closed, closed[1:]):
+            length = math.hypot(bx - ax, by - ay)
+            if length > 0:
+                self._streamer_segments.append((ax, ay, bx, by, length))
+                self._streamer_perimeter += length
+        self._start_streamer_lights()
         self.tag_raise("ventana_neon")
+
+    def _streamer_point_at(self, distance: float) -> tuple[float, float]:
+        """Punto en el perimetro achaflanado, con cierre continuo."""
+        if self._streamer_perimeter <= 0 or not self._streamer_segments:
+            return (0.0, 0.0)
+        distance %= self._streamer_perimeter
+        for ax, ay, bx, by, length in self._streamer_segments:
+            if distance <= length:
+                f = distance / length
+                return (ax + (bx - ax) * f, ay + (by - ay) * f)
+            distance -= length
+        ax, ay, _, _, _ = self._streamer_segments[0]
+        return (ax, ay)
+
+    def _streamer_trail(self, position: float, direction: int,
+                        length: float) -> list[float]:
+        """Dibuja el rastro por las rectas y chaflanes, sin atajos diagonales."""
+        # Muestras cada ~4 px para que el destello doble todas las esquinas.
+        count = max(3, int(length / 4))
+        points = []
+        for i in range(count + 1):
+            distance = position - direction * length * (1 - i / count)
+            x, y = self._streamer_point_at(distance)
+            points.extend((x, y))
+        return points
+
+    def _start_streamer_lights(self) -> None:
+        """Crea varios cometas independientes y programa un solo reloj."""
+        if not STREAMER_NEON_ENABLED or self._streamer_perimeter <= 0:
+            return
+
+        self._streamer_lights.clear()
+        # El halo, la estela y el nucleo se dibujan solo una vez.
+        # En cada fotograma solo se actualizan sus coordenadas.
+        for _ in range(STREAMER_LIGHT_COUNT):
+            violet = random.random() < .33
+            palette = (("#44256C", "#B86AFF", "#F7DEFF") if violet else
+                       ("#0C507E", "#39CAFF", "#F1FFFF"))
+            items = []
+            for width, color in ((8, palette[0]), (4, palette[1]),
+                                 (2, palette[2])):
+                item = self.create_line(
+                    0, 0, 1, 1, fill=color, width=width,
+                    capstyle=tk.ROUND, joinstyle=tk.ROUND, smooth=False,
+                    tags=("ventana_neon", "streamer_light"),
+                )
+                items.append(item)
+            self._streamer_lights.append({
+                "position": random.uniform(0, self._streamer_perimeter),
+                "direction": random.choice((-1, 1)),
+                "speed": random.uniform(45.0, 120.0),
+                "length": random.uniform(20.0, 37.0),
+                "items": items,
+            })
+
+        self._streamer_light_last = time.monotonic()
+        self._streamer_light_job = self.after(35, self._streamer_light_tick)
+
+    def _streamer_light_tick(self) -> None:
+        """Desplaza destellos aleatorios de forma fluida por el marco."""
+        self._streamer_light_job = None
+        if (not self._alive or not self.winfo_exists()
+                or not STREAMER_NEON_ENABLED or self._streamer_perimeter <= 0):
+            return
+
+        now = time.monotonic()
+        delta = min(.08, max(.001, now - self._streamer_light_last))
+        self._streamer_light_last = now
+        for light in self._streamer_lights:
+            # Las velocidades varian suavemente; los cambios de sentido
+            # y los saltos de aparicion son ocasionales e independientes.
+            light["speed"] = max(35.0, min(
+                165.0, light["speed"] + random.uniform(-25.0, 25.0) * delta
+            ))
+            if random.random() < .004:
+                light["direction"] *= -1
+            if random.random() < .002:
+                light["position"] = random.uniform(0, self._streamer_perimeter)
+                light["speed"] = random.uniform(45.0, 120.0)
+
+            light["position"] = (
+                light["position"] + light["direction"] * light["speed"] * delta
+            ) % self._streamer_perimeter
+            position, direction = light["position"], light["direction"]
+            trail = light["length"]
+
+            # Halo largo, franja luminosa y cabeza blanca muy corta.
+            for item, part in zip(light["items"], (1.0, .55, .20)):
+                coords = self._streamer_trail(
+                    position, direction, max(4.0, trail * part)
+                )
+                self.coords(item, *coords)
+
+        self.tag_raise("ventana_neon")
+        self._streamer_light_job = self.after(
+            max(25, int(1000 / STREAMER_LIGHT_FPS)), self._streamer_light_tick
+        )
 
     def _draw_neon_border(self) -> None:
         """Marco neón con centro completamente transparente y esquinas redondeadas.
@@ -1244,6 +1369,12 @@ class FondoFutureo(tk.Canvas):
             except tk.TclError:
                 pass
             self._neon_resize_job = None
+        if self._streamer_light_job is not None:
+            try:
+                self.after_cancel(self._streamer_light_job)
+            except tk.TclError:
+                pass
+            self._streamer_light_job = None
         for job in (self._lightning_job, self._lightning_clear_job):
             if job is not None:
                 try:
