@@ -35,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.11.0"
+VERSION = "2.11.1"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -607,28 +607,41 @@ class FondoFutureo(tk.Canvas):
 
         for lane, path in enumerate(self._streamer_paths):
             sx, sy, _, _ = self._streamer_lane_point(lane, path["stop"])
-            housing_y = sy + 26 if lane == 0 else sy - 26
 
-            # Barra clara de detencion perpendicular a la circulacion.
+            # Las 3 bombillas van DENTRO de la carretera: entre la linea
+            # exterior y la interior, sin caja flotante ni marco de semaforo.
+            # Arriba la via interior queda abajo; abajo la via exterior
+            # tambien queda abajo. Por eso ambas suman medio ancho.
+            road_y = sy + STREAMER_LANE_SPACING / 2
+            signal_x = sx + (18 if lane == 0 else -18)
+
+            # Linea de alto, al lado de las luces y dentro de su carril.
             self.create_line(
-                sx, sy - 5, sx, sy + 5,
-                fill="#D7F4FF", width=2, tags=("ventana_neon", "streamer_road"),
+                sx, road_y - 4, sx, road_y + 4,
+                fill="#D7F4FF", width=2,
+                tags=("ventana_neon", "streamer_road"),
             )
-            self.create_rectangle(
-                sx - 17, housing_y - 8, sx + 17, housing_y + 8,
-                fill="#071223", outline="#406B92", width=1,
-                tags=("ventana_neon", "streamer_signal"),
-            )
+
             lamps = []
-            for offset in (-10, 0, 10):
+            halos = []
+            for offset in (-9, 0, 9):
+                cx = signal_x + offset
+                cy = road_y
+                halo = self.create_oval(
+                    cx - 4.2, cy - 4.2, cx + 4.2, cy + 4.2,
+                    fill="#102035", outline="",
+                    tags=("ventana_neon", "streamer_signal"),
+                )
                 lamp = self.create_oval(
-                    sx + offset - 3, housing_y - 3,
-                    sx + offset + 3, housing_y + 3,
+                    cx - 2.7, cy - 2.7, cx + 2.7, cy + 2.7,
                     fill="#203046", outline="",
                     tags=("ventana_neon", "streamer_signal"),
                 )
+                halos.append(halo)
                 lamps.append(lamp)
-            self._streamer_signals.append({"lane": lane, "lamps": lamps})
+            self._streamer_signals.append({
+                "lane": lane, "lamps": lamps, "halos": halos,
+            })
 
         self._start_streamer_traffic()
         self.tag_raise("ventana_neon")
@@ -781,9 +794,14 @@ class FondoFutureo(tk.Canvas):
             bright = ("#FF364E", "#FFD539", "#34FF82")
             muted = ("#471724", "#4A3A14", "#153D27")
             active = {"red": 0, "yellow": 1, "green": 2}[state]
+            halo_colors = ("#521925", "#55431A", "#15553C")
             for j, lamp in enumerate(signal["lamps"]):
                 self.itemconfigure(
                     lamp, fill=bright[j] if j == active else muted[j]
+                )
+                self.itemconfigure(
+                    signal["halos"][j],
+                    fill=halo_colors[j] if j == active else "#102035",
                 )
 
         for lane, path in enumerate(self._streamer_paths):
