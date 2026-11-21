@@ -33,7 +33,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.6.1"
+VERSION = "2.6.2"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -576,7 +576,8 @@ class FondoFutureo(tk.Canvas):
                         self.tag_raise("neon_border")
                 elif self._screen_item is not None:
                     self.itemconfigure(self._screen_item, state="hidden")
-        except (OSError, ValueError, RuntimeError):
+        except Exception:
+            # La aplicacion sigue operando si una ventana deja de capturarse.
             if self._screen_item is not None:
                 self.itemconfigure(self._screen_item, state="hidden")
         finally:
@@ -597,10 +598,15 @@ class FondoFutureo(tk.Canvas):
                     return
             except tk.TclError:
                 pass
+        try:
+            if self._host_root.state() == "iconic":
+                self._host_root.deiconify()
+        except tk.TclError:
+            pass
         dialog = tk.Toplevel(self._host_root)
         self._source_dialog = dialog
         dialog.title("FUTUREO LIVE - Configurar captura")
-        dialog.geometry("530x330")
+        dialog.geometry("550x380")
         dialog.resizable(False, False)
         dialog.configure(bg="#0A142B")
         dialog.transient(self._host_root)
