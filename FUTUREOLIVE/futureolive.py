@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.5"
+VERSION = "2.7.6"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -563,8 +563,9 @@ class FondoFutureo(tk.Canvas):
         )
         self._neon_photo = ImageTk.PhotoImage(frame, master=self)
 
-        margin_x = int(width * 0.02)
-        margin_y = int(height * 0.02)
+        # Ventana del hablante anclada a 5 px del borde superior e izquierdo.
+        margin_x = 5
+        margin_y = 5
 
         if self._neon_item is None:
             self._neon_item = self.create_image(
