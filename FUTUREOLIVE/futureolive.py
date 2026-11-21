@@ -34,11 +34,12 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.7"
+VERSION = "2.7.8"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
+STREAMER_BORDER_THINNING_PX = 2  # Adelgaza 2 px por lado el marco PNG.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -527,7 +528,19 @@ class FondoFutureo(tk.Canvas):
                 source.load()
                 if source.width < 128 or source.height < 72:
                     raise ValueError("Imagen de ventana demasiado pequena")
-                self._neon_source = source.convert("RGBA").copy()
+                overlay = source.convert("RGBA")
+                # Adelgazar los bordes del marco del streamer SIN afectar
+                # al borde principal, colores originales ni tamano del PNG.
+                if STREAMER_BORDER_THINNING_PX > 0:
+                    radius = max(1, int(STREAMER_BORDER_THINNING_PX))
+                    radius = min(radius, 8)
+                    alpha = overlay.getchannel("A")
+                    # Erosion de transparencia: cada lado del trazo pierde 2 px.
+                    core = alpha.filter(ImageFilter.MinFilter(2 * radius + 1))
+                    # Un halo muy sutil conserva la iluminacion cyan/violeta.
+                    halo = alpha.point(lambda value: int(value * 0.16))
+                    overlay.putalpha(ImageChops.lighter(core, halo))
+                self._neon_source = overlay.copy()
         except (OSError, ValueError, EOFError):
             return
         self._draw_neon_window()
