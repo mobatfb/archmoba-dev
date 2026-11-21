@@ -34,11 +34,11 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.4"
+VERSION = "2.7.5"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
-WINDOW_OVERLAY_ENABLED = False  # Marco PNG anterior, desactivado.
+WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -650,6 +650,8 @@ class FondoFutureo(tk.Canvas):
             )
             self.coords(self._border_item, margin_x, margin_y)
         self.tag_raise("neon_border")
+        if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
+            self.tag_raise("ventana_neon")
 
 
     def _global_insert_listener(self) -> None:
@@ -799,6 +801,9 @@ class FondoFutureo(tk.Canvas):
                     self.tag_raise("screen_capture")
                     if self._border_item is not None:
                         self.tag_raise("neon_border")
+                    # Ventana del hablante sobre captura y marco.
+                    if WINDOW_OVERLAY_ENABLED and self._neon_item is not None:
+                        self.tag_raise("ventana_neon")
                     self._capture_error = None
         except Exception as exc:
             # No ocultar errores: disponibles en Insert y en la consola.
