@@ -33,7 +33,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.6.3"
+VERSION = "2.7.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -126,28 +126,154 @@ def _win_list() -> list[tuple[int, str]]:
     return found
 
 
-def _capture_app_window(hwnd: int) -> Image.Image:
-    """Captura una ventana por HWND sin usar las coordenadas del monitor.
 
-    Pillow 11.2.1+ admite ImageGrab.grab(window=HWND) en Windows.
-    Algunas apps aceleradas o con contenido protegido pueden devolver negro.
-    """
+def _capture_via_printwindow(hwnd: int, width: int, height: int) -> Image.Image:
+    """Captura HWND con la API GDI de Windows sin exigir Pillow 11.2+."""
+    if not (1 <= width <= 7680 and 1 <= height <= 4320):
+        raise RuntimeError("Tamano de ventana no admitido")
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [
+            ("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
+            ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
+            ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+            ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+            ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+            ("biClrImportant", wintypes.DWORD),
+        ]
+
+    class BITMAPINFO(ctypes.Structure):
+        _fields_ = [("bmiHeader", BITMAPINFOHEADER),
+                    ("bmiColors", ctypes.c_uint32 * 1)]
+
+    user = ctypes.WinDLL("user32", use_last_error=True)
+    gdi = ctypes.WinDLL("gdi32", use_last_error=True)
+
+    user.GetWindowDC.argtypes = [wintypes.HWND]
+    user.GetWindowDC.restype = wintypes.HDC
+    user.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    user.ReleaseDC.restype = ctypes.c_int
+    user.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+    user.PrintWindow.restype = wintypes.BOOL
+
+    gdi.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi.CreateCompatibleDC.restype = wintypes.HDC
+    gdi.CreateDIBSection.argtypes = [
+        wintypes.HDC, ctypes.POINTER(BITMAPINFO), wintypes.UINT,
+        ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD
+    ]
+    gdi.CreateDIBSection.restype = wintypes.HBITMAP
+    gdi.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    gdi.SelectObject.restype = wintypes.HGDIOBJ
+    gdi.DeleteDC.argtypes = [wintypes.HDC]
+    gdi.DeleteDC.restype = wintypes.BOOL
+    gdi.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    gdi.DeleteObject.restype = wintypes.BOOL
+
+    hwnd = int(hwnd)
+    source_dc = user.GetWindowDC(hwnd)
+    if not source_dc:
+        raise RuntimeError("Windows no permite acceder al contenido de la ventana")
+    memory_dc = None
+    bitmap = None
+    previous = None
+    try:
+        memory_dc = gdi.CreateCompatibleDC(source_dc)
+        if not memory_dc:
+            raise RuntimeError("No se pudo crear el lienzo de captura GDI")
+
+        info = BITMAPINFO()
+        info.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        info.bmiHeader.biWidth = width
+        info.bmiHeader.biHeight = -height  # DIB top-down.
+        info.bmiHeader.biPlanes = 1
+        info.bmiHeader.biBitCount = 32
+        info.bmiHeader.biCompression = 0  # BI_RGB.
+        bits = ctypes.c_void_p()
+        bitmap = gdi.CreateDIBSection(
+            source_dc, ctypes.byref(info), 0, ctypes.byref(bits), None, 0
+        )
+        if not bitmap or not bits.value:
+            raise RuntimeError("Windows no pudo reservar la imagen")
+        previous = gdi.SelectObject(memory_dc, bitmap)
+        if not previous:
+            raise RuntimeError("No se pudo preparar la imagen GDI")
+
+        # PW_RENDERFULLCONTENT captura ventanas que estan detras de otras,
+        # cuando la propia aplicacion y Windows lo permiten.
+        success = user.PrintWindow(hwnd, memory_dc, 2)
+        if not success:
+            success = user.PrintWindow(hwnd, memory_dc, 0)
+        if not success:
+            raise RuntimeError("PrintWindow no pudo obtener fotogramas")
+
+        pixels = ctypes.string_at(bits.value, width * height * 4)
+        return Image.frombytes("RGB", (width, height), pixels, "raw", "BGRX")
+    finally:
+        if memory_dc and previous:
+            gdi.SelectObject(memory_dc, previous)
+        if bitmap:
+            gdi.DeleteObject(bitmap)
+        if memory_dc:
+            gdi.DeleteDC(memory_dc)
+        user.ReleaseDC(hwnd, source_dc)
+
+
+def _image_is_empty(image: Image.Image) -> bool:
+    """Detecta capturas completamente negras, tipicas de apps protegidas."""
+    preview = image.convert("RGB").resize((32, 18), Image.Resampling.NEAREST)
+    return all(maximum <= 3 for _minimum, maximum in preview.getextrema())
+
+
+def _capture_app_window(hwnd: int) -> Image.Image:
+    """Captura ventana real via PrintWindow, Pillow o pantalla visible."""
     if os.name != "nt":
         raise RuntimeError("La captura de ventanas requiere Windows")
-    if _win_rect(hwnd) is None:
-        raise RuntimeError("La ventana esta minimizada, cerrada o no visible")
+    region = _win_rect(hwnd)
+    if region is None:
+        raise RuntimeError("La ventana esta cerrada o minimizada: restaurala")
+
+    errors = []
+    # Primero usar la API nativa: funciona incluso con versiones viejas de Pillow.
     try:
-        result = ImageGrab.grab(window=int(hwnd))
-    except TypeError as exc:
-        raise RuntimeError(
-            "Se requiere Pillow 11.2.1 o superior. "
-            "Ejecuta: python -m pip install --upgrade Pillow"
-        ) from exc
-    except OSError as exc:
-        raise RuntimeError("Windows no pudo capturar la ventana: " + str(exc)) from exc
-    if result.width < 2 or result.height < 2:
-        raise RuntimeError("La ventana no devolvio una imagen valida")
-    return result.convert("RGB")
+        image = _capture_via_printwindow(
+            hwnd, region["width"], region["height"]
+        )
+        if not _image_is_empty(image):
+            return image
+        errors.append("PrintWindow devolvio imagen negra")
+    except (OSError, ValueError, RuntimeError) as exc:
+        errors.append(str(exc))
+
+    # Si Pillow es reciente, probar su captura HWND como alternativa.
+    try:
+        image = ImageGrab.grab(window=int(hwnd))
+        if not _image_is_empty(image):
+            return image.convert("RGB")
+        errors.append("Pillow devolvio imagen negra")
+    except (TypeError, OSError, ValueError):
+        pass
+
+    # Ultimo recurso: tomar el area visible SOLO cuando esa ventana tiene foco.
+    # No se anuncia como captura de fondo: podria incluir superposiciones.
+    user = ctypes.WinDLL("user32")
+    user.GetForegroundWindow.restype = wintypes.HWND
+    if int(user.GetForegroundWindow() or 0) == int(hwnd):
+        r = region
+        bbox = (r["left"], r["top"],
+                r["left"] + r["width"], r["top"] + r["height"])
+        try:
+            image = ImageGrab.grab(bbox=bbox, all_screens=True)
+            if not _image_is_empty(image):
+                return image.convert("RGB")
+        except (OSError, ValueError) as exc:
+            errors.append(str(exc))
+
+    raise RuntimeError(
+        "No se pudo capturar la ventana. " + "; ".join(errors[:2])
+        + ". Prueba restaurarla o desactivar la aceleracion grafica "
+          "de la aplicacion. Para juegos, usa Pantalla completa."
+    )
 
 
 class FondoFutureo(tk.Canvas):
