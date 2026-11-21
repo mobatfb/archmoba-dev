@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.4 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.5 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -301,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.4",
+            "User-Agent": "FutureoMensajes/1.2.5",
         },
         method="GET",
     )
@@ -349,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -488,7 +488,7 @@ class MessageBanner(tk.Canvas):
         left, top, right, bottom = self.content_rect()
         available_w = max(40, right - left - 24)
         available_h = max(20, bottom - top - 10)
-        lo, hi = 2, min(58, int(available_h * 0.48))
+        lo, hi = 2, min(40, int(available_h * 0.44))
         best = (2, self._wrap(text, self._font(2), available_w))
         while lo <= hi:
             mid = (lo + hi) // 2
@@ -694,8 +694,8 @@ class FutureoMessagesApp:
         self.last_origin = "initial"
         self.sent_count = 0
         root.title(f"FUTUREO · Mensajes {APP_VERSION}")
-        root.geometry("780x245")
-        root.minsize(690, 215)
+        root.geometry("390x310")
+        root.minsize(350, 285)
         root.configure(bg="#070c1c")
         root.attributes("-topmost", True)  # Mantener esta ventana delante de las demás.
         root.rowconfigure(0, weight=1)
@@ -721,16 +721,19 @@ class FutureoMessagesApp:
         panel = tk.Frame(self.root, bg="#0c1428", padx=10, pady=7)
         panel.grid(row=1, column=0, sticky="ew")
         panel.columnconfigure(0, weight=1)
+        panel.columnconfigure(1, weight=1)
+        panel.columnconfigure(2, weight=1)
+        panel.columnconfigure(3, weight=1)
         label_options = dict(bg="#0c1428", fg="#9daecd", font=(self.ui_family, 8))
         tk.Label(panel, text="MENSAJE", **label_options).grid(row=0, column=0, sticky="w", pady=(0, 5))
-        tk.Label(panel, text="LÍMITE", **label_options).grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(0, 5))
-        tk.Label(panel, text="SEGUNDOS", **label_options).grid(row=0, column=2, sticky="w", padx=(12, 0), pady=(0, 5))
+        tk.Label(panel, text="LÍMITE", **label_options).grid(row=3, column=0, sticky="w", pady=(6, 3))
+        tk.Label(panel, text="SEGUNDOS", **label_options).grid(row=3, column=1, sticky="w", pady=(6, 3))
         self.entry = tk.Entry(panel, textvariable=self.input_var, bg="#071023", fg="#f5f8ff",
                               insertbackground="#38c9ff", selectbackground="#244e7d",
                               selectforeground="#ffffff", relief="flat", highlightthickness=1,
                               highlightbackground="#233754", highlightcolor="#37bfff",
                               font=(self.ui_family, 10))
-        self.entry.grid(row=1, column=0, sticky="ew", ipady=5)
+        self.entry.grid(row=1, column=0, columnspan=4, sticky="ew", ipady=5)
         self.entry.bind("<Return>", self.send_manual)
         self.entry.bind("<KP_Enter>", self.send_manual)
         self.entry.bind("<Control-a>", self._select_all)
@@ -743,7 +746,7 @@ class FutureoMessagesApp:
                                     insertbackground="#ffffff", relief="flat", highlightthickness=1,
                                     highlightbackground="#233754", highlightcolor="#37bfff",
                                     font=(self.ui_family, 10, "bold"))
-        self.limit_spin.grid(row=1, column=1, sticky="ns", padx=(8, 0), ipady=4)
+        self.limit_spin.grid(row=4, column=0, sticky="ew", padx=(0, 5), ipady=3)
         self.limit_spin.bind("<FocusOut>", self._commit_limit)
         self.limit_spin.bind("<Return>", self._commit_limit)
         self.limit_spin.bind("<KP_Enter>", self._commit_limit)
@@ -756,7 +759,7 @@ class FutureoMessagesApp:
                                        insertbackground="#ffffff", relief="flat", highlightthickness=1,
                                        highlightbackground="#233754", highlightcolor="#37bfff",
                                        font=(self.ui_family, 10, "bold"))
-        self.interval_spin.grid(row=1, column=2, sticky="ns", padx=(8, 0), ipady=4)
+        self.interval_spin.grid(row=4, column=1, sticky="ew", padx=(0, 5), ipady=3)
         self.interval_spin.bind("<FocusOut>", self._commit_interval)
         self.interval_spin.bind("<Return>", self._commit_interval)
         self.interval_spin.bind("<KP_Enter>", self._commit_interval)
@@ -767,17 +770,17 @@ class FutureoMessagesApp:
                                         activebackground="#0c1428", activeforeground="#47d3ff",
                                         selectcolor="#173153", highlightthickness=0,
                                         font=(self.ui_family, 10), cursor="hand2", state="disabled")
-        self.auto_check.grid(row=1, column=3, padx=(8, 6))
+        self.auto_check.grid(row=4, column=2, sticky="ew", padx=(0, 3))
         self.send_button = tk.Button(panel, text="ENVIAR  ↵", command=self.send_manual,
                                      bg="#24bfff", fg="#041526", activebackground="#58d1ff",
                                      activeforeground="#041526", relief="flat", borderwidth=0,
                                      font=(self.ui_family, 10, "bold"), padx=10, pady=6,
                                      cursor="hand2")
-        self.send_button.grid(row=1, column=4, sticky="ns")
+        self.send_button.grid(row=4, column=3, sticky="ew")
         self.counter = tk.Label(panel, text="", **label_options)
-        self.counter.grid(row=2, column=0, sticky="w", pady=(7, 0))
+        self.counter.grid(row=2, column=0, columnspan=4, sticky="w", pady=(3, 0))
         self.status = tk.Label(panel, text="", **label_options)
-        self.status.grid(row=2, column=1, columnspan=4, sticky="e", pady=(7, 0))
+        self.status.grid(row=5, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
     def _select_all(self, event=None):
         widget = event.widget if event is not None else self.entry
