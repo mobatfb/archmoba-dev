@@ -35,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.12.1"
+VERSION = "2.12.2"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -340,6 +340,12 @@ class FondoFutureo(tk.Canvas):
         self._lightning_frames: list[tuple[int, int, Image.Image]] = []
         self._lightning_photo: ImageTk.PhotoImage | None = None
         self._lightning_item: int | None = None
+        # Fogonazo visible encima de la captura y vista previa inmediata.
+        self._lightning_flash_photo: ImageTk.PhotoImage | None = None
+        self._lightning_flash_item: int | None = None
+        self._lightning_flash_size = (0, 0)
+        self._lightning_preview_active = False
+        self._lightning_preview_job: str | None = None
         self._background_item: int | None = None
         self._last_frame: Image.Image | None = None
         self._job: str | None = None
@@ -529,6 +535,9 @@ class FondoFutureo(tk.Canvas):
         self._lightning_frames.clear()
         self._lightning_phase = -1
         self._hide_lightning_overlay()
+        self._hide_lightning_preview()
+        self._lightning_flash_photo = None
+        self._lightning_flash_size = (0, 0)
         if self._lightning_clear_job is not None:
             self.after_cancel(self._lightning_clear_job)
             self._lightning_clear_job = None
@@ -1256,6 +1265,10 @@ class FondoFutureo(tk.Canvas):
                     # Ventana del hablante sobre captura y marco.
                     if STREAMER_NEON_ENABLED and self._neon_item is not None:
                         self.tag_raise("ventana_neon")
+                    # La captura se refresca continuamente: el rayo siempre
+                    # debe quedar por encima o desapareceria detras de ella.
+                    if self._lightning_phase >= 0 or self._lightning_preview_active:
+                        self._raise_lightning_layers()
                     self._capture_error = None
         except Exception as exc:
             # No ocultar errores: disponibles en Insert y en la consola.
@@ -1479,6 +1492,8 @@ class FondoFutureo(tk.Canvas):
         self._lightning_phase = -1
         self._lightning_frames.clear()
         self._hide_lightning_overlay()
+        # El rayo se ve al instante, incluso si su halo PIL tarda en salir.
+        self._show_lightning_preview(path, branches)
         if self._lightning_clear_job is not None:
             self.after_cancel(self._lightning_clear_job)
             self._lightning_clear_job = None
@@ -1647,23 +1662,96 @@ class FondoFutureo(tk.Canvas):
                 30, self._check_lightning_render
             )
 
+    def _set_lightning_flash(self, visible: bool) -> None:
+        """Fogonazo de pantalla completa; se genera una sola vez por tamano."""
+        if not visible:
+            if self._lightning_flash_item is not None:
+                self.itemconfigure(self._lightning_flash_item, state="hidden")
+            return
+        w, h = self._size
+        if w < 2 or h < 2:
+            return
+        if self._lightning_flash_photo is None or self._lightning_flash_size != (w, h):
+            # RGBA ligero y reutilizable: no se regenera cada 55 ms.
+            image = Image.new("RGBA", (w, h), (152, 210, 255, 83))
+            self._lightning_flash_photo = ImageTk.PhotoImage(image, master=self)
+            self._lightning_flash_size = (w, h)
+        if self._lightning_flash_item is None:
+            self._lightning_flash_item = self.create_image(
+                0, 0, image=self._lightning_flash_photo, anchor="nw",
+                tags=("rayos", "rayos_flash"),
+            )
+        else:
+            self.itemconfigure(
+                self._lightning_flash_item, image=self._lightning_flash_photo,
+                state="normal",
+            )
+            self.coords(self._lightning_flash_item, 0, 0)
+
+    def _raise_lightning_layers(self) -> None:
+        """Rayo y fogonazo arriba de la captura, marco y carretera."""
+        # El orden importa: el fogonazo queda debajo del nucleo luminoso.
+        self.tag_raise("rayos_flash")
+        self.tag_raise("rayos_overlay")
+        self.tag_raise("lightning_preview")
+
+    def _show_lightning_preview(self, path: list, branches: list) -> None:
+        """Destello vectorial inmediato, sin filtros ni procesamiento costoso."""
+        if self._lightning_preview_job is not None:
+            self.after_cancel(self._lightning_preview_job)
+            self._lightning_preview_job = None
+        self.delete("lightning_preview")
+        self._lightning_preview_active = True
+        self._set_lightning_flash(True)
+        for points in [path] + branches:
+            if len(points) < 2:
+                continue
+            coords = [value for point in points for value in point]
+            for thickness, color in (
+                (9, "#134D88"),
+                (5, "#30ABFF"),
+                (2, "#F3FCFF"),
+            ):
+                self.create_line(
+                    *coords, fill=color, width=thickness, smooth=False,
+                    joinstyle=tk.ROUND, capstyle=tk.ROUND,
+                    tags=("rayos", "lightning_preview"),
+                )
+        self._raise_lightning_layers()
+        # Una descarga corta, no un trazo fijo mientras el hilo termina.
+        self._lightning_preview_job = self.after(
+            185, self._hide_lightning_preview
+        )
+
+    def _hide_lightning_preview(self) -> None:
+        self._lightning_preview_job = None
+        self.delete("lightning_preview")
+        self._lightning_preview_active = False
+        if self._lightning_phase < 0:
+            self._set_lightning_flash(False)
+
     def _hide_lightning_overlay(self) -> None:
         """Oculta la capa del rayo sin tocar fondo, carretera ni captura."""
         if self._lightning_item is not None:
             self.itemconfigure(self._lightning_item, state="hidden")
         self._lightning_photo = None
+        if not self._lightning_preview_active:
+            self._set_lightning_flash(False)
 
     def _show_lightning_frame(self, phase: int) -> None:
         """Actualiza solo la capa de luz; se ejecuta en el hilo Tk."""
         if phase >= len(self._lightning_frames):
             self._hide_lightning_overlay()
             return
+        # La vista previa acaba al sustituirse por la composicion final.
+        if self._lightning_preview_active:
+            self._hide_lightning_preview()
         x, y, overlay = self._lightning_frames[phase]
         self._lightning_photo = ImageTk.PhotoImage(overlay, master=self)
         if self._lightning_item is None:
             self._lightning_item = self.create_image(
                 x, y, image=self._lightning_photo, anchor="nw",
-                tags=("rayos",),
+                tags=("rayos", "rayos_overlay"),
             )
         else:
             self.itemconfigure(
@@ -1671,11 +1759,9 @@ class FondoFutureo(tk.Canvas):
                 state="normal"
             )
             self.coords(self._lightning_item, x, y)
-        # El rayo se ve sobre el fondo pero debajo de la captura y los coches.
-        if self._background_item is not None:
-            self.tag_raise("rayos", "fondo")
-        else:
-            self.tag_lower("rayos")
+        # Restaurar el fogonazo global en fases fuertes (0 y 2).
+        self._set_lightning_flash(phase in (0, 2))
+        self._raise_lightning_layers()
 
     def _advance_lightning(self, phase: int) -> None:
         """Muestra los destellos previamente calculados, sin filtros caros."""
@@ -1707,8 +1793,8 @@ class FondoFutureo(tk.Canvas):
                 self._background_item, frame.width // 2, frame.height // 2
             )
         self.tag_lower("fondo")
-        if self._lightning_item is not None:
-            self.tag_raise("rayos", "fondo")
+        if self._lightning_phase >= 0 or self._lightning_preview_active:
+            self._raise_lightning_layers()
 
     def _refresh_last_frame(self) -> None:
         """Refresca el fondo solo cuando cambia, nunca por cada rayo."""
@@ -1841,8 +1927,15 @@ class FondoFutureo(tk.Canvas):
                 except tk.TclError:
                     pass
         self._lightning_poll_job = None
+        if self._lightning_preview_job is not None:
+            try:
+                self.after_cancel(self._lightning_preview_job)
+            except tk.TclError:
+                pass
+            self._lightning_preview_job = None
         self._lightning_frames.clear()
         self._lightning_photo = None
+        self._lightning_flash_photo = None
         self._stop_playback()
         if self._check_job is not None:
             try:
