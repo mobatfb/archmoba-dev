@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.5 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.6 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -301,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.5",
+            "User-Agent": "FutureoMensajes/1.2.6",
         },
         method="GET",
     )
@@ -349,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.2.6"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -412,7 +412,7 @@ class MessageBanner(tk.Canvas):
         self._resize_id = None
         if self._closed:
             return
-        self.w, self.h = max(200, self.winfo_width()), max(90, self.winfo_height())
+        self.w, self.h = max(200, self.winfo_width()), max(70, self.winfo_height())
         self._layouts.clear()
         rows = []
         for y in range(self.h):
@@ -488,7 +488,7 @@ class MessageBanner(tk.Canvas):
         left, top, right, bottom = self.content_rect()
         available_w = max(40, right - left - 24)
         available_h = max(20, bottom - top - 10)
-        lo, hi = 2, min(40, int(available_h * 0.44))
+        lo, hi = 2, min(32, int(available_h * 0.54))
         best = (2, self._wrap(text, self._font(2), available_w))
         while lo <= hi:
             mid = (lo + hi) // 2
@@ -694,8 +694,8 @@ class FutureoMessagesApp:
         self.last_origin = "initial"
         self.sent_count = 0
         root.title(f"FUTUREO · Mensajes {APP_VERSION}")
-        root.geometry("390x310")
-        root.minsize(350, 285)
+        root.geometry("390x230")
+        root.minsize(350, 215)
         root.configure(bg="#070c1c")
         root.attributes("-topmost", True)  # Mantener esta ventana delante de las demás.
         root.rowconfigure(0, weight=1)
@@ -706,7 +706,7 @@ class FutureoMessagesApp:
         self.limit_var = tk.StringVar(root, value=str(self.limit))
         self.interval_var = tk.StringVar(root, value=str(self.interval_seconds))
         self.auto_var = tk.BooleanVar(root, value=False)
-        self.banner = MessageBanner(root)
+        self.banner = MessageBanner(root, height=80)
         self.banner.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 5))
         self._build_controls()
         self.input_var.trace_add("write", self._input_changed)
