@@ -34,11 +34,12 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.9"
+VERSION = "2.7.10"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 WINDOW_OVERLAY_ENABLED = True  # Ventana del hablante activa, sin alterar marco principal.
+STREAMER_AREA_RATIO = 0.08  # Ventana del hablante ligeramente mas pequena (antes 0.10).
 STREAMER_BORDER_THINNING_PX = 2  # Adelgaza 2 px por lado el marco PNG.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
@@ -550,7 +551,7 @@ class FondoFutureo(tk.Canvas):
         self._draw_neon_window()
 
     def _draw_neon_window(self) -> None:
-        """Coloca la ventana PNG arriba a la izquierda, al 10% del area visible."""
+        """Coloca la ventana del hablante arriba a la izquierda, con tamano reducido."""
         self._neon_resize_job = None
         if not self._alive or not self.winfo_exists():
             return
@@ -566,7 +567,7 @@ class FondoFutureo(tk.Canvas):
             return
 
         # Escalar por area para mantener la proporcion real del PNG.
-        target_area = width * height * 0.10
+        target_area = width * height * STREAMER_AREA_RATIO
         src_w, src_h = self._neon_source.size
         aspect = src_w / src_h if src_h else 1.0
         new_w = int((target_area * aspect) ** 0.5)
