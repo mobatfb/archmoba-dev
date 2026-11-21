@@ -34,13 +34,13 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.8.3"
+VERSION = "2.8.4"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
 STREAMER_NEON_ENABLED = True  # Cuadro del streamer dibujado con Tkinter.
 STREAMER_SIDE_RATIO = 0.27  # Altura del marco en proporcion al lienzo.
-STREAMER_ASPECT_RATIO = 1.20  # Rectangulo horizontal suave: 20% mas ancho que alto.
+STREAMER_ASPECT_RATIO = 1.35  # Rectangulo 12.5% mas ancho que en v2.8.3.
 STREAMER_MARGIN_PX = 5  # Separacion de los bordes superior e izquierdo.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
@@ -531,7 +531,7 @@ class FondoFutureo(tk.Canvas):
         if width < 160 or height < 120:
             return
 
-        # Mantener la altura previa y ampliar solo un 20% el ancho.
+        # Mantener la altura previa y ampliar un poco mas el ancho (ratio 1.35).
         # Los limites impiden cortar el marco cuando la ventana es pequena.
         frame_h = max(110, int(min(width, height) * STREAMER_SIDE_RATIO))
         frame_h = min(
