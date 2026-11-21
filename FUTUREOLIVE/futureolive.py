@@ -34,7 +34,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.7.2"
+VERSION = "2.7.3"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -43,6 +43,8 @@ NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
 SCREEN_CAPTURE_FPS = 12  # Captura local, no transmision a Internet.
+SCREEN_CAPTURE_BLEED_PX = 2  # Solapa 2 px debajo del marco neon.
+SCREEN_SOURCE_CROP_PX = 2  # Elimina 2 px exteriores de cada ventana capturada.
 BASE = Path(__file__).resolve().parent
 ASSETS = BASE / "assets"
 VIDEO_PATH = ASSETS / "fondo_sin_marcos_4k.mp4"
@@ -719,10 +721,16 @@ class FondoFutureo(tk.Canvas):
                 bw = max(120, int(sw * NEON_BORDER_WIDTH))
                 bh = max(90, int(sh * NEON_BORDER_HEIGHT))
                 side = min(bw, bh)
-                inset = (max(10, int(side * .025))
-                         + max(3, int(side * .007)) + max(5, int(side * .008)))
-                left, top = int(sw * .02) + inset, int(sh * .02) + inset
-                width, height = bw - inset * 2, bh - inset * 2
+                # Coincidir con la geometria de _draw_neon_border.
+                # La captura solapa dos pixeles debajo del borde luminoso.
+                padding = max(10, int(side * .025))
+                stroke = max(3, int(side * .007))
+                radius = max(16, int(side * .065))
+                inset = max(1, padding + stroke - SCREEN_CAPTURE_BLEED_PX)
+                left = int(sw * .02) + inset
+                top = int(sh * .02) + inset
+                width, height = bw - 2 * inset, bh - 2 * inset
+                clip_radius = max(1, radius - (inset - padding))
                 kind, index = self._screen_source
                 if kind == "window":
                     # Recuperar solo el ultimo fotograma producido en otro hilo.
@@ -751,15 +759,24 @@ class FondoFutureo(tk.Canvas):
                     raise RuntimeError("Fuente de captura no valida")
 
                 if width > 20 and height > 20:
-                    # Rellenar TODO el espacio del marco, sin bandas laterales.
-                    # La imagen se estira al ancho y alto exactos del cuadro.
-                    frame = original.convert("RGBA").resize(
-                        (width, height), resample=Image.Resampling.BILINEAR
+                    # Retirar el margen exterior de ventanas capturadas.
+                    # Los monitores se mantienen completos.
+                    if kind == "window" and SCREEN_SOURCE_CROP_PX:
+                        crop = SCREEN_SOURCE_CROP_PX
+                        if original.width > 2 * crop + 20 and original.height > 2 * crop + 20:
+                            original = original.crop((
+                                crop, crop, original.width - crop, original.height - crop
+                            ))
+                    # COVER: sin bandas y sin deformar las proporciones.
+                    frame = ImageOps.fit(
+                        original.convert("RGBA"), (width, height),
+                        method=Image.Resampling.BILINEAR, centering=(.5, .5),
                     )
+                    # Misma curvatura del marco, con solapamiento de 2 px.
                     mask = Image.new("L", (width, height), 0)
                     ImageDraw.Draw(mask).rounded_rectangle(
                         (0, 0, width - 1, height - 1),
-                        radius=max(10, int(min(width, height) * .038)),
+                        radius=clip_radius,
                         fill=255
                     )
                     frame.putalpha(ImageChops.multiply(
