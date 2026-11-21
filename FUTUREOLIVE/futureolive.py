@@ -35,7 +35,7 @@ try:
 except (ImportError, OSError):
     mss = None
 
-VERSION = "2.11.1"
+VERSION = "2.12.0"
 FONDO = "#050A19"
 VIDEO_SPEED = 1.20  # MP4 reproducido un 20 por ciento mas rapido
 VIDEO_BACKGROUND_ENABLED = False  # Cambiar a True para reactivar MP4/GIF.
@@ -47,6 +47,9 @@ STREAMER_CARS_PER_LANE = 5  # Coches circulan en ambos sentidos.
 STREAMER_TRAFFIC_FPS = 24  # Movimiento suave y semaforos dinamicos.
 STREAMER_LANE_SPACING = 14  # Dos carriles paralelos con linea central.
 STREAMER_FOLLOW_DISTANCE = 23  # Separacion minima entre vehiculos.
+STREAMER_TURN_PROBABILITY = 0.42  # Probabilidad de cambiar de carril en verde.
+STREAMER_TURN_DURATION = 0.85  # Segundos para completar un giro en U.
+STREAMER_TURN_CLEARANCE = 70  # Espacio libre antes de cambiar de carril.
 NEON_BORDER_ENABLED = True  # Nuevo borde dibujado, sin PNG ni fondo.
 NEON_BORDER_WIDTH = 0.80  # 80% del ancho del lienzo.
 NEON_BORDER_HEIGHT = 0.80  # 80% del alto del lienzo.
@@ -702,11 +705,10 @@ class FondoFutureo(tk.Canvas):
             x - front_x + side_x, y - front_y + side_y,
         )
 
-    def _streamer_show_car(self, car: dict) -> None:
-        """Mueve carroceria, parabrisas y luces sin recrear el widget."""
-        x, y, tx, ty = self._streamer_lane_point(
-            car["lane"], car["progress"]
-        )
+    def _streamer_show_car(self, car: dict, pose=None) -> None:
+        """Mueve carroceria y luces; admite poses intermedias durante un giro."""
+        x, y, tx, ty = (pose if pose is not None else
+                         self._streamer_lane_point(car["lane"], car["progress"]))
         self.coords(
             car["body"],
             *self._streamer_car_shape(x, y, tx, ty, 13, 6),
@@ -772,12 +774,133 @@ class FondoFutureo(tk.Canvas):
                 self._streamer_cars.append({
                     "lane": lane, "progress": position,
                     "speed": 0.0, "cruise": random.uniform(30.0, 59.0),
+                    "turn": None, "turn_attempted": False,
+                    "last_turn": -1000.0,
                     "body": body, "glass": glass,
                     "head": head, "tail": tail,
                 })
 
         self._streamer_traffic_last = time.monotonic()
         self._streamer_traffic_tick()
+
+    def _streamer_nearest_progress(
+        self, lane: int, x: float, y: float
+    ) -> float:
+        """Proyecta una ubicacion al carril opuesto respetando su sentido."""
+        path = self._streamer_paths[lane]
+        best_distance = float("inf")
+        best_progress = 0.0
+        elapsed = 0.0
+        for ax, ay, bx, by, segment_length in path["segments"]:
+            vx, vy = bx - ax, by - ay
+            ratio = max(0.0, min(
+                1.0, ((x - ax) * vx + (y - ay) * vy)
+                / max(segment_length * segment_length, .001)
+            ))
+            px, py = ax + vx * ratio, ay + vy * ratio
+            distance = (x - px) ** 2 + (y - py) ** 2
+            if distance < best_distance:
+                best_distance = distance
+                best_progress = elapsed + ratio * segment_length
+            elapsed += segment_length
+        return (best_progress if lane == 0 else
+                path["length"] - best_progress) % path["length"]
+
+    def _streamer_turn_is_safe(
+        self, car: dict, target_lane: int, target_progress: float
+    ) -> bool:
+        """Requiere un espacio libre amplio en ambos sentidos del otro carril."""
+        # Solo un coche gira al mismo tiempo; evita conflictos de trayectorias.
+        if any(other["turn"] is not None for other in self._streamer_cars):
+            return False
+        perimeter = self._streamer_paths[target_lane]["length"]
+        if perimeter <= 0:
+            return False
+        for other in self._streamer_cars:
+            if other is car or other["lane"] != target_lane:
+                continue
+            forward = (target_progress - other["progress"]) % perimeter
+            backward = (other["progress"] - target_progress) % perimeter
+            # La separacion incluye la longitud del giro y el frenado
+            # anticipado de los coches que llegan al punto de incorporacion.
+            if min(forward, backward) < STREAMER_TURN_CLEARANCE:
+                return False
+        return True
+
+    @staticmethod
+    def _streamer_turn_pose(turn: dict, fraction: float):
+        """Curva cubica: inicio y fin tangentes a sus respectivos carriles."""
+        t = max(0.0, min(1.0, fraction))
+        sx, sy, stx, sty = turn["start"]
+        ex, ey, etx, ety = turn["end"]
+        control = max(13.0, STREAMER_LANE_SPACING * .85)
+        p0 = (sx, sy)
+        p1 = (sx + stx * control, sy + sty * control)
+        p2 = (ex - etx * control, ey - ety * control)
+        p3 = (ex, ey)
+        inv = 1.0 - t
+        x = (inv ** 3 * p0[0] + 3 * inv * inv * t * p1[0]
+             + 3 * inv * t * t * p2[0] + t ** 3 * p3[0])
+        y = (inv ** 3 * p0[1] + 3 * inv * inv * t * p1[1]
+             + 3 * inv * t * t * p2[1] + t ** 3 * p3[1])
+        dx = (3 * inv * inv * (p1[0] - p0[0])
+              + 6 * inv * t * (p2[0] - p1[0])
+              + 3 * t * t * (p3[0] - p2[0]))
+        dy = (3 * inv * inv * (p1[1] - p0[1])
+              + 6 * inv * t * (p2[1] - p1[1])
+              + 3 * t * t * (p3[1] - p2[1]))
+        magnitude = math.hypot(dx, dy)
+        if magnitude < .001:
+            return (x, y, etx, ety)
+        return (x, y, dx / magnitude, dy / magnitude)
+
+    def _streamer_begin_turn(
+        self, car: dict, now: float, target_lane: int,
+        target_progress: float
+    ) -> None:
+        """Reserva el carril opuesto y comienza un giro visible de 180 grados."""
+        car["turn"] = {
+            "begin": now, "duration": STREAMER_TURN_DURATION,
+            "from_lane": car["lane"], "target_lane": target_lane,
+            "target_progress": target_progress,
+            "start": self._streamer_lane_point(car["lane"], car["progress"]),
+            "end": self._streamer_lane_point(target_lane, target_progress),
+        }
+        car["speed"] = 0.0
+        car["turn_attempted"] = True
+
+    def _streamer_advance_turns(self, now: float) -> None:
+        """Anima cambios de carril con orientacion continua y sin teletransportes."""
+        for car in self._streamer_cars:
+            turn = car["turn"]
+            if turn is None:
+                continue
+            elapsed = (now - turn["begin"]) / turn["duration"]
+            if elapsed >= 1.0:
+                car["lane"] = turn["target_lane"]
+                car["progress"] = turn["target_progress"]
+                car["turn"] = None
+                car["last_turn"] = now
+                car["turn_attempted"] = True
+                car["speed"] = 0.0
+                self._streamer_show_car(car)
+            else:
+                self._streamer_show_car(
+                    car, pose=self._streamer_turn_pose(turn, elapsed)
+                )
+
+    def _streamer_merge_clearance(self, car: dict, perimeter: float) -> float:
+        """Bloquea temporalmente la incorporacion para coches del otro sentido."""
+        free = perimeter
+        for other in self._streamer_cars:
+            turn = other["turn"]
+            if turn is None or turn["target_lane"] != car["lane"]:
+                continue
+            # Obstaculo virtual en el punto de incorporacion mientras gira.
+            ahead = (turn["target_progress"] - car["progress"]) % perimeter
+            if ahead < 140:
+                free = min(free, max(0.0, ahead - STREAMER_FOLLOW_DISTANCE))
+        return free
 
     def _streamer_traffic_tick(self) -> None:
         """Circulacion bidireccional real: frenado en rojo y distancia segura."""
@@ -804,6 +927,9 @@ class FondoFutureo(tk.Canvas):
                     fill=halo_colors[j] if j == active else "#102035",
                 )
 
+        # Los giros se animan antes de calcular el trafico restante.
+        self._streamer_advance_turns(now)
+
         for lane, path in enumerate(self._streamer_paths):
             perimeter = path["length"]
             cars = sorted(
@@ -812,26 +938,60 @@ class FondoFutureo(tk.Canvas):
             )
             if not cars or perimeter <= 0:
                 continue
+
             red = self._streamer_signal_state(lane, now) != "green"
             for i, car in enumerate(cars):
-                # El de delante avanza primero. No se puede adelantar.
+                if car["turn"] is not None:
+                    # Se mantiene en el carril de origen como obstaculo
+                    # hasta que termine de entrar en el otro carril.
+                    continue
+
                 leader = cars[i - 1] if i else cars[-1]
                 gap = (leader["progress"] - car["progress"]) % perimeter
                 if len(cars) == 1:
                     gap = perimeter
                 free = max(0.0, gap - STREAMER_FOLLOW_DISTANCE)
+                free = min(free, self._streamer_merge_clearance(car, perimeter))
                 target = car["cruise"]
-                if gap < 90:
+                if free < 70:
                     target = min(target, free * 1.8)
 
                 distance_to_light = (
                     path["stop"] - car["progress"]
                 ) % perimeter
+                # Se vuelve a sortear solamente en la siguiente vuelta.
+                if distance_to_light > 55:
+                    car["turn_attempted"] = False
+
                 must_stop = red and distance_to_light < 135
                 if must_stop:
                     remaining = max(0.0, distance_to_light - 12.0)
-                    # v^2=2*a*d: desaceleracion progresiva antes del rojo.
                     target = min(target, math.sqrt(2 * 145.0 * remaining))
+
+                # Solo al llegar al semaforo, con luz verde, se decide
+                # aleatoriamente si realizar un giro en U hacia el otro carril.
+                if (not red and not car["turn_attempted"]
+                        and 8 <= distance_to_light <= 19
+                        and now - car["last_turn"] > 4.0):
+                    car["turn_attempted"] = True
+                    if random.random() < STREAMER_TURN_PROBABILITY:
+                        other_lane = 1 - lane
+                        x, y, _, _ = self._streamer_lane_point(
+                            lane, car["progress"]
+                        )
+                        other_progress = self._streamer_nearest_progress(
+                            other_lane, x, y
+                        )
+                        if self._streamer_turn_is_safe(
+                            car, other_lane, other_progress
+                        ):
+                            self._streamer_begin_turn(
+                                car, now, other_lane, other_progress
+                            )
+                            self._streamer_show_car(
+                                car, pose=car["turn"]["start"]
+                            )
+                            continue
 
                 if target < car["speed"]:
                     car["speed"] = max(target, car["speed"] - 145.0 * dt)
