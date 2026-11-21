@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO Mensajes 1.2.1 — una ventana, 10 transiciones y banco remoto.
+"""FUTUREO Mensajes 1.2.2 — una ventana, 10 transiciones y banco remoto.
 
 Ejecución: python futureo_mensajes.py
 Requiere Python 3.9 o posterior con Tkinter. No usa paquetes externos,
@@ -13,6 +13,7 @@ la aplicación para reintentar. Auto se habilita cuando hay frases remotas
 que caben en el límite establecido. No incluye un banco local alternativo.
 
 Arriba: únicamente el mensaje publicado en un banner azul de estilo neón.
+La ventana permanece siempre visible sobre las otras ventanas normales.
 Abajo: editor, límite de caracteres, intervalo en segundos, Auto y Enviar.
 Enter envía desde el editor. El intervalo predeterminado es de 10 segundos.
 El límite y el intervalo se guardan en la caché del usuario.
@@ -300,7 +301,7 @@ def fetch_remote_messages(url: str) -> tuple:
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "Pragma": "no-cache",
-            "User-Agent": "FutureoMensajes/1.2.1",
+            "User-Agent": "FutureoMensajes/1.2.2",
         },
         method="GET",
     )
@@ -348,7 +349,7 @@ import time
 import tkinter as tk
 import tkinter.font as tkfont
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 TRANSITIONS = (
     "Desvanecer", "Deslizar izquierda", "Deslizar derecha", "Subir", "Bajar",
     "Zoom", "Barrido izquierda", "Barrido derecha", "Escritura", "Giro suave",
@@ -696,6 +697,7 @@ class FutureoMessagesApp:
         root.geometry("1020x315")
         root.minsize(800, 255)
         root.configure(bg="#070c1c")
+        root.attributes("-topmost", True)  # Mantener esta ventana delante de las demás.
         root.rowconfigure(0, weight=1)
         root.columnconfigure(0, weight=1)
         root.protocol("WM_DELETE_WINDOW", self.close)
