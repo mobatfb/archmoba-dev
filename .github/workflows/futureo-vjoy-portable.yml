@@ -97,11 +97,16 @@ jobs:
           $exe=Join-Path $isolated 'FUTUREO_VJOY_PORTABLE.exe'
           Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish/FUTUREO_VJOY_PORTABLE.exe') -Destination $exe
           $report=Join-Path $env:RUNNER_TEMP 'futureo-exe-autoprueba.txt'
-          & $exe --self-test $report
-          if($LASTEXITCODE -ne 0){throw "Autoprueba fracaso (exit $LASTEXITCODE)"}
+          # WinExe es subsistema GUI: PowerShell '& exe' no espera
+          # necesariamente al cierre ni llena LASTEXITCODE.
+          # Start-Process -Wait -PassThru SI espera y devuelve ExitCode.
+          $testProcess=Start-Process -FilePath $exe -ArgumentList @('--self-test',$report) -Wait -PassThru
           if(-not (Test-Path $report)){throw 'Autoprueba no creo diagnostico'}
           $content=Get-Content -LiteralPath $report -Raw
           Write-Host $content
+          if($testProcess.ExitCode -ne 0){
+            throw "Autoprueba fracaso (codigo $($testProcess.ExitCode))"
+          }
           if($content -notmatch 'UMDF2 x64 embedded: True' -or $content -notmatch 'OEM API: True'){
             throw 'No esta integrado el payload HIDMaestro en EXE unico'
           }
