@@ -133,3 +133,27 @@ vJoy y NO importa automaticamente este modulo.
 En Windows, despues de instalar y validar el driver FUTUREO firmado, se podra
 integrar el adaptador como opcion de motor sin alterar el arbitro de turnos.
 No uses el driver no firmado en tu PC de juegos.
+
+## Compilacion Windows en GitHub Actions (sin instalar)
+
+El flujo .github/workflows/futureo-vjoy-driver.yml intenta compilar un
+FutJoy.sys x64 Release usando runner windows-2025-vs2026 y WDK/SDK
+NuGet 10.0.28000.2526, sin firmar ni instalar un driver.
+
+Ver estado: https://github.com/mobatfb/archmoba-dev/actions/workflows/futureo-vjoy-driver.yml
+
+Si compila, GitHub Actions almacenara temporalmente
+FUTUREO-VJOY-SYS-EXPERIMENTAL-SIN-FIRMA. Un .sys sin catalogo ni firma
+valida NO se puede instalar normalmente en Windows 10/11.
+
+## Diagnostico en Windows (solo lectura)
+
+    powershell -NoProfile -File tools\diagnosticar_windows.ps1
+
+Permite comparar el identificador ROOT/FUTJOY, el HID
+VID_F7A0&PID_2101..2108, estado PnP y los nombres OEM de DirectInput.
+Las cadenas reales que muestran los juegos deben comprobarse en ellos;
+la herramienta no modifica el Registro ni vJoy.
+
+Pendiente: compilacion WDK verificada, firma valida, pruebas en VM,
+enumeracion en joy.cpl, nombres por juego y estabilidad del controlador.
