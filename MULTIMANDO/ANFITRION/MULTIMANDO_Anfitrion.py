@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """MULTIMANDO: anfitrion independiente para dos mandos Xbox virtuales.
 
-Compatible con la palanca PHP v5.7: WASD/UIOJKL en el navegador,
+Compatible con la palanca PHP v5.8: WASD/UIOJKL en el navegador,
 comandos WebSocket ar/ab/iz/de, button_a/button_b/button_x/button_y/button_lb/button_rb, start/select.
 
 Regla: 600 segundos de juego POR JUGADOR, consumidos unicamente mientras
@@ -39,12 +39,16 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 DEFAULT_PORT = 8766  # No interfiere con el puerto 8765 de KOFMULTI.
 DEFAULT_SECONDS = 600
 MAX_GUESTS = 64
 MAX_MESSAGES_PER_SECOND = 100
+# La GUI del anfitrion sigue usando el estado completo EN MEMORIA.
+# A cada navegador se envia solamente su posicion y reloj, bajo demanda.
+STATE_RESYNC_ACTIVE = 10.0  # Reajuste del reloj local cada 10 segundos.
+STATE_RESYNC_PAUSED = 60.0  # Sin cola, no enviar estados continuamente.
 API_POST = "https://api.isupol.edu.ec/api/posturlmultimando"
 API_GET = "https://api.isupol.edu.ec/api/geturlmultimando"
 ACTIONS = frozenset(("ar", "ab", "iz", "de", "button_a", "button_b", "button_x", "button_y", "button_lb", "button_rb", "start", "select"))
@@ -619,6 +623,28 @@ class Room:
                 result.append((g, state))
             return result
 
+    def compact_states(self) -> list[tuple[Guest, dict]]:
+        """Estado PERSONALIZADO y minimo para la red, sin roster ni nombres.
+
+        Los campos t/r se recalculan en el anfitrion. El cliente solo
+        interpola para mostrar el contador; nunca decide turnos.
+        """
+        with self.lock:
+            self._advance(self.clock())
+            positions = {uid: index + 1 for index, uid in enumerate(self.waiting)}
+            queue_length = len(self.waiting)
+            return [
+                (g, {
+                    "type": "s",  # Estado de la sala (no se envia en JSON extenso).
+                    "s": g.slot,  # 1=P1, 2=P2, 0=cola.
+                    "p": positions.get(g.uid, 0),  # Puesto en la cola.
+                    "q": queue_length,  # Total en espera.
+                    "t": max(0, math.ceil(g.remaining)) if g.slot else None,
+                    "r": int(bool(queue_length) and bool(g.slot)),
+                })
+                for g in self.players.values() if g.active
+            ]
+
     def close(self) -> None:
         with self.lock:
             for g in self.players.values():
@@ -640,6 +666,11 @@ class MultimandoServer:
         self.server = None
         self.worker: threading.Thread | None = None
         self.ticker: threading.Thread | None = None
+        # No enviar el roster de todos los usuarios cada 0.5 s a cada cliente.
+        # Estado s/p/q/r = cambio estructural; t = sincronizacion ocasional.
+        self._state_lock = threading.RLock()
+        self._last_state: dict[int, tuple[tuple[int, int, int, int], float]] = {}
+        self._last_roster_at = 0.0
 
     def start(self) -> None:
         try:
@@ -677,9 +708,30 @@ class MultimandoServer:
             except Exception: pass
 
     def _state(self) -> None:
-        for guest, state in self.room.individualized():
-            guest.tell(state)
-        self.on_event("roster", self.room.snapshot())
+        """Notificar SOLO cambios de asignacion/cola y sincronizar reloj.
+
+        El calculo de tiempo es autoritativo en Room (Python). La palanca
+        muestra la cuenta localmente entre sincronizaciones de 10 segundos.
+        La GUI sigue viendo snapshot completo pero NUNCA lo envia a Internet.
+        """
+        with self._state_lock:
+            now = time.monotonic()
+            states = self.room.compact_states()
+            live_uids = set()
+            for guest, packet in states:
+                live_uids.add(guest.uid)
+                fingerprint = (packet["s"], packet["p"], packet["q"], packet["r"])
+                previous = self._last_state.get(guest.uid)
+                cadence = STATE_RESYNC_ACTIVE if packet["r"] else STATE_RESYNC_PAUSED
+                if previous is None or fingerprint != previous[0] or now - previous[1] >= cadence:
+                    guest.tell(packet)
+                    self._last_state[guest.uid] = (fingerprint, now)
+            for departed_uid in self._last_state.keys() - live_uids:
+                del self._last_state[departed_uid]
+            # Solo para la ventana local: no se transmite por WebSocket.
+            if now - self._last_roster_at >= 1.0:
+                self.on_event("roster", self.room.snapshot())
+                self._last_roster_at = now
 
     def _handle(self, websocket: Any) -> None:
         guest = None

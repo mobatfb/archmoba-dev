@@ -15,7 +15,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
 <link rel="stylesheet" href="assets/palanca.css?v=5.7.0">
-<script src="control.php?v=5.7.0" defer></script>
+<script src="control.php?v=5.8.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
