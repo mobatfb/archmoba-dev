@@ -45,6 +45,26 @@ jobs:
           $drivers = @(Get-ChildItem .\MULTIMANDO\FUTUREO_VJOY\driver -Recurse -Filter FutJoy.sys -File)
           if ($drivers.Count -eq 0) { throw "La compilación no produjo FutJoy.sys" }
           $drivers | ForEach-Object { Write-Host "GENERADO: $($_.FullName) / bytes: $($_.Length)" }
+      - name: Preparar paquete fuente para firma futura (NO INSTALABLE)
+        shell: pwsh
+        run: |
+          $dest = Join-Path (Get-Location) 'futureo_driver_no_instalar'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item '.\MULTIMANDO\FUTUREO_VJOY\driver\x64\Release\FutJoy.sys' -Destination $dest -ErrorAction Stop
+          Copy-Item '.\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.inf' -Destination $dest -ErrorAction Stop
+          @(
+            "FUTUREO VJOY - PAQUETE EXPERIMENTAL SIN FIRMA"
+            "El INF ha sido comprobado por un flujo independiente de InfVerif."
+            "Falta generar FutJoy.cat y obtener firma de Microsoft."
+            "NO INSTALAR EN WINDOWS PRINCIPAL."
+            "Solo fuente para preparar el proceso de validacion y firma."
+          ) | Set-Content (Join-Path $dest 'NO_INSTALAR.txt') -Encoding utf8
+          Get-ChildItem $dest -Filter 'FutJoy.*' -File |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content (Join-Path $dest 'SHA256SUMS.txt') -Encoding ascii
+          Write-Host "PAQUETE: $dest"
+          Get-Content (Join-Path $dest 'SHA256SUMS.txt')
       - name: Guardar registro (siempre)
         if: always()
         uses: actions/upload-artifact@v4
@@ -52,6 +72,14 @@ jobs:
           name: FUTUREO-VJOY-registro-WDK
           path: wdk-build.log
           if-no-files-found: ignore
+      - name: Guardar paquete pre-firma (SIN FIRMA, NO INSTALAR)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO-VJOY-PAQUETE-SIN-FIRMA-NO-INSTALAR
+          path: futureo_driver_no_instalar/
+          if-no-files-found: error
+          retention-days: 7
       - name: Guardar binario experimental sin firma
         if: success()
         uses: actions/upload-artifact@v4
