@@ -1,57 +1,56 @@
-# MULTIMANDO - Palanca web v5.2 (6 botones)
+# MULTIMANDO v5.7 + Anfitrión Python v1.2 — Protocolo de 2 bytes
 
-Proyecto totalmente independiente de KOFMULTI. **PHP es sólo un mando remoto**: el anfitrión Python (a desarrollar) administra P1, P2, cola FIFO, usuarios y 10 minutos por turno sólo cuando exista cola.
+Parche incremental para la palanca web y el anfitrión de Windows.
+No toca Laravel ni MySQL, el servidor PHP solo consulta `/api/geturlmultimando`.
 
-## Vista del mando
+## Diseño de botones
 
-- **Palanca digital:** arrastrar con ratón o dedo, 8 direcciones y diagonales; flechas del teclado; cruceta física D-pad o analógico izquierdo de mando USB/Bluetooth compatible con Gamepad API.
-- **Seis botones con letras, sin figuras**: primera fila **A B C**, segunda fila **D E F**.
-- **TECLAS:** botón para configurar localmente cada tecla (direcciones, A-F, START y SELECT), guardado en `localStorage`. Si una tecla ya está asignada, se intercambian las asignaciones; no se envía la configuración a Python.
-- **Perfil predeterminado del teclado**: **W = arriba, A = izquierda, S = abajo, D = derecha**; botones **A/B/C = U/I/O** y **D/E/F = J/K/L**. **Enter** = START, **Retroceso / Backspace** = SELECT. El usuario puede cambiarlo mediante TECLAS y restaurar el perfil predeterminado cuando quiera.
-- **Mando físico estándar**: analógico izquierdo o D-pad; botones físicos 0-5 corresponden a A-F; 9 START y 8 SELECT. Dependiendo del control físico algunas plataformas pueden exponer otras asignaciones.
+- Arriba: **X · Y · L**; abajo: **A · B · R**.
+- `X`, `Y`, `L`, `A`, `B`, `R` se conectan a Xbox X, Y, LB, A, B, RB respectivamente.
+- Teclas predeterminadas: U/I/O para X/Y/L; J/K/L para A/B/R; WASD en la palanca.
+- START = Enter, SELECT = Retroceso. La personalización guardada sigue vigente.
 
-## Contrato WebSocket con el nuevo Python
+## Protocolo compacto WebSocket
 
-El navegador envía inicialmente `{"type":"hello","name":"Ana"}`. Después, cada pulsación envía, por ejemplo, `{"type":"input","action":"iz","down":true}` y su liberación `{"type":"input","action":"iz","down":false}`.
+Cada pulsación es un frame WebSocket de texto de **2 bytes UTF-8**:
+`<codigo>1` significa presionar, `<codigo>0` significa soltar.
+No se envía un JSON por cada pulsación. La sobrecarga de WebSocket/TLS es adicional.
 
-| Control | Comando | Control | Comando |
-|---|---|---|---|
-| Arriba | `ar` | A | `ba` |
-| Abajo | `ab` | B | `bb` |
-| Izquierda | `iz` | C | `bc` |
-| Derecha | `de` | D | `bd` |
-| START | `start` | E | `be` |
-| SELECT | `select` | F | `bf` |
+| Visible | Código | Pulsar | Soltar | Acción Python |
+|---|---|---|---|---|
+| X | x | `x1` | `x0` | button_x |
+| Y | y | `y1` | `y0` | button_y |
+| L | l | `l1` | `l0` | button_lb |
+| A | a | `a1` | `a0` | button_a |
+| B | b | `b1` | `b0` | button_b |
+| R | r | `r1` | `r0` | button_rb |
+| Arriba | u | `u1` | `u0` | ar |
+| Abajo | d | `d1` | `d0` | ab |
+| Izquierda | i | `i1` | `i0` | iz |
+| Derecha | e | `e1` | `e0` | de |
+| START | t | `t1` | `t0` | start |
+| SELECT | s | `s1` | `s0` | select |
 
-Una diagonal envía dos comandos simultáneos, p. ej. `ar` + `iz`. Los comandos no dependen de la tecla elegida por el usuario. Python debe reconocer **exactamente estas acciones**, no las acciones anteriores de KOF ni de MULTIMANDO v2.
+Conexión/identificación (`hello`) y mensajes de servidor (welcome/state/notice/error) siguen siendo JSON.
+Los mensajes JSON de entrada del protocolo anterior se toleran de forma temporal para evitar fallos durante la actualización.
 
-El anfitrión Python emitirá `welcome`, `state`, `notice`, `error` con `slot` (1 o 2), `waiting_position`, `queue`, `timer_remaining`, `timer_running`; la web sólo los representa. **No administra** colas o tiempos y **no usa la API POST**.
+## Consola Python
+
+En REGISTRO DE EVENTOS se muestra el puesto asignado, nombre y botón lógico:
+
+`CONTROL P1 | Bryan | X (x1) | PRESIONADO`
+`CONTROL P1 | Bryan | X (x0) | SOLTADO`
+
+La tecla física personalizable no se transmite. No se registran pulsaciones duplicadas.
 
 ## Instalación
 
-1. Hosting HTTPS con **PHP 8.1+, OpenSSL y zlib**.
-2. Subir la carpeta `MULTIMANDO` del ZIP privado, incluido `private/FRASE_CIFRADO.php` y `private/palanca.enc`.
-3. Abrir `https://tusitio.example/MULTIMANDO/` (`index.php` abre `palanca.php`).
-4. Introducir nombre, conectar y aguardar a que el anfitrión Python asigne un control.
-5. `sala.php` sólo consulta `https://api.isupol.edu.ec/api/geturlmultimando`, y acepta Cloudflare Quick Tunnel con HTTPS/WSS. Como alternativa está el enlace directo.
+1. En el hosting sustituye sólo `MULTIMANDO/palanca.php`, `MULTIMANDO/assets/palanca.css` y `MULTIMANDO/private/palanca.enc`.
+2. En Windows sustituye sólo `MULTIMANDO/ANFITRION/MULTIMANDO_Anfitrion.py` y reinicia el anfitrión/sala.
+3. Conserva `MULTIMANDO/private/FRASE_CIFRADO.php`; el nuevo `.enc` usa exactamente la misma frase privada. **No está incluido en el parche.**
+4. En el navegador actualiza con Ctrl+F5. La casilla AUTO sigue consultando la API sin cambios.
 
-`config.php` guarda la API GET y un enlace manual opcional. El cifrado AES-256-GCM + gzip protege el JS almacenado, pero **no puede impedir que alguien inspeccione el JavaScript servido a su navegador**. El archivo `private/FRASE_CIFRADO.php` se incluye **solo en el ZIP privado**, nunca en el repositorio público. Protege `private` en Apache o Nginx.
+**Sin cambios:** P1/P2, cola FIFO, 10 minutos solo cuando haya espera, Cloudflare, publicación API ni seguridad de `control.php`.
 
-Se ha probado la interfaz y la lógica de pulsaciones con WebSocket simulado. La interoperabilidad con el futuro anfitrión Python requiere implementarlo y probar con control físico real.
-
-### Migración de perfiles desde v4
-
-La configuración guardada por el usuario en v4 se respeta en sus teclas personalizadas; las teclas que seguían con el valor de fábrica migran a WASD + UIO/JKL. Una vez guardada una modificación nueva, se utiliza `multimando_keys_v5`.
-
-### Parche v5.1: SELECT en retroceso
-
-El valor predeterminado de SELECT pasa de `Digit5` a `Backspace`. Los perfiles anteriores conservan los ajustes personalizados; si SELECT seguía usando la tecla `5` predeterminada, se migra a Backspace automáticamente. Backspace mantiene su comportamiento normal al escribir en un campo de texto. El comando WebSocket para Python no cambia: `select`.
-
-### Parche v5.2: palanca visual con WASD y cruceta física
-
-- Al pulsar W/A/S/D, el círculo central de la palanca digital se desplaza hacia arriba, izquierda, abajo y derecha, aunque no se haya abierto una sala.
-- W+A, W+D, S+A y S+D muestran correctamente las diagonales, respetando simultáneamente los comandos que recibe el anfitrión.
-- El mismo indicador se mueve con cruceta D-pad y analógico izquierdo de un gamepad reconocido por el navegador.
-- Cuando un usuario conecta desde el campo de su nombre, se pasa el foco a la palanca para que WASD funcione sin un clic adicional; las teclas siguen escribiendo normalmente en los campos editables.
-- Al soltar, la palanca se recentra. Si el dedo se levanta pero una tecla continúa pulsada, representa la dirección que siga activa.
-- **Sólo PHP/control remoto:** Python seguirá administrando jugadores, puestos, cola y tiempos. No se cambiaron los comandos enviados.
+Para verificar la lógica local sin mandos reales: `py MULTIMANDO_Anfitrion.py --selftest`.
+Para uso en Windows: `py -m pip install websockets vgamepad` y controlador ViGEmBus.

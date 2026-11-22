@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """MULTIMANDO: anfitrion independiente para dos mandos Xbox virtuales.
 
-Compatible con la palanca PHP v5.4: WASD/UIOJKL en el navegador,
-comandos WebSocket ar/ab/iz/de, ba/bb/bc/bd/be/bf, start/select.
+Compatible con la palanca PHP v5.7: WASD/UIOJKL en el navegador,
+comandos WebSocket ar/ab/iz/de, button_a/button_b/button_x/button_y/button_lb/button_rb, start/select.
 
 Regla: 600 segundos de juego POR JUGADOR, consumidos unicamente mientras
 exista al menos un jugador en espera. Sin cola, el reloj se pausa sin reset.
@@ -39,7 +39,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-VERSION = "1.0.0"
+VERSION = "1.2.0"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 DEFAULT_PORT = 8766  # No interfiere con el puerto 8765 de KOFMULTI.
 DEFAULT_SECONDS = 600
@@ -47,9 +47,56 @@ MAX_GUESTS = 64
 MAX_MESSAGES_PER_SECOND = 100
 API_POST = "https://api.isupol.edu.ec/api/posturlmultimando"
 API_GET = "https://api.isupol.edu.ec/api/geturlmultimando"
-ACTIONS = frozenset(("ar", "ab", "iz", "de", "ba", "bb", "bc", "bd", "be", "bf", "start", "select"))
+ACTIONS = frozenset(("ar", "ab", "iz", "de", "button_a", "button_b", "button_x", "button_y", "button_lb", "button_rb", "start", "select"))
 DIRECTIONS = frozenset(("ar", "ab", "iz", "de"))
 URL_REGEX = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.I)
+# Protocolo de entradas: un caracter para la accion + 1/0 (presionar/soltar).
+# El cliente nunca envía puesto o identidad en estos paquetes: lo define el socket.
+WIRE_CODES = {
+    "u": "ar", "d": "ab", "i": "iz", "e": "de",
+    "x": "button_x", "y": "button_y", "l": "button_lb",
+    "a": "button_a", "b": "button_b", "r": "button_rb",
+    "t": "start", "s": "select",
+}
+LEGACY_INPUT_ACTIONS = {
+    "ba": "button_a", "bb": "button_b", "bc": "button_x",
+    "bd": "button_y", "be": "button_lb", "bf": "button_rb",
+}
+
+
+def decode_input(raw: str) -> tuple[str, bool] | None:
+    """Recibe exactamente 2 caracteres ASCII; JSON antiguo solo para transición.
+
+    No acepta comandos de administración ni códigos desconocidos.
+    """
+    if not isinstance(raw, str):
+        return None
+    if len(raw) == 2 and raw[1] in ("0", "1"):
+        action = WIRE_CODES.get(raw[0])
+        return (action, raw[1] == "1") if action else None
+    # Compatibilidad temporal: navegadores con HTML anterior aún cacheado.
+    if 0 < len(raw) <= 256 and raw.startswith("{"):
+        try:
+            msg = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(msg, dict) and msg.get("type") == "input":
+            action, down = msg.get("action"), msg.get("down")
+            if type(action) is str and type(down) is bool:
+                action = LEGACY_INPUT_ACTIONS.get(action, action)
+                if action in ACTIONS:
+                    return action, down
+    return None
+
+# Nombres visibles del boton. El host registra la accion LOGICA,
+# no la tecla fisica que el usuario haya personalizado en el navegador.
+INPUT_NAMES = {
+    "ar": "ARRIBA", "ab": "ABAJO", "iz": "IZQUIERDA", "de": "DERECHA",
+    "button_x": "X", "button_y": "Y", "button_lb": "L",
+    "button_a": "A", "button_b": "B", "button_rb": "R",
+    "start": "START", "select": "SELECT",
+}
+
 
 
 def compact(obj: dict) -> str:
@@ -241,9 +288,9 @@ class VirtualXboxPads:
     BUTTONS = {
         "ar": "XUSB_GAMEPAD_DPAD_UP", "ab": "XUSB_GAMEPAD_DPAD_DOWN",
         "iz": "XUSB_GAMEPAD_DPAD_LEFT", "de": "XUSB_GAMEPAD_DPAD_RIGHT",
-        "ba": "XUSB_GAMEPAD_A", "bb": "XUSB_GAMEPAD_B",
-        "bc": "XUSB_GAMEPAD_X", "bd": "XUSB_GAMEPAD_Y",
-        "be": "XUSB_GAMEPAD_LEFT_SHOULDER", "bf": "XUSB_GAMEPAD_RIGHT_SHOULDER",
+        "button_a": "XUSB_GAMEPAD_A", "button_b": "XUSB_GAMEPAD_B",
+        "button_x": "XUSB_GAMEPAD_X", "button_y": "XUSB_GAMEPAD_Y",
+        "button_lb": "XUSB_GAMEPAD_LEFT_SHOULDER", "button_rb": "XUSB_GAMEPAD_RIGHT_SHOULDER",
         "start": "XUSB_GAMEPAD_START", "select": "XUSB_GAMEPAD_BACK",
     }
     MIN_TAP_SECONDS = 0.095
@@ -666,23 +713,34 @@ class MultimandoServer:
                     break
                 if not isinstance(raw, str) or len(raw) > 4096:
                     continue
-                try:
-                    msg = json.loads(raw)
-                except (ValueError, TypeError):
+                decoded = decode_input(raw)
+                if decoded is None:
                     continue
-                if not isinstance(msg, dict):
-                    continue
-                if msg.get("type") == "input":
-                    action = msg.get("action")
-                    down = msg.get("down")
-                    if not isinstance(action, str) or type(down) is not bool:
-                        continue
+                action, down = decoded
+                # Una pulsacion no puede atribuirse a un puesto antiguo si
+                # el temporizador lo hizo rotar justo en este instante.
+                with self.room.lock:
+                    slot_before = guest.slot
+                    held_before = action in guest.held
                     accepted = self.room.input(guest.uid, action, down)
-                    if accepted and down and action in ("start", "select"):
-                        guest.tell({"type": "input_ack", "action": action, "slot": guest.slot})
-                    if not accepted and down:
-                        guest.tell({"type": "notice", "level": "warning",
-                                    "message": "Sin turno o entrada no admitida"})
+                    real_transition = (
+                        accepted and slot_before in (1, 2)
+                        and guest.slot == slot_before and guest.active
+                        and held_before != down and (action in guest.held) == down
+                    )
+                if real_transition:
+                    button = INPUT_NAMES.get(action, action.upper())
+                    code = next((k for k, a in WIRE_CODES.items() if a == action), "?")
+                    self.on_event("log", (
+                        f"CONTROL P{slot_before} | {guest.name} | "
+                        f"{button} ({code}{'1' if down else '0'}) | "
+                        + ("PRESIONADO" if down else "SOLTADO")
+                    ))
+                if accepted and down and action in ("start", "select"):
+                    guest.tell({"type": "input_ack", "action": action, "slot": guest.slot})
+                if not accepted and down:
+                    guest.tell({"type": "notice", "level": "warning",
+                                "message": "Sin turno o entrada no admitida"})
                 # La web no puede alterar turnos, posiciones ni temporizadores.
         except Exception as exc:
             if guest is None:
@@ -862,12 +920,14 @@ class MultimandoGUI:
                            insertbackground="white", relief="flat", font=("Consolas", 9), state="disabled")
         self.log.pack(fill="x")
         self._log("Los visitantes usan solo la palanca PHP; los turnos se controlan aqui.")
-        self._log("Acciones: ar/ab/iz/de + ba/bb/bc/bd/be/bf + start/select.")
+        self._log("Acciones: ar/ab/iz/de + button_a/button_b/button_x/button_y/button_lb/button_rb + start/select.")
         self._log("Requiere Windows, websockets, vgamepad y ViGEmBus; no necesita KOF.")
 
     def _log(self, message: str) -> None:
         self.log.configure(state="normal")
         self.log.insert("end", "[" + time.strftime("%H:%M:%S") + "] " + message + "\n")
+        if int(self.log.index("end-1c").split(".")[0]) > 750:
+            self.log.delete("1.0", "151.0")
         self.log.see("end")
         self.log.configure(state="disabled")
 
@@ -1147,11 +1207,31 @@ def selftest() -> None:
     assert room.input(a.uid, "iz", True)
     assert room.input(a.uid, "ar", True)
     assert (1, "iz", True) in device.events and (1, "ar", True) in device.events
-    for cmd in ("ba", "bb", "bc", "bd", "be", "bf", "start", "select"):
+    for cmd in ("button_a", "button_b", "button_x", "button_y", "button_lb", "button_rb", "start", "select"):
         assert room.input(b.uid, cmd, True)
         assert room.input(b.uid, cmd, False)
-    assert not room.input(c.uid, "ba", True)
+    assert not room.input(c.uid, "button_a", True)
     assert not room.input(a.uid, "INVALID", True)
+    assert set(WIRE_CODES.values()) == ACTIONS
+    assert len(WIRE_CODES) == len(ACTIONS) == 12
+    assert all(decode_input(code + "1") == (action, True)
+               and decode_input(code + "0") == (action, False)
+               for code, action in WIRE_CODES.items())
+    assert decode_input("x1") == ("button_x", True)
+    assert decode_input("l0") == ("button_lb", False)
+    assert decode_input("t1") == ("start", True)
+    assert decode_input("s0") == ("select", False)
+    assert decode_input("x2") is None
+    assert decode_input("zz") is None
+    assert decode_input("x11") is None
+    assert decode_input("{") is None
+    assert decode_input('{"type":"notice","action":"x","down":true}') is None
+    assert decode_input('{"type":"input","action":"bc","down":true}') == ("button_x", True)
+    assert decode_input('{"type":"input","action":"button_a","down":false}') == ("button_a", False)
+    assert not room.input(a.uid, "ba", True)  # protocolo anterior, no se admite
+    assert set(VirtualXboxPads.BUTTONS) == ACTIONS
+    assert (VirtualXboxPads.BUTTONS["button_lb"] == "XUSB_GAMEPAD_LEFT_SHOULDER"
+            and VirtualXboxPads.BUTTONS["button_rb"] == "XUSB_GAMEPAD_RIGHT_SHOULDER")
     try:
         room.register("  ANa  ")
     except ValueError:

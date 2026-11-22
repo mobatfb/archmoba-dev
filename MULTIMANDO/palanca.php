@@ -14,8 +14,8 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="theme-color" content="#071222">
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
-<link rel="stylesheet" href="assets/palanca.css?v=5.4.0">
-<script src="control.php?v=5.4.0" defer></script>
+<link rel="stylesheet" href="assets/palanca.css?v=5.7.0">
+<script src="control.php?v=5.7.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -66,13 +66,13 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
       </div>
       <div class="action-zone">
         <span class="control-label">ACCIONES</span>
-        <div class="action-buttons" aria-label="Seis botones en dos filas: A B C y D E F">
-          <button class="action-btn btn-a" type="button" data-action="ba" aria-label="Botón A">A</button>
-          <button class="action-btn btn-b" type="button" data-action="bb" aria-label="Botón B">B</button>
-          <button class="action-btn btn-c" type="button" data-action="bc" aria-label="Botón C">C</button>
-          <button class="action-btn btn-d" type="button" data-action="bd" aria-label="Botón D">D</button>
-          <button class="action-btn btn-e" type="button" data-action="be" aria-label="Botón E">E</button>
-          <button class="action-btn btn-f" type="button" data-action="bf" aria-label="Botón F">F</button>
+        <div class="action-buttons" aria-label="Seis botones en dos filas: X Y L arriba y A B R abajo">
+          <button class="action-btn btn-x" type="button" data-action="button_x" aria-label="Botón X">X</button>
+          <button class="action-btn btn-y" type="button" data-action="button_y" aria-label="Botón Y">Y</button>
+          <button class="action-btn btn-l" type="button" data-action="button_lb" aria-label="Botón L">L</button>
+          <button class="action-btn btn-a" type="button" data-action="button_a" aria-label="Botón A">A</button>
+          <button class="action-btn btn-b" type="button" data-action="button_b" aria-label="Botón B">B</button>
+          <button class="action-btn btn-r" type="button" data-action="button_rb" aria-label="Botón R">R</button>
         </div>
         <div class="aux-buttons">
           <button class="aux-btn" type="button" data-action="select" title="SELECT: tecla Retroceso (Backspace)">SELECT</button>
