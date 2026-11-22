@@ -1,11 +1,16 @@
-# MULTIMANDO WEB v6.0 / Anfitrion Python v1.5.0
+# MULTIMANDO WEB v6.0.1 / Anfitrion Python v1.5.0
 
 Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de KOFMULTI.
 
 ## Instalacion completa de la WEB (WAMP o hosting PHP)
 
-1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_0.zip` respetando la carpeta MULTIMANDO.
-2. Coloca toda la carpeta `MULTIMANDO/` en el directorio publico del servidor PHP (ej.: `C:\wamp64\www\MULTIMANDO\`).
+1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_0_1_SIN_CARPETA.zip` SIN carpeta contenedora.
+2. Crea una carpeta `multimando/` en el hosting o WAMP y sube A SU INTERIOR
+   directamente `index.php`, `palanca.php`, `control.php`, `config.php`, `sala.php`,
+   `.htaccess`, y las carpetas `assets/` y `private/`. En WAMP, por ejemplo:
+   `C:\wamp64\www\multimando\index.php`.
+   Nunca dejes una carpeta `MULTIMANDO/` anidada dentro de `multimando/`.
+   Si actualizas sobre archivos anteriores, sobrescribe TODO el contenido.
 3. Abre `http://localhost/MULTIMANDO/` en WAMP, o `https://tudominio/MULTIMANDO/` en HTTPS publico.
 4. Requisitos: PHP 8.1+ con OpenSSL y zlib; cURL (preferible) y HTTPS con certificados CA configurados.
 5. El ZIP completo incluye `private/FRASE_CIFRADO.php` con la MISMA frase de la instalacion anterior.
@@ -98,3 +103,21 @@ No se transmiten imagenes ni audio de la PC. El host no ejecuta instrucciones ar
 - El anfitrion anterior 1.4 no acepta ejes binarios. Es obligatorio
   actualizar el Python a 1.5 para usar la palanca analogica.
 - Clientes web antiguos sin selector mantienen el modo heredado en Python.
+
+## v6.0.1: solucion a pagina sin estilos en hosting
+
+Si ves HTML plano (fuente Times, botones grises y sin fondo), significa que
+`assets/palanca.css` no se estaba aplicando (archivo ausente, ruta, reescritura
+WordPress o MIME incorrecto). Esta version incorpora el CSS de manera directa
+en `palanca.php`, con un nonce CSP, de modo que el diseño no depende de una
+peticion HTTP a `assets/palanca.css`. Si el archivo CSS se encuentra, se usa
+la version local mas reciente. Si no esta, se usa una copia completa incorporada.
+La politica CSP mantiene `script-src 'self'`, y las acciones WebSocket siguen igual.
+
+La ruta publica del CSS es opcional para que la pagina tenga estilo, pero debe
+conservarse `assets/palanca.css` para facilitar el mantenimiento. Esta actualizacion
+NO cambia el JS cifrado, las teclas, el modo analogico/cruceta, P1/P2 ni Python.
+
+DIAGNOSTICO: abre en el navegador `/multimando/assets/palanca.css?v=6.0.0`;
+si devuelve HTML o 404, faltan archivos o hay una reescritura del hosting.
+Con v6.0.1 esto ya no deja el mando sin formato.
