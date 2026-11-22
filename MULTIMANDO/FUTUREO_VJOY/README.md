@@ -270,6 +270,20 @@ las maquinas de integracion. Se incluye DESINSTALAR y VOLVER MODO NORMAL.
 NOTA: las builds de laboratorio usan un certificado de prueba efimero
 y no incluyen claves privadas. No distribuir como software de produccion.
 
+## Instalador corregido v0.4.1 — error 0x80070005
+
+El ZIP de laboratorio **v0.4.1** corrige el error de permisos cuando
+se elegia INSTALAR desde el menu: la ventana pide UAC al abrirse,
+antes de importar el certificado en `LocalMachine`.
+
+[Descargar FUTUREO VJOY v0.4.1 (ZIP instalador)](instalador_windows/FUTUREO_VJOY_v0_4_1_LAB_INSTALADOR_PERMISOS_CORREGIDOS.zip)
+
+Ejecuta `INSTALAR.bat`, autoriza la solicitud de administrador y prueba
+**un solo mando** antes de crear ocho. El ZIP conserva el controlador
+firmado para pruebas, no para distribucion normal. No se ha confirmado
+su instalacion real en Windows; si alguna directiva de Windows bloquea
+la importacion, el instalador ahora presenta una explicacion.
+
 ## ZIP de instalacion para computadora secundaria (laboratorio)
 
 **Paquete descargable desde el repositorio:**
