@@ -52,5 +52,21 @@ class GUIInstallerTests(unittest.TestCase):
         self.assertIn("return False  # No intentar escribir", self.source)
 
 
+    def test_pnputil_259_is_not_treated_as_driver_failure(self):
+        # /add-driver registra el INF; los ROOT se crean despues con SetupAPI.
+        block = self.installer.split("function InstallPads", 1)[1].split(
+            "function RemovePad", 1)[0]
+        self.assertIn("& pnputil.exe /add-driver $Inf", block)
+        self.assertNotIn("& pnputil.exe /add-driver $Inf /install", block)
+        self.assertIn("$pnputilExitCode = $LASTEXITCODE", block)
+        self.assertIn("if($pnputilExitCode -eq 259)", block)
+        self.assertIn("$pnputilExitCode -ne 0", block)
+        self.assertIn("$pnputilExitCode -eq 3010", block)
+        self.assertIn("$pnputilExitCode -eq 1641", block)
+        self.assertIn("BuildRootClass", block)
+        self.assertIn("for($slot=1;$slot -le $quantity;$slot++)", block)
+        self.assertIn('ya existe; no se crea duplicado.', block)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -294,9 +294,26 @@ function InstallPads([int] $quantity) {
   if(-not (TestMode)) {throw 'TESTSIGNING no aparece activado. Usa PREPARAR_MODO_PRUEBA.bat, reinicia y vuelve a intentar.'}
   $cert=VerifyFiles
   ImportTestCertificate $cert
-  Write-Host 'Agregando paquete firmado al almacen de controladores Windows...'
-  & pnputil.exe /add-driver $Inf /install
-  if($LASTEXITCODE -ne 0){throw "PNPUTIL rechazo FutJoy.inf con codigo $LASTEXITCODE. Revisa %windir%\INF\setupapi.dev.log"}
+  # HOTFIX: PnPUtil /install puede devolver 259 si P1 ya usa el driver.
+  # Aqui solo registramos el paquete; cada nuevo root se crea despues con SetupAPI.
+  # No reinstalar P1 ni asumir que 259 significa firma o certificado invalido.
+  Write-Host 'Registrando paquete firmado en el almacen de controladores Windows...'
+  & pnputil.exe /add-driver $Inf
+  $pnputilExitCode = $LASTEXITCODE
+  if($pnputilExitCode -eq 259){
+    # Solo se acepta 259 si el INF realmente aparece en el Driver Store.
+    $existingDriver=@(Get-WindowsDriver -Online -ErrorAction Stop | Where-Object {
+      $_.OriginalFileName -match 'FutJoy\.inf$' -and $_.ProviderName -eq 'FUTUREO'
+    })
+    if($existingDriver.Count -eq 0){
+      throw 'PNPUTIL devolvio 259, pero FutJoy.inf no aparece registrado. No se crearan dispositivos.'
+    }
+    Write-Host 'PNPUTIL 259: FutJoy.inf ya esta registrado. Se crearan solo los puestos faltantes.' -ForegroundColor Yellow
+  } elseif($pnputilExitCode -eq 3010 -or $pnputilExitCode -eq 1641){
+    throw "PNPUTIL indica que Windows requiere o ha iniciado un reinicio ($pnputilExitCode). Reinicia el equipo antes de agregar mas mandos."
+  } elseif($pnputilExitCode -ne 0){
+    throw "PNPUTIL no pudo registrar FutJoy.inf (codigo $pnputilExitCode). Revisa %windir%\INF\setupapi.dev.log"
+  }
   BuildRootClass
   for($slot=1;$slot -le $quantity;$slot++) {
     $id='ROOT\FUTJOY{0:D2}' -f $slot

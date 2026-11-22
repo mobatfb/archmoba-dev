@@ -148,3 +148,17 @@ PRUEBA REAL P1:
 El usuario confirmo en joy.cpl dos ejes X/Y, 16 botones y movimiento
 del eje X y boton 1 durante la prueba del dispositivo P1.
 El driver SYS/CAT sigue siendo el mismo compilado y firmado para LAB.
+
+
+CORRECCION POSTERIOR AL ZIP v0.5.0: ERROR PNPUTIL 259
+---------------------------------------------------
+El ZIP v0.5.0 original contiene una validacion de PnPUtil que puede
+interrumpir la creacion de P2 cuando P1 ya esta instalado.
+La version corregida del instalador esta en el repositorio:
+https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/MULTIMANDO/FUTUREO_VJOY/instalador_windows/HERRAMIENTAS/instalador.ps1
+Sustituye exclusivamente HERRAMIENTAS/instalador.ps1 dentro de la
+carpeta EXTRAIDA del ZIP, con la GUI cerrada. No reinstales P1.
+El controlador SYS/CAT firmado, el certificado y los hashes no cambian.
+El instalador separa el registro del paquete de la creacion de cada
+dispositivo ROOT, y tolera 259 con registro explicativo.
+Requiere validacion manual de P2 en joy.cpl.

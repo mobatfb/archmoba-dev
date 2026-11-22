@@ -1,3 +1,27 @@
+## Correccion para instalar P2 tras P1 (codigo PnPUtil 259)
+
+**Hotfix del instalador, 22-nov-2026.** En el ZIP v0.5.0 el boton
+CREAR DISPOSITIVOS se detenía al recibir `259` de `pnputil /add-driver /install`,
+aunque Windows ya tuviera `FutJoy.inf` en su almacen (por ejemplo, `oem15.inf` en P1).
+Segun Microsoft, `259 / ERROR_NO_MORE_ITEMS` indica que no hay dispositivo
+compatible para actualizar o ya hay un controlador adecuado; no prueba por si
+mismo un error de firma.
+
+**Para quienes ya extrajeron el ZIP v0.5.0:**
+1. Con la GUI cerrada, obtener la [version corregida de instalador.ps1](instalador_windows/HERRAMIENTAS/instalador.ps1).
+2. Reemplazar **unicamente** `HERRAMIENTAS/instalador.ps1` dentro de la
+   carpeta descomprimida. No cambiar el SYS/CAT/INF/cer ni la lista SHA256.
+3. Abrir `ABRIR_GUI.bat`, seleccionar Cantidad=2 y CREAR DISPOSITIVOS;
+   confirmar UAC y las preguntas en consola. El instalador conserva P1 y
+   crea solamente los puestos que falten.
+4. Abrir `joy.cpl` y verificar P1 y P2 por separado. Si no aparece P2,
+   ejecutar DIAGNOSTICAR e inspeccionar el registro de SetupAPI.
+
+El ZIP publicado de v0.5.0 se conserva intacto como referencia de laboratorio;
+**para corregir el error 259 en una copia ya descargada hay que sustituir el PS1**.
+Este cambio no certifica la instalacion o funcionamiento de P2 hasta probarlo
+en Windows. Tampoco convierte el driver en uno oficialmente firmado.
+
 ## FUTUREO VJOY v0.5.0 - GUI sin DevCon y nombres DirectInput
 
 **[Descargar ZIP v0.5.0 del GUI corregido](instalador_windows/FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip)**
