@@ -180,7 +180,7 @@ public static class FutureoRootDevice {
     try {
       SP_DEVINFO_DATA data = new SP_DEVINFO_DATA();
       data.cbSize = Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
-      Check(CreateDevice(list, "FUTUREO VJOY" + slot, ref category,
+      Check(CreateDevice(list, "FUTJOY" + slot.ToString("00"), ref category,
           "FUTUREO VJOY" + slot, IntPtr.Zero, DICD_GENERATE_ID, ref data),
           "SetupDiCreateDeviceInfo");
       byte[] multiString = Encoding.Unicode.GetBytes(hardwareId + "\0\0");
