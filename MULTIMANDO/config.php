@@ -1,17 +1,14 @@
 <?php
 declare(strict_types=1);
-// Configuración de MULTIMANDO. No contiene la clave de cifrado.
-// La API de Laravel lee y escribe el registro de amo_multimando.
+// Sólo la palanca web: lectura de la URL pública de MULTIMANDO.
+// La publicación (POST), la cola y los turnos los gestiona el anfitrión Python.
 if (!defined('MULTIMANDO_INTERNAL')) {
     http_response_code(403);
     exit;
 }
 return [
-    'room_record_id' => 'multimandoremoteryanexx',
     'api_get_url' => 'https://api.isupol.edu.ec/api/geturlmultimando',
-    'api_post_url' => 'https://api.isupol.edu.ec/api/posturlmultimando',
-    // Si se establece una URL HTTPS del túnel, tiene prioridad sobre la API.
-    // Dejar vacía para búsqueda automática.
+    // Opcional: enlace directo HTTPS de Cloudflare para pruebas, sin usar la API.
     'manual_room_url' => '',
     'allowed_tunnel_domain' => '.trycloudflare.com',
 ];
