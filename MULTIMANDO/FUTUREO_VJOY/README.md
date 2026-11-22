@@ -25,6 +25,7 @@ El INF declara etiquetas PnP "FUTUREO VJOY1 - PLAYER 1" hasta "FUTUREO VJOY8 - P
 - driver/FutJoy.inf: ocho IDs PnP root distintos.
 - driver/FutJoy.vcxproj: proyecto base para Visual Studio + WDK.
 - python/futureo_vjoy.py: puente de estados por DeviceIoControl.
+- python/adapter_multimando.py: motor opcional con interfaz compatible con Room de MULTIMANDO, no integrado aun.
 - python/futureo_vjoy_manager.py: GUI para seleccionar 1-8, pedir instalacion en modo laboratorio, detectar y probar.
 - python/identificar_futureo.py: GUI de identificacion de mandos.
 - python/nombres_windows.py: alias numerados de joy.cpl/DirectInput con respaldo y restauracion.
@@ -112,9 +113,23 @@ que sigan abiertos pero dejen de enviar actividad, e integrar MULTIMANDO
 - La GUI integra etiquetado reversible de 1 a 8 dispositivos para joy.cpl/DirectInput.
 - Se incluye script WDK de compilacion sin instalacion.
 - Pruebas automaticas Python/INF/contratos mediante GitHub Actions en Windows y Linux.
+- Adaptador P1-P8 para MULTIMANDO, con botones, ejes, desasignacion, identificacion y pruebas simuladas.
 - **Ningun SYS/CAT compilado ni firmado; no es una version lista para uso diario**.
 
 Documentacion:
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/install/windows-driver-signing-tutorial
 - https://github.com/microsoft/Windows-driver-samples/tree/main/hid/vhidmini2
+
+## Conexion futura con MULTIMANDO
+
+El modulo `python/adapter_multimando.py` expone `FutureoPads(count=2)`, con
+los metodos `apply`, `analog`, `set_mode`, `release_slot`, `identify` y `close`.
+Permite P1-P8 y libera todos los botones cuando se cede el mando. El modo
+`dpad` se traduce por ahora a ejes X/Y: el descriptor experimental aun NO
+tiene una entrada POV Hat nativa. La sala MULTIMANDO v1.8.1 sigue utilizando
+vJoy y NO importa automaticamente este modulo.
+
+En Windows, despues de instalar y validar el driver FUTUREO firmado, se podra
+integrar el adaptador como opcion de motor sin alterar el arbitro de turnos.
+No uses el driver no firmado en tu PC de juegos.
