@@ -1,49 +1,76 @@
-# MULTIMANDO v5.8 / Anfitrion 1.3.0 - Estado WebSocket optimizado
+# MULTIMANDO WEB v5.9 / Anfitrion Python v1.4.0
 
-Parche SOLO de archivos modificados, independiente de KOFMULTI.
+Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de KOFMULTI.
 
-## Por que cambiamos
+## Instalacion completa de la WEB (WAMP o hosting PHP)
 
-Antes el servidor enviaba a CADA jugador, dos veces por segundo, un JSON grande que repetia:
-los datos de ambos jugadores, sus nombres, IDs, lista completa de cola, tiempos y estados.
-La API no participa en esos mensajes y NO necesita cambios.
+1. Extrae `MULTIMANDO_WEB_COMPLETA_v5_9.zip` respetando la carpeta MULTIMANDO.
+2. Coloca toda la carpeta `MULTIMANDO/` en el directorio publico del servidor PHP (ej.: `C:\wamp64\www\MULTIMANDO\`).
+3. Abre `http://localhost/MULTIMANDO/` en WAMP, o `https://tudominio/MULTIMANDO/` en HTTPS publico.
+4. Requisitos: PHP 8.1+ con OpenSSL y zlib; cURL (preferible) y HTTPS con certificados CA configurados.
+5. El ZIP completo incluye `private/FRASE_CIFRADO.php` con la MISMA frase de la instalacion anterior.
+   ¡MANTEN ESTA FRASE PRIVADA! No la subas a GitHub ni compartas el ZIP publico.
+6. No abras los archivos PHP desde `file:///`; deben ejecutarse mediante Apache/PHP.
+7. Si WAMP muestra `No fue posible consultar la API`, comprueba PHP cURL/certificados CA; la
+   opcion AUTO usa `sala.php` para GET `/api/geturlmultimando`. El modo MANUAL evita la API.
 
-## Protocolo de estados nuevo
+## Anfitrion Windows
 
-El anfitrion envia el estado PERSONAL del usuario, por ejemplo:
+El archivo `MULTIMANDO_Anfitrion.py` v1.4.0 acompana esta version de la web.
+Copia el .py a la PC anfitriona y ejecutalo con Windows. Dependencias:
 
-`{"type":"s","s":1,"p":0,"q":1,"t":587,"r":1}`
+    py -m pip install websockets vgamepad
 
-- `s`: puesto (0=cola, 1=P1, 2=P2).
-- `p`: lugar en cola; 0 si se tiene mando.
-- `q`: cantidad total esperando.
-- `t`: segundos restantes; `null` si espera.
-- `r`: 1=el reloj corre porque hay cola; 0=el reloj esta en pausa.
+ViGEmBus es necesario para los dos joysticks Xbox virtuales; `cloudflared` permite
+un WSS publico. En la ventana del anfitrion: ABRIR SALA y PUBLICAR INTERNET.
+El anfitrion gestiona P1/P2, cola FIFO y 600 s individuales, descontados solo con cola.
+No cambies `geturlmultimando` ni `posturlmultimando`; la API se usa para encontrar la URL.
 
-No se incluyen nombres de otros usuarios, lista de cola, ni room_id en cada estado.
-El room_id se envia en `welcome`, una sola vez.
+## Controles visibles: X Y L / A B R
 
-**Frecuencia:** estado al conectar y cada vez que cambian asignaciones, lugares o cola.
-Si el reloj corre, sincroniza como maximo cada 10 s; si esta pausado, cada 60 s.
-El navegador anima el contador localmente sin solicitar nada.
-La asignacion P1/P2 y el tiempo real siguen siendo controlados SOLO por Python.
+    X = tecla U  = boton Xbox X       Y = tecla I = boton Xbox Y
+    L = tecla O  = boton Xbox LB      A = tecla J = boton Xbox A
+    B = tecla K  = boton Xbox B       R = tecla L = boton Xbox RB
 
-## Sin cambios
+    ARRIBA W    ABAJO S    IZQUIERDA A    DERECHA D
+    START Enter    SELECT Retroceso/Backspace
 
-- Entradas de 2 bytes: `x1`, `x0`, `a1`, `a0`, `u1`, `u0` ...
-- Botones X Y L / A B R, teclas WASD+UIO/JKL, SELECT y START.
-- Backend Laravel `geturlmultimando` / `posturlmultimando`, MySQL, casilla AUTO, Cloudflare.
-- Cola FIFO y 10 minutos solo cuando hay espera; mandos Xbox virtuales P1/P2.
-- La ventana local de Python sigue mostrando el listado completo sin enviarlo por Internet.
-- Compatibilidad de la web con mensajes `type:"state"` del anfitrion anterior.
+La palanca tactil tiene 8 direcciones. Se admiten raton, pantalla tactil, teclado,
+cruceta y analogico del gamepad fisico. `TECLAS` personaliza las asignaciones,
+las guarda en el navegador y respeta las preferencias anteriores durante migracion.
 
-## Instalacion incremental
+## Protocolo WebSocket (ligero)
 
-1. En hosting WAMP/PHP sustituye `MULTIMANDO/palanca.php` y `MULTIMANDO/private/palanca.enc`.
-2. En Windows sustituye `MULTIMANDO/ANFITRION/MULTIMANDO_Anfitrion.py` y reinicia el anfitrion/sala.
-3. Conserva `MULTIMANDO/private/FRASE_CIFRADO.php`; el `.enc` usa la MISMA clave y no se incluye la frase.
-4. En el navegador recarga con Ctrl+F5; el CSS no necesita cambios.
-5. No actualices PHP sin Python ni Python sin PHP (nuevo estado requiere nueva palanca).
+- Conexión inicial: JSON hello, una sola vez: `{"type":"hello","name":"Bryan"}`.
+- Pulsaciones: 2 caracteres, por ejemplo `x1` (presiona X), `x0` (suelta X),
+  `u1` (arriba), `e0` (libera derecha), `t1` (START).
+- Estados: array JSON de 4 numeros:
 
-El protocolo `hello` sigue siendo JSON y las pulsaciones siguen siendo textos de 2 caracteres.
-Los frames WebSocket tambien tienen cabeceras y trafico de transporte, aparte del JSON.
+      [1,0,1,587]
+
+  Orden: `[puesto, posicion_en_espera, total_en_espera, segundos_restantes]`.
+  `puesto` 0=cola, 1=P1, 2=P2; segundo valor 0 cuando tiene mando.
+  Si espera, el tiempo se envia como 0; el navegador muestra `--:--`.
+  El contador corre cuando hay un P1/P2 y al menos un usuario en cola.
+  Una vez en P1/P2 y sin cola el tiempo queda congelado; no se gastan segundos.
+- La longitud de `[1,0,1,587]` es **11 bytes UTF-8**: 11 BYTES, NO 11 bits.
+  El tamano varia si crecen los numeros (p. ej. posicion de dos cifras).
+- El anfitrion envia actualizaciones al cambiar de asignacion o cola; cuando
+  el tiempo corre, sincroniza cada 10 s; sin cola, como mucho cada 60 s.
+- El navegador actualiza el contador localmente entre sincronizaciones.
+- Bienvenida y mensajes excepcionales siguen siendo JSON por legibilidad.
+- Python registra las pulsaciones en consola, con nombre del usuario y P1/P2.
+
+## Archivos incluidos
+
+- index.php / palanca.php / control.php / sala.php / config.php
+- assets/palanca.css
+- private/palanca.enc, FRASE_CIFRADO.php, proteccion .htaccess y nota de seguridad
+- .htaccess y .gitignore de la raiz
+
+## Seguridad
+
+No publiques `private/FRASE_CIFRADO.php` en GitHub ni lo coloques en una carpeta
+servida sin reglas de denegacion. La opcion AUTO consulta la API fija por PHP.
+El JavaScript entregado al navegador puede inspeccionarse (cifrado en reposo).
+No se transmiten imagenes ni audio de la PC. El host no ejecuta instrucciones arbitrarias.

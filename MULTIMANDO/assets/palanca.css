@@ -150,3 +150,18 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
  .connect-panel>.manual-popover{right:3px;width:calc(100vw - 22px)}
 }
 @media(max-height:560px){.auto-choice{height:31px}.auto-choice input{width:14px;height:14px;min-width:14px}}
+
+/* v5.9: mandos en paisaje, laptops con poca altura, y teclado accesible. */
+@media (min-width: 520px) and (max-height: 500px) {
+  :root { --stick-size: min(30dvh, 23vw, 126px); }
+  .app-shell { gap: 3px; padding: 3px 0; }
+  .deck-header { padding: 3px 9px; }
+  .deck-footer { padding: 3px 9px; }
+  .controls { padding: 2px 4px; gap: 6px; }
+  .joystick-zone, .action-zone { gap: 3px; }
+  .action-buttons { width: min(100%, 23vw, 174px); gap: 4px; }
+  .action-btn { border-width: 2px; font-size: 18px; }
+  .aux-btn { height: 24px; }
+  .micro-hint { display: none; }
+  .control-label { font-size: 8px; }
+}

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """MULTIMANDO: anfitrion independiente para dos mandos Xbox virtuales.
 
-Compatible con la palanca PHP v5.8: WASD/UIOJKL en el navegador,
+Compatible con la palanca PHP v5.9: WASD/UIOJKL en el navegador,
 comandos WebSocket ar/ab/iz/de, button_a/button_b/button_x/button_y/button_lb/button_rb, start/select.
 
 Regla: 600 segundos de juego POR JUGADOR, consumidos unicamente mientras
@@ -39,7 +39,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 DEFAULT_PORT = 8766  # No interfiere con el puerto 8765 de KOFMULTI.
 DEFAULT_SECONDS = 600
@@ -103,7 +103,7 @@ INPUT_NAMES = {
 
 
 
-def compact(obj: dict) -> str:
+def compact(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -174,7 +174,7 @@ class Guest:
     wake: threading.Event = field(default_factory=threading.Event)
     warned_last_minute: bool = False
 
-    def tell(self, data: dict) -> None:
+    def tell(self, data: Any) -> None:
         payload = compact(data)
         try:
             self.outbound.put_nowait(payload)
@@ -623,25 +623,25 @@ class Room:
                 result.append((g, state))
             return result
 
-    def compact_states(self) -> list[tuple[Guest, dict]]:
-        """Estado PERSONALIZADO y minimo para la red, sin roster ni nombres.
+    def compact_states(self) -> list[tuple[Guest, list[int]]]:
+        """Cuatro enteros de estado PERSONALIZADO, sin roster ni nombres.
 
-        Los campos t/r se recalculan en el anfitrion. El cliente solo
-        interpola para mostrar el contador; nunca decide turnos.
+        [slot, waiting_position, queue_length, remaining_seconds]
+        - slot 0=cola, 1=P1, 2=P2.
+        - el reloj corre si slot en (1,2) y queue_length > 0.
+        - el tiempo 0 en espera no significa que el jugador perdio su turno.
         """
         with self.lock:
             self._advance(self.clock())
-            positions = {uid: index + 1 for index, uid in enumerate(self.waiting)}
+            positions = {uid: i + 1 for i, uid in enumerate(self.waiting)}
             queue_length = len(self.waiting)
             return [
-                (g, {
-                    "type": "s",  # Estado de la sala (no se envia en JSON extenso).
-                    "s": g.slot,  # 1=P1, 2=P2, 0=cola.
-                    "p": positions.get(g.uid, 0),  # Puesto en la cola.
-                    "q": queue_length,  # Total en espera.
-                    "t": max(0, math.ceil(g.remaining)) if g.slot else None,
-                    "r": int(bool(queue_length) and bool(g.slot)),
-                })
+                (g, [
+                    g.slot,
+                    positions.get(g.uid, 0),
+                    queue_length,
+                    max(0, math.ceil(g.remaining)) if g.slot else 0,
+                ])
                 for g in self.players.values() if g.active
             ]
 
@@ -667,9 +667,9 @@ class MultimandoServer:
         self.worker: threading.Thread | None = None
         self.ticker: threading.Thread | None = None
         # No enviar el roster de todos los usuarios cada 0.5 s a cada cliente.
-        # Estado s/p/q/r = cambio estructural; t = sincronizacion ocasional.
+        # Estado [slot, posicion, cola] = cambio; tiempo = sincronizacion.
         self._state_lock = threading.RLock()
-        self._last_state: dict[int, tuple[tuple[int, int, int, int], float]] = {}
+        self._last_state: dict[int, tuple[tuple[int, int, int], float]] = {}
         self._last_roster_at = 0.0
 
     def start(self) -> None:
@@ -720,9 +720,12 @@ class MultimandoServer:
             live_uids = set()
             for guest, packet in states:
                 live_uids.add(guest.uid)
-                fingerprint = (packet["s"], packet["p"], packet["q"], packet["r"])
+                # El estado solo contiene cuatro enteros. Nunca transmitir
+                # el roster por WebSocket, aun cuando haya muchos conectados.
+                fingerprint = (packet[0], packet[1], packet[2])
                 previous = self._last_state.get(guest.uid)
-                cadence = STATE_RESYNC_ACTIVE if packet["r"] else STATE_RESYNC_PAUSED
+                running = packet[0] in (1, 2) and packet[2] > 0
+                cadence = STATE_RESYNC_ACTIVE if running else STATE_RESYNC_PAUSED
                 if previous is None or fingerprint != previous[0] or now - previous[1] >= cadence:
                     guest.tell(packet)
                     self._last_state[guest.uid] = (fingerprint, now)
