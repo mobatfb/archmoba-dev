@@ -63,7 +63,7 @@ jobs:
           if($valid -lt 4) { throw "No se verificaron los 4 archivos de la firma" }
           if(-not (Test-Path (Join-Path $stage "DESINSTALAR.bat"))) { throw "Falta desinstalador" }
           if(-not (Test-Path (Join-Path $stage "INSTALAR.bat"))) { throw "Falta instalador" }
-          $zip = Join-Path $source 'FUTUREO_VJOY_v0_4_2_LAB_DIAGNOSTICO_CERTIFICADOS.zip'
+          $zip = Join-Path $source 'FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip'
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
           $size = (Get-Item $zip).Length
           if($size -lt 20000) { throw "ZIP sospechosamente pequeño" }
@@ -75,10 +75,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_2_LAB_DIAGNOSTICO_CERTIFICADOS.zip
-          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_2_LAB_DIAGNOSTICO_CERTIFICADOS.zip.sha256
+          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip.sha256
           git diff --cached --name-only
-          git commit -m "FUTUREO VJOY v0.4.2: instalador con diagnostico del almacen y CertUtil"
+          git commit -m "FUTUREO VJOY v0.4.3: incluir prueba P1 y diagnostico corregido"
           if($LASTEXITCODE -ne 0) { throw "No se pudo crear commit del ZIP" }
           git push origin HEAD:main
           if($LASTEXITCODE -ne 0) { throw "GitHub no permitio subir ZIP a main" }
