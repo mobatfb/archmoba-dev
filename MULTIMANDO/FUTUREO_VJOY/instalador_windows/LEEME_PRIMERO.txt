@@ -1,6 +1,6 @@
 FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
 =====================================================
-Version: LAB v0.4.2; Windows 10/11 x64; 22-11-2026.
+Version: LAB v0.4.3; Windows 10/11 x64; 22-11-2026.
 
 OBJETIVO
 --------
@@ -49,6 +49,7 @@ INSTALAR_1_MANDO.bat         Prueba inicial recomendada.
 INSTALAR_8_MANDOS.bat        Crea hasta 8 mandos (tras probar P1).
 PREPARAR_MODO_PRUEBA.bat     Habilita modo de pruebas con confirmacion.
 DIAGNOSTICAR.bat            Verifica dispositivos y nombres HID.
+PROBAR_MANDO_1.bat          Prueba botones y eje X de P1 en joy.cpl.
 DIAGNOSTICAR_CERTIFICADO.bat  Consulta almacenes y firmas (solo lectura).
 DESINSTALAR.bat             Retira los mandos creados y el driver de prueba.
 VOLVER_MODO_NORMAL.bat       Desactiva el modo de pruebas si lo deseas.
@@ -103,3 +104,21 @@ prueba CertUtil oficial y verifica la presencia del certificado. Si sigue
 bloqueado, se detiene sin crear dispositivos y revierte las importaciones
 nuevas de esta ejecucion. Ejecuta DIAGNOSTICAR_CERTIFICADO.bat para
 comprobar la situacion sin realizar cambios.
+
+RESULTADO DEL PRIMER MANDO (v0.4.3)
+---------------------------------
+El diagnostico real confirmo ROOT\FUTJOY01\0000 como PnP OK y la interfaz
+HID VID:PID F7A0:2101 como DETECTADA. Product String: HID VHF Driver,
+nombre generico provisto por Windows VHF. La etiqueta del dispositivo
+raiz PnP es FUTUREO VJOY1 - PLAYER 1. Todavia no sabemos si joy.cpl
+reconoce el mando ni si se mueven los ejes/botones; hay que probarlos.
+
+Antes de crear P2...P8, ejecuta PROBAR_MANDO_1.bat. El BAT abre joy.cpl.
+Selecciona el mando de juego, abre Propiedades y vuelve al BAT para
+iniciar una secuencia de eje X y boton 1 (3 ciclos, centrado al terminar).
+Requiere Python 3 instalado. No necesita reinstalar drivers ni agregar
+certificados. Si no hay respuesta visual, captura el mensaje que muestra
+la consola y comparte si P1 aparece o no en joy.cpl.
+
+El diagnostico Python ahora no presenta SyntaxWarning por escapes ni
+indica erroneamente que Windows no tiene drivers instalados.
