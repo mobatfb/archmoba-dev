@@ -1,4 +1,6 @@
-# No publicar la clave real en un repositorio publico.
+# Proteccion: no versionar material privado ni paquetes de distribucion.
 private/FRASE_CIFRADO.php
+MANDOWEB/private/FRASE_CIFRADO.php
 source-private/
+MANDOWEB/source-private/
 *.zip

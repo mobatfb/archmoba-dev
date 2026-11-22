@@ -1,0 +1,4 @@
+# No publicar la clave real en un repositorio publico.
+private/FRASE_CIFRADO.php
+source-private/
+*.zip
