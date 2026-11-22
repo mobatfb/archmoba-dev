@@ -430,46 +430,79 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .action-zone > .control-label { display: none; }
 }
 
-/* MULTIMANDO v6.1.2: MIXTO distingue visualmente el control de ocho rumbos.
-   Solo cambia la apariencia, el protocolo mixto sigue siendo DIGITAL. */
+/* MULTIMANDO v6.1.3: MIXTO, cruceta tactil con mini joystick central.
+   Apariencia diferente del ANALOGICO, sin octagono ni botones flotantes.
+   El joystick sigue emitiendo exclusivamente direcciones digitales. */
 .joystick-frame .mixed-gate{display:none;pointer-events:none}
 .joystick-frame.mixed-mode{
- border:0;border-radius:0;
- clip-path:polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%);
- background:linear-gradient(135deg,#9a7cf7 0%,#6ce3ff 47%,#8879e2 100%);
- box-shadow:none;
+ border:2px solid #456c8d;
+ border-radius:23%;
+ clip-path:none;
+ background:linear-gradient(148deg,#203a56 0%,#0b1e33 48%,#08172a 100%);
+ box-shadow:inset 0 2px 2px #b6eff610,inset 0 -7px 22px #0008,0 8px 23px #0007;
 }
 .joystick-frame.mixed-mode::before{
- content:"";position:absolute;inset:3px;pointer-events:none;
- clip-path:polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%);
- background:radial-gradient(circle at 48% 44%,#25335e 3%,#171b3b 56%,#0d1833 88%);
+ content:"";position:absolute;inset:6%;pointer-events:none;
+ border:1px solid #5789a433;border-radius:20%;
+ background:radial-gradient(circle at center,#1b354a40,transparent 65%);
 }
-.joystick-frame.mixed-mode.engaged{background:linear-gradient(130deg,#8ce8fb,#b48bff,#8ce8fb)}
+.joystick-frame.mixed-mode.engaged{border-color:#61c6dd;box-shadow:inset 0 0 18px #59d1e31c,0 0 15px #58cef01b,0 8px 23px #0007}
 .joystick-frame.mixed-mode .joystick-label,.joystick-frame.mixed-mode .joystick-grid{display:none}
 .joystick-frame.mixed-mode .mixed-gate{display:block;position:absolute;inset:0;z-index:1}
-.mixed-gate>span{
- position:absolute;display:grid;place-items:center;width:17%;height:17%;max-width:43px;max-height:43px;
- border-radius:7px;border:1px solid #729cb866;background:#162e4eaa;
- color:#a2dafa;font-size:clamp(10px,1.5vw,18px);font-weight:900;
- line-height:1;transition:background .08s,color .08s,box-shadow .08s;
+/* Cruceta en cruz: las dos piezas forman una sola superficie, no 8 botones. */
+.joystick-frame.mixed-mode .mixed-gate::before,
+.joystick-frame.mixed-mode .mixed-gate::after{
+ content:"";position:absolute;pointer-events:none;z-index:0;
+ border:1px solid #547b99;
+ background:linear-gradient(142deg,#35526b,#162e48 45%,#0e223b 92%);
+ box-shadow:inset 1px 2px 2px #c6f8ff13,inset 0 -4px 10px #0008,0 3px 7px #0005;
 }
-.mixed-gate>span.active{background:#72e5ff;color:#09293f;border-color:#c8f9ff;box-shadow:0 0 11px #72e5ffa8}
-.mixed-gate .gate-nw{top:18%;left:18%}
-.mixed-gate .gate-n{top:4%;left:41.5%}
-.mixed-gate .gate-ne{top:18%;right:18%}
-.mixed-gate .gate-w{top:41.5%;left:4%}
-.mixed-gate .gate-e{top:41.5%;right:4%}
-.mixed-gate .gate-sw{bottom:18%;left:18%}
-.mixed-gate .gate-s{bottom:4%;left:41.5%}
-.mixed-gate .gate-se{bottom:18%;right:18%}
-.joystick-frame.mixed-mode .joystick-base{z-index:2}
+.joystick-frame.mixed-mode .mixed-gate::before{left:34%;top:9%;width:32%;height:82%;border-radius:19% / 8%}
+.joystick-frame.mixed-mode .mixed-gate::after{left:9%;top:34%;width:82%;height:32%;border-radius:8% / 19%}
+/* Ocho indicadores finos, integrados en la cruceta. */
+.joystick-frame.mixed-mode .mixed-gate>span{
+ position:absolute;z-index:2;display:grid;place-items:center;
+ width:17%;height:17%;max-width:44px;max-height:44px;
+ border:0;border-radius:0;background:transparent;
+ color:#84b7d0;font-size:clamp(11px,1.35vw,18px);font-weight:850;
+ line-height:1;text-shadow:0 1px 2px #0009;
+ box-shadow:none;transition:color .08s,text-shadow .08s,transform .08s;
+}
+.joystick-frame.mixed-mode .mixed-gate>span.active{
+ background:transparent;border:0;box-shadow:none;color:#70edff;
+ text-shadow:0 0 9px #62dcf9b3,0 1px 2px #0009;
+ transform:scale(1.2)
+}
+.joystick-frame.mixed-mode .mixed-gate .gate-n{left:41.5%;top:10%}
+.joystick-frame.mixed-mode .mixed-gate .gate-s{left:41.5%;bottom:10%}
+.joystick-frame.mixed-mode .mixed-gate .gate-w{left:10%;top:41.5%}
+.joystick-frame.mixed-mode .mixed-gate .gate-e{right:10%;top:41.5%}
+.joystick-frame.mixed-mode .mixed-gate .gate-nw{left:13%;top:13%;font-size:clamp(9px,1.05vw,13px);opacity:.58}
+.joystick-frame.mixed-mode .mixed-gate .gate-ne{right:13%;top:13%;font-size:clamp(9px,1.05vw,13px);opacity:.58}
+.joystick-frame.mixed-mode .mixed-gate .gate-sw{left:13%;bottom:13%;font-size:clamp(9px,1.05vw,13px);opacity:.58}
+.joystick-frame.mixed-mode .mixed-gate .gate-se{right:13%;bottom:13%;font-size:clamp(9px,1.05vw,13px);opacity:.58}
+.joystick-frame.mixed-mode .mixed-gate>span.active.gate-nw,
+.joystick-frame.mixed-mode .mixed-gate>span.active.gate-ne,
+.joystick-frame.mixed-mode .mixed-gate>span.active.gate-sw,
+.joystick-frame.mixed-mode .mixed-gate>span.active.gate-se{opacity:1}
+/* Mini joystick movil en el centro; no alteramos su posicion calculada por JS. */
+.joystick-frame.mixed-mode .joystick-base{z-index:3}
 .joystick-frame.mixed-mode .joystick-thumb{
- border-radius:26%;border-color:#c29ff7;
- background:linear-gradient(145deg,#987ad3 0%,#504b8f 45%,#1e345a 100%);
- box-shadow:inset 0 0 0 3px #22284e,0 5px 17px #0009,0 0 0 2px #171831;
+ width:64%;height:64%;border-radius:50%;border:3px solid #81b7c9;
+ background:radial-gradient(circle at 29% 21%,#62889e 0%,#31546c 39%,#163149 70%,#0c213a 100%);
+ box-shadow:inset 0 0 0 4px #142d41,inset 0 3px 5px #c3faff26,0 5px 13px #000a,0 0 0 2px #071626;
 }
-.joystick-frame.mixed-mode .thumb-light{border-radius:3px;transform:rotate(45deg);border-color:#b8f2ff;background:#69bcd5;box-shadow:0 0 10px #72e5ff90}
-@media(max-width:680px){.mixed-gate>span{font-size:clamp(9px,2.5vw,14px);border-radius:5px}}
+.joystick-frame.mixed-mode .thumb-light{
+ width:23%;height:23%;border:2px solid #a7f3ff;border-radius:50%;
+ background:#317e98;transform:none;box-shadow:0 0 8px #53dcf482;
+}
+@media(max-width:680px){
+ .joystick-frame.mixed-mode .mixed-gate>span{font-size:clamp(12px,3.4vw,17px)}
+ .joystick-frame.mixed-mode .mixed-gate .gate-nw,
+ .joystick-frame.mixed-mode .mixed-gate .gate-ne,
+ .joystick-frame.mixed-mode .mixed-gate .gate-sw,
+ .joystick-frame.mixed-mode .mixed-gate .gate-se{font-size:clamp(9px,2.6vw,13px)}
+}
 
 /* START / SELECT descienden un poco mas para no interceptar A/B/R.
    En desktop se conserva la posicion original. */
@@ -525,7 +558,7 @@ if (is_readable($cssFile)) {
 <title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
-<script src="control.php?v=6.1.2" defer></script>
+<script src="control.php?v=6.1.3" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -569,7 +602,7 @@ if (is_readable($cssFile)) {
         <div class="direction-mode-switch" id="directionModes" role="group" aria-label="Modo de movimiento">
           <button type="button" class="direction-mode-option selected" data-direction-mode="analog" aria-pressed="true" title="Joystick proporcional">ANALÓGICO</button>
           <button type="button" class="direction-mode-option" data-direction-mode="dpad" aria-pressed="false" title="Cruceta con cuatro botones">CRUCETA</button>
-          <button type="button" class="direction-mode-option" data-direction-mode="mixed" aria-pressed="false" title="Palanca circular con ocho direcciones digitales">MIXTO</button>
+          <button type="button" class="direction-mode-option" data-direction-mode="mixed" aria-pressed="false" title="Cruceta con mini palanca central y ocho direcciones digitales">MIXTO</button>
         </div>
         <span class="control-label" id="directionHint">ANALÓGICO · MOVIMIENTO PROPORCIONAL</span>
         <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Joystick analógico calibrado; arrastra desde el centro en cualquier dirección">

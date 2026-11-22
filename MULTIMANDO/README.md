@@ -165,3 +165,10 @@ Selector del mando: **ANALÓGICO / CRUCETA / MIXTO**.
 - Credito final: Idea por: por Bryan Paredes Gracia (FORTUNEO - RYANEXX)
 - Contenido web completo, 13 archivos directamente en la raiz del ZIP, sin carpeta contenedora.
 - El JavaScript se cifra con la MISMA frase AES-GCM de versiones anteriores, que permanece privada y no se sube al repositorio.
+
+## v6.1.3: MIXTO con cruceta y mini palanca
+
+- El modo MIXTO cambia exclusivamente de aspecto: cruceta física en cruz y mini joystick móvil en el centro; desaparecen el octágono y los ocho botones flotantes anteriores.
+- Las cuatro direcciones principales y diagonales mantienen su indicador de pulsación iluminado. MIXTO sigue enviando comandos digitales de 2 caracteres y admite ocho direcciones; el ANALÓGICO conserva su movimiento proporcional.
+- Se mantienen el diseño vertical y horizontal, los botones START/SELECT separados, el crédito de autoría, la conexión AUTO, las teclas configurables y toda la lógica Python.
+- El JavaScript cifrado es exactamente el de v6.1.2; no requiere una nueva frase.
