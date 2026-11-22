@@ -4,6 +4,7 @@ on:
     paths:
       - "MULTIMANDO/FUTUREO_VJOY/driver/**"
       - "MULTIMANDO/FUTUREO_VJOY/packages.config"
+      - "MULTIMANDO/FUTUREO_VJOY/Directory.Build.props"
       - ".github/workflows/futureo-vjoy-driver.yml"
   workflow_dispatch:
 permissions:
