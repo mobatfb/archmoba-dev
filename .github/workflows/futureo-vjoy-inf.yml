@@ -1,0 +1,37 @@
+name: FUTUREO VJOY - verificar INF Windows
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/driver/FutJoy.inf"
+      - ".github/workflows/futureo-vjoy-inf.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  infverif:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar WDK NuGet
+        shell: pwsh
+        run: |
+          nuget restore .\MULTIMANDO\FUTUREO_VJOY\packages.config -PackagesDirectory .\packages -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw "WDK NuGet no disponible" }
+      - name: Validar FutJoy.inf sin instalar
+        shell: pwsh
+        run: |
+          $tool = Get-ChildItem .\packages -File -Recurse -Filter infverif.exe | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+          if (-not $tool) { $tool = Get-ChildItem .\packages -File -Recurse -Filter infverif.exe | Select-Object -First 1 }
+          if (-not $tool) { throw "InfVerif no se encuentra en el WDK" }
+          Write-Host "Ejecutando: $($tool.FullName)"
+          & $tool.FullName /w /v .\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.inf 2>&1 | Tee-Object -FilePath infverif-results.txt
+          if ($LASTEXITCODE -ne 0) { throw "InfVerif detecto errores en FutJoy.inf" }
+          Write-Host "InfVerif /w completo sin errores."
+      - name: Guardar resultado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO-VJOY-resultado-INF
+          path: infverif-results.txt
+          if-no-files-found: ignore
