@@ -51,7 +51,18 @@ class HidDiagnoseTests(unittest.TestCase):
                 fake_device(1, "FUTUREO VJOY1")]
         report = summarize(fake, 1)
         self.assertEqual(report["puestos"][0]["colecciones_hid"], 2)
-        self.assertTrue(report["product_strings_diferentes"])
+        self.assertFalse(report["product_strings_diferentes"])
+
+    def test_real_report_one_of_eight_is_valid_pending_work(self):
+        # Situacion de laboratorio: P1 esta instalado y P2-P8 aun no.
+        report = summarize([fake_device(1, "HID VHF Driver")], 8)
+        self.assertEqual(report["puestos_detectados"], 1)
+        self.assertEqual(report["puestos"][0]["vid_pid"], "F7A0:2101")
+        self.assertFalse(report["product_strings_diferentes"])
+        self.assertIn("un solo mando", " ".join(report["advertencias"]))
+        self.assertNotIn("No se ha instalado ni firmado",
+                         report["nota"])
+        self.assertIn("HID VHF Driver", text_report(report))
 
     def test_conflicting_product_strings_in_one_slot(self):
         fake = [fake_device(1, "FUTUREO VJOY1"),
