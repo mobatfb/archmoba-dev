@@ -241,3 +241,31 @@ real anunciado a los juegos.
 - Anfitrion estable con vJoy convencional: `../ANFITRION/`.
 - Prototipo FUTUREO (sin integrar al anfitrion estable): esta carpeta.
 - Nueva interfaz de diagnostico: `python/diagnostico_hid.py`.
+
+## Paquete de instalacion experimental para PC secundaria (LAB)
+
+Se agrego `instalador_windows/` con los archivos `.bat`, el instalador
+PowerShell, comprobaciones de hashes SHA-256, consulta HID y desinstalador.
+
+Compilacion y firma de laboratorio comprobadas en GitHub Actions:
+https://github.com/mobatfb/archmoba-dev/actions/runs/45006833196
+
+El flujo firmado contiene `FutJoy.sys` x64 con firma de prueba incrustada,
+`FutJoy.cat` firmado, `FutJoy.inf`, `FUTUREO_VJOY_PRUEBA.cer` (solo parte
+publica), Python GUI, diagnostico y fuente de desarrollo. El instalador
+requiere modo de firma de prueba ACTIVADO conscientemente y reinicio,
+confianza explicita en el certificado y un Windows 10/11 x64 secundario.
+NO desactiva automaticamente Secure Boot, BitLocker o HVCI.
+
+Secuencia de prueba: extraer paquete ZIP completo, abrir `INSTALAR.bat`,
+elegir PREPARAR MODO PRUEBA, reiniciar y luego INSTALAR SOLO 1 MANDO.
+Antes de crear 8 mandos, verificar P1 en `joy.cpl` y su entrada HID.
+El controlador puede fallar: NO hay pruebas de enumeracion real en la PC
+secundaria ni certificacion de seguridad, y no sustituye una firma oficial.
+
+Los `.bat` y `HERRAMIENTAS/instalador.ps1` pasaron validacion sintactica
+en Windows con `Add-Type` C# para las API SetupAPI, sin crear devnodes en
+las maquinas de integracion. Se incluye DESINSTALAR y VOLVER MODO NORMAL.
+
+NOTA: las builds de laboratorio usan un certificado de prueba efimero
+y no incluyen claves privadas. No distribuir como software de produccion.
