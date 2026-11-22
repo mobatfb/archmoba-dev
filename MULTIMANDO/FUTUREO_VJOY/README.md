@@ -1,3 +1,23 @@
+## FUTUREO VJOY v0.4.2 - diagnostico del error E_ACCESSDENIED
+
+**ZIP actualizado del instalador para computadora secundaria:**
+
+[Descargar instalador v0.4.2 (con diagnostico del certificado)](instalador_windows/FUTUREO_VJOY_v0_4_2_LAB_DIAGNOSTICO_CERTIFICADOS.zip)
+
+Se identifico que `Import-Certificate` devolvia 0x80070005 incluso
+despues de elevar el menu mediante UAC. Esta version indica si falla
+`LocalMachine\Root` o `LocalMachine\TrustedPublisher`; prueba
+`certutil -addstore` como alternativa oficial y **no intenta eludir**
+directivas o controles de seguridad. Incluye
+`DIAGNOSTICAR_CERTIFICADO.bat` de solo lectura y retira los certificados
+introducidos por el intento actual si se produce un error.
+
+El paquete y la sintaxis de los scripts pasaron las pruebas Windows de
+GitHub Actions, pero **no se ha verificado su instalacion real** en el
+equipo secundario. Empezar con un mando y enviar la salida del
+diagnostico si vuelve a fallar. No desactivar Windows Defender,
+Secure Boot ni modificar las ACL de los almacenes para forzar la
+instalacion de un driver experimental.
 # FUTUREO VJOY - Controlador HID propio para MULTIMANDO
 
 **Estado: v0.4 experimental; fuente .sys compilable y .inf validado. Sin firma ni prueba fisica en Windows.**
