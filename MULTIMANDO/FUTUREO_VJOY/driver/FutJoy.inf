@@ -16,8 +16,8 @@ DriverCopy=13
 FutJoy.sys=1
 
 [Manufacturer]
-%Futureo%=Standard,NTamd64.10.0
-[Standard.NTamd64.10.0]
+%Futureo%=Standard,NTamd64.10.0...16299
+[Standard.NTamd64.10.0...16299]
 %Pad1%=FutJoyInstall,ROOT\FUTJOY01
 %Pad2%=FutJoyInstall,ROOT\FUTJOY02
 %Pad3%=FutJoyInstall,ROOT\FUTJOY03
