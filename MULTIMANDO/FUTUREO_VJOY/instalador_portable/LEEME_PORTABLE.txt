@@ -1,0 +1,90 @@
+FUTUREO VJOY v0.7.0 - INSTALADOR PORTABLE (UN SOLO EXE)
+========================================================
+SOLO WINDOWS 10/11 x64. Probado en GitHub Actions Windows;
+la instalacion real del driver queda por comprobar en tu equipo.
+
+OBJETIVO
+--------
+Crear hasta ocho mandos HID virtuales independientes, cada uno
+con un nombre EXACTO sin espacios y sin PLAYER:
+
+  P1  FUTUREO_VJOY1    PID 2201
+  P2  FUTUREO_VJOY2    PID 2202
+  P3  FUTUREO_VJOY3    PID 2203
+  P4  FUTUREO_VJOY4    PID 2204
+  P5  FUTUREO_VJOY5    PID 2205
+  P6  FUTUREO_VJOY6    PID 2206
+  P7  FUTUREO_VJOY7    PID 2207
+  P8  FUTUREO_VJOY8    PID 2208
+
+VID F7A0 (solo laboratorio), 16 botones, ejes X/Y por mando.
+Motor HIDMaestro 2.3.0 (UMDF2), no VHF del driver FutJoy.
+
+INSTALADOR PORTABLE
+-------------------
+* FUTUREO_VJOY_PORTABLE.exe contiene su propia plataforma .NET 10,
+  biblioteca HIDMaestro y archivos necesarios del motor.
+* NO necesita instalar .NET Desktop Runtime por separado.
+* Puede usarse directamente el EXE: copiarlo en cualquier carpeta.
+* .NET puede extraer bibliotecas nativas temporalmente a su cache
+  interna mientras se ejecuta. No tienes que descomprimir nada a mano.
+* Instalar el CONTROLADOR SI modifica Windows: necesita UAC y confia
+  en un certificado local de HIDMaestro. Es un controlador de terceros.
+* El programa se cierra sin desinstalar el driver. Los mandos creados
+  se retiran al cerrar la aplicacion; reabrela para volver a crearlos.
+
+INSTALACION
+-----------
+1. Si ya usaste el limpiador, reinicia Windows antes de continuar.
+2. Cierra Steam, joy.cpl y TODAS las ventanas de FUTUREO v0.6.x.
+3. Descarga FUTUREO_VJOY_PORTABLE.exe y ejecutalo.
+4. Acepta UAC de Windows para instalar el controlador UMDF2.
+5. Selecciona Cantidad (1..8), por defecto 4.
+6. Pulsa 1. INSTALAR Y CREAR MANDOS.
+7. Lee el aviso de instalacion de controlador, certificados y
+   su efecto en Windows. Confirma solo si estas de acuerdo.
+8. El programa prepara el driver y crea los mandos en un solo flujo.
+9. Cierra/reabre joy.cpl para ver FUTUREO_VJOY1 ... FUTUREO_VJOYn.
+10. Pulsa IDENTIFICAR MANDO para mover X / pulsar boton A del elegido.
+11. Manten abierto el EXE mientras quieras usar los mandos.
+    QUITAR MANDOS elimina los creados por esta sesion.
+
+NOMBRES EN WINDOWS
+------------------
+Los 3 lugares OEM que consultan DirectInput y joy.cpl (HKCU/HKLM)
+se actualizan con un mecanismo reversible de HIDMaestro.
+Solo afectan VID F7A0/PID 2201..2208 mientras el mando esta creado.
+Los valores originales se respaldan y restauran al cerrar.
+Se debe cerrar/reabrir joy.cpl y juegos despues de crear mandos.
+Los dispositivos VHF viejos no se modifican. El usuario decide
+si quitarlos mediante el limpiador total de FUTUREO.
+
+NOTAS DE SEGURIDAD
+------------------
+- No se desactiva ni activa TESTSIGNING de Windows.
+- No se alteran dispositivos fisicos o mandos de otras marcas.
+- NO se configura arranque automatico ni un servicio residente.
+- Si cerraste el programa inesperadamente, los dispositivos
+  huérfanos pueden ser recuperados por HIDMaestro al siguiente
+  inicio; los respaldos OEM del SDK tambien son recuperables.
+- El ultimo controlador firmado para pruebas NO es adecuado
+  para produccion sin un proceso de firma reconocido por Windows.
+- La aplicacion no incorpora aun conectividad MULTIMANDO remota.
+- Los nombres de producto son para DirectInput y joy.cpl;
+  los juegos compatibles pueden enumerarlos de otra manera.
+
+RESPALDO
+--------
+ZIP de version probada previamente v0.6.0:
+https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip
+
+FUENTES Y LICENCIAS
+-------------------
+HIDMaestro de hifihedgehog - licencia MIT:
+https://github.com/hifihedgehog/HIDMaestro
+La version ZIP de este instalador incluye la licencia y los
+avisos de terceros en archivos separados. Ambos publican un
+ejecutable identico FUTUREO_VJOY_PORTABLE.exe.
+
+CODIGO AUDITABLE Y WORKFLOW:
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/instalador_portable

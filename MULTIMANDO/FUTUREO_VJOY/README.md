@@ -1,3 +1,40 @@
+## FUTUREO VJOY v0.7.0 - instalador PORTABLE de un solo ejecutable
+
+**[Descargar EXE portable v0.7.0](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_7_0_WIN64.exe)**
+
+**[Descargar ZIP v0.7.0 (mismo EXE, licencia y manual)](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_7_0_WIN64.zip)**
+
+Compilacion Windows 10/11 x64 `self-contained`, `PublishSingleFile`,
+`EnableCompressionInSingleFile`, sin instalador MSI ni .NET externo.
+**El EXE es portable; el controlador HIDMaestro SI se instala en Windows**
+bajo consentimiento UAC (el modo prueba de Windows no se modifica).
+Puede extraer librerias nativas temporalmente a su cache de .NET.
+
+Crea 1..8 mandos independientes con nombres EXACTOS
+`FUTUREO_VJOY1` a `FUTUREO_VJOY8`, con guion bajo y sin PLAYER.
+Cada mando conserva 16 botones y los ejes X/Y.
+El motor es HIDMaestro UMDF2 (VID F7A0 / PID 2201..2208);
+el controlador VHF antiguo no se altera.
+
+La aplicacion crea los mandos en un solo flujo: selecciona cantidad,
+acepta la instalacion del driver, pulsa **INSTALAR Y CREAR MANDOS**.
+Para evitar nombres viejos en `joy.cpl`, usa la API reversible
+`HMOemNameOverride` del SDK y define
+`Name`, `DeviceDescription` y `ProductString` iguales.
+Cierra/reabre `joy.cpl` y Steam para actualizar su cache.
+
+El EXE incluye una **autoprueba aislada del bundle** que confirma la
+presencia de recursos UMDF2 x64 y de la API de etiquetas OEM sin
+instalar controladores en GitHub Actions. Esto NO sustituye una prueba
+real de instalacion y reconocimiento en un PC.
+Los mandos virtuales se retiran al cerrar el EXE; el motor instalado
+permanece hasta que se desinstale por separado.
+
+**Compatibilidad:** conserva los ZIP anteriores y el limpiador
+v1.0 para recuperar el entorno de laboratorio. No integra todavia
+la conexion remota MULTIMANDO.
+[Fuentes del portable](instalador_portable/).
+
 ## FUTUREO VJOY - limpiador total LAB v1.0
 
 **[DESCARGAR ZIP DEL LIMPIADOR](instalador_windows/FUTUREO_VJOY_LIMPIADOR_TOTAL_v1_0_0_LAB.zip)**
