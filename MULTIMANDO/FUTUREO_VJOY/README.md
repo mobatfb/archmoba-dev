@@ -1,3 +1,26 @@
+## FUTUREO VJOY v0.5.0 - GUI sin DevCon y nombres DirectInput
+
+**[Descargar ZIP v0.5.0 del GUI corregido](instalador_windows/FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip)**
+
+El primer mando P1 fue comprobado en Windows: joy.cpl mostro 2 ejes
+X/Y y 16 botones; la prueba del eje X y boton 1 funciono.
+
+CREAR DISPOSITIVOS en el GUI ya NO usa devcon.exe. Llama al mismo
+instalador PowerShell que funciona con SetupAPI/pnputil de Windows,
+para 1..8 puestos y con permisos UAC cuando sea necesario.
+QUITAR SELECCIONADO solo elimina el puesto escogido y conserva
+el controlador y los otros puestos.
+
+ETIQUETAR EN WINDOWS aplica opcionalmente alias OEM en joy.cpl/DirectInput
+con copia de seguridad y RESTAURAR NOMBRES. Se debe cerrar y reabrir
+joy.cpl para comprobarlo. Esto NO cambia la cadena HID interna que VHF
+anuncia como HID VHF Driver; algunos juegos pueden seguir mostrando
+ese nombre generico.
+
+El driver SYS/CAT no se recompilo para esta version; se reutiliza el
+paquete test-signed que ya funciono con P1. No reinstalar P1 si ya
+funciona; extraer el ZIP v0.5.0, ejecutar ABRIR_GUI.bat y probar P2
+con Cantidad=2. Los 8 mandos independientes siguen por validar.
 ## Prueba funcional de P1 - FUTUREO VJOY v0.4.3
 
 **Windows ya detecto P1 en un equipo secundario de laboratorio:** ROOT\\FUTJOY01\\0000, estado PnP OK, dispositivo HID F7A0:2101. El HID Product String aparece como `HID VHF Driver`. Este dato confirma enumeracion HID, **no** todavia entrada funcional como gamepad ni nombres HID individuales.
@@ -30,7 +53,7 @@ Secure Boot ni modificar las ACL de los almacenes para forzar la
 instalacion de un driver experimental.
 # FUTUREO VJOY - Controlador HID propio para MULTIMANDO
 
-**Estado: v0.4 experimental; fuente .sys compilable y .inf validado. Sin firma ni prueba fisica en Windows.**
+**Estado: v0.5.0 de laboratorio. P1 instalado y probado en Windows; requiere firma oficial para distribucion general.**
 
 Proyecto experimental para crear hasta 8 gamepads HID independientes en Windows 10/11 x64. No reemplaza ni modifica vJoy o ViGEmBus instalados.
 
@@ -69,7 +92,7 @@ El INF declara etiquetas PnP "FUTUREO VJOY1 - PLAYER 1" hasta "FUTUREO VJOY8 - P
 2. Generar catalogo y firma de driver validos para el Windows de destino.
    - Visual Studio 2026 con SDK+WDK 28000, o Visual Studio 2022 con SDK+WDK 26100.
    - El SDK y WDK deben corresponder al mismo numero de compilacion. No se incluye .sys, .cat, .exe ni driver firmado.
-3. Para crear las instancias root es necesario DevCon del WDK (o herramienta PnP equivalente) y permisos de administrador. La GUI **no** crea dispositivos antes de instalar correctamente el driver firmado.
+3. Para crear instancias root se usa SetupAPI y pnputil integrados en Windows (sin DevCon), con confirmacion UAC y el paquete de laboratorio firmado.
 4. Probar primero en una maquina virtual de laboratorio. Un driver kernel experimental puede causar fallos del sistema.
    - El INF ya declara Vhf.sys como LowerFilters (antes faltaba).
    - El driver solicita enviar estado neutro cuando se cierra el cliente Python.
