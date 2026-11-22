@@ -1,3 +1,13 @@
+## Prueba funcional de P1 - FUTUREO VJOY v0.4.3
+
+**Windows ya detecto P1 en un equipo secundario de laboratorio:** ROOT\\FUTJOY01\\0000, estado PnP OK, dispositivo HID F7A0:2101. El HID Product String aparece como `HID VHF Driver`. Este dato confirma enumeracion HID, **no** todavia entrada funcional como gamepad ni nombres HID individuales.
+
+**[Descargar ZIP v0.4.3 para probar P1](instalador_windows/FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip)**. Incluye el nuevo `PROBAR_MANDO_1.bat` y el diagnostico corregido. El driver SYS/CAT y certificado de prueba reutilizan la compilacion de laboratorio anterior; no se modifico el binario kernel.
+
+Para usarlo: descomprimir ZIP completo, ejecutar `PROBAR_MANDO_1.bat`, abrir las propiedades del gamepad en `joy.cpl` y observar el boton 1 y el eje X mientras corre la prueba. **No es necesario reinstalar el driver ya instalado** para probar los controles. Solo despues de confirmar P1 deberiamos probar P2-P8.
+
+La cadena de producto HID generica es una limitacion de VHF; su configuracion publica no tiene un campo para cambiar libremente esa cadena. Las etiquetas PnP y los alias DirectInput no sustituyen el Product String HID.
+
 ## FUTUREO VJOY v0.4.2 - diagnostico del error E_ACCESSDENIED
 
 **ZIP actualizado del instalador para computadora secundaria:**
