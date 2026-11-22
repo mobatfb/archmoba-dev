@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Diagnostico HID de FUTUREO VJOY: identidades que Windows anuncia realmente.
+r"""Diagnostico HID de FUTUREO VJOY: identidades que Windows anuncia realmente.
 
 Solo consulta dispositivos. No requiere administrador y NO modifica Windows,
 instala drivers, aplica alias OEM ni envia entradas de joystick.
@@ -201,8 +201,11 @@ def summarize(devices: list[dict], count: int = 8) -> dict:
     missing = [e["slot"] for e in entries if not e["detectado"]]
     products = [e["product_strings"][0] for e in present
                 if len(e["product_strings"]) == 1]
+    # Un solo mando detectado NO permite comparar nombres entre dispositivos.
+    # Evita informar "distintos" cuando hay un unico Product String.
     unique = (
-        len(present) == count
+        count > 1
+        and len(present) == count
         and all(len(e["product_strings"]) == 1 for e in present)
         and len(set(products)) == count
     )
@@ -211,9 +214,14 @@ def summarize(devices: list[dict], count: int = 8) -> dict:
         warnings.append("No se ven dispositivos HID en los puestos: " +
                         ", ".join(f"P{i}" for i in missing))
     if present and not unique:
-        warnings.append(
-            "No se han confirmado nombres HID Product String distintos "
-            "para todos los puestos; algunos juegos pueden mostrar nombres iguales.")
+        if len(present) < 2:
+            warnings.append(
+                "Se detecto un solo mando: no es posible comprobar si P1..P8 "
+                "tienen nombres HID diferentes. Esto no es un error de P1.")
+        else:
+            warnings.append(
+                "No se han confirmado nombres HID Product String distintos "
+                "para los puestos detectados; algunos juegos pueden mostrar nombres iguales.")
     if unique:
         warnings.append(
             "Los nombres HID son distintos. Cada juego debe probarse por "
@@ -228,7 +236,8 @@ def summarize(devices: list[dict], count: int = 8) -> dict:
         "advertencias": warnings,
         "nota": (
             "VID/PID de laboratorio; un Product String no equivale a nombre "
-            "de dispositivo PnP. No se ha instalado ni firmado ningun driver."
+            "de dispositivo PnP. Este programa solo consulta Windows: no instala, "
+            "firma, desinstala ni modifica controladores."
         ),
     }
 
