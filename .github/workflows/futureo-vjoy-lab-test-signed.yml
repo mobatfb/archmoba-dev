@@ -1,0 +1,71 @@
+name: FUTUREO VJOY - paquete de laboratorio firmado para pruebas
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/driver/**"
+      - ".github/workflows/futureo-vjoy-lab-test-signed.yml"
+permissions:
+  contents: read
+jobs:
+  laboratorio:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Descargar WDK y SDK
+        shell: pwsh
+        run: |
+          nuget restore .\MULTIMANDO\FUTUREO_VJOY\packages.config -PackagesDirectory .\packages -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo descargar WDK/SDK" }
+      - uses: microsoft/setup-msbuild@v2
+      - name: Compilar driver x64
+        shell: pwsh
+        run: |
+          $dirs = @(Get-ChildItem .\packages -Recurse -File -Filter stampinf.exe | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -ExpandProperty DirectoryName -Unique)
+          $dirs | ForEach-Object { $_ | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
+          msbuild .\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj /t:Rebuild "/p:Configuration=Release" "/p:Platform=x64" "/p:TargetVersion=Windows10" "/p:WindowsTargetPlatformVersion=10.0.28000.0" "/p:SignMode=Off" "/p:FUTJOY_COMPILE_ONLY=true" "/p:DriverTargetPlatform=Desktop" "/p:RunApiValidator=false" "/p:EnableInfVerif=false" /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Error al compilar FutJoy.sys" }
+      - name: Generar CAT y firmar SYS y CAT con certificado de laboratorio efimero
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Join-Path (Get-Location) 'FUTUREO_VJOY_LAB'
+          New-Item -ItemType Directory -Path $p -Force | Out-Null
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\x64\Release\FutJoy.sys" -Destination $p
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.inf" -Destination $p
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=FUTUREO VJOY LAB TEST ONLY' -CertStoreLocation Cert:\CurrentUser\My -HashAlgorithm SHA256 -KeyExportPolicy NonExportable -NotAfter (Get-Date).AddMonths(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $p 'FUTUREO_VJOY_PRUEBA.cer') | Out-Null
+          $signtool = Get-ChildItem .\packages -Recurse -File -Filter signtool.exe | Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } | Select-Object -First 1 -ExpandProperty FullName
+          $inf2cat = Get-ChildItem .\packages -Recurse -File -Filter Inf2Cat.exe | Where-Object { $_.FullName -match '\\x86\\Inf2Cat\.exe$' } | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool -or -not $inf2cat) { throw "Faltan SignTool o Inf2Cat en WDK/SDK" }
+          & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $p "FutJoy.sys")
+          if ($LASTEXITCODE -ne 0) { throw "Fallo firma SYS" }
+          & $inf2cat /driver:$p /os:10_X64,10_GE_X64 /verbose
+          if ($LASTEXITCODE -ne 0) { throw "Fallo Inf2Cat" }
+          if (-not (Test-Path (Join-Path $p "FutJoy.cat"))) { throw "FutJoy.cat no generado" }
+          & $signtool sign /v /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $p "FutJoy.cat")
+          if ($LASTEXITCODE -ne 0) { throw "Fallo firma CAT" }
+          Import-Certificate -FilePath (Join-Path $p "FUTUREO_VJOY_PRUEBA.cer") -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+          & $signtool verify /v /pa (Join-Path $p "FutJoy.sys")
+          if ($LASTEXITCODE -ne 0) { throw "Verificacion firma SYS fallida" }
+          & $signtool verify /v /pa (Join-Path $p "FutJoy.cat")
+          if ($LASTEXITCODE -ne 0) { throw "Verificacion firma CAT fallida" }
+          @("PAQUETE DE LABORATORIO - NO DISTRIBUIR COMO PRODUCTO",
+            "Firmado con certificado de prueba, sin clave privada incluida.",
+            "Necesita modo TESTSIGNING y confianza explicita del usuario.",
+            "NO instalar en el equipo principal. Solo Windows x64 secundario/laboratorio.") |
+            Set-Content (Join-Path $p "ATENCION_PRUEBAS.txt") -Encoding utf8
+          Get-ChildItem $p -File | Where-Object { $_.Extension -in @(".sys",".inf",".cat",".cer") } |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content (Join-Path $p "SHA256SUMS.txt") -Encoding ascii
+          Write-Host "CERTIFICATE THUMBPRINT $($cert.Thumbprint)"
+          Get-ChildItem $p | ForEach-Object { Write-Host "ARCHIVO $($_.Name) bytes=$($_.Length)" }
+      - name: Publicar paquete de laboratorio firmado solo para pruebas
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO-VJOY-LAB-TEST-SIGNED
+          path: FUTUREO_VJOY_LAB/
+          retention-days: 7
+          if-no-files-found: error
