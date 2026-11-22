@@ -8,6 +8,19 @@ Repositorio de desarrollo de MULTIMANDO. La web se ha trasladado a una carpeta d
 - [`ANFITRION/`](ANFITRION/) - Aplicacion Python del anfitrion para Windows.
 - [`FUTUREO_VJOY/`](FUTUREO_VJOY/) - Driver HID experimental y herramientas de administracion.
 
+## Versiones y trabajo pendiente
+
+**Atencion:** lo que figura en GitHub es una pareja antigua: MANDOWEB v6.1.3
+y ANFITRION v1.5.0 (ViGEmBus). Las versiones mas nuevas ya generadas fuera
+del repositorio son web v6.2.0 y anfitrion v1.8.1 (vJoy, hasta 8 mandos),
+que aun hay que publicar aqui antes de realizar la integracion definitiva.
+
+El driver FUTUREO VJOY ya compila para Windows x64 y su INF pasa InfVerif,
+pero todavia no esta firmado ni ha sido instalado y probado.
+
+Consulta **[`ESTADO_DEL_PROYECTO.md`](ESTADO_DEL_PROYECTO.md)** para el avance
+comprobado, los riesgos y la lista de pasos siguientes.
+
 ## Publicar la web
 
 Sube **el contenido de `MULTIMANDO/MANDOWEB/`**, no la carpeta completa,
