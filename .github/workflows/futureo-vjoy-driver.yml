@@ -22,6 +22,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "No se pudieron descargar los paquetes WDK" }
       - name: Configurar MSBuild
         uses: microsoft/setup-msbuild@v2
+      - name: Agregar herramientas WDK al PATH
+        shell: pwsh
+        run: |
+          $tools = @(Get-ChildItem .\packages -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @('stampinf.exe','inf2cat.exe','infverif.exe','signtool.exe') })
+          $tools | ForEach-Object { Write-Host "WDK: $($_.FullName)" }
+          if (-not ($tools | Where-Object Name -eq "stampinf.exe")) { throw "stampinf.exe no está incluido en los paquetes NuGet restaurados" }
+          $tools | ForEach-Object { $_.Directory.FullName } | Sort-Object -Unique | ForEach-Object { $_ | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
       - name: Compilar FutJoy.sys (sin firmar ni instalar)
         shell: pwsh
         run: |
