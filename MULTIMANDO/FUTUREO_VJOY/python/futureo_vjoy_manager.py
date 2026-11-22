@@ -10,6 +10,7 @@ from pathlib import Path
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -43,8 +44,8 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("FUTUREO VJOY - ADMINISTRADOR (EXPERIMENTAL)")
-        self.root.geometry("750x570")
-        self.root.minsize(630, 490)
+        self.root.geometry("750x635")
+        self.root.minsize(630, 550)
         self.root.configure(bg="#0d1b30")
         self.count = tk.IntVar(value=2)
         self.slot = tk.IntVar(value=1)
@@ -87,8 +88,43 @@ class App:
         bar.pack(pady=8)
         ttk.Button(bar,text="IDENTIFICAR VJOY",command=self.test).pack(side="left",padx=8)
         ttk.Button(bar,text="COMPROBAR INSTALACION",command=self.check).pack(side="left",padx=8)
+        namebar=tk.Frame(self.root,bg="#0d1b30")
+        namebar.pack(pady=3)
+        ttk.Button(namebar,text="ETIQUETAR EN WINDOWS",command=self.labels_apply).pack(side="left",padx=8)
+        ttk.Button(namebar,text="RESTAURAR NOMBRES",command=self.labels_restore).pack(side="left",padx=8)
         tk.Label(self.root,textvariable=self.status,wraplength=700,
                  fg="#8fe8ef",bg="#0d1b30").pack(padx=16,pady=(6,18))
+
+    def labels_apply(self):
+        if not administrator():
+            messagebox.showwarning("Permisos","Abre FUTUREO VJOY Manager como administrador.")
+            return
+        if not messagebox.askyesno("Nombres joy.cpl/DirectInput",
+            "Crear alias FUTUREO VJOY1...VJOY" + str(self.count.get()) +
+            " en el Registro de Windows? Se guardaran los valores originales y"
+            " se podran restaurar. No cambia las cadenas HID internas."):
+            return
+        self._run_labels(["--apply", "--count", str(self.count.get())])
+
+    def labels_restore(self):
+        if not administrator():
+            messagebox.showwarning("Permisos","Abre FUTUREO VJOY Manager como administrador.")
+            return
+        if not messagebox.askyesno("Restaurar Registro",
+            "Restaurar los nombres guardados antes de aplicar etiquetas?"):
+            return
+        self._run_labels(["--restore"])
+
+    def _run_labels(self, args):
+        script=Path(__file__).with_name("nombres_windows.py")
+        def worker():
+            result=subprocess.run([sys.executable,str(script),*args],
+                                  capture_output=True,text=True,errors="replace",timeout=60,
+                                  creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+            if result.returncode:
+                raise RuntimeError((result.stderr or result.stdout).strip()[-350:])
+            self.results.put(("info",result.stdout.strip()[-300:]))
+        self.background(worker)
 
     def browse(self):
         chosen=filedialog.askopenfilename(filetypes=[("Ejecutable Windows","*.exe")])
