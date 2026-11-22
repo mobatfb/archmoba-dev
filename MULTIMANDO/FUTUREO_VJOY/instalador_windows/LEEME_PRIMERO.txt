@@ -1,6 +1,6 @@
 FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
 =====================================================
-Version: LAB v0.4; Windows 10/11 x64; 22-11-2026.
+Version: LAB v0.4.1; Windows 10/11 x64; 22-11-2026.
 
 OBJETIVO
 --------
@@ -15,7 +15,10 @@ PASOS
    directamente los .BAT dentro del ZIP.
 2. Tener una copia de seguridad y la clave de recuperacion BitLocker
    si ese equipo tiene cifrado de disco. Windows 10/11 x64 requerido.
-3. Ejecutar INSTALAR.bat (doble clic).
+3. Ejecutar INSTALAR.bat (doble clic). La version v0.4.1 solicita
+   permisos de administrador mediante el aviso UAC, ANTES de abrir el menu.
+   Debes aceptar UAC y usar una cuenta con permisos de administrador.
+   Si prefieres, clic derecho sobre INSTALAR.bat y Ejecutar como administrador.
 4. Elegir 1: PREPARAR MODO PRUEBA. Aceptar el cambio solo si lo deseas.
    El script usa BCDEDIT /SET TESTSIGNING ON. Reiniciar MANUALMENTE.
    Si Windows rechaza el cambio por Secure Boot, el script no lo desactiva.
@@ -23,6 +26,9 @@ PASOS
 5. Ejecutar de nuevo INSTALAR.bat. Elegir 2: INSTALAR 1 MANDO.
    El script comprueba SHA-256 del paquete y el certificado, pide permiso
    para confiar en el certificado de prueba y verifica las firmas.
+   Corrige el error anterior 0x80070005 al importar el certificado desde
+   el menu sin elevar la ventana. Si sigue apareciendo, revisa los permisos
+   de la cuenta y las directivas locales; no desactives protecciones.
    Instala FutJoy.inf y crea ROOT\FUTJOY01 con funciones SetupAPI.
 6. Abrir Ejecutar de Windows (Win+R) y escribir: joy.cpl
    Comprobar si aparece el mando y si mueve sus ejes/botones.
@@ -81,3 +87,8 @@ Documentacion oficial Microsoft:
 https://learn.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option
 https://learn.microsoft.com/en-us/windows-hardware/drivers/install/test-signing
 https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install
+CORRECCION v0.4.1: el menu se abre en una ventana elevada tras
+solicitar autorizacion UAC. Antes, las opciones del menu omitian
+la elevacion y la importacion del certificado devolvia E_ACCESSDENIED.
+Se verifica administrador antes de modificar LocalMachine y se revierten
+certificados nuevos si falla uno de los dos almacenes de confianza.
