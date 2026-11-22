@@ -1,0 +1,84 @@
+name: FUTUREO VJOY - publicar ZIP instalador de laboratorio en repo
+on:
+  push:
+    paths:
+      - ".github/workflows/futureo-vjoy-publicar-zip.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publicar:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtener compilacion firmada previamente para laboratorio
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $componentes = Join-Path $env:RUNNER_TEMP 'FUTUREO-componentes'
+          New-Item -ItemType Directory -Path $componentes -Force | Out-Null
+          gh run download 45006833196 -R mobatfb/archmoba-dev -n FUTUREO-VJOY-LAB-V2-TEST-SIGNED -D $componentes
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo descargar el artefacto test-signed" }
+          foreach($nombre in @("FutJoy.sys","FutJoy.inf","FUTUREO_VJOY_PRUEBA.cer","SHA256SUMS.txt")) {
+            if (-not (Test-Path (Join-Path $componentes $nombre))) { throw "Falta artefacto $nombre" }
+          }
+          if (-not (Get-ChildItem -Path $componentes -Filter "FutJoy.cat" -File)) { throw "Falta catalogo firmado FutJoy.cat" }
+          Write-Host 'Componentes test-signed obtenidos del run verificado 45006833196'
+      - name: Construir ZIP instalador y verificar integridad
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = (Get-Location).Path
+          $componentes = Join-Path $env:RUNNER_TEMP 'FUTUREO-componentes'
+          $source = Join-Path $repo 'MULTIMANDO\FUTUREO_VJOY\instalador_windows'
+          $stage = Join-Path $env:RUNNER_TEMP 'FUTUREO-paquete-instalar'
+          $driver = Join-Path $stage 'DRIVER'
+          New-Item -ItemType Directory -Path $driver -Force | Out-Null
+          Copy-Item (Join-Path $source '*.bat') -Destination $stage
+          Copy-Item (Join-Path $source 'LEEME_PRIMERO.txt') -Destination $stage
+          Copy-Item (Join-Path $source 'HERRAMIENTAS') -Destination $stage -Recurse
+          foreach($folder in @("PYTHON","FUENTE_DRIVER")) {
+            Copy-Item (Join-Path $componentes $folder) -Destination $stage -Recurse
+          }
+          foreach($nombre in @("FutJoy.sys","FutJoy.inf","FUTUREO_VJOY_PRUEBA.cer","SHA256SUMS.txt","ATENCION_PRUEBAS.txt")) {
+            Copy-Item (Join-Path $componentes $nombre) -Destination $driver
+          }
+          Copy-Item (Join-Path $componentes 'FutJoy.cat') -Destination (Join-Path $driver 'FutJoy.cat')
+          $hashes = Get-Content (Join-Path $driver 'SHA256SUMS.txt')
+          $valid = 0
+          foreach($line in $hashes) {
+            if($line -match '^\s*([A-Fa-f0-9]{64})\s+(.+?)\s*$') {
+              $expected = $matches[1].ToUpperInvariant()
+              $name = $matches[2].Trim()
+              $file = Join-Path $driver $name
+              if(-not (Test-Path $file)) { throw "Falta archivo del manifiesto: $name" }
+              $actual = (Get-FileHash $file -Algorithm SHA256).Hash
+              if($actual -ne $expected) { throw "SHA256 no coincide: $name" }
+              $valid += 1
+            }
+          }
+          if($valid -lt 4) { throw "No se verificaron los 4 archivos de la firma" }
+          if(-not (Test-Path (Join-Path $stage "DESINSTALAR.bat"))) { throw "Falta desinstalador" }
+          if(-not (Test-Path (Join-Path $stage "INSTALAR.bat"))) { throw "Falta instalador" }
+          $zip = Join-Path $source 'FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          $size = (Get-Item $zip).Length
+          if($size -lt 20000) { throw "ZIP sospechosamente pequeño" }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          Set-Content -Path ($zip + '.sha256') -Encoding ascii -Value ($hash + '  ' + [IO.Path]::GetFileName($zip))
+          Write-Host "ZIP creado: $zip / $size bytes / SHA256 $hash"
+      - name: Publicar ZIP en MULTIMANDO/FUTUREO_VJOY/instalador_windows
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip.sha256
+          git diff --cached --name-only
+          git commit -m "FUTUREO VJOY: publicar ZIP de instalador firmado solo para laboratorio"
+          if($LASTEXITCODE -ne 0) { throw "No se pudo crear commit del ZIP" }
+          git push origin HEAD:main
+          if($LASTEXITCODE -ne 0) { throw "GitHub no permitio subir ZIP a main" }
