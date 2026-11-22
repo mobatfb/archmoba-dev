@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FUTUREO VJOY Manager - interfaz experimental, solo para laboratorio Windows.
-No puede instalar ni crear dispositivos hasta compilar, firmar e instalar FutJoy.sys.
+"""FUTUREO VJOY Manager - interfaz del laboratorio Windows.
+Usa SetupAPI/pnputil desde instalador.ps1; NO necesita DevCon.exe.
+El SYS firmado para pruebas ya viene dentro del ZIP de laboratorio.
 """
 from __future__ import annotations
 import ctypes
 import os
 from pathlib import Path
 import queue
-import shutil
 import subprocess
 import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 
 from futureo_vjoy import FutJoy
 
 BASE = Path(__file__).resolve().parents[1]
-INF = BASE / "driver" / "FutJoy.inf"
+INF = BASE / "DRIVER" / "FutJoy.inf"
+INSTALLER = BASE / "HERRAMIENTAS" / "instalador.ps1"
 
 def administrator() -> bool:
     if os.name != "nt":
@@ -29,28 +30,50 @@ def administrator() -> bool:
     except (OSError, AttributeError):
         return False
 
-def missing(exe: Path) -> list[str]:
+def missing() -> list[str]:
+    """Verificaciones previas; las operaciones con privilegios los solicitan via UAC."""
     reasons = []
     if os.name != "nt":
         reasons.append("Requiere Windows")
-    if not administrator():
-        reasons.append("Ejecutar como administrador")
-    for file in (INF, INF.parent / "FutJoy.sys", INF.parent / "FutJoy.cat", exe):
+    for file in (INSTALLER, INF, INF.parent / "FutJoy.sys",
+                 INF.parent / "FutJoy.cat",
+                 INF.parent / "FUTUREO_VJOY_PRUEBA.cer",
+                 INF.parent / "SHA256SUMS.txt"):
         if not file.is_file():
             reasons.append(f"Falta: {file}")
     return reasons
+
+def ask_elevation_for_labels() -> bool:
+    """Eleva SOLO si el usuario decide aplicar un alias OEM reversible."""
+    if administrator():
+        return True
+    if os.name != "nt":
+        messagebox.showwarning("Windows requerido", "Los nombres OEM solo se gestionan en Windows.")
+        return False
+    if not messagebox.askyesno(
+        "Permisos para nombre OEM",
+        "La etiqueta DirectInput necesita permisos de administrador.\n"
+        "Deseas reabrir el administrador con UAC? Despues vuelve a pulsar "
+        "ETIQUETAR EN WINDOWS. No se modifica nada hasta tu confirmacion."):
+        return False
+    args = f'"{Path(__file__).resolve()}"'
+    code = ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", sys.executable, args, None, 1)
+    if code <= 32:
+        messagebox.showerror("UAC cancelado", f"No se abrio como administrador (codigo {code}).")
+        return False
+    return True
 
 class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("FUTUREO VJOY - ADMINISTRADOR (EXPERIMENTAL)")
-        self.root.geometry("750x635")
+        self.root.geometry("790x630")
         self.root.minsize(630, 550)
         self.root.configure(bg="#0d1b30")
-        self.count = tk.IntVar(value=2)
+        self.count = tk.IntVar(value=1)
         self.slot = tk.IntVar(value=1)
-        self.devcon = tk.StringVar(value=shutil.which("devcon.exe") or str(BASE / "driver" / "devcon.exe"))
-        self.status = tk.StringVar(value="Prototipo: requiere driver KMDF compilado y firmado")
+        self.status = tk.StringVar(value="Driver de laboratorio firmado: instalar 1..8 sin DevCon (SetupAPI)")
         self.results = queue.Queue()
         self.busy = False
         self.build()
@@ -70,9 +93,9 @@ class App:
         ttk.Button(top,text="QUITAR SELECCIONADO",command=self.remove).pack(side="left",padx=5)
         tool=tk.Frame(self.root,bg="#0d1b30")
         tool.pack(fill="x",padx=20,pady=8)
-        tk.Label(tool,text="DevCon:",fg="white",bg="#0d1b30").pack(side="left")
-        ttk.Entry(tool,textvariable=self.devcon).pack(side="left",fill="x",expand=True,padx=8)
-        ttk.Button(tool,text="Buscar",command=self.browse).pack(side="left")
+        tk.Label(tool,text="INSTALACION: SetupAPI + pnputil de Windows (sin DevCon.exe)",
+                 fg="#80dfbc",bg="#0d1b30").pack(side="left")
+        ttk.Button(tool,text="ABRIR JOY.CPL",command=self.open_joy).pack(side="right")
         grid=tk.Frame(self.root,bg="#0d1b30")
         grid.pack(fill="both",expand=True,padx=20,pady=6)
         for n in range(1,9):
@@ -97,8 +120,7 @@ class App:
                  fg="#8fe8ef",bg="#0d1b30").pack(padx=16,pady=(6,18))
 
     def labels_apply(self):
-        if not administrator():
-            messagebox.showwarning("Permisos","Abre FUTUREO VJOY Manager como administrador.")
+        if not ask_elevation_for_labels():
             return
         if not messagebox.askyesno("Nombres joy.cpl/DirectInput",
             "Crear alias FUTUREO VJOY1...VJOY" + str(self.count.get()) +
@@ -106,10 +128,10 @@ class App:
             " se podran restaurar. No cambia las cadenas HID internas."):
             return
         self._run_labels(["--apply", "--count", str(self.count.get())])
+        messagebox.showinfo("Nombre OEM", "Al terminar, CIERRA joy.cpl y vuelve a abrirlo para comprobar la etiqueta.\nEl nombre HID interno puede seguir siendo HID VHF Driver.")
 
     def labels_restore(self):
-        if not administrator():
-            messagebox.showwarning("Permisos","Abre FUTUREO VJOY Manager como administrador.")
+        if not ask_elevation_for_labels():
             return
         if not messagebox.askyesno("Restaurar Registro",
             "Restaurar los nombres guardados antes de aplicar etiquetas?"):
@@ -150,9 +172,14 @@ class App:
         view.insert("1.0",content)
         view.configure(state="disabled")
 
-    def browse(self):
-        chosen=filedialog.askopenfilename(filetypes=[("Ejecutable Windows","*.exe")])
-        if chosen: self.devcon.set(chosen)
+    def open_joy(self):
+        if os.name != "nt":
+            messagebox.showwarning("Windows requerido","Este panel solo existe en Windows.")
+            return
+        try:
+            subprocess.Popen(["control.exe", "joy.cpl"])
+        except OSError as exc:
+            messagebox.showerror("joy.cpl", str(exc))
 
     def poll(self):
         try:
@@ -177,37 +204,66 @@ class App:
             finally: self.results.put(("done",""))
         threading.Thread(target=run,daemon=True).start()
 
-    def command(self,verb,slot):
-        if not 1<=slot<=8: raise ValueError("Puesto invalido")
-        ident=rf"ROOT\FUTJOY{slot:02d}"
-        exe=Path(self.devcon.get())
-        argv=[str(exe),"install",str(INF),ident] if verb=="install" else [str(exe),"remove",ident]
-        result=subprocess.run(argv,capture_output=True,text=True,errors="replace",
-                              timeout=40,creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
-        self.results.put(("info",f"{verb} {ident}: codigo {result.returncode}: "
-                         +(result.stdout+result.stderr).strip()[-180:]))
-        if result.returncode: raise RuntimeError(f"DevCon fallo en {ident}")
+    def command(self, action: str, quantity: int):
+        """Ejecutar el instalador probado, con ventana de consola y UAC.
+        El mismo PowerShell crea ROOT\FUTJOY01..08 mediante SetupAPI.
+        No descargar ni buscar devcon.exe en ninguna ruta.
+        """
+        if action not in ("InstalarN", "QuitarN") or not 1 <= quantity <= 8:
+            raise ValueError("Accion o cantidad no permitida")
+        problems = missing()
+        if problems:
+            raise RuntimeError("\n".join(problems))
+        cmdline = subprocess.list2cmdline([
+            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", str(INSTALLER), "-Accion", action, "-Cantidad", str(quantity)])
+        # cmd crea consola interactiva (Read-Host necesita entrada del usuario).
+        # Preservar el codigo de error ANTES del pause para no falsear exito.
+        command = (
+            cmdline + ' & set "futureo_rc=!errorlevel!"'
+            + ' & echo. & echo Pulsa una tecla para volver al GUI FUTUREO.'
+            + ' & pause >nul & exit /b !futureo_rc!'
+        )
+        self.results.put(("info",
+                          f"{action} P1..P{quantity}: confirma en la consola abierta; "
+                          "Windows solicitara UAC si es necesario."))
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        result = subprocess.run(["cmd.exe", "/d", "/v:on", "/c", command],
+                                timeout=1200, creationflags=flags, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"{action} termino con codigo {result.returncode}. "
+                "Consulta los detalles de la consola y el diagnostico de Windows.")
+        self.results.put(("info",
+                          f"Accion {action} finalizada. Verifica el mando en joy.cpl "
+                          "y con VER IDENTIDAD HID."))
 
     def install(self):
-        problems=missing(Path(self.devcon.get()))
+        problems=missing()
         if problems:
-            messagebox.showwarning("Faltan requisitos","\n".join(problems))
+            messagebox.showwarning("Falta paquete firmado",
+                "\n".join(problems) +
+                "\n\nDescarga y descomprime el ZIP completo del laboratorio.")
             return
         quantity=self.count.get()
         if not messagebox.askyesno("ATENCION - DRIVER KERNEL EXPERIMENTAL",
-           f"Instalar {quantity} dispositivos en este equipo? "
-           "Recomendado UNICAMENTE en una maquina virtual de pruebas."):
+           f"Instalar HASTA {quantity} mando(s) en el equipo secundario?\n"
+           "Se conservaran los puestos ya existentes. El instalador "
+           "pedira confirmacion y UAC.\n\n"
+           "No es necesario DevCon.exe."):
             return
-        self.background(lambda: [self.command("install",i) for i in range(1,quantity+1)])
+        self.background(lambda: self.command("InstalarN",quantity))
 
     def remove(self):
-        exe=Path(self.devcon.get())
-        if os.name!="nt" or not administrator() or not exe.is_file():
-            messagebox.showwarning("Requisitos","Necesita Windows, administrador y DevCon")
+        if os.name!="nt" or not INSTALLER.is_file():
+            messagebox.showwarning("Requisitos",
+                "Requiere Windows y el instalador.ps1 incluido en el ZIP.")
             return
         n=self.slot.get()
-        if messagebox.askyesno("Confirmar",f"Eliminar ROOT\\FUTJOY{n:02d}?"):
-            self.background(lambda: self.command("remove",n))
+        if messagebox.askyesno("Confirmar retirada individual",
+           f"Eliminar SOLO ROOT\\FUTJOY{n:02d}?\n"
+           "Los otros mandos, el driver y el certificado se conservaran."):
+            self.background(lambda: self.command("QuitarN",n))
 
     def check(self):
         n=self.slot.get()
