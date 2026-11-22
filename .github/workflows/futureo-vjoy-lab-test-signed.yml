@@ -60,6 +60,13 @@ jobs:
             Get-FileHash -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } |
             Set-Content (Join-Path $p "SHA256SUMS.txt") -Encoding ascii
+          New-Item -ItemType Directory -Path (Join-Path $p "PYTHON") -Force | Out-Null
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\python\*.py" -Destination (Join-Path $p "PYTHON")
+          New-Item -ItemType Directory -Path (Join-Path $p "FUENTE_DRIVER") -Force | Out-Null
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.c" -Destination (Join-Path $p "FUENTE_DRIVER")
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.h" -Destination (Join-Path $p "FUENTE_DRIVER")
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj" -Destination (Join-Path $p "FUENTE_DRIVER")
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\README.md" -Destination (Join-Path $p "FUENTE_DRIVER")
           Write-Host "CERTIFICATE THUMBPRINT $($cert.Thumbprint)"
           Get-ChildItem $p | ForEach-Object { Write-Host "ARCHIVO $($_.Name) bytes=$($_.Length)" }
       - name: Publicar paquete de laboratorio firmado solo para pruebas
