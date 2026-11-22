@@ -144,3 +144,14 @@ Selector del mando: **ANALÓGICO / CRUCETA / MIXTO**.
 - WASD + U/I/O (X/Y/L) + J/K/L (A/B/R) + Enter (START) + Retroceso (SELECT) no cambian.
 - Se conservan AUTO/manual, P1/P2, cola, temporizadores, joystick USB/Bluetooth, personalización y estilos integrados en palanca.php.
 - WEB COMPLETA: los 13 archivos están en la RAÍZ del ZIP, sin carpeta MULTIMANDO/.
+
+
+## v6.1.1 - ajuste exclusivo para movil en horizontal
+
+- Se ajusta SOLO la vista de telefonos girados (orientacion horizontal, pantalla de poca altura y entrada tactil).
+- Se oculta la cabecera duplicada y el pie informativo durante el juego horizontal para liberar espacio. La conexion, AUTO, estado P1/P2, tiempo, cola, selector de modo, botones, START/SELECT y TECLAS siguen visibles.
+- Se compactan las franjas de conexion y de estado, aumentando el espacio util para palanca/cruceta y seis botones.
+- START y SELECT se desplazan unos pixeles hacia abajo y quedan separados de la fila A/B/R para evitar pulsaciones accidentales.
+- El tamaño de las zonas de control se adapta a la altura real util del navegador, incluso con sus barras visibles.
+- NO cambia la vista vertical ni la de escritorio con raton. Tampoco cambia el JavaScript cifrado, mandos, perfiles, WebSocket, API, Python o temporizadores.
+- ZIP de web completa con los 13 archivos en la raiz, sin carpeta MULTIMANDO/.

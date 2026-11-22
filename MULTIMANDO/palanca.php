@@ -251,6 +251,184 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
 @media(max-width:680px){.direction-mode-switch{gap:2px;min-height:25px;padding:2px}.direction-mode-option{font-size:clamp(6px,1.65vw,8.5px);padding:3px clamp(2px,.7vw,5px);min-height:19px;letter-spacing:0}}
 @media(max-width:680px) and (orientation:portrait){.direction-mode-switch{gap:1px;padding:2px 1px;max-width:100%}.direction-mode-option{font-size:clamp(6px,1.7vw,8px);padding:3px clamp(2px,.55vw,4px)}}
 @media(max-height:560px){.direction-mode-switch{min-height:21px;padding:1px}.direction-mode-option{min-height:17px;padding-top:2px;padding-bottom:2px}}
+
+/* v6.1.1 - SOLO moviles en horizontal: dar prioridad a las zonas de juego.
+   Pantallas verticales y escritorio con raton conservan el CSS original. */
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) and (hover: none) {
+  :root { --stick-size: min(58dvh, 27vw, 200px); }
+  html, body { min-height: 0; }
+  .app-shell {
+    width: calc(100% - 12px);
+    height: 100dvh;
+    min-height: 0;
+    padding: 3px 0;
+    gap: 3px;
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    grid-template-rows: auto auto minmax(0,1fr);
+  }
+  /* La cabecera duplicaba informacion ya visible en el panel y quitaba
+     espacio tactil. Solo se oculta durante el juego en horizontal movil. */
+  .app-header, .app-shell > footer { display: none; }
+  .connect-panel {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+    height: 35px;
+    min-width: 0;
+    padding: 2px 7px;
+    gap: 8px;
+    border-radius: 10px;
+  }
+  .nickname-field { gap: 7px; }
+  .nickname-field span { font-size: 9px; }
+  .nickname-field input {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    height: 29px;
+  }
+  .connect-tools { gap: 5px; flex: none; }
+  .auto-choice, .connect-btn, .disconnect-btn {
+    min-height: 29px;
+    height: 29px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 9px;
+  }
+  .auto-choice { min-width: 62px; }
+  .status-hud {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 25px;
+    height: 25px;
+    min-width: 0;
+    gap: 5px;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+  }
+  .status-hud .stat {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 2px 6px;
+    border-radius: 9px;
+    text-align: center;
+  }
+  .status-hud .stat > span {
+    display: block;
+    min-width: 0;
+    font-size: 9px;
+    letter-spacing: .02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .status-hud .stat > strong {
+    display: block;
+    flex: none;
+    font-size: 16px;
+    line-height: 1;
+    margin: 0;
+    white-space: nowrap;
+  }
+  .status-hud .stat > small { display: none; }
+  .control-deck {
+    grid-column: 1;
+    grid-row: 3;
+    min-height: 0;
+    height: 100%;
+    border-radius: 12px;
+    grid-template-rows: auto minmax(0,1fr) auto;
+  }
+  .deck-header {
+    min-height: 27px;
+    height: 27px;
+    padding: 2px 9px;
+  }
+  .deck-title strong { font-size: 10px; }
+  .deck-title small { display: none; }
+  .deck-badges { gap: 5px; }
+  .deck-badges > span:first-child { display: none; }
+  .deck-badges > span { padding: 4px 6px; font-size: 8px; }
+  .keys-config-btn { height: 23px; min-width: 47px; font-size: 8px; }
+  .controls {
+    min-height: 0;
+    height: 100%;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    grid-template-rows: minmax(0,1fr);
+    align-items: center;
+    justify-items: center;
+    gap: clamp(8px,3vw,26px);
+    padding: 2px clamp(5px,2vw,16px);
+  }
+  .joystick-zone, .action-zone {
+    min-height: 0;
+    max-height: 100%;
+    gap: 3px;
+    margin: 0;
+    transform: none;
+    justify-content: center;
+  }
+  .direction-mode-switch {
+    max-width: 100%;
+    min-height: 25px;
+    padding: 2px 3px;
+    gap: 3px;
+  }
+  .direction-mode-option {
+    min-height: 21px;
+    padding: 3px 7px;
+    font-size: clamp(8px, 1.25vw, 10px);
+  }
+  /* El modo ya esta identificado en el selector: evitar otra linea redundante. */
+  #directionHint, #modeHelp, .action-zone > .micro-hint { display: none; }
+  .joystick-frame, .dpad-frame {
+    width: min(100%,var(--stick-size));
+    height: auto;
+    aspect-ratio: 1 / 1;
+    max-height: 100%;
+    flex: 0 0 auto;
+  }
+  .joystick-thumb { min-width: 38px; min-height: 38px; }
+  .action-zone > .control-label { font-size: 9px; line-height: 1.1; }
+  .action-buttons {
+    width: min(100%,78dvh,33vw,270px);
+    gap: 5px;
+  }
+  .action-btn { min-width: 0; border-width: 3px; font-size: clamp(17px,3vw,30px); }
+  /* Separacion tactil entre la segunda fila A/B/R y START/SELECT.
+     Baja las teclas auxiliares sin invadir el pie ni los botones principales. */
+  .aux-buttons { gap: 9px; margin-top: 9px; }
+  .aux-btn {
+    height: 29px;
+    width: min(48%,110px);
+    font-size: 9px;
+  }
+  .deck-footer { min-height: 19px; height: 19px; padding: 2px 8px; }
+  .deck-footer p { font-size: 9px; }
+  .deck-footer > span:last-child { display: none; }
+}
+/* Reducir proporcionalmente en telefonos cuya barra del navegador deja muy
+   poco alto util. No se aplica a escritorios ni a moviles verticales. */
+@media (orientation: landscape) and (max-height: 340px) and (pointer: coarse) and (hover: none) {
+  :root { --stick-size: min(53dvh,25vw,165px); }
+  .connect-panel { height: 31px; padding: 1px 6px; }
+  .nickname-field input, .auto-choice, .connect-btn, .disconnect-btn { height: 27px; min-height: 27px; }
+  .status-hud { height: 22px; min-height: 22px; }
+  .status-hud .stat > strong { font-size: 14px; }
+  .deck-header { height: 25px; min-height: 25px; }
+  .deck-footer { height: 16px; min-height: 16px; }
+  .direction-mode-switch { min-height: 22px; }
+  .direction-mode-option { min-height: 18px; padding: 2px 5px; }
+  .action-buttons { width: min(100%,70dvh,31vw,230px); gap: 3px; }
+  .aux-buttons { margin-top: 6px; }
+  .aux-btn { height: 26px; }
+  .action-zone > .control-label { display: none; }
+}
 MULTIMANDO_CSS_FALLBACK;
 $cssFile = __DIR__ . '/assets/palanca.css';
 if (is_readable($cssFile)) {
