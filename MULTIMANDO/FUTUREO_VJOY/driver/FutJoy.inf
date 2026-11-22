@@ -1,0 +1,57 @@
+; FUTUREO VJOY experimental KMDF / VHF prototype. Must be validated with InfVerif/WDK.
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%Futureo%
+DriverVer=11/22/2026,0.1.0.0
+CatalogFile=FutJoy.cat
+PnpLockdown=1
+
+[DestinationDirs]
+DriverCopy=13
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+FutJoy.sys=1
+
+[Manufacturer]
+%Futureo%=Standard,NTamd64.10.0
+[Standard.NTamd64.10.0]
+%Pad1%=FutJoyInstall,ROOT\FUTJOY01
+%Pad2%=FutJoyInstall,ROOT\FUTJOY02
+%Pad3%=FutJoyInstall,ROOT\FUTJOY03
+%Pad4%=FutJoyInstall,ROOT\FUTJOY04
+%Pad5%=FutJoyInstall,ROOT\FUTJOY05
+%Pad6%=FutJoyInstall,ROOT\FUTJOY06
+%Pad7%=FutJoyInstall,ROOT\FUTJOY07
+%Pad8%=FutJoyInstall,ROOT\FUTJOY08
+
+[FutJoyInstall.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+FutJoy.sys
+[FutJoyInstall.NT.Services]
+AddService=FutJoy,0x00000002,FutJoyService
+[FutJoyService]
+DisplayName=%ServiceName%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%13%\FutJoy.sys
+[FutJoyInstall.NT.Wdf]
+KmdfService=FutJoy,FutJoyWdf
+[FutJoyWdf]
+KmdfLibraryVersion=1.27
+[Strings]
+Futureo="FUTUREO"
+Disk="FUTUREO VJOY experimental package"
+ServiceName="FUTUREO HID gamepads (prototype)"
+Pad1="FUTUREO VJOY1 - PLAYER 1"
+Pad2="FUTUREO VJOY2 - PLAYER 2"
+Pad3="FUTUREO VJOY3 - PLAYER 3"
+Pad4="FUTUREO VJOY4 - PLAYER 4"
+Pad5="FUTUREO VJOY5 - PLAYER 5"
+Pad6="FUTUREO VJOY6 - PLAYER 6"
+Pad7="FUTUREO VJOY7 - PLAYER 7"
+Pad8="FUTUREO VJOY8 - PLAYER 8"
