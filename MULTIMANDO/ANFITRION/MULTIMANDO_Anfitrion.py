@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """MULTIMANDO: anfitrion independiente para dos mandos Xbox virtuales.
 
-Compatible con la palanca PHP v5.9: WASD/UIOJKL en el navegador,
+Compatible con la palanca PHP v6.0: WASD/UIOJKL en el navegador,
 comandos WebSocket ar/ab/iz/de, button_a/button_b/button_x/button_y/button_lb/button_rb, start/select.
 
 Regla: 600 segundos de juego POR JUGADOR, consumidos unicamente mientras
@@ -39,7 +39,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 DEFAULT_PORT = 8766  # No interfiere con el puerto 8765 de KOFMULTI.
 DEFAULT_SECONDS = 600
@@ -169,6 +169,7 @@ class Guest:
     last_tick: float = 0.0
     active: bool = True
     held: set[str] = field(default_factory=set)
+    direction_mode: str = "legacy"  # Clientes anteriores siguen funcionando.
     input_times: collections.deque = field(default_factory=collections.deque)
     outbound: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=32))
     wake: threading.Event = field(default_factory=threading.Event)
@@ -196,6 +197,23 @@ class DummyPads:
         self.events: list[tuple[int, str, bool]] = []
         self.held = {1: set(), 2: set()}
         self.xinput_slots = None
+        self.mode: dict[int, str] = {1: 'legacy', 2: 'legacy'}
+        self.analog_axes: dict[int, tuple[int, int]] = {1: (0, 0), 2: (0, 0)}
+        self.analog_events: list[tuple[int, int, int]] = []
+
+    def set_mode(self, slot: int, mode: str) -> bool:
+        if slot not in (1, 2) or mode not in ('legacy', 'analog', 'dpad'): return False
+        self.mode[slot] = mode
+        self.analog_axes[slot] = (0, 0)
+        self.held[slot].difference_update(DIRECTIONS)
+        return True
+
+    def analog(self, slot: int, x: int, y: int) -> bool:
+        if slot not in (1, 2) or self.mode[slot] != 'analog': return False
+        if type(x) is not int or type(y) is not int or not (-127 <= x <= 127 and -127 <= y <= 127): return False
+        self.analog_axes[slot] = (x, y)
+        self.analog_events.append((slot, x, y))
+        return True
 
     def apply(self, slot: int, action: str, down: bool) -> bool:
         if slot not in (1, 2) or action not in ACTIONS:
@@ -209,6 +227,7 @@ class DummyPads:
 
     def release_slot(self, slot: int) -> None:
         self.held[slot].clear()
+        self.analog_axes[slot] = (0, 0)
 
     def close(self) -> None:
         for slot in (1, 2):
@@ -323,6 +342,8 @@ class VirtualXboxPads:
             self.close()
             raise RuntimeError("No se pudieron abrir los 2 mandos. Instala ViGEmBus: " + str(exc)) from exc
         self.held: dict[int, set[str]] = {1: set(), 2: set()}
+        self.mode: dict[int, str] = {1: 'legacy', 2: 'legacy'}
+        self.analog_axes: dict[int, tuple[int, int]] = {1: (0, 0), 2: (0, 0)}
         self.pressed_at: dict[tuple[int, str], float] = {}
         self.release_timers: dict[tuple[int, str], threading.Timer] = {}
         self.xinput_slots: tuple[int, int] | None = None
@@ -347,11 +368,56 @@ class VirtualXboxPads:
             if a in current_buttons and b in current_buttons:
                 current_buttons.discard(a)
                 current_buttons.discard(b)
+        mode = self.mode[slot]
         for action in sorted(current_buttons):
+            if action in DIRECTIONS and mode == 'analog':
+                continue
             pad.press_button(button=getattr(self.vg.XUSB_BUTTON, self.BUTTONS[action]))
-        x, y = self.axes(current_buttons)
+        if mode == 'analog':
+            x, y = self.analog_axes[slot]
+            x, y = round(x * (32767 / 127)), round(y * (32767 / 127))
+        elif mode == 'dpad':
+            x, y = 0, 0
+        else:
+            # Solo clientes anteriores a v6.0 conservan D-pad + analogico simultaneos.
+            x, y = self.axes(current_buttons)
         pad.left_joystick(x_value=x, y_value=y)
         pad.update()
+
+    def set_mode(self, slot: int, mode: str) -> bool:
+        if slot not in (1, 2) or mode not in ('legacy', 'analog', 'dpad'):
+            return False
+        with self.lock:
+            for key in tuple(self.release_timers):
+                if key[0] == slot and key[1] in DIRECTIONS:
+                    self._cancel_timer(key)
+            for key in tuple(self.pressed_at):
+                if key[0] == slot and key[1] in DIRECTIONS:
+                    self.pressed_at.pop(key, None)
+            self.held[slot].difference_update(DIRECTIONS)
+            self.analog_axes[slot] = (0, 0)
+            self.mode[slot] = mode
+            self._update(slot)
+            return True
+
+    def analog(self, slot: int, x: int, y: int) -> bool:
+        if slot not in (1, 2) or type(x) is not int or type(y) is not int:
+            return False
+        if not (-127 <= x <= 127 and -127 <= y <= 127):
+            return False
+        with self.lock:
+            if self.mode[slot] != 'analog':
+                return False
+            if self.analog_axes[slot] == (x, y):
+                return True
+            previous = self.analog_axes[slot]
+            self.analog_axes[slot] = (x, y)
+            try:
+                self._update(slot)
+            except Exception:
+                self.analog_axes[slot] = previous
+                return False
+            return True
 
     def _release_now(self, slot: int, action: str) -> None:
         key = slot, action
@@ -406,6 +472,7 @@ class VirtualXboxPads:
                 if key[0] == slot:
                     self.pressed_at.pop(key, None)
             self.held[slot].clear()
+            self.analog_axes[slot] = (0, 0)
             if slot <= len(self.pads):
                 self._update(slot)
 
@@ -447,6 +514,7 @@ class Room:
         guest.remaining = self.seconds
         guest.last_tick = now
         guest.warned_last_minute = False
+        self.device.set_mode(slot, guest.direction_mode)
         self.events.append(("assigned", guest.name, slot))
 
     def _vacancy(self, now: float) -> None:
@@ -550,6 +618,41 @@ class Room:
             self._advance(now)
             g = next((g for g in self.players.values() if g.slot == slot), None)
             return bool(g and self._rotate(g, now, "manual_turn"))
+
+    def set_direction_mode(self, uid: int, mode: str) -> bool:
+        """Un cliente cambia SOLO su propio dispositivo; el puesto lo decide Python."""
+        if mode not in ('analog', 'dpad'):
+            return False
+        with self.lock:
+            now = self.clock()
+            self._advance(now)
+            guest = self.players.get(uid)
+            if not guest or not guest.active:
+                return False
+            if guest.direction_mode == mode:
+                return True
+            if guest.slot and not self.device.set_mode(guest.slot, mode):
+                return False
+            guest.direction_mode = mode
+            guest.held.difference_update(DIRECTIONS)
+            return True
+
+    def analog(self, uid: int, x: int, y: int) -> bool:
+        """Ejes analogicos de 8 bits, permitidos solo al jugador actual en modo analogico."""
+        if type(x) is not int or type(y) is not int or not (-127 <= x <= 127 and -127 <= y <= 127):
+            return False
+        with self.lock:
+            now = self.clock()
+            self._advance(now)
+            guest = self.players.get(uid)
+            if not guest or not guest.active or not guest.slot or guest.direction_mode != 'analog':
+                return False
+            while guest.input_times and guest.input_times[0] < now - 1.0:
+                guest.input_times.popleft()
+            if len(guest.input_times) >= MAX_MESSAGES_PER_SECOND:
+                return False
+            guest.input_times.append(now)
+            return self.device.analog(guest.slot, x, y)
 
     def input(self, uid: int, action: str, down: bool) -> bool:
         with self.lock:
@@ -766,7 +869,33 @@ class MultimandoServer:
             for raw in websocket:
                 if not guest.active or self.stop_event.is_set():
                     break
+                if isinstance(raw, bytes):
+                    # Paquete binario EXACTO de 3 bytes: A1, int8 X, int8 Y.
+                    if len(raw) != 3 or raw[0] != 0xA1:
+                        continue
+                    x = int.from_bytes(raw[1:2], 'big', signed=True)
+                    y = int.from_bytes(raw[2:3], 'big', signed=True)
+                    with self.room.lock:
+                        before_slot = guest.slot
+                        before = self.room.device.analog_axes.get(before_slot, (0, 0))
+                        accepted = self.room.analog(guest.uid, x, y)
+                        is_current = guest.slot == before_slot and before_slot in (1, 2)
+                    if accepted and is_current:
+                        was_active = before != (0, 0)
+                        is_active = (x, y) != (0, 0)
+                        if was_active != is_active:
+                            word = f'MOVIMIENTO ({x}, {y})' if is_active else 'CENTRADO (0, 0)'
+                            self.on_event('log', f'CONTROL P{before_slot} | {guest.name} | ANALOGICO | {word}')
+                    continue
                 if not isinstance(raw, str) or len(raw) > 4096:
+                    continue
+                if raw in ('m0', 'm1'):
+                    mode = 'analog' if raw == 'm1' else 'dpad'
+                    with self.room.lock:
+                        accepted = self.room.set_direction_mode(guest.uid, mode)
+                        slot = guest.slot
+                    if accepted:
+                        self.on_event('log', f'{guest.name} | {"P"+str(slot) if slot else "COLA"} | MODO {mode.upper()}')
                     continue
                 decoded = decode_input(raw)
                 if decoded is None:
@@ -1262,6 +1391,16 @@ def selftest() -> None:
     assert room.input(a.uid, "iz", True)
     assert room.input(a.uid, "ar", True)
     assert (1, "iz", True) in device.events and (1, "ar", True) in device.events
+    assert room.set_direction_mode(a.uid, 'analog')
+    assert device.mode[1] == 'analog' and not device.held[1].intersection(DIRECTIONS)
+    assert room.analog(a.uid, -90, 90) and device.analog_axes[1] == (-90, 90)
+    assert not room.analog(c.uid, 100, 0)  # espectador no puede mover un mando.
+    assert not room.analog(a.uid, 128, 0)   # datos fuera de rango rechazados.
+    assert room.set_direction_mode(a.uid, 'dpad')
+    assert device.analog_axes[1] == (0, 0)  # alternar siempre centra el eje.
+    assert not room.analog(a.uid, 127, 0)
+    assert room.input(a.uid, 'de', True)
+    assert 'de' in device.held[1]
     for cmd in ("button_a", "button_b", "button_x", "button_y", "button_lb", "button_rb", "start", "select"):
         assert room.input(b.uid, cmd, True)
         assert room.input(b.uid, cmd, False)
@@ -1285,6 +1424,7 @@ def selftest() -> None:
     assert decode_input('{"type":"input","action":"button_a","down":false}') == ("button_a", False)
     assert not room.input(a.uid, "ba", True)  # protocolo anterior, no se admite
     assert set(VirtualXboxPads.BUTTONS) == ACTIONS
+    assert room.set_direction_mode(c.uid, 'analog') and not room.analog(c.uid, 127, 0)
     assert (VirtualXboxPads.BUTTONS["button_lb"] == "XUSB_GAMEPAD_LEFT_SHOULDER"
             and VirtualXboxPads.BUTTONS["button_rb"] == "XUSB_GAMEPAD_RIGHT_SHOULDER")
     try:

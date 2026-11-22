@@ -1,10 +1,10 @@
-# MULTIMANDO WEB v5.9 / Anfitrion Python v1.4.0
+# MULTIMANDO WEB v6.0 / Anfitrion Python v1.5.0
 
 Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de KOFMULTI.
 
 ## Instalacion completa de la WEB (WAMP o hosting PHP)
 
-1. Extrae `MULTIMANDO_WEB_COMPLETA_v5_9.zip` respetando la carpeta MULTIMANDO.
+1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_0.zip` respetando la carpeta MULTIMANDO.
 2. Coloca toda la carpeta `MULTIMANDO/` en el directorio publico del servidor PHP (ej.: `C:\wamp64\www\MULTIMANDO\`).
 3. Abre `http://localhost/MULTIMANDO/` en WAMP, o `https://tudominio/MULTIMANDO/` en HTTPS publico.
 4. Requisitos: PHP 8.1+ con OpenSSL y zlib; cURL (preferible) y HTTPS con certificados CA configurados.
@@ -16,7 +16,7 @@ Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de K
 
 ## Anfitrion Windows
 
-El archivo `MULTIMANDO_Anfitrion.py` v1.4.0 acompana esta version de la web.
+El archivo `MULTIMANDO_Anfitrion.py` v1.5.0 acompana esta version de la web.
 Copia el .py a la PC anfitriona y ejecutalo con Windows. Dependencias:
 
     py -m pip install websockets vgamepad
@@ -74,3 +74,27 @@ No publiques `private/FRASE_CIFRADO.php` en GitHub ni lo coloques en una carpeta
 servida sin reglas de denegacion. La opcion AUTO consulta la API fija por PHP.
 El JavaScript entregado al navegador puede inspeccionarse (cifrado en reposo).
 No se transmiten imagenes ni audio de la PC. El host no ejecuta instrucciones arbitrarias.
+
+## v6.0: interruptor ANALOGICO / CRUCETA
+
+- El mando incluye un interruptor que alterna ANALOGICO (por defecto) y CRUCETA.
+  Se recuerda la preferencia de cada usuario en localStorage.
+- ANALOGICO REAL: la posicion de la palanca envia la deflexion proporcional.
+  Zona muerta radial 14% en pantalla tactil y 17% en gamepad fisico,
+  curva suave 1.12, diagonales normalizadas y retorno exacto a (0,0).
+- En este modo el navegador envia 3 bytes BINARIOS por cambio de eje:
+  `A1 XX YY`, cabecera 0xA1 y ejes X/Y con signo de -127 a +127.
+  El eje Y positivo significa ARRIBA, el X positivo DERECHA. Envios
+  limitados a 30 por segundo; el centro se comunica inmediatamente.
+- CRUCETA: cuatro botones de direcciones, admite arrastre y diagonales.
+  Sigue usando las pulsaciones de DOS caracteres: u1/u0, d1/d0,
+  i1/i0, e1/e0. El mando virtual desactiva el stick izquierdo en este modo.
+- El navegador avisa una vez por seleccion con `m1` (analogico)
+  o `m0` (cruceta), sin modificar la API ni el array de estado.
+- TECLAS sigue igual (WASD, UIO/JKL, Enter, Backspace), pero las
+  DIRECCIONES actuan sobre el tipo de control que esta seleccionado.
+- Los seis botones X Y L / A B R no cambian, ni las asignaciones locales,
+  la conexion AUTO, P1/P2, cola FIFO o los 10 minutos con pausa sin cola.
+- El anfitrion anterior 1.4 no acepta ejes binarios. Es obligatorio
+  actualizar el Python a 1.5 para usar la palanca analogica.
+- Clientes web antiguos sin selector mantienen el modo heredado en Python.

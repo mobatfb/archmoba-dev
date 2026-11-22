@@ -14,8 +14,8 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="theme-color" content="#071222">
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
-<link rel="stylesheet" href="assets/palanca.css?v=5.9.0">
-<script src="control.php?v=5.9.0" defer></script>
+<link rel="stylesheet" href="assets/palanca.css?v=6.0.0">
+<script src="control.php?v=6.0.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -56,13 +56,26 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
     </div>
     <div class="controls" id="controllerArea">
       <div class="joystick-zone">
-        <span class="control-label">8 DIRECCIONES</span>
-        <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Palanca direccional; usa WASD, cruceta física o arrastra con el dedo o ratón">
+        <label class="direction-mode-switch" for="dpadSwitch" title="Alternar joystick analógico o cruceta de cuatro botones">
+          <span id="analogSwitchLabel" class="mode-name selected">ANALÓGICO</span>
+          <input type="checkbox" id="dpadSwitch" role="switch" aria-label="Activar cruceta de botones en lugar de palanca analógica">
+          <span class="mode-track" aria-hidden="true"><span class="mode-knob"></span></span>
+          <span id="dpadSwitchLabel" class="mode-name">CRUCETA</span>
+        </label>
+        <span class="control-label" id="directionHint">ANALÓGICO · MOVIMIENTO PROPORCIONAL</span>
+        <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Joystick analógico calibrado; arrastra desde el centro en cualquier dirección">
           <span class="joystick-label north">▲</span><span class="joystick-label east">▶</span><span class="joystick-label south">▼</span><span class="joystick-label west">◀</span>
           <div class="joystick-grid" aria-hidden="true"></div>
           <div class="joystick-base" aria-hidden="true"><div class="joystick-thumb" id="joystickThumb"><span class="thumb-light"></span></div></div>
         </div>
-        <span class="micro-hint">MUEVE · ARRASTRA · DIAGONALES</span>
+        <div class="dpad-frame" id="dpad" role="group" aria-label="Cruceta digital: cuatro botones, arrastra para diagonales" hidden>
+          <button type="button" class="dpad-key dpad-up" data-pad-dir="ar" aria-label="Arriba">▲</button>
+          <button type="button" class="dpad-key dpad-left" data-pad-dir="iz" aria-label="Izquierda">◀</button>
+          <span class="dpad-center" aria-hidden="true"><span></span></span>
+          <button type="button" class="dpad-key dpad-right" data-pad-dir="de" aria-label="Derecha">▶</button>
+          <button type="button" class="dpad-key dpad-down" data-pad-dir="ab" aria-label="Abajo">▼</button>
+        </div>
+        <span class="micro-hint" id="modeHelp">ZONA MUERTA 14 % · CENTRADO AUTOMÁTICO</span>
       </div>
       <div class="action-zone">
         <span class="control-label">ACCIONES</span>

@@ -165,3 +165,24 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .micro-hint { display: none; }
   .control-label { font-size: 8px; }
 }
+
+/* MULTIMANDO v6.0: selector y cruceta de cuatro botones; diagonales por arrastre. */
+.direction-mode-switch{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;min-height:27px;padding:3px 7px;border:1px solid #355c7c;border-radius:100px;background:#0b1f37;color:#9cb8d2;cursor:pointer;user-select:none;white-space:nowrap}
+.mode-name{font-size:9px;font-weight:900;letter-spacing:.065em;color:#85a7c2;transition:color .15s}
+.mode-name.selected{color:#6be6ff}
+.direction-mode-switch input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.mode-track{position:relative;display:inline-flex;align-items:center;width:36px;height:18px;flex:none;border-radius:30px;background:#1d4664;border:1px solid #5f9ab6;padding:2px;transition:background .12s}
+.mode-knob{display:block;width:12px;height:12px;border-radius:50%;background:#75e5ff;box-shadow:0 0 8px #5abef79a;transition:transform .12s ease}
+.direction-mode-switch input:checked + .mode-track{background:#3e3e70;border-color:#9e91e2}
+.direction-mode-switch input:checked + .mode-track .mode-knob{background:#d7caff;transform:translateX(17px)}
+.direction-mode-switch:focus-within{outline:2px solid #8feeff;outline-offset:2px}
+.joystick-frame[hidden],.dpad-frame[hidden]{display:none!important}
+.dpad-frame{width:var(--stick-size);height:var(--stick-size);max-width:100%;flex:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:3%;padding:4%;align-items:stretch;justify-items:stretch;touch-action:none;user-select:none;position:relative;isolation:isolate;border-radius:24%;border:1px solid #3d6385;background:radial-gradient(circle at 50% 50%,#29415d 5%,#0b1d34 80%);box-shadow:inset 0 0 28px #0008,0 10px 22px #0007}
+.dpad-key{display:grid;place-items:center;min-width:0;min-height:0;padding:0;border:1px solid #5b7d9b;border-radius:20%;background:linear-gradient(145deg,#294963,#0d253d);color:#aeeaff;font-size:clamp(15px,2.3vw,27px);font-weight:950;touch-action:none;user-select:none;box-shadow:inset 0 3px 6px #ffffff1a,0 4px 8px #0006}
+.dpad-key.pressed,.dpad-key:active{background:linear-gradient(145deg,#54e5ff,#266bb1);color:white;border-color:#a2f5ff;box-shadow:0 0 16px #63ddff88}
+.dpad-up{grid-area:1/2}.dpad-left{grid-area:2/1}.dpad-right{grid-area:2/3}.dpad-down{grid-area:3/2}
+.dpad-center{grid-area:2/2;display:grid;place-items:center;border-radius:24%;background:#17324d;border:1px solid #3c6981;pointer-events:none}
+.dpad-center span{width:29%;height:29%;border-radius:50%;border:2px solid #71d9f7;background:#16334b;box-shadow:0 0 10px #3dd4ff44}
+@media(max-width:680px){.direction-mode-switch{padding:2px 5px;gap:5px;min-height:23px}.mode-name{font-size:8px}.mode-track{width:31px;height:16px}.mode-knob{width:10px;height:10px}.direction-mode-switch input:checked + .mode-track .mode-knob{transform:translateX(14px)}.dpad-frame{gap:3%;padding:4%}.dpad-key{font-size:clamp(12px,4.2vw,21px)}}
+@media(max-height:560px){.direction-mode-switch{min-height:20px;padding:1px 5px}.mode-name{font-size:8px}.mode-track{height:15px}.mode-knob{width:9px;height:9px}.dpad-frame{border-radius:20%}}
+@media(max-width:600px) and (min-height:720px){.direction-mode-switch{min-height:23px}.joystick-zone{gap:4px}}
