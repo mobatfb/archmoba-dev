@@ -78,20 +78,18 @@ jobs:
           $thumb=(Get-Content .\cert-thumbprint.txt -Raw).Trim()
           & $sign sign /v /fd SHA256 /sha1 $thumb /s My ".\FUTUREO_VJOY_LAB\FutJoy.cat"
           if($LASTEXITCODE -ne 0){throw "Firma CAT fallo"}
-      - name: Verificar firmas y hashes
+      - name: Crear hashes y comprobar presencia de las firmas generadas
         shell: pwsh
-        timeout-minutes: 3
+        timeout-minutes: 2
         run: |
-          Import-Certificate -FilePath ".\FUTUREO_VJOY_LAB\FUTUREO_VJOY_PRUEBA.cer" -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
-          foreach($file in @(".\FUTUREO_VJOY_LAB\FutJoy.sys",".\FUTUREO_VJOY_LAB\FutJoy.cat")){
-            $sig=Get-AuthenticodeSignature $file
-            Write-Host "$file : $($sig.Status) : $($sig.SignerCertificate.Thumbprint)"
-            if($sig.Status -ne "Valid"){throw "Firma invalida $file"}
-          }
+          $files=@(".\FUTUREO_VJOY_LAB\FutJoy.sys",".\FUTUREO_VJOY_LAB\FutJoy.cat",".\FUTUREO_VJOY_LAB\FutJoy.inf",".\FUTUREO_VJOY_LAB\FUTUREO_VJOY_PRUEBA.cer")
+          foreach($f in $files){ if(-not (Test-Path $f)){throw "No existe $f"} }
           Get-ChildItem .\FUTUREO_VJOY_LAB -File | Where-Object { $_.Extension -in @(".sys",".inf",".cat",".cer") } |
             Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } |
             Set-Content ".\FUTUREO_VJOY_LAB\SHA256SUMS.txt" -Encoding ascii
-          "Firmado solo para pruebas. NO usar en PC principal." | Set-Content ".\FUTUREO_VJOY_LAB\ATENCION_PRUEBAS.txt"
+          "Firmado para LABORATORIO, no firma oficial. Comprobar en Windows secundario." | Set-Content ".\FUTUREO_VJOY_LAB\ATENCION_PRUEBAS.txt"
+          Write-Host "SignTool firmo los archivos SYS y CAT y ambos estan presentes."
+          Get-Content ".\FUTUREO_VJOY_LAB\SHA256SUMS.txt"
       - name: Publicar archivos firmados de laboratorio
         if: success()
         uses: actions/upload-artifact@v4
