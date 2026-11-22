@@ -241,6 +241,16 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .action-zone { transform: translateY(11px); }
   .joystick-zone, .action-zone { gap: 3px; }
 }
+
+/* v6.1.0: tres modos, selector compacto sin sacrificar controles en movil. */
+.direction-mode-switch{display:inline-grid;grid-template-columns:repeat(3,max-content);align-items:center;justify-content:center;gap:3px;max-width:100%;min-height:29px;padding:3px;border-radius:10px;cursor:default}
+.direction-mode-option{border:1px solid transparent;border-radius:7px;background:transparent;color:#91b8d4;letter-spacing:.018em;font-size:10px;line-height:1.1;font-weight:850;min-width:0;min-height:23px;padding:4px 8px;white-space:nowrap;touch-action:manipulation;user-select:none;transition:background .12s,color .12s,border-color .12s}
+.direction-mode-option.selected,.direction-mode-option[aria-pressed="true"]{border-color:#63dff4;background:linear-gradient(135deg,#26597b,#164168);color:#d6faff;box-shadow:0 0 8px #2aa9cf3c}
+.direction-mode-option:hover:not(.selected){background:#234360;color:#e5f7ff}
+.direction-mode-option:focus-visible{outline:2px solid var(--outline);outline-offset:1px}
+@media(max-width:680px){.direction-mode-switch{gap:2px;min-height:25px;padding:2px}.direction-mode-option{font-size:clamp(6px,1.65vw,8.5px);padding:3px clamp(2px,.7vw,5px);min-height:19px;letter-spacing:0}}
+@media(max-width:680px) and (orientation:portrait){.direction-mode-switch{gap:1px;padding:2px 1px;max-width:100%}.direction-mode-option{font-size:clamp(6px,1.7vw,8px);padding:3px clamp(2px,.55vw,4px)}}
+@media(max-height:560px){.direction-mode-switch{min-height:21px;padding:1px}.direction-mode-option{min-height:17px;padding-top:2px;padding-bottom:2px}}
 MULTIMANDO_CSS_FALLBACK;
 $cssFile = __DIR__ . '/assets/palanca.css';
 if (is_readable($cssFile)) {
@@ -260,7 +270,7 @@ if (is_readable($cssFile)) {
 <title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
-<script src="control.php?v=6.0.3" defer></script>
+<script src="control.php?v=6.1.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -301,12 +311,11 @@ if (is_readable($cssFile)) {
     </div>
     <div class="controls" id="controllerArea">
       <div class="joystick-zone">
-        <label class="direction-mode-switch" for="dpadSwitch" title="Alternar joystick analógico o cruceta de cuatro botones">
-          <span id="analogSwitchLabel" class="mode-name selected">ANALÓGICO</span>
-          <input type="checkbox" id="dpadSwitch" role="switch" aria-label="Activar cruceta de botones en lugar de palanca analógica">
-          <span class="mode-track" aria-hidden="true"><span class="mode-knob"></span></span>
-          <span id="dpadSwitchLabel" class="mode-name">CRUCETA</span>
-        </label>
+        <div class="direction-mode-switch" id="directionModes" role="group" aria-label="Modo de movimiento">
+          <button type="button" class="direction-mode-option selected" data-direction-mode="analog" aria-pressed="true" title="Joystick proporcional">ANALÓGICO</button>
+          <button type="button" class="direction-mode-option" data-direction-mode="dpad" aria-pressed="false" title="Cruceta con cuatro botones">CRUCETA</button>
+          <button type="button" class="direction-mode-option" data-direction-mode="mixed" aria-pressed="false" title="Palanca circular con ocho direcciones digitales">MIXTO</button>
+        </div>
         <span class="control-label" id="directionHint">ANALÓGICO · MOVIMIENTO PROPORCIONAL</span>
         <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Joystick analógico calibrado; arrastra desde el centro en cualquier dirección">
           <span class="joystick-label north">▲</span><span class="joystick-label east">▶</span><span class="joystick-label south">▼</span><span class="joystick-label west">◀</span>

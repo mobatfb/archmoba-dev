@@ -1,4 +1,4 @@
-# MULTIMANDO WEB v6.0.3 / Anfitrion Python v1.5.0
+# MULTIMANDO WEB v6.1.0 / Anfitrion Python v1.5.0
 
 Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de KOFMULTI.
 
@@ -130,3 +130,17 @@ Con v6.0.1 esto ya no deja el mando sin formato.
 - El CSS está embebido en palanca.php como respaldo: el diseño sigue funcionando aunque el hosting no sirva assets/palanca.css.
 - Misma configuración de teclas, perfiles guardados, conexión AUTO, WebSocket, Python 1.5, temporizadores y API. No hay cambios de protocolo.
 - ZIP completo sin carpeta contenedora MULTIMANDO/. Instalar directamente en la carpeta multimando de WAMP/hosting.
+
+
+## v6.1.0 - tres modos de movimiento
+
+Selector del mando: **ANALÓGICO / CRUCETA / MIXTO**.
+
+- ANALÓGICO: palanca circular proporcional; transmite ejes calibrados en paquetes binarios de 3 bytes (sin cambios).
+- CRUCETA: cuatro botones direccionales, permite diagonales por arrastre; utiliza u1/u0, d1/d0, i1/i0, e1/e0.
+- MIXTO: palanca circular con zona muerta (14 % en táctil), pero genera las mismas ocho direcciones DIGITALES de la cruceta; no transmite fuerza proporcional ni paquetes analógicos. Permite diagonales al arrastrar.
+- El anfitrión Python v1.5.0 recibe m1 en ANALÓGICO y m0 en CRUCETA o MIXTO; no se modifica Python ni Laravel.
+- La selección se recuerda localmente; versiones anteriores con modo CRUCETA o ANALÓGICO guardado siguen respetándose.
+- WASD + U/I/O (X/Y/L) + J/K/L (A/B/R) + Enter (START) + Retroceso (SELECT) no cambian.
+- Se conservan AUTO/manual, P1/P2, cola, temporizadores, joystick USB/Bluetooth, personalización y estilos integrados en palanca.php.
+- WEB COMPLETA: los 13 archivos están en la RAÍZ del ZIP, sin carpeta MULTIMANDO/.

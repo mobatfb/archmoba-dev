@@ -230,3 +230,13 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .action-zone { transform: translateY(11px); }
   .joystick-zone, .action-zone { gap: 3px; }
 }
+
+/* v6.1.0: tres modos, selector compacto sin sacrificar controles en movil. */
+.direction-mode-switch{display:inline-grid;grid-template-columns:repeat(3,max-content);align-items:center;justify-content:center;gap:3px;max-width:100%;min-height:29px;padding:3px;border-radius:10px;cursor:default}
+.direction-mode-option{border:1px solid transparent;border-radius:7px;background:transparent;color:#91b8d4;letter-spacing:.018em;font-size:10px;line-height:1.1;font-weight:850;min-width:0;min-height:23px;padding:4px 8px;white-space:nowrap;touch-action:manipulation;user-select:none;transition:background .12s,color .12s,border-color .12s}
+.direction-mode-option.selected,.direction-mode-option[aria-pressed="true"]{border-color:#63dff4;background:linear-gradient(135deg,#26597b,#164168);color:#d6faff;box-shadow:0 0 8px #2aa9cf3c}
+.direction-mode-option:hover:not(.selected){background:#234360;color:#e5f7ff}
+.direction-mode-option:focus-visible{outline:2px solid var(--outline);outline-offset:1px}
+@media(max-width:680px){.direction-mode-switch{gap:2px;min-height:25px;padding:2px}.direction-mode-option{font-size:clamp(6px,1.65vw,8.5px);padding:3px clamp(2px,.7vw,5px);min-height:19px;letter-spacing:0}}
+@media(max-width:680px) and (orientation:portrait){.direction-mode-switch{gap:1px;padding:2px 1px;max-width:100%}.direction-mode-option{font-size:clamp(6px,1.7vw,8px);padding:3px clamp(2px,.55vw,4px)}}
+@media(max-height:560px){.direction-mode-switch{min-height:21px;padding:1px}.direction-mode-option{min-height:17px;padding-top:2px;padding-bottom:2px}}
