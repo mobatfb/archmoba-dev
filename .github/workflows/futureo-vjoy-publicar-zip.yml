@@ -75,7 +75,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip
+          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip
           git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip.sha256
           git diff --cached --name-only
           git commit -m "FUTUREO VJOY: publicar ZIP de instalador firmado solo para laboratorio"
