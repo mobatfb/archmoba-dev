@@ -1,0 +1,102 @@
+name: FUTUREO VJOY - laboratorio firma y diagnostico por etapas
+on:
+  push:
+    paths:
+      - ".github/workflows/futureo-vjoy-lab-package-v2.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  firmar:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtener SDK WDK
+        shell: pwsh
+        run: |
+          nuget restore .\MULTIMANDO\FUTUREO_VJOY\packages.config -PackagesDirectory .\packages -NonInteractive
+          if($LASTEXITCODE -ne 0){throw "Falló restore WDK"}
+      - uses: microsoft/setup-msbuild@v2
+      - name: Compilar SYS
+        shell: pwsh
+        run: |
+          $d=Get-ChildItem .\packages -Recurse -File -Filter stampinf.exe | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1 -ExpandProperty DirectoryName
+          $d | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          msbuild .\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj /t:Rebuild "/p:Configuration=Release" "/p:Platform=x64" "/p:TargetVersion=Windows10" "/p:WindowsTargetPlatformVersion=10.0.28000.0" "/p:SignMode=Off" "/p:FUTJOY_COMPILE_ONLY=true" "/p:DriverTargetPlatform=Desktop" "/p:RunApiValidator=false" "/p:EnableInfVerif=false" /nologo /v:minimal
+          if($LASTEXITCODE -ne 0){throw "No se pudo compilar SYS"}
+      - name: Preparar archivos del paquete
+        shell: pwsh
+        run: |
+          $p=Join-Path (Get-Location) "FUTUREO_VJOY_LAB"
+          New-Item -ItemType Directory -Path $p -Force | Out-Null
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\x64\Release\FutJoy.sys" -Destination $p
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.inf" -Destination $p
+          $src=Join-Path $p "PYTHON"
+          New-Item -ItemType Directory -Path $src -Force | Out-Null
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\python\*.py" -Destination $src
+          $src=Join-Path $p "FUENTE_DRIVER"
+          New-Item -ItemType Directory -Path $src -Force | Out-Null
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.c" -Destination $src
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.h" -Destination $src
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj" -Destination $src
+          Copy-Item ".\MULTIMANDO\FUTUREO_VJOY\README.md" -Destination $src
+      - name: Crear certificado de prueba efimero
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=FUTUREO VJOY LAB TEST ONLY" -CertStoreLocation "Cert:\CurrentUser\My" -HashAlgorithm SHA256 -KeyExportPolicy NonExportable -KeyProtection None -NotAfter (Get-Date).AddMonths(3)
+          if(-not $cert){throw "No se pudo crear certificado"}
+          Export-Certificate -Cert $cert -FilePath ".\FUTUREO_VJOY_LAB\FUTUREO_VJOY_PRUEBA.cer" | Out-Null
+          Set-Content -Path ".\cert-thumbprint.txt" -Value $cert.Thumbprint -Encoding ascii
+          Write-Host "CERTIFICATE $($cert.Thumbprint)"
+      - name: Firmar archivo SYS
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $sign=Get-ChildItem .\packages -Recurse -Filter signtool.exe -File | Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } | Select-Object -First 1 -ExpandProperty FullName
+          if(-not $sign){throw "No se encontro signtool"}
+          $thumb=(Get-Content .\cert-thumbprint.txt -Raw).Trim()
+          & $sign sign /v /fd SHA256 /sha1 $thumb /s My ".\FUTUREO_VJOY_LAB\FutJoy.sys"
+          if($LASTEXITCODE -ne 0){throw "Firma SYS fallo"}
+      - name: Generar catalogo INF2CAT
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $tool=Get-ChildItem .\packages -Recurse -File -Filter Inf2Cat.exe | Where-Object { $_.FullName -match '\\x86\\Inf2Cat\.exe$' } | Select-Object -First 1 -ExpandProperty FullName
+          if(-not $tool){throw "No se encontro Inf2Cat"}
+          $p=(Resolve-Path .\FUTUREO_VJOY_LAB).Path
+          Write-Host "Generando CAT para $p"
+          & $tool /driver:$p /os:10_X64,10_GE_X64 /verbose
+          if($LASTEXITCODE -ne 0){throw "Inf2Cat fallo"}
+          if(-not (Test-Path ".\FUTUREO_VJOY_LAB\FutJoy.cat")){throw "Falta FutJoy.cat"}
+      - name: Firmar catalogo CAT
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $sign=Get-ChildItem .\packages -Recurse -Filter signtool.exe -File | Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } | Select-Object -First 1 -ExpandProperty FullName
+          $thumb=(Get-Content .\cert-thumbprint.txt -Raw).Trim()
+          & $sign sign /v /fd SHA256 /sha1 $thumb /s My ".\FUTUREO_VJOY_LAB\FutJoy.cat"
+          if($LASTEXITCODE -ne 0){throw "Firma CAT fallo"}
+      - name: Verificar firmas y hashes
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          Import-Certificate -FilePath ".\FUTUREO_VJOY_LAB\FUTUREO_VJOY_PRUEBA.cer" -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+          foreach($file in @(".\FUTUREO_VJOY_LAB\FutJoy.sys",".\FUTUREO_VJOY_LAB\FutJoy.cat")){
+            $sig=Get-AuthenticodeSignature $file
+            Write-Host "$file : $($sig.Status) : $($sig.SignerCertificate.Thumbprint)"
+            if($sig.Status -ne "Valid"){throw "Firma invalida $file"}
+          }
+          Get-ChildItem .\FUTUREO_VJOY_LAB -File | Where-Object { $_.Extension -in @(".sys",".inf",".cat",".cer") } |
+            Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content ".\FUTUREO_VJOY_LAB\SHA256SUMS.txt" -Encoding ascii
+          "Firmado solo para pruebas. NO usar en PC principal." | Set-Content ".\FUTUREO_VJOY_LAB\ATENCION_PRUEBAS.txt"
+      - name: Publicar archivos firmados de laboratorio
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO-VJOY-LAB-V2-TEST-SIGNED
+          path: FUTUREO_VJOY_LAB/
+          if-no-files-found: error
+          retention-days: 7
