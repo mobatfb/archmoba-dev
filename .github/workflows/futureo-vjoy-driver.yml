@@ -1,0 +1,49 @@
+name: FUTUREO VJOY - compilar driver KMDF
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/driver/**"
+      - "MULTIMANDO/FUTUREO_VJOY/packages.config"
+      - ".github/workflows/futureo-vjoy-driver.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  driver-windows:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar SDK y WDK oficiales (NuGet)
+        shell: pwsh
+        run: |
+          nuget restore .\MULTIMANDO\FUTUREO_VJOY\packages.config -PackagesDirectory .\packages -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw "No se pudieron descargar los paquetes WDK" }
+      - name: Configurar MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Compilar FutJoy.sys (sin firmar ni instalar)
+        shell: pwsh
+        run: |
+          msbuild .\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj /t:Rebuild "/p:Configuration=Release" "/p:Platform=x64" "/p:TargetVersion=Windows10" "/p:WindowsTargetPlatformVersion=10.0.28000.0" "/p:SignMode=Off" /nologo /v:normal /fl "/flp:LogFile=wdk-build.log;Verbosity=normal"
+          if ($LASTEXITCODE -ne 0) { throw "Falló la compilación WDK. Revisa wdk-build.log" }
+      - name: Comprobar binario
+        shell: pwsh
+        run: |
+          $drivers = @(Get-ChildItem .\MULTIMANDO\FUTUREO_VJOY\driver -Recurse -Filter FutJoy.sys -File)
+          if ($drivers.Count -eq 0) { throw "La compilación no produjo FutJoy.sys" }
+          $drivers | ForEach-Object { Write-Host "GENERADO: $($_.FullName) / bytes: $($_.Length)" }
+      - name: Guardar registro (siempre)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO-VJOY-registro-WDK
+          path: wdk-build.log
+          if-no-files-found: ignore
+      - name: Guardar binario experimental sin firma
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO-VJOY-SYS-EXPERIMENTAL-SIN-FIRMA
+          path: MULTIMANDO/FUTUREO_VJOY/driver/**/FutJoy.sys
+          if-no-files-found: error
+          retention-days: 7
