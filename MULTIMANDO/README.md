@@ -1,4 +1,4 @@
-# MULTIMANDO - Palanca web v5.1 (6 botones)
+# MULTIMANDO - Palanca web v5.2 (6 botones)
 
 Proyecto totalmente independiente de KOFMULTI. **PHP es sólo un mando remoto**: el anfitrión Python (a desarrollar) administra P1, P2, cola FIFO, usuarios y 10 minutos por turno sólo cuando exista cola.
 
@@ -46,3 +46,12 @@ La configuración guardada por el usuario en v4 se respeta en sus teclas persona
 ### Parche v5.1: SELECT en retroceso
 
 El valor predeterminado de SELECT pasa de `Digit5` a `Backspace`. Los perfiles anteriores conservan los ajustes personalizados; si SELECT seguía usando la tecla `5` predeterminada, se migra a Backspace automáticamente. Backspace mantiene su comportamiento normal al escribir en un campo de texto. El comando WebSocket para Python no cambia: `select`.
+
+### Parche v5.2: palanca visual con WASD y cruceta física
+
+- Al pulsar W/A/S/D, el círculo central de la palanca digital se desplaza hacia arriba, izquierda, abajo y derecha, aunque no se haya abierto una sala.
+- W+A, W+D, S+A y S+D muestran correctamente las diagonales, respetando simultáneamente los comandos que recibe el anfitrión.
+- El mismo indicador se mueve con cruceta D-pad y analógico izquierdo de un gamepad reconocido por el navegador.
+- Cuando un usuario conecta desde el campo de su nombre, se pasa el foco a la palanca para que WASD funcione sin un clic adicional; las teclas siguen escribiendo normalmente en los campos editables.
+- Al soltar, la palanca se recentra. Si el dedo se levanta pero una tecla continúa pulsada, representa la dirección que siga activa.
+- **Sólo PHP/control remoto:** Python seguirá administrando jugadores, puestos, cola y tiempos. No se cambiaron los comandos enviados.

@@ -15,7 +15,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
 <link rel="stylesheet" href="assets/palanca.css?v=5.0.0">
-<script src="control.php?v=5.1.0" defer></script>
+<script src="control.php?v=5.2.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -52,7 +52,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
     <div class="controls" id="controllerArea">
       <div class="joystick-zone">
         <span class="control-label">8 DIRECCIONES</span>
-        <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Palanca direccional táctil, arrastra para mover; usa también las flechas del teclado">
+        <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Palanca direccional; usa WASD, cruceta física o arrastra con el dedo o ratón">
           <span class="joystick-label north">▲</span><span class="joystick-label east">▶</span><span class="joystick-label south">▼</span><span class="joystick-label west">◀</span>
           <div class="joystick-grid" aria-hidden="true"></div>
           <div class="joystick-base" aria-hidden="true"><div class="joystick-thumb" id="joystickThumb"><span class="thumb-light"></span></div></div>
