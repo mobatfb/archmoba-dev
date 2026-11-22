@@ -32,7 +32,7 @@ jobs:
       - name: Compilar FutJoy.sys (sin firmar ni instalar)
         shell: pwsh
         run: |
-          msbuild .\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj /t:Rebuild "/p:Configuration=Release" "/p:Platform=x64" "/p:TargetVersion=Windows10" "/p:WindowsTargetPlatformVersion=10.0.28000.0" "/p:SignMode=Off" /nologo /v:normal /fl "/flp:LogFile=wdk-build.log;Verbosity=normal"
+          msbuild .\MULTIMANDO\FUTUREO_VJOY\driver\FutJoy.vcxproj /t:Rebuild "/p:Configuration=Release" "/p:Platform=x64" "/p:TargetVersion=Windows10" "/p:WindowsTargetPlatformVersion=10.0.28000.0" "/p:SignMode=Off" "/p:FUTJOY_COMPILE_ONLY=true" /nologo /v:normal /fl "/flp:LogFile=wdk-build.log;Verbosity=normal"
           if ($LASTEXITCODE -ne 0) { throw "Falló la compilación WDK. Revisa wdk-build.log" }
       - name: Comprobar binario
         shell: pwsh
