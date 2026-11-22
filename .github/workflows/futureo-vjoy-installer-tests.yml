@@ -1,0 +1,46 @@
+name: FUTUREO VJOY - comprobar instalador sin ejecutarlo
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/instalador_windows/**"
+      - ".github/workflows/futureo-vjoy-installer-tests.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  comprobar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar sintaxis de PowerShell
+        shell: powershell
+        run: |
+          $path = '.\MULTIMANDO\FUTUREO_VJOY\instalador_windows\HERRAMIENTAS\instalador.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path, [ref]$tokens, [ref]$errors) | Out-Null
+          if($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "ERROR PowerShell: $($_.Message) line $($_.Extent.StartLineNumber)" }
+            throw "El instalador tiene errores de sintaxis PowerShell"
+          }
+          Write-Host 'Sintaxis PowerShell correcta'
+      - name: Compilar envoltura CSharp de SetupAPI sin instalar
+        shell: powershell
+        run: |
+          $path = '.\MULTIMANDO\FUTUREO_VJOY\instalador_windows\HERRAMIENTAS\instalador.ps1'
+          $s = Get-Content $path -Raw
+          $match = [regex]::Match($s, '(?s)\$code=@''\s*\r?\n(.*?)\r?\n''@')
+          if(-not $match.Success) { throw "No se encontro codigo SetupAPI en instalador" }
+          Add-Type -TypeDefinition $match.Groups[1].Value -Language CSharp -ErrorAction Stop
+          if(-not ([type]::GetType("FutureoRootDevice"))) { Write-Host "Codigo CSharp compilado"; }
+      - name: Comprobar comandos BAT de instalacion y desinstalacion
+        shell: powershell
+        run: |
+          $dir='.\MULTIMANDO\FUTUREO_VJOY\instalador_windows'
+          foreach($name in @("INSTALAR.bat","INSTALAR_1_MANDO.bat","INSTALAR_8_MANDOS.bat","PREPARAR_MODO_PRUEBA.bat","DESINSTALAR.bat","DIAGNOSTICAR.bat","VOLVER_MODO_NORMAL.bat")) {
+            $p = Join-Path $dir $name
+            if(-not (Test-Path $p)) { throw "Falta: $name" }
+            $text=Get-Content $p -Raw
+            if($text -notmatch "instalador\.ps1" ) { throw "Sin referencia al instalador: $name" }
+          }
+          Write-Host "Entradas BAT correctas, sin modificaciones de Windows durante CI."
