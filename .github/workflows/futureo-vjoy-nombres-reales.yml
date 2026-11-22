@@ -1,4 +1,4 @@
-name: FUTUREO VJOY v0.6.0 - motor nombres HID reales
+name: FUTUREO VJOY v0.6.1 - nombres HID sin PLAYER
 on:
   push:
     paths:
@@ -45,6 +45,17 @@ jobs:
           if(-not $license -or -not $notice){throw "Licencias o avisos de terceros ausentes"}
           Copy-Item $license.FullName -Destination (Join-Path $proj 'HIDMAESTRO_LICENSE.txt')
           Copy-Item $notice.FullName -Destination (Join-Path $proj 'THIRD-PARTY-NOTICES.txt')
+      - name: Validar nombres HID sin PLAYER y nueva identidad de instancia
+        shell: pwsh
+        run: |
+          $source=Get-Content 'MULTIMANDO/FUTUREO_VJOY/motor_nombres_reales/Program.cs' -Raw
+          if($source -notmatch 'var nombre = \$"FUTUREO VJOY\{n\}";'){throw "Falta nuevo nombre"}
+          if($source -match ' - PLAYER '){throw "Todavia hay PLAYER en la aplicacion"}
+          if($source -notmatch 'ProductString\(nombre\)' -or $source -notmatch 'Name\(nombre\)'){throw "Name/ProductString no coinciden"}
+          if($source -notmatch 'futureo-v061-slot-'){throw "No se actualizo la identidad Windows v061"}
+          if($source -notmatch 'AddButtons\(16\)' -or $source -notmatch 'AddStick\("Left", bits: 16\)'){throw "Cambios no deseados en el gamepad"}
+          Write-Host "Comprobados: FUTUREO VJOY1..8 sin sufijo PLAYER, nuevo identificador de instancia, 16 botones, 2 ejes."
+
       - name: Compilar WinForms x64 sin instalar controladores
         shell: pwsh
         run: |
@@ -65,7 +76,7 @@ jobs:
             Copy-Item (Join-Path $src $name) -Destination $stage
           }
           $dir='MULTIMANDO/FUTUREO_VJOY/instalador_windows'
-          $name='FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip'
+          $name='FUTUREO_VJOY_v0_6_1_LAB_NOMBRES_LIMPIOS.zip'
           $zip=Join-Path $dir $name
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
           $size=(Get-Item $zip).Length
@@ -78,11 +89,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip
-          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip.sha256
+          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_1_LAB_NOMBRES_LIMPIOS.zip
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_1_LAB_NOMBRES_LIMPIOS.zip.sha256
           git diff --cached --quiet
           if($LASTEXITCODE -eq 0){throw "No se genero ZIP nuevo"}
-          git commit -m "FUTUREO VJOY v0.6.0 LAB: publicar motor con Product String por puesto"
+          git commit -m "FUTUREO VJOY v0.6.1 LAB: publicar nombres HID sin PLAYER"
           if($LASTEXITCODE -ne 0){throw "Fallo commit"}
           git push origin HEAD:main
           if($LASTEXITCODE -ne 0){throw "Fallo push"}

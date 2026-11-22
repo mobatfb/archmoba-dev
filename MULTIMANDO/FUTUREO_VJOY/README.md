@@ -1,3 +1,26 @@
+## FUTUREO VJOY v0.6.1 LAB - nombres limpios
+
+**[Descarga directa del ZIP v0.6.1](instalador_windows/FUTUREO_VJOY_v0_6_1_LAB_NOMBRES_LIMPIOS.zip)**
+
+El usuario confirmo que v0.6.0 funciona y los 4 mandos aparecen en Windows
+con nombres propios. Esta actualizacion **solo elimina el sufijo
+`- PLAYER n` del nombre visible**. Quedan
+`FUTUREO VJOY1`, `FUTUREO VJOY2`, ... `FUTUREO VJOY8`.
+
+Se mantienen 8 controles independientes, 16 botones y 2 ejes por control.
+Se conserva el motor HIDMaestro UMDF2 (VID F7A0, PID 2201..2208);
+no se borra, instala ni modifica ningun dispositivo VHF anterior.
+Se cambia la clave de identidad de instancia de este prototipo a `v061`
+para reducir la reutilizacion del nombre anterior por la cache PnP de Windows.
+
+**Uso:** cierra por completo la aplicacion v0.6.0, extrae el ZIP v0.6.1
+en otra carpeta, ejecuta `FUTUREO_NOMBRES_REALES.exe` y crea los mandos
+como en la version anterior. El boton PREPARAR MOTOR sigue mostrando el
+consentimiento para el controlador externo; no elude UAC ni protecciones.
+Comprueba los nombres en `joy.cpl` o Steam. No se garantiza la
+actualizacion del nombre que haya quedado guardado en algun juego;
+el ZIP v0.6.0 permanece disponible como respaldo.
+
 ## FUTUREO VJOY v0.6.0 LAB: motor alternativo con nombres HID reales
 
 **[Descargar ZIP LAB v0.6.0 (despues de publicacion de GitHub Actions)](instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip)**

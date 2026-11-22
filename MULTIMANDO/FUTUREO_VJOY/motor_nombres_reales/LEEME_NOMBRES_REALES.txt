@@ -1,4 +1,4 @@
-FUTUREO VJOY - v0.6.0 LAB - MOTOR ALTERNATIVO DE NOMBRES REALES
+FUTUREO VJOY - v0.6.1 LAB - MOTOR ALTERNATIVO DE NOMBRES REALES
 =================================================================
 EXCLUSIVAMENTE equipo secundario de laboratorio; Windows 10/11 x64.
 
@@ -9,10 +9,10 @@ de la v0.5.1 y v0.5.2 no hicieron cambiar los nombres en joy.cpl.
 PRUEBA NUEVA:
 Este programa usa HIDMaestro v2.3.0, software independiente, MIT.
 Crea 1..8 controladores virtuales HID con Product String propio:
-  P1 - FUTUREO VJOY1 - PLAYER 1 (VID F7A0, PID 2201)
-  P2 - FUTUREO VJOY2 - PLAYER 2 (VID F7A0, PID 2202)
-  P3 - FUTUREO VJOY3 - PLAYER 3 (VID F7A0, PID 2203)
-  P4 - FUTUREO VJOY4 - PLAYER 4 (VID F7A0, PID 2204)
+  P1 - FUTUREO VJOY1 (VID F7A0, PID 2201)
+  P2 - FUTUREO VJOY2 (VID F7A0, PID 2202)
+  P3 - FUTUREO VJOY3 (VID F7A0, PID 2203)
+  P4 - FUTUREO VJOY4 (VID F7A0, PID 2204)
   P5-P8 analogamente hasta PID 2208.
 Ejes X/Y y 16 botones. MOTOR DISTINTO: no usa FutJoy.sys.
 No conecta todavia con MULTIMANDO: es un ensayo para demostrar nombres
@@ -54,3 +54,13 @@ HIDMaestro, version 2.3.0 (licencia MIT), de hifihedgehog.
 https://github.com/hifihedgehog/HIDMaestro
 No es proyecto ni driver oficial de Microsoft ni OpenAI.
 Repositorio FUTUREO original conserva sus ZIP v0.5.1/0.5.2.
+
+NOTAS DE ACTUALIZACION v0.6.1:
+- El nombre HID incluye solamente FUTUREO VJOY1, FUTUREO VJOY2, etc.
+- Se usa una identidad de instancia nueva v061 para evitar que Windows
+  reutilice la etiqueta cacheada de la prueba v0.6.0.
+- Antes de abrir v0.6.1, cierra por completo la aplicacion v0.6.0.
+- NO es necesario borrar ni reinstalar manualmente los dispositivos VHF
+  anteriores: su administracion queda a cargo del usuario.
+- No se cambia VID/PID, ejes, botones, ni el controlador externo instalado.
+- Esta prueba no desinstala HIDMaestro ni altera los mandos antiguos.

@@ -52,7 +52,7 @@ internal sealed class LabForm : Form
 
     public LabForm()
     {
-        Text = "FUTUREO VJOY v0.6.0 LAB - NOMBRES REALES (motor independiente)";
+        Text = "FUTUREO VJOY v0.6.1 LAB - NOMBRES REALES (motor independiente)";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(860, 675);
         MinimumSize = new Size(730, 600);
@@ -210,9 +210,9 @@ internal sealed class LabForm : Form
     private static HMProfile Perfil(int n)
     {
         // PIDs 2201..2208 NO coinciden con los originales de VHF, 2101..2108.
-        var nombre = $"FUTUREO VJOY{n} - PLAYER {n}";
+        var nombre = $"FUTUREO VJOY{n}";
         return new HMProfileBuilder()
-            .Id($"futureo-lab-namefix-p{n}")
+            .Id($"futureo-lab-v061-p{n}")
             .Name(nombre)
             .Vendor("FUTUREO LAB")
             .Vid(0xF7A0).Pid((ushort)(0x2200 + n))
@@ -246,7 +246,7 @@ internal sealed class LabForm : Form
                     for (int slot = 1; slot <= n; slot++)
                     {
                         resultado[slot] = motor.CreateController(
-                            Perfil(slot), $"futureo-namefix-slot-{slot}", HMBackend.Umdf2);
+                            Perfil(slot), $"futureo-v061-slot-{slot}", HMBackend.Umdf2);
                     }
                     return resultado;
                 }
@@ -260,7 +260,7 @@ internal sealed class LabForm : Form
             elegido.Maximum = n;
             Log($"CREADOS: {mandos.Count} mandos. Abre joy.cpl y revisa FUTUREO VJOY1...VJOY{n}.");
             for (int i = 1; i <= n; i++)
-                Log($"P{i}: VID F7A0 / PID {0x2200+i:X4} / FUTUREO VJOY{i} - PLAYER {i}");
+                Log($"P{i}: VID F7A0 / PID {0x2200+i:X4} / FUTUREO VJOY{i}");
         }
         catch (Exception ex) { Error(ex); }
         finally { SetBusy(false); }
