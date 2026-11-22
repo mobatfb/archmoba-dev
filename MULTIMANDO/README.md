@@ -1,10 +1,10 @@
-# MULTIMANDO WEB v6.0.1 / Anfitrion Python v1.5.0
+# MULTIMANDO WEB v6.0.3 / Anfitrion Python v1.5.0
 
 Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de KOFMULTI.
 
 ## Instalacion completa de la WEB (WAMP o hosting PHP)
 
-1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_0_1_SIN_CARPETA.zip` SIN carpeta contenedora.
+1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_0_3_SIN_CARPETA.zip` SIN carpeta contenedora.
 2. Crea una carpeta `multimando/` en el hosting o WAMP y sube A SU INTERIOR
    directamente `index.php`, `palanca.php`, `control.php`, `config.php`, `sala.php`,
    `.htaccess`, y las carpetas `assets/` y `private/`. En WAMP, por ejemplo:
@@ -121,3 +121,12 @@ NO cambia el JS cifrado, las teclas, el modo analogico/cruceta, P1/P2 ni Python.
 DIAGNOSTICO: abre en el navegador `/multimando/assets/palanca.css?v=6.0.0`;
 si devuelve HTML o 404, faltan archivos o hay una reescritura del hosting.
 Con v6.0.1 esto ya no deja el mando sin formato.
+
+## v6.0.3: controles equilibrados en móviles
+
+- En móviles en orientación vertical los mandos permanecen lado a lado, también en pantallas altas (sin pasar a una columna).
+- La palanca/cruceta se desplaza ligeramente arriba y las seis acciones X Y L / A B R ligeramente abajo, conforme a la referencia.
+- Joystick y cruceta conservan proporción cuadrada en teléfonos estrechos; SELECT/START siguen accesibles.
+- El CSS está embebido en palanca.php como respaldo: el diseño sigue funcionando aunque el hosting no sirva assets/palanca.css.
+- Misma configuración de teclas, perfiles guardados, conexión AUTO, WebSocket, Python 1.5, temporizadores y API. No hay cambios de protocolo.
+- ZIP completo sin carpeta contenedora MULTIMANDO/. Instalar directamente en la carpeta multimando de WAMP/hosting.

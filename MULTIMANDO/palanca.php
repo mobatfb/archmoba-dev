@@ -41,7 +41,7 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
 @media(max-height:560px){:root{--key-size:clamp(43px,min(18vw,17dvh),115px);--stick-size:min(39vw,44dvh,330px)}.app-shell{gap:5px;padding:5px 0}.app-header{min-height:32px}.brand-mark{width:30px;height:30px;font-size:19px}.brand strong{font-size:15px}.brand small{font-size:7px;margin-top:1px}.connection-pill{padding:5px 9px}.connect-panel{padding:5px 8px}.nickname-field input,.connect-btn,.disconnect-btn,.manual-connection summary{height:31px}.status-hud .stat{padding:5px 10px}.stat strong{font-size:20px}.stat small{font-size:9px}.deck-header{padding:5px 10px}.deck-footer{padding:5px 10px}.controls{padding:4px}.joystick-zone,.action-zone{gap:4px}.control-label,.micro-hint{font-size:8px}.aux-btn{height:28px}.action-buttons{gap:5px}}
 @media(max-width:340px){.connect-btn,.disconnect-btn{padding:0 6px;font-size:9px}.brand strong{font-size:13px}.connection-pill{font-size:7px}.stat small{font-size:8px}.micro-hint{display:none}.deck-footer p{font-size:9px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
-@media(max-width:600px) and (min-height:720px){:root{--stick-size:min(57vw,26dvh,244px);--key-size:clamp(65px,min(22vw,10dvh),94px)}.controls{grid-template-columns:1fr;grid-template-rows:1fr 1.04fr;gap:6px;padding:6px 4px}.joystick-zone,.action-zone{gap:5px}.action-buttons{width:min(100%,clamp(210px,74vw,300px));gap:8px}.aux-buttons{gap:12px}.micro-hint{font-size:8px}}
+@media(max-width:600px) and (min-height:720px){:root{--stick-size:min(57vw,26dvh,244px);--key-size:clamp(65px,min(22vw,10dvh),94px)}.controls{grid-template-columns:1fr;grid-template-rows:auto auto;align-content:start;gap:2px;padding:4px 4px 8px}.joystick-zone{gap:4px;margin-top:-14px}.action-zone{gap:5px;margin-top:18px}.action-buttons{width:min(100%,clamp(210px,74vw,300px));gap:8px}.aux-buttons{gap:12px}.micro-hint{font-size:8px}}
 
 /* Preferencia de teclas: configuración local del jugador, sin administración. */
 .keys-config-btn{display:inline-flex;align-items:center;justify-content:center;height:28px;min-width:55px;padding:0 8px;border:1px solid #5bc6dc;border-radius:8px;background:#143650;color:#80e4f9;font-size:9px;font-weight:900;letter-spacing:.045em;white-space:nowrap}
@@ -196,7 +196,51 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
 .dpad-center span{width:29%;height:29%;border-radius:50%;border:2px solid #71d9f7;background:#16334b;box-shadow:0 0 10px #3dd4ff44}
 @media(max-width:680px){.direction-mode-switch{padding:2px 5px;gap:5px;min-height:23px}.mode-name{font-size:8px}.mode-track{width:31px;height:16px}.mode-knob{width:10px;height:10px}.direction-mode-switch input:checked + .mode-track .mode-knob{transform:translateX(14px)}.dpad-frame{gap:3%;padding:4%}.dpad-key{font-size:clamp(12px,4.2vw,21px)}}
 @media(max-height:560px){.direction-mode-switch{min-height:20px;padding:1px 5px}.mode-name{font-size:8px}.mode-track{height:15px}.mode-knob{width:9px;height:9px}.dpad-frame{border-radius:20%}}
-@media(max-width:600px) and (min-height:720px){.direction-mode-switch{min-height:23px}.joystick-zone{gap:4px}}
+@media(max-width:600px) and (min-height:720px){.direction-mode-switch{min-height:23px}.joystick-zone{gap:4px;margin-top:-14px}.action-zone{margin-top:18px}}
+
+/* v6.0.3: móvil vertical equilibrado: cruceta arriba, botones abajo.
+   Ambas zonas siguen en paralelo, incluso en móviles de pantalla alta. */
+@media (max-width: 680px) and (orientation: portrait) {
+  :root { --stick-size: min(44vw, 26dvh, 205px); }
+  .controls {
+    grid-template-columns: minmax(0, 1.01fr) minmax(0, .99fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
+    align-content: stretch;
+    justify-items: stretch;
+    gap: clamp(5px, 2vw, 12px);
+    padding: 7px 5px;
+  }
+  .joystick-zone, .action-zone {
+    min-width: 0;
+    margin-top: 0;
+    justify-content: center;
+    gap: 5px;
+  }
+  .joystick-zone { transform: translateY(clamp(-46px, -5.5dvh, -14px)); }
+  .action-zone { transform: translateY(clamp(16px, 5.2dvh, 46px)); }
+  .dpad-frame, .joystick-frame {
+    width: min(100%, var(--stick-size));
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .direction-mode-switch { max-width: 100%; gap: 3px; padding: 2px 3px; }
+  .mode-name { font-size: clamp(7px, 1.8vw, 9px); letter-spacing: 0; }
+  .mode-track { width: 30px; height: 16px; }
+  .action-buttons { width: min(100%, 175px); gap: clamp(4px, 1.1vw, 7px); }
+  .action-btn { border-width: clamp(2px, .6vw, 3px); font-size: clamp(17px, 4.5vw, 25px); }
+  .aux-buttons { gap: 6px; }
+  .aux-btn { width: min(47%, 98px); height: clamp(28px, 4.5dvh, 36px); }
+  .micro-hint { white-space: normal; text-align: center; max-width: 100%; font-size: clamp(6px, 1.7vw, 8px); }
+  .control-label { white-space: normal; text-align: center; font-size: clamp(7px, 2vw, 9px); }
+}
+/* Ajustes extra para teléfonos muy pequeños, sin ocultar START/SELECT. */
+@media (max-width: 680px) and (orientation: portrait) and (max-height: 600px) {
+  :root { --stick-size: min(42vw, 25dvh, 160px); }
+  .joystick-zone { transform: translateY(-8px); }
+  .action-zone { transform: translateY(11px); }
+  .joystick-zone, .action-zone { gap: 3px; }
+}
 MULTIMANDO_CSS_FALLBACK;
 $cssFile = __DIR__ . '/assets/palanca.css';
 if (is_readable($cssFile)) {
@@ -216,7 +260,7 @@ if (is_readable($cssFile)) {
 <title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
-<script src="control.php?v=6.0.0" defer></script>
+<script src="control.php?v=6.0.3" defer></script>
 </head>
 <body>
 <main class="app-shell">
