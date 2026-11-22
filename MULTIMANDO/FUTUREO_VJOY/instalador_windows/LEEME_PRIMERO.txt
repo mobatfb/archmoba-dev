@@ -1,6 +1,6 @@
 FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
 =====================================================
-Version: LAB v0.5.1; Windows 10/11 x64; 22-11-2026.
+Version: LAB v0.5.2; Windows 10/11 x64; 22-11-2026.
 
 OBJETIVO
 --------
@@ -176,3 +176,16 @@ aceptar UAC y confirmacion. Cerrar y abrir joy.cpl (no cambia HID interno).
 VER ETIQUETAS consulta el Registro sin modificarlo.
 RESTAURAR NOMBRES recupera los valores anteriores del respaldo.
 No reinstalar SYS/CAT de prueba ni modificar hashes.
+
+
+PRUEBA DE NOMBRES PNP v0.5.2 (REVERSIBLE)
+---------------------------------------
+No requiere reinstalar los 4 controles P1..P4 ya instalados.
+La GUI incluye VER NOMBRES PnP (solo lectura), PROBAR NOMBRES PnP
+(UAC; escribe FriendlyName en los dispositivos hijos HID verificables)
+y RESTAURAR PnP (recupera los valores anteriores desde un respaldo).
+Se comprueba el VID/PID y la ascendencia ROOT\\FUTJOY01..08 antes de escribir.
+No altera los drivers, firmas ni descriptores HID; no desactiva protecciones.
+Esta es una PRUEBA: joy.cpl puede seguir mostrando el nombre generico VHF,
+porque la cadena HID Product String no admite este cambio por SetupAPI.
+Si falla o no cambia el nombre, restaurar y enviar el diagnostico de la GUI.

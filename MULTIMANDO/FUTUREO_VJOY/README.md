@@ -1,3 +1,34 @@
+## FUTUREO VJOY v0.5.2 LAB - prueba de nombres PnP sin cambiar el SYS
+
+**[ZIP v0.5.2: prueba de nombres PnP (publicado por GitHub Actions)](instalador_windows/FUTUREO_VJOY_v0_5_2_LAB_NOMBRES_PNP.zip)**
+
+La captura del usuario confirmo **4 mandos HID** en `joy.cpl`,
+pero Windows muestra el mismo nombre de VHF en los cuatro. No convertimos
+los mandos en un solo control: se mantienen P1..P8 como dispositivos
+separados con VID/PID distintos.
+
+- **PROBAR NOMBRES PnP** (nuevo): usa
+  `SetupDiSetDeviceRegistryPropertyW` / `SPDRP_FRIENDLYNAME`
+  sobre los hijos HID de FUTUREO verificados por **ascendencia PnP
+  `ROOT\\FUTJOY01..08`**. Requiere UAC y confirmacion explicita.
+- **VER NOMBRES PnP**: consulta el `FriendlyName` sin modificar Windows.
+- **RESTAURAR PnP**: revierte solamente los nombres que la prueba modifico;
+  el respaldo esta en `%LOCALAPPDATA%\\FUTUREO_VJOY\\pnp_names_backup.json`.
+- La opcion anterior **ETIQUETAR OEM (DirectInput)** permanece disponible y
+  conserva respaldos independientes. Para usarla en P1..P4,
+  seleccionar Cantidad=4, aceptar UAC, y cerrar/reabrir `joy.cpl`.
+- **No se cambia FutJoy.sys, FutJoy.cat, certificados, INF, reportes HID,
+  ni se instala/desinstala el driver al probar nombres PnP.**
+- `SPDRP_FRIENDLYNAME` es un nombre PnP, no el `HID Product String`.
+  **No esta demostrado que `joy.cpl` lo respete** con VHF.
+  Windows puede seguir mostrando el nombre generico; si ocurre,
+  restaurar PnP y documentar la prueba en lugar de modificar el SYS.
+
+Prueba recomendada: instalar la GUI del ZIP sin ejecutar INSTALAR.bat,
+verificar primero en **VER NOMBRES PnP**, usar PROBAR para 4 puestos,
+cerrar/reabrir `joy.cpl`; si no cambia, usar RESTAURAR PnP.
+Se preserva v0.5.1 funcional como rollback.
+
 ## FUTUREO VJOY v0.5.1 - identificacion visual P1-P8 (LAB)
 
 **[Descargar paquete v0.5.1 tras publicacion de GitHub Actions](instalador_windows/FUTUREO_VJOY_v0_5_1_LAB_IDENTIFICACION_P1_P8.zip)**

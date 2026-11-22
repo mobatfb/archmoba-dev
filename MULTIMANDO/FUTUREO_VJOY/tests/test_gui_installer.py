@@ -86,5 +86,17 @@ class GUIInstallerTests(unittest.TestCase):
         self.assertIn("No cambia las cadenas HID internas", self.source)
 
 
+    def test_gui_can_try_pnp_names_without_driver_reinstall(self):
+        self.assertIn("PROBAR NOMBRES PnP", self.source)
+        self.assertIn("VER NOMBRES PnP", self.source)
+        self.assertIn("RESTAURAR PnP", self.source)
+        self.assertIn('with_name("nombres_pnp.py")', self.source)
+        self.assertIn('["--apply", "--count", str(quantity)]', self.source)
+        self.assertIn('["--restore"]', self.source)
+        self.assertIn('["--status", "--count", "8"]', self.source)
+        self.assertIn("No esta garantizado que joy.cpl adopte este nombre", self.source)
+
+
+
 if __name__ == "__main__":
     unittest.main()

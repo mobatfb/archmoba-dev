@@ -71,9 +71,9 @@ def ask_elevation_for_labels() -> bool:
 class App:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("FUTUREO VJOY - ADMINISTRADOR (EXPERIMENTAL)")
-        self.root.geometry("880x730")
-        self.root.minsize(700, 620)
+        self.root.title("FUTUREO VJOY - ADMINISTRADOR v0.5.2 (LAB)")
+        self.root.geometry("910x800")
+        self.root.minsize(760, 700)
         self.root.configure(bg="#0d1b30")
         self.count = tk.IntVar(value=1)
         self.slot = tk.IntVar(value=1)
@@ -126,9 +126,14 @@ class App:
         ttk.Button(bar,text="VER IDENTIDAD HID",command=self.diagnostico_hid).pack(side="left",padx=8)
         namebar=tk.Frame(self.root,bg="#0d1b30")
         namebar.pack(pady=3)
-        ttk.Button(namebar,text="ETIQUETAR EN WINDOWS",command=self.labels_apply).pack(side="left",padx=8)
-        ttk.Button(namebar,text="VER ETIQUETAS",command=self.labels_status).pack(side="left",padx=8)
-        ttk.Button(namebar,text="RESTAURAR NOMBRES",command=self.labels_restore).pack(side="left",padx=8)
+        ttk.Button(namebar,text="ETIQUETAR OEM (DirectInput)",command=self.labels_apply).pack(side="left",padx=8)
+        ttk.Button(namebar,text="VER ETIQUETAS OEM",command=self.labels_status).pack(side="left",padx=8)
+        ttk.Button(namebar,text="RESTAURAR OEM",command=self.labels_restore).pack(side="left",padx=8)
+        pnpbar=tk.Frame(self.root,bg="#0d1b30")
+        pnpbar.pack(pady=3)
+        ttk.Button(pnpbar,text="PROBAR NOMBRES PnP",command=self.pnp_apply).pack(side="left",padx=8)
+        ttk.Button(pnpbar,text="VER NOMBRES PnP",command=self.pnp_status).pack(side="left",padx=8)
+        ttk.Button(pnpbar,text="RESTAURAR PnP",command=self.pnp_restore).pack(side="left",padx=8)
         tk.Label(self.root,
             text="Los 8 puestos NO estan necesariamente instalados. Selecciona P1..P8,"
                  " abre Propiedades en joy.cpl y pulsa IDENTIFICAR para observar cual se mueve.",
@@ -163,6 +168,46 @@ class App:
             finally:
                 self.results.put(("refresh_done", ""))
         threading.Thread(target=worker, daemon=True).start()
+
+    def pnp_status(self):
+        """Consultar los nombres FriendlyName reales de los hijos HID verificables."""
+        self._run_pnp(["--status", "--count", "8"])
+
+    def pnp_apply(self):
+        if not ask_elevation_for_labels():
+            return
+        quantity = self.count.get()
+        if not messagebox.askyesno(
+            "FUTUREO: PRUEBA DE NOMBRES PnP",
+            f"Probar FriendlyName para hijos HID verificados P1..P{quantity}?\n"
+            "Windows solicitara permisos. Se respaldaran nombres originales.\n"
+            "NO cambia el driver ni el nombre HID interno de VHF.\n"
+            "No esta garantizado que joy.cpl adopte este nombre."):
+            return
+        self._run_pnp(["--apply", "--count", str(quantity)])
+
+    def pnp_restore(self):
+        if not ask_elevation_for_labels():
+            return
+        if messagebox.askyesno("Restaurar nombres PnP",
+                               "Restaurar solo las propiedades cambiadas por FUTUREO?"):
+            self._run_pnp(["--restore"])
+
+    def _run_pnp(self, args):
+        script=Path(__file__).with_name("nombres_pnp.py")
+        def worker():
+            result=subprocess.run(
+                [sys.executable,str(script),*args], capture_output=True,
+                text=True, errors="replace", timeout=120,
+                creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+            message=(result.stdout or result.stderr).strip()
+            if result.returncode:
+                raise RuntimeError((result.stderr or message)[-650:])
+            if "--status" in args:
+                self.results.put(("diagnostic", message))
+            else:
+                self.results.put(("info", message[-550:]))
+        self.background(worker)
 
     def labels_apply(self):
         if not ask_elevation_for_labels():
