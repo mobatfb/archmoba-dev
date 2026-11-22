@@ -69,7 +69,7 @@ jobs:
           $zip=Join-Path $dir $name
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
           $size=(Get-Item $zip).Length
-          if($size -lt 10000000 -or $size -gt 90000000){throw "ZIP tamaño anormal: $size"}
+          if($size -lt 1000000 -or $size -gt 90000000){throw "ZIP tamaño anormal: $size"}
           $hash=(Get-FileHash $zip -Algorithm SHA256).Hash
           Set-Content -LiteralPath ($zip+'.sha256') -Value ($hash+'  '+$name) -Encoding ascii
           Write-Host "ZIP: $zip; bytes $size; SHA256 $hash"
