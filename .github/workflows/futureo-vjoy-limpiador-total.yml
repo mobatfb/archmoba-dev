@@ -1,0 +1,129 @@
+name: FUTUREO VJOY - generar ZIP de limpiador total LAB
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/limpiador_total/**"
+      - ".github/workflows/futureo-vjoy-limpiador-total.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publicar:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Obtener desinstalador oficial HIDMaestro 2.3.0 (SHA256)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = Join-Path $env:RUNNER_TEMP 'hidmaestro-source'
+          New-Item -Path $dir -ItemType Directory -Force | Out-Null
+          gh release download v2.3.0 -R hifihedgehog/HIDMaestro -p 'HIDMaestro-v2.3.0.zip' -D $dir
+          if($LASTEXITCODE -ne 0){throw "No se pudo descargar HIDMaestro oficial"}
+          $zip=Join-Path $dir 'HIDMaestro-v2.3.0.zip'
+          $expected='FDDB61B76D076AA2CF508A46C1E30E23AA75B4AE622D52B15E7259959FD12295'
+          if((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected){
+            throw "La distribucion HIDMaestro no coincide con SHA256"
+          }
+          $expand=Join-Path $dir 'expanded'
+          Expand-Archive -LiteralPath $zip -DestinationPath $expand -Force
+          $uninstaller=Get-ChildItem -LiteralPath $expand -Recurse -File -Filter 'HIDMaestroUninstall.exe' |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if(-not $uninstaller -or $uninstaller.Length -lt 100000){
+            throw "Falta HIDMaestroUninstall.exe en distribucion"
+          }
+          $license=Get-ChildItem -LiteralPath $expand -Recurse -File |
+            Where-Object { $_.Name -in @('LICENSE', 'LICENSE.txt') } |
+            Select-Object -First 1
+          $notices=Get-ChildItem -LiteralPath $expand -Recurse -File -Filter 'THIRD-PARTY-NOTICES.txt' |
+            Select-Object -First 1
+          if(-not $license -or -not $notices){throw "Falta licencia/avisos HIDMaestro"}
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-cleaner'
+          New-Item -Path $stage -ItemType Directory -Force | Out-Null
+          Copy-Item -LiteralPath $uninstaller.FullName -Destination (Join-Path $stage 'HIDMaestroUninstall.exe')
+          Copy-Item -LiteralPath $license.FullName -Destination (Join-Path $stage 'LICENCIA_HIDMAESTRO.txt')
+          Copy-Item -LiteralPath $notices.FullName -Destination (Join-Path $stage 'THIRD-PARTY-NOTICES.txt')
+          Write-Host "HIDMaestro v2.3.0 verificado. EXE: $($uninstaller.Length) bytes."
+
+      - name: Comprobar sintaxis PowerShell, alcance y consentimiento
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $folder='MULTIMANDO/FUTUREO_VJOY/limpiador_total'
+          $path=Join-Path $folder 'FUTUREO_LIMPIAR_VHF.ps1'
+          $tokens=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).Path,[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count -gt 0){
+            $errors | ForEach-Object { Write-Host ("PowerShell ERROR: " + $_.Message) }
+            throw "Sintaxis del limpiador VHF invalida"
+          }
+          $src=Get-Content -LiteralPath $path -Raw
+          $gui=Get-Content -LiteralPath (Join-Path $folder 'Program.cs') -Raw
+          $manifest=Get-Content -LiteralPath (Join-Path $folder 'app.manifest') -Raw
+          if($src -notmatch 'FUTJOY0\[1-8\]' -or $src -notmatch 'rootPattern') {throw "Falta filtro de ROOT"}
+          if($src -notmatch "ProviderName -eq 'FUTUREO'") {throw "No se comprueba el proveedor"}
+          if($src -notmatch 'D09A97E4E02004E08CB6998E1604F7383E268469') {throw "Falta huella precisa"}
+          if($src -match '(?i)\s/force\b' -or $src -match '(?i)\b(?:sc|bcdedit)\.exe\b') {
+            throw "Detectada operacion amplia/de arranque no permitida"
+          }
+          if($gui -notmatch 'LIMPIAR FUTUREO' -or $gui -notmatch 'ESCANEAR SIN BORRAR') {
+            throw "Falta vista previa y confirmacion"
+          }
+          if($gui -notmatch 'RunMaestro\("--preview"\)' -or $gui -notmatch 'RunMaestro\("--yes"\)') {
+            throw "Faltan operaciones oficiales HIDMaestro"
+          }
+          if($manifest -notmatch 'requestedExecutionLevel level="requireAdministrator"') {
+            throw "No se solicita UAC"
+          }
+          Write-Host 'Sintaxis y limites validados; no se desinstalo nada.'
+
+      - name: Compilar ejecutable Windows con UAC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $folder='MULTIMANDO/FUTUREO_VJOY/limpiador_total'
+          $out=Join-Path $env:RUNNER_TEMP 'futureo-publish'
+          dotnet publish (Join-Path $folder 'FUTUREO_LIMPIADOR_TOTAL.csproj') -c Release -r win-x64 --self-contained false -o $out
+          if($LASTEXITCODE -ne 0){throw "FUTUREO limpiador no compilo"}
+          foreach($name in @('FUTUREO_LIMPIADOR_TOTAL.exe',
+                              'FUTUREO_LIMPIADOR_TOTAL.dll',
+                              'FUTUREO_LIMPIADOR_TOTAL.runtimeconfig.json')){
+            if(-not (Test-Path (Join-Path $out $name))){throw "Falta $name"}
+          }
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-cleaner'
+          Copy-Item -Path (Join-Path $out '*') -Destination $stage -Recurse -Force
+          Copy-Item -Path (Join-Path $folder 'FUTUREO_LIMPIAR_VHF.ps1') -Destination $stage
+          Copy-Item -Path (Join-Path $folder 'LEEME_LIMPIADOR.txt') -Destination $stage
+          Write-Host 'EXE compilado; no se han borrado controladores.'
+
+      - name: Empaquetar y publicar ZIP mas SHA256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-cleaner'
+          $target='MULTIMANDO/FUTUREO_VJOY/instalador_windows'
+          $name='FUTUREO_VJOY_LIMPIADOR_TOTAL_v1_0_0_LAB.zip'
+          $zip=Join-Path $target $name
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          $size=(Get-Item $zip).Length
+          if($size -lt 100000 -or $size -gt 90000000){throw "ZIP sospechoso ($size bytes)"}
+          $hash=(Get-FileHash $zip -Algorithm SHA256).Hash
+          Set-Content -Path ($zip+'.sha256') -Encoding ascii -Value ($hash+'  '+$name)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f -- $zip
+          git add -- ($zip+'.sha256')
+          git diff --cached --quiet
+          if($LASTEXITCODE -eq 0){throw "ZIP nuevo ausente"}
+          git commit -m 'FUTUREO VJOY: publicar limpiador total LAB con vista previa'
+          if($LASTEXITCODE -ne 0){throw "No se pudo crear commit"}
+          git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){throw "No se pudo subir ZIP"}
+          Write-Host "ZIP publicado: $zip ($size bytes, SHA256 $hash)"

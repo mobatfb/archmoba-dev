@@ -1,0 +1,83 @@
+FUTUREO VJOY - LIMPIADOR TOTAL DE LABORATORIO v1.0
+==================================================
+SOLO WINDOWS 10/11 x64 / EQUIPO SECUNDARIO DE PRUEBA
+
+ARCHIVOS DEL PAQUETE
+  FUTUREO_LIMPIADOR_TOTAL.exe      Interfaz visual de limpieza
+  FUTUREO_LIMPIAR_VHF.ps1          Limpieza dirigida de FUTJOY VHF
+  HIDMaestroUninstall.exe          Desinstalador oficial HIDMaestro v2.3.0
+  LICENCIA_HIDMAESTRO.txt          Licencia de HIDMaestro
+  THIRD-PARTY-NOTICES.txt          Avisos del motor externo
+  LEEME_LIMPIADOR.txt              Este manual
+
+REQUISITOS
+- Extrae el ZIP COMPLETO. No ejecutes el EXE desde la vista previa.
+- Windows 10/11 x64 y .NET Desktop Runtime 10 x64. La version
+  FUTUREO v0.6.0 que funciono ya usaba este mismo Runtime.
+- Aceptar UAC para administrar controladores.
+- Cierra FUTUREO v0.6.0/v0.6.1, Steam y joy.cpl antes del escaneo.
+- Se recomienda crear un punto de restauracion de Windows.
+
+COMPONENTE A: FUTJOY / VHF, CONTROLADOR ORIGINAL
+- Dispositivos con InstanceID ROOT\FUTJOY01..ROOT\FUTJOY08.
+- Solo FutJoy.inf del proveedor FUTUREO con nombre oemXX.inf.
+- Solo certificado exacto de LAB:
+    D09A97E4E02004E08CB6998E1604F7383E268469
+  en LocalMachine\Root y TrustedPublisher, si no quedan esos
+  dispositivos ni paquetes del controlador.
+- Solo valores OEMName/OEM Name con nombre FUTUREO VJOYn o
+  FUTUREO VJOYn - PLAYER n y VID F7A0 PID 2101..2108/2201..2208.
+- No modifica el BCD, TESTSIGNING ni almacenes de otros certificados.
+
+COMPONENTE B: HIDMaestro OFICIAL
+- Ejecuta el desinstalador oficial de HIDMaestro, primero en
+  modo --preview y luego --yes con tu confirmacion.
+- Elimina dispositivos HIDMaestro, paquetes, certificados y
+  registros que el desinstalador identifica.
+- ATENCION: HIDMaestro puede estar compartido con OTRAS aplicaciones:
+  seleccionar esta opcion tambien las afectara.
+- No se usa --include-usbip, por precaucion con USB/IP ajenos.
+- Si otras apps lo estan usando, el desinstalador se bloquea:
+  cierralas, vuelve a ESCANEAR y repite.
+
+NO BORRA
+- Mandos fisicos, teclados, ratones, hardware USB ajeno.
+- ZIPs almacenados ni carpetas de otros programas.
+- El modo de prueba TESTSIGNING.
+- Los archivos de respaldo de etiquetas de versiones pasadas;
+  se conservan por seguridad, no forman parte del Driver Store.
+
+PASOS
+1. Cierra FUTUREO, joy.cpl, Steam y apps que usen HIDMaestro.
+2. Extrae este ZIP en una carpeta propia.
+3. Abre FUTUREO_LIMPIADOR_TOTAL.exe (solicitara UAC).
+4. Deja marcadas ambas casillas para limpiar los dos motores,
+   o desmarca HIDMaestro si otras aplicaciones lo necesitan.
+5. Pulsa "1. ESCANEAR SIN BORRAR". Revisa el inventario y
+   el resultado oficial del desinstalador.
+6. Pulsa "2. LIMPIAR DISPOSITIVOS SELECCIONADOS", lee la
+   advertencia y escribe exactamente:
+       LIMPIAR FUTUREO
+7. Examina el resultado y el archivo de registro generado.
+8. Reinicia Windows y vuelve a escanear si hay incidencias.
+9. Para empezar otra vez con la version que funciono:
+   FUTUREO VJOY v0.6.0 LAB (con nombres reales):
+https://raw.githubusercontent.com/mobatfb/archmoba-dev/main/MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip
+
+REGISTROS
+    %LOCALAPPDATA%\FUTUREO_VJOY\cleanup_logs
+Se guarda la salida para que puedas comunicar cualquier incidencia.
+NUNCA uses borrados amplios con pnputil /force ni elimines
+controladores o certificados distintos a los listados.
+
+FUENTES
+- https://github.com/hifihedgehog/HIDMaestro/blob/master/docs/UNINSTALL.md
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager-to-uninstall-devices-and-driver-packages
+
+CODIGO
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/limpiador_total
+
+AVISO
+GitHub Actions SOLO compila y valida sintaxis sin ejecutar la limpieza.
+No podemos verificar automaticamente su resultado en tu PC.
+Si una operacion falla o Windows pide reinicio, lo veras en el log.

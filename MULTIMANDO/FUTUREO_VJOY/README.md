@@ -1,3 +1,25 @@
+## FUTUREO VJOY - limpiador total LAB v1.0
+
+**[DESCARGAR ZIP DEL LIMPIADOR](instalador_windows/FUTUREO_VJOY_LIMPIADOR_TOTAL_v1_0_0_LAB.zip)**
+
+Ejecutable de Windows para empezar desde cero antes de reinstalar la
+version v0.6.0 (HIDMaestro), que fue la version funcional confirmada.
+
+El programa muestra primero una **vista previa que no elimina nada**.
+Luego permite elegir si se retiran los dispositivos y paquetes
+**FUTJOY/VHF** (ROOT\\FUTJOY01..08) y/o **TODO HIDMaestro**.
+Esta ultima opcion usa el desinstalador oficial v2.3.0 y afectara
+tambien a otras aplicaciones que compartan HIDMaestro. Hay doble
+confirmacion y una frase obligatoria. No elimina mandos fisicos,
+no borra controladores genericos de Windows ni cambia TESTSIGNING.
+Conserva registro detallado, ayuda de uso y enlace al ZIP v0.6.0.
+
+**Importante:** la comprobacion automatica valida compilacion/sintaxis,
+no ejecuta el borrado de controladores de tu PC. Escanea antes de
+eliminar, cierra las aplicaciones que los usen y reinicia al terminar.
+
+[Codigo fuente y auditoria](limpiador_total/).
+
 ## FUTUREO VJOY v0.6.1 LAB - nombres limpios
 
 **[Descarga directa del ZIP v0.6.1](instalador_windows/FUTUREO_VJOY_v0_6_1_LAB_NOMBRES_LIMPIOS.zip)**
