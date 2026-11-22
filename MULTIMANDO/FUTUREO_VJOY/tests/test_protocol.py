@@ -44,6 +44,13 @@ class DriverInstallationContractTests(unittest.TestCase):
         self.assertIn("WdfDeviceInitSetFileObjectConfig",source)
         self.assertIn("SendState(ctx,&neutral)",source)
 
+    def test_only_one_writer_per_virtual_gamepad(self):
+        driver=(PROJECT/"driver"/"FutJoy.c").read_text(encoding="utf-8")
+        bridge=(PROJECT/"python"/"futureo_vjoy.py").read_text(encoding="utf-8")
+        self.assertIn("WdfDeviceInitSetExclusive(init, TRUE);", driver)
+        self.assertIn("self.path, GENERIC_WRITE, 0,", bridge)
+        self.assertIn("FutJoyFileCleanup", driver)
+
     def test_unique_product_ids(self):
         source=(PROJECT/"driver"/"FutJoy.c").read_text(encoding="utf-8")
         self.assertIn("FUTJOY_PRODUCT_BASE+ctx->Slot",source)
