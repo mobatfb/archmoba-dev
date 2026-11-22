@@ -68,5 +68,23 @@ class GUIInstallerTests(unittest.TestCase):
         self.assertIn('ya existe; no se crea duplicado.', block)
 
 
+    def test_gui_shows_real_hid_status_per_slot(self):
+        self.assertIn("def refresh_slots", self.source)
+        self.assertIn('"--json", "--count", "8"', self.source)
+        self.assertIn("self.results.put((\"slots\", slots))", self.source)
+        self.assertIn("textvariable=self.slot_labels[n]", self.source)
+        self.assertIn("ACTUALIZAR ESTADO", self.source)
+        self.assertIn("DETECTADO", self.source)
+        self.assertIn("NO DETECTADO", self.source)
+        self.assertIn("F7A0:{0x2100+n:04X}", self.source)
+
+    def test_gui_provides_label_check_and_identification(self):
+        self.assertIn("VER ETIQUETAS", self.source)
+        self.assertIn('["--status", "--count", "8"]', self.source)
+        self.assertIn("IDENTIFICAR P SELECCIONADO", self.source)
+        self.assertIn("dev.state(x=26000,buttons=1)", self.source)
+        self.assertIn("No cambia las cadenas HID internas", self.source)
+
+
 if __name__ == "__main__":
     unittest.main()

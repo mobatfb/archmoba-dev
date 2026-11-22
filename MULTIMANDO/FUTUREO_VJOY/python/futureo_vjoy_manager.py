@@ -6,6 +6,7 @@ El SYS firmado para pruebas ya viene dentro del ZIP de laboratorio.
 """
 from __future__ import annotations
 import ctypes
+import json
 import os
 from pathlib import Path
 import queue
@@ -71,16 +72,22 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("FUTUREO VJOY - ADMINISTRADOR (EXPERIMENTAL)")
-        self.root.geometry("790x630")
-        self.root.minsize(630, 550)
+        self.root.geometry("880x730")
+        self.root.minsize(700, 620)
         self.root.configure(bg="#0d1b30")
         self.count = tk.IntVar(value=1)
         self.slot = tk.IntVar(value=1)
+        self.slot_labels = {
+            n: tk.StringVar(value=f"FUTUREO VJOY{n} / P{n}  |  F7A0:{0x2100+n:04X}\nConsultando...")
+            for n in range(1, 9)
+        }
+        self.refresh_running = False
         self.status = tk.StringVar(value="Driver de laboratorio firmado: instalar 1..8 sin DevCon (SetupAPI)")
         self.results = queue.Queue()
         self.busy = False
         self.build()
         self.root.after(100, self.poll)
+        self.root.after(350, self.refresh_slots)
 
     def build(self):
         tk.Label(self.root, text="FUTUREO VJOY", font=("Segoe UI", 20, "bold"),
@@ -99,28 +106,63 @@ class App:
         tk.Label(tool,text="INSTALACION: SetupAPI + pnputil de Windows (sin DevCon.exe)",
                  fg="#80dfbc",bg="#0d1b30").pack(side="left")
         ttk.Button(tool,text="ABRIR JOY.CPL",command=self.open_joy).pack(side="right")
+        ttk.Button(tool,text="ACTUALIZAR ESTADO",command=self.refresh_slots).pack(
+            side="right",padx=6)
         grid=tk.Frame(self.root,bg="#0d1b30")
         grid.pack(fill="both",expand=True,padx=20,pady=6)
         for n in range(1,9):
-            tk.Radiobutton(grid,text=f"FUTUREO VJOY{n}  / P{n}",
+            tk.Radiobutton(grid,textvariable=self.slot_labels[n],
                 variable=self.slot,value=n,indicatoron=False,
                 fg="white",bg="#1c456b",selectcolor="#1676a0",
                 activebackground="#2586b3",activeforeground="white",
-                font=("Segoe UI",11,"bold"),padx=8,pady=12).grid(
+                font=("Segoe UI",10,"bold"),padx=8,pady=9).grid(
                 row=(n-1)//2,column=(n-1)%2,sticky="nsew",padx=5,pady=5)
         for col in range(2): grid.grid_columnconfigure(col,weight=1)
         for row in range(4): grid.grid_rowconfigure(row,weight=1)
         bar=tk.Frame(self.root,bg="#0d1b30")
         bar.pack(pady=8)
-        ttk.Button(bar,text="IDENTIFICAR VJOY",command=self.test).pack(side="left",padx=8)
+        ttk.Button(bar,text="IDENTIFICAR P SELECCIONADO",command=self.test).pack(side="left",padx=8)
         ttk.Button(bar,text="COMPROBAR INSTALACION",command=self.check).pack(side="left",padx=8)
         ttk.Button(bar,text="VER IDENTIDAD HID",command=self.diagnostico_hid).pack(side="left",padx=8)
         namebar=tk.Frame(self.root,bg="#0d1b30")
         namebar.pack(pady=3)
         ttk.Button(namebar,text="ETIQUETAR EN WINDOWS",command=self.labels_apply).pack(side="left",padx=8)
+        ttk.Button(namebar,text="VER ETIQUETAS",command=self.labels_status).pack(side="left",padx=8)
         ttk.Button(namebar,text="RESTAURAR NOMBRES",command=self.labels_restore).pack(side="left",padx=8)
+        tk.Label(self.root,
+            text="Los 8 puestos NO estan necesariamente instalados. Selecciona P1..P8,"
+                 " abre Propiedades en joy.cpl y pulsa IDENTIFICAR para observar cual se mueve.",
+            fg="#9bcfe7",bg="#0d1b30",wraplength=820).pack(pady=3)
         tk.Label(self.root,textvariable=self.status,wraplength=700,
                  fg="#8fe8ef",bg="#0d1b30").pack(padx=16,pady=(6,18))
+
+    def labels_status(self):
+        """Verificar etiquetas OEM (solo lectura; no requiere UAC)."""
+        self._run_labels(["--status", "--count", "8"])
+
+    def refresh_slots(self):
+        """Leer los HID reales sin bloquear tkinter ni cambiar Windows."""
+        if self.refresh_running or os.name != "nt":
+            return
+        self.refresh_running = True
+        script = Path(__file__).with_name("diagnostico_hid.py")
+        def worker():
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script), "--json", "--count", "8"],
+                    capture_output=True, text=True, errors="replace",
+                    timeout=45, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+                if result.returncode:
+                    raise RuntimeError((result.stderr or result.stdout)[-350:])
+                report = json.loads(result.stdout)
+                slots = {int(item["slot"]): bool(item["detectado"])
+                         for item in report["puestos"]}
+                self.results.put(("slots", slots))
+            except (OSError, ValueError, RuntimeError, KeyError, subprocess.TimeoutExpired) as exc:
+                self.results.put(("slots_error", str(exc)))
+            finally:
+                self.results.put(("refresh_done", ""))
+        threading.Thread(target=worker, daemon=True).start()
 
     def labels_apply(self):
         if not ask_elevation_for_labels():
@@ -154,7 +196,10 @@ class App:
                 "siendo 'HID VHF Driver'."
                 if "--apply" in args else ""
             )
-            self.results.put(("info",result.stdout.strip()[-300:] + extra))
+            if "--status" in args:
+                self.results.put(("diagnostic", result.stdout.strip()))
+            else:
+                self.results.put(("info",result.stdout.strip()[-300:] + extra))
         self.background(worker)
 
     def diagnostico_hid(self):
@@ -193,7 +238,27 @@ class App:
         try:
             while True:
                 kind,msg=self.results.get_nowait()
-                if kind=="done": self.busy=False
+                if kind=="done":
+                    self.busy=False
+                    self.root.after(150, self.refresh_slots)
+                elif kind=="refresh_done":
+                    self.refresh_running = False
+                elif kind=="slots":
+                    present = []
+                    for n in range(1, 9):
+                        detected = msg.get(n, False)
+                        if detected:
+                            present.append(n)
+                        label = "DETECTADO" if detected else "NO DETECTADO"
+                        self.slot_labels[n].set(
+                            f"FUTUREO VJOY{n} / P{n}  |  F7A0:{0x2100+n:04X}\n{label}")
+                    if self.count.get() == 1 and len(present) > 1:
+                        self.count.set(max(present))
+                    self.status.set(
+                        f"Mandos HID detectados: {len(present)}/8. "
+                        "Los nombres genericos de VHF NO indican el orden P1-P8.")
+                elif kind=="slots_error":
+                    self.status.set("No se pudo leer el estado HID: " + msg[-250:])
                 elif kind=="diagnostic":
                     self.show_diagnostic(msg)
                     self.status.set("Diagnostico HID: comprobacion terminada (solo lectura)")
@@ -282,16 +347,23 @@ class App:
 
     def test(self):
         n=self.slot.get()
+        if not messagebox.askokcancel(
+            f"Identificar FUTUREO P{n}",
+            f"Abre joy.cpl y las Propiedades de uno de los dispositivos.\n"
+            f"Al confirmar, P{n} movera el eje X y pulsara el boton 1.\n"
+            "Tienes 5 segundos para cambiar de ventana.\n"
+            "Si no responde, prueba las Propiedades del siguiente dispositivo."):
+            return
         def work():
             with FutJoy(n) as dev:
                 for second in range(5,0,-1):
                     self.results.put(("info",f"VJOY{n}: cambia a joy.cpl en {second}..."))
                     time.sleep(1)
-                for _ in range(3):
+                for _ in range(5):
                     dev.state(x=26000,buttons=1)
-                    time.sleep(0.3)
+                    time.sleep(0.7)
                     dev.neutral()
-                    time.sleep(0.3)
+                    time.sleep(0.5)
                 self.results.put(("info",f"VJOY{n}: listo, controles liberados"))
         self.background(work)
 

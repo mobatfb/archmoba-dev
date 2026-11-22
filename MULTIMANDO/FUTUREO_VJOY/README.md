@@ -1,3 +1,32 @@
+## FUTUREO VJOY v0.5.1 - identificacion visual P1-P8 (LAB)
+
+**[Descargar paquete v0.5.1 tras publicacion de GitHub Actions](instalador_windows/FUTUREO_VJOY_v0_5_1_LAB_IDENTIFICACION_P1_P8.zip)**
+
+La captura en Windows confirma cuatro mandos reconocidos, pero `joy.cpl`
+muestra el mismo nombre "Dispositivo HID de marco de HID virtual (VHF)" en
+todos. Eso no significa que sean el mismo dispositivo: este driver de LAB
+ya asigna VID:PID diferentes `F7A0:2101` (P1), `F7A0:2102` (P2),
+`F7A0:2103` (P3) y `F7A0:2104` (P4). La v0.5.1 **no modifica
+ni vuelve a firmar** el controlador SYS/CAT existente.
+
+- La GUI presenta **DETECTADO / NO DETECTADO** para P1...P8 consultando
+  las interfaces HID realmente presentes. Refrescar no requiere UAC.
+- Selecciona P1, P2, P3 o P4, abre `joy.cpl` > Propiedades y pulsa
+  **IDENTIFICAR P SELECCIONADO**: observaras el eje X y boton 1 moverse
+  para **ese** mando (5 s para cambiar de ventana, 5 pulsos).
+- Para intentar diferenciar nombres en `joy.cpl`, selecciona
+  **Cantidad=4** y pulsa **ETIQUETAR EN WINDOWS**. Acepta UAC,
+  confirma la escritura reversible, cierra `joy.cpl` por completo y
+  vuelve a abrir. Usa **VER ETIQUETAS** para diagnosticar los valores.
+- Los alias se pueden ampliar de P1..P2 a P1..P4, hasta P1..P8,
+  conservando el respaldo original. **RESTAURAR NOMBRES** revierte todo.
+- Si `joy.cpl` o un juego sigue mostrando "HID VHF Driver", el alias
+  OEM no sustituye el `HidD_GetProductString` interno que controla VHF.
+  Comprueba identidad con VID:PID y movimiento del dispositivo.
+
+Se conserva el paquete v0.5.0 anterior. La v0.5.1 no sustituye la
+validacion manual de P2-P8 en Windows ni transforma HID en XInput.
+
 ## Correccion para instalar P2 tras P1 (codigo PnPUtil 259)
 
 **Hotfix del instalador, 22-nov-2026.** En el ZIP v0.5.0 el boton

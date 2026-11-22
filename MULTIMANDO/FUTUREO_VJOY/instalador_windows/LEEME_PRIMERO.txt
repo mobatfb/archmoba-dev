@@ -1,6 +1,6 @@
 FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
 =====================================================
-Version: LAB v0.5.0; Windows 10/11 x64; 22-11-2026.
+Version: LAB v0.5.1; Windows 10/11 x64; 22-11-2026.
 
 OBJETIVO
 --------
@@ -162,3 +162,17 @@ El controlador SYS/CAT firmado, el certificado y los hashes no cambian.
 El instalador separa el registro del paquete de la creacion de cada
 dispositivo ROOT, y tolera 259 con registro explicativo.
 Requiere validacion manual de P2 en joy.cpl.
+
+
+GUI LAB v0.5.1: IDENTIFICAR P1..P8 SIN CONFUNDIR MANDOS
+-----------------------------------------------------
+La GUI consulta el HID presente y marca P1..P8 DETECTADO o NO DETECTADO.
+Cada P tiene VID:PID distinto (P1=F7A0:2101, P4=F7A0:2104).
+Pulsar ACTUALIZAR ESTADO para verificar tras crear o quitar mandos.
+Abrir joy.cpl y Propiedades para un mando; seleccionar P en la GUI y pulsar
+IDENTIFICAR P SELECCIONADO para ver cual eje X y boton 1 responden.
+Para aplicar alias a cuatro mandos: Cantidad=4 > ETIQUETAR EN WINDOWS,
+aceptar UAC y confirmacion. Cerrar y abrir joy.cpl (no cambia HID interno).
+VER ETIQUETAS consulta el Registro sin modificarlo.
+RESTAURAR NOMBRES recupera los valores anteriores del respaldo.
+No reinstalar SYS/CAT de prueba ni modificar hashes.

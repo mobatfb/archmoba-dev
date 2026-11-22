@@ -1,4 +1,4 @@
-name: FUTUREO VJOY - publicar ZIP instalador de laboratorio en repo
+name: FUTUREO VJOY - publicar ZIP v0.5.1 identificacion P1-P8
 on:
   push:
     paths:
@@ -27,6 +27,13 @@ jobs:
           }
           if (-not (Get-ChildItem -Path $componentes -Filter "FutJoy.cat" -File)) { throw "Falta catalogo firmado FutJoy.cat" }
           Write-Host 'Componentes test-signed obtenidos del run verificado 45006833196'
+      - name: Validar GUI y etiquetas sin tocar Windows
+        shell: pwsh
+        run: |
+          python -m unittest discover -s MULTIMANDO/FUTUREO_VJOY/tests -v
+          if ($LASTEXITCODE -ne 0) { throw "Pruebas Python FALLARON; no publicar ZIP" }
+          python -m compileall -q MULTIMANDO/FUTUREO_VJOY/python
+          if ($LASTEXITCODE -ne 0) { throw "Sintaxis Python invalida" }
       - name: Construir ZIP instalador y verificar integridad
         shell: pwsh
         run: |
@@ -69,7 +76,7 @@ jobs:
           if($valid -lt 4) { throw "No se verificaron los 4 archivos de la firma" }
           if(-not (Test-Path (Join-Path $stage "DESINSTALAR.bat"))) { throw "Falta desinstalador" }
           if(-not (Test-Path (Join-Path $stage "INSTALAR.bat"))) { throw "Falta instalador" }
-          $zip = Join-Path $source 'FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip'
+          $zip = Join-Path $source 'FUTUREO_VJOY_v0_5_1_LAB_IDENTIFICACION_P1_P8.zip'
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
           $size = (Get-Item $zip).Length
           if($size -lt 20000) { throw "ZIP sospechosamente pequeño" }
@@ -81,10 +88,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip
-          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip.sha256
+          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_5_1_LAB_IDENTIFICACION_P1_P8.zip
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_5_1_LAB_IDENTIFICACION_P1_P8.zip.sha256
           git diff --cached --name-only
-          git commit -m "FUTUREO VJOY v0.5: publicar GUI SetupAPI sin DevCon y alias OEM"
+          git commit -m "FUTUREO VJOY v0.5.1: publicar identificacion P1-P8 y alias OEM"
           if($LASTEXITCODE -ne 0) { throw "No se pudo crear commit del ZIP" }
           git push origin HEAD:main
           if($LASTEXITCODE -ne 0) { throw "GitHub no permitio subir ZIP a main" }

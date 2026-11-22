@@ -106,11 +106,48 @@ def delete_value(change: dict) -> None:
         pass
 
 
+def _identity(change: dict) -> tuple[str, str, str]:
+    return change["hive"], change["path"], change["name"]
+
+
+def load_backup() -> list[dict]:
+    """Respaldo de nuestras claves exactas, nunca rutas arbitrarias."""
+    if not BACKUP.is_file():
+        return []
+    data = json.loads(BACKUP.read_text(encoding="utf-8"))
+    allowed = {_identity(c): c for n in range(1, 9)
+               for c in changes_for_slot(n)}
+    if not isinstance(data, list):
+        raise ValueError("Formato de respaldo no valido")
+    keys = set()
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("target"), dict):
+            raise ValueError("Elemento de respaldo invalido")
+        target, previous = item["target"], item.get("previous")
+        identity = _identity(target)
+        if (identity not in allowed or target != allowed[identity]
+                or identity in keys or not isinstance(previous, dict)
+                or type(previous.get("exists")) is not bool
+                or (previous["exists"] and
+                    not isinstance(previous.get("value"), str))):
+            raise ValueError("Respaldo inconsistente: no modificar Registro")
+        keys.add(identity)
+    return data
+
+
+def save_backup(saved: list[dict]) -> None:
+    BACKUP.parent.mkdir(parents=True, exist_ok=True)
+    # Guardar antes de escribir; es posible restaurar incluso tras interrupcion.
+    temp = BACKUP.with_suffix(".tmp")
+    temp.write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
+    temp.replace(BACKUP)
+
+
 def apply(count: int) -> None:
+    if type(count) is not int or not 1 <= count <= 8:
+        raise ValueError("Cantidad invalida")
     if winreg is None or not is_admin():
         raise RuntimeError("Ejecuta como administrador en Windows para modificar OEMName")
-    if BACKUP.exists():
-        raise RuntimeError("Ya hay respaldo. Ejecuta --restore antes de otra aplicacion")
     wanted = set(range(1, count + 1))
     found = installed_slots()
     if not wanted.issubset(found):
@@ -118,15 +155,29 @@ def apply(count: int) -> None:
                            ", ".join(str(x) for x in sorted(wanted - found)) +
                            ". No modifiques el Registro hasta instalar el driver")
     plan = [change for slot in sorted(wanted) for change in changes_for_slot(slot)]
-    saved = [{"target": target, "previous": read_value(target)} for target in plan]
-    BACKUP.parent.mkdir(parents=True, exist_ok=True)
-    # Antes de cualquier escritura guardamos los originales para recuperarlos.
-    temp = BACKUP.with_suffix(".tmp")
-    temp.write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
-    temp.replace(BACKUP)
+    saved = load_backup()
+    by_key = {_identity(item["target"]): item for item in saved}
+    additions = []
+    # Detectar conflicto con cambios ajenos antes de escribir un solo valor.
     for target in plan:
-        put_value(target, target["value"])
-    print(f"Nombres OEM aplicados a {count} mandos. Respaldo: {BACKUP}")
+        old = by_key.get(_identity(target))
+        current = read_value(target)
+        if old:
+            if current != old["previous"] and not (
+                    current["exists"] and current["value"] == target["value"]):
+                raise RuntimeError("Otra aplicacion cambio la etiqueta en " +
+                                   target["path"] + "; se conserva el respaldo")
+        else:
+            additions.append({"target": target, "previous": current})
+    if additions:
+        save_backup(saved + additions)
+    for target in plan:
+        current = read_value(target)
+        if not (current["exists"] and current["value"] == target["value"]):
+            put_value(target, target["value"])
+    print(f"Nombres OEM aplicados P1..P{count}; conservado respaldo: {BACKUP}")
+    print("Cierra TODAS las ventanas joy.cpl y vuelve a abrirlas.")
+    print("Importante: el HID Product String de VHF NO se modifica.")
 
 
 def restore() -> None:
@@ -134,7 +185,7 @@ def restore() -> None:
         raise RuntimeError("Ejecuta como administrador en Windows")
     if not BACKUP.is_file():
         raise FileNotFoundError("No existe respaldo: " + str(BACKUP))
-    saved = json.loads(BACKUP.read_text(encoding="utf-8"))
+    saved = load_backup()
     conflicts = []
     for item in saved:
         target, previous = item["target"], item["previous"]
@@ -162,6 +213,7 @@ def main():
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--apply", action="store_true", help="Aplicar alias con respaldo")
     actions.add_argument("--restore", action="store_true", help="Revertir usando respaldo")
+    actions.add_argument("--status", action="store_true", help="Consultar etiquetas actuales")
     parser.add_argument("--count", type=int, choices=range(1, 9), default=8)
     args = parser.parse_args()
     if args.restore:
@@ -169,10 +221,15 @@ def main():
     elif args.apply:
         apply(args.count)
     else:
-        print("DIAGNOSTICO - no se modifica Windows")
+        print("ETIQUETAS OEM - SOLO LECTURA (no modifica el Registro)")
         for n in range(1, args.count + 1):
-            print(f"  {product_key(n)} -> FUTUREO VJOY{n}")
-        print("Aviso: las cadenas HID originales pueden seguir siendo genericas.")
+            print(f"P{n} / {product_key(n)} -> FUTUREO VJOY{n}")
+            if os.name == "nt" and winreg is not None:
+                for target in changes_for_slot(n):
+                    current = read_value(target)
+                    observed = current["value"] if current["exists"] else "(sin etiqueta)"
+                    print(f"  {target['hive']} {target['name']}: {observed}")
+        print("El HID Product String de VHF puede continuar siendo generico.")
         if os.name == "nt":
             print("Dispositivos FUTUREO detectados:", sorted(installed_slots()))
 
