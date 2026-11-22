@@ -1,6 +1,6 @@
 FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
 =====================================================
-Version: LAB v0.4.3; Windows 10/11 x64; 22-11-2026.
+Version: LAB v0.5.0; Windows 10/11 x64; 22-11-2026.
 
 OBJETIVO
 --------
@@ -122,3 +122,29 @@ la consola y comparte si P1 aparece o no en joy.cpl.
 
 El diagnostico Python ahora no presenta SyntaxWarning por escapes ni
 indica erroneamente que Windows no tiene drivers instalados.
+
+GUI v0.5.0: YA NO DEPENDE DE DEVCON.EXE
+-------------------------------------
+El GUI usa el mismo instalador PowerShell y SetupAPI/pnputil de Windows.
+Si P1 ya funciona, NO es necesario reinstalar el controlador de kernel.
+
+Extrae el ZIP v0.5.0 y abre ABRIR_GUI.bat (Python 3 requerido).
+Para agregar P2: selecciona Cantidad=2 y CREAR DISPOSITIVOS.
+El instalador salta los puestos que ya existan y pide confirmaciones/UAC.
+Se abre una consola interactiva; espera a que termine y confirma con tecla.
+QUITAR SELECCIONADO retira SOLO el puesto indicado, sin borrar el driver
+ni el certificado que otros puestos siguen necesitando.
+
+Para intentar cambiar el nombre mostrado en joy.cpl: Cantidad=1, pulsa
+ETIQUETAR EN WINDOWS, autoriza UAC si hace falta, confirma el alias OEM
+y cierra/abre completamente joy.cpl. Los alias se respaldan y pueden
+restaurarse mediante RESTAURAR NOMBRES.
+IMPORTANTE: la cadena HID Product String interna sigue siendo
+'HID VHF Driver', porque VHF gestiona sus propias cadenas HID.
+El alias DirectInput es una prueba reversible, no una garantia
+de que todos los juegos muestren el mismo nombre.
+
+PRUEBA REAL P1:
+El usuario confirmo en joy.cpl dos ejes X/Y, 16 botones y movimiento
+del eje X y boton 1 durante la prueba del dispositivo P1.
+El driver SYS/CAT sigue siendo el mismo compilado y firmado para LAB.
