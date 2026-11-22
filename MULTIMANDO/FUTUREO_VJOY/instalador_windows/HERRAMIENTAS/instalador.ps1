@@ -36,7 +36,7 @@ function Elevate([string] $Option) {
 }
 function Confirm([string] $Question) {
   $reply=Read-Host ($Question + ' (escribe SI para continuar)')
-  return $reply -ceq 'SI'
+  return $reply -eq 'SI'
 }
 function AssertLab {
   if ([Environment]::OSVersion.Platform -ne 'Win32NT') { throw 'Requiere Windows.' }
