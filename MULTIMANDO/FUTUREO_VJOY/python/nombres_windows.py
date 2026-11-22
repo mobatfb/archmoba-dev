@@ -57,10 +57,15 @@ def installed_slots() -> set[int]:
         capture_output=True, text=True, timeout=30, errors="replace")
     if result.returncode:
         raise RuntimeError("Get-PnpDevice fallo: " + result.stderr.strip()[:300])
-    found = set()
+    entries = result.stdout.upper().splitlines()
+    hid = set()
     for match in re.finditer(r"VID_F7A0&PID_210([1-8])\b", result.stdout.upper()):
-        found.add(int(match.group(1)))
-    return found
+        hid.add(int(match.group(1)))
+    # Un VID de ejemplo puede coincidir con hardware ajeno. Exigir tambien
+    # que este presente la instancia root FUTJOY correspondiente.
+    return {n for n in hid if any(
+        rf"ROOT\FUTJOY{n:02d}" in entry for entry in entries
+    )}
 
 
 def is_admin() -> bool:
@@ -135,6 +140,8 @@ def restore() -> None:
         target, previous = item["target"], item["previous"]
         current = read_value(target)
         # No pisar nombres modificados por otra aplicacion desde nuestro cambio.
+        if current == previous:
+            continue  # Ya estaba restaurado (o no se llego a modificar).
         if current["exists"] and current["value"] != target["value"]:
             conflicts.append(target["path"])
             continue
