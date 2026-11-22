@@ -63,7 +63,7 @@ class FutJoy:
         self.kernel.CloseHandle.argtypes = [ctypes.c_void_p]
         self.kernel.CloseHandle.restype = wintypes.BOOL
         self.handle = self.kernel.CreateFileW(
-            self.path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            self.path, GENERIC_WRITE, 0,  # escritor exclusivo por puesto
             None, OPEN_EXISTING, 0, None)
         if self.handle in (0, ctypes.c_void_p(-1).value):
             raise ctypes.WinError(ctypes.get_last_error())
