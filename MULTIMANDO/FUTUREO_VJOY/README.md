@@ -1,6 +1,6 @@
 # FUTUREO VJOY - Controlador HID propio para MULTIMANDO
 
-**Estado: prototipo de codigo fuente v0.2 (NO instalador final).**
+**Estado: v0.3 experimental; .sys COMPILADO y .inf VALIDADO, ambos sin instalacion certificada.**
 
 Proyecto experimental para crear hasta 8 gamepads HID independientes en Windows 10/11 x64. No reemplaza ni modifica vJoy o ViGEmBus instalados.
 
@@ -44,7 +44,7 @@ El INF declara etiquetas PnP "FUTUREO VJOY1 - PLAYER 1" hasta "FUTUREO VJOY8 - P
    - El driver solicita enviar estado neutro cuando se cierra el cliente Python.
    - La compilacion WDK y las pruebas reales aun estan PENDIENTES.
 5. El VID 0xF7A0 es SOLO ilustrativo: antes de distribuir usar identificadores de proveedor autorizados.
-6. Aun NO se ha compilado, firmado ni probado con gamepads reales en Windows; tampoco esta integrado con MULTIMANDO Anfitrion v1.8.1.
+6. FutJoy.sys YA COMPILA en GitHub Actions (Windows x64, 0 errores/0 advertencias). FutJoy.inf paso InfVerif /w. No esta firmado ni probado como hardware HID ni integrado con MULTIMANDO Anfitrion v1.8.1.
 7. No desactivar Secure Boot o protecciones del sistema para forzar la instalacion.
 
 ## Uso de Python
@@ -155,5 +155,35 @@ VID_F7A0&PID_2101..2108, estado PnP y los nombres OEM de DirectInput.
 Las cadenas reales que muestran los juegos deben comprobarse en ellos;
 la herramienta no modifica el Registro ni vJoy.
 
-Pendiente: compilacion WDK verificada, firma valida, pruebas en VM,
+Pendiente: firma valida, pruebas en VM,
 enumeracion en joy.cpl, nombres por juego y estabilidad del controlador.
+
+## Resultados efectivos de CI - 22 noviembre 2026
+
+- Compilacion Windows x64 **exitosa**, 0 errores y 0 advertencias:
+  https://github.com/mobatfb/archmoba-dev/actions/runs/45004213793
+- Fuente C compilada y enlazada: FutJoy.sys de 23040 bytes.
+- Validacion independiente de FutJoy.inf **exitosa** con `InfVerif /w`:
+  https://github.com/mobatfb/archmoba-dev/actions/runs/45004213766
+- Artefacto `FUTUREO-VJOY-SYS-EXPERIMENTAL-SIN-FIRMA` en la ejecucion
+  de GitHub Actions; caduca aproximadamente siete dias despues del build.
+- La compilacion CI omite ApiValidator por ausencia de la herramienta en
+  el NuGet WDK; el destino CI se ajusta a `DriverTargetPlatform=Desktop`.
+- El `.sys` NO ESTA FIRMADO. No es instalable normalmente en Windows 10/11
+  con las politicas de integridad del kernel activadas.
+- **Sin pruebas de ejecucion del driver**, sin confirmacion de nombres
+  en `joy.cpl`, sin prueba con juegos y sin sello de Microsoft.
+
+### Siguiente requisito ineludible
+
+1. Usar un identificador VID autorizado antes de distribucion publica.
+2. Completar pruebas de hardware HID y estabilidad en Windows de laboratorio.
+3. Preparar catalogo `.cat` y gestionar una firma de Microsoft a traves del
+   Hardware Dev Center. Esto requiere cuenta de desarrollador de hardware
+   y certificado EV. Para distribucion general, preparar pruebas HLK/WHCP.
+4. Solo tras una firma confiable, instalar y verificar ocho instancias PnP
+   en `joy.cpl` y su identidad visual en los juegos de interes.
+
+Referencias:
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/driver-signing-offerings
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs
