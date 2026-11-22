@@ -269,3 +269,15 @@ las maquinas de integracion. Se incluye DESINSTALAR y VOLVER MODO NORMAL.
 
 NOTA: las builds de laboratorio usan un certificado de prueba efimero
 y no incluyen claves privadas. No distribuir como software de produccion.
+
+## ZIP de instalacion para computadora secundaria (laboratorio)
+
+**Paquete descargable desde el repositorio:**
+
+[Descargar FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip](instalador_windows/FUTUREO_VJOY_v0_4_LAB_INSTALADOR_TEST_FIRMADO.zip)
+
+- Contenido: `FutJoy.sys`, `FutJoy.inf`, catalogo `.cat`, certificado de prueba `.cer`, scripts `.bat`, administrador Python y desinstalador.
+- Compilado y firmado para **TESTSIGNING** de laboratorio, no con firma oficial de Microsoft.
+- Extraer todo el ZIP; leer `LEEME_PRIMERO.txt` antes de ejecutar `INSTALAR.bat`.
+- Empezar con `INSTALAR_1_MANDO.bat`; comprobar en `joy.cpl` antes de intentar ocho mandos.
+- No instalar en la computadora principal. La enumeracion y el funcionamiento reales del driver siguen sin verificarse.
