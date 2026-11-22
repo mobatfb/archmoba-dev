@@ -4,15 +4,15 @@ Fecha: 22 de noviembre de 2026. Actualizar tras cada cambio.
 
 ## Estructura de GitHub
 
-- `MANDOWEB/`: web PHP dentro de su carpeta propia. En GitHub sigue publicada v6.1.3.
-- `ANFITRION/`: Python anfitrion que figura en GitHub v1.5.0, con ViGEmBus y solo 2 mandos Xbox.
+- `MANDOWEB/`: web PHP v6.2.0 (actualizada en GitHub).
+- `ANFITRION/`: Python anfitrion v1.8.1 (actualizado en GitHub); vJoy, de 1 a 8 mandos.
 - `FUTUREO_VJOY/`: codigo C/KMDF con VHF, GUI Python, pruebas y herramientas Windows.
 
-## Fuera del repositorio (archivos ya generados previamente)
+## Publicacion verificada de versiones
 
-- Web MULTIMANDO v6.2.0 (1-8 jugadores), pendiente de publicar en `MANDOWEB/`.
-- Anfitrion MULTIMANDO v1.8.1, con vJoy y autoinstalacion de dependencias, pendiente de publicar en `ANFITRION/`.
-- ADVERTENCIA: estas dos versiones no se deben mezclar con la pareja antigua v6.1.3/v1.5.0.
+- Web MULTIMANDO v6.2.0 (1-8 jugadores), ya publicada en `MANDOWEB/`.
+- Anfitrion MULTIMANDO v1.8.1, con vJoy y autoinstalacion de dependencias, ya publicado en `ANFITRION/`.
+- Ambas versiones nuevas deben actualizarse juntas en el entorno de despliegue; no mezclar con la pareja antigua v6.1.3/v1.5.0.
 - El `FRASE_CIFRADO.php` es un secreto de despliegue, no debe subirse a GitHub.
 
 ## Lo que ya ha sido verificado en GitHub Actions
@@ -26,7 +26,7 @@ Fecha: 22 de noviembre de 2026. Actualizar tras cada cambio.
 
 ## Prioridades ordenadas
 
-1. **Sincronizar web y anfitrion**: trasladar las versiones v6.2.0 y v1.8.1 al repo sin la frase secreta. Revisar los nuevos formatos de comunicacion y las rutas PHP.
+1. **Sincronizacion COMPLETADA**: web v6.2.0 y anfitrion v1.8.1 actualizados en GitHub sin la frase secreta. Pendiente desplegar en hosting y PC.
 2. **Preparar paquete de driver**: FutJoy.sys + FutJoy.inf + sumas SHA-256, sin publicar secretos ni prometer instalacion.
 3. **Pruebas en Windows aislado**: comprobar los 8 hijos HID en el administrador de dispositivos y en `joy.cpl`, controles independientes, ejes, botones, cierre y desconexion.
 4. **Nombres en el juego**: comprobar el Product String HID y los nombres OEM/DirectInput por separado. IDs PnP y VID/PID distintos NO garantizan nombres visibles distintos.

@@ -4,22 +4,16 @@ Repositorio de desarrollo de MULTIMANDO. La web se ha trasladado a una carpeta d
 
 ## Estructura del proyecto
 
-- [`MANDOWEB/`](MANDOWEB/) - Sitio PHP, estilos y recursos web. Codigo actual del repositorio: v6.1.3.
-- [`ANFITRION/`](ANFITRION/) - Aplicacion Python del anfitrion para Windows.
+- [`MANDOWEB/`](MANDOWEB/) - Sitio PHP, estilos y recursos web. Version publicada: v6.2.0.
+- [`ANFITRION/`](ANFITRION/) - Aplicacion Python del anfitrion v1.8.1 para Windows y hasta 8 mandos vJoy.
 - [`FUTUREO_VJOY/`](FUTUREO_VJOY/) - Driver HID experimental y herramientas de administracion.
 
-## Versiones y trabajo pendiente
+## Versiones publicadas
 
-**Atencion:** lo que figura en GitHub es una pareja antigua: MANDOWEB v6.1.3
-y ANFITRION v1.5.0 (ViGEmBus). Las versiones mas nuevas ya generadas fuera
-del repositorio son web v6.2.0 y anfitrion v1.8.1 (vJoy, hasta 8 mandos),
-que aun hay que publicar aqui antes de realizar la integracion definitiva.
-
-El driver FUTUREO VJOY ya compila para Windows x64 y su INF pasa InfVerif,
-pero todavia no esta firmado ni ha sido instalado y probado.
-
-Consulta **[`ESTADO_DEL_PROYECTO.md`](ESTADO_DEL_PROYECTO.md)** para el avance
-comprobado, los riesgos y la lista de pasos siguientes.
+- Web: MANDOWEB v6.2.0; 1 a 8 jugadores, cola FIFO y modos analogico/cruceta/mixto.
+- Anfitrion: ANFITRION v1.8.1 con autoinstalacion de dependencias Python y cloudflared opcional.
+- Driver experimental: FUTUREO_VJOY (aun no firmado, no instalable normalmente).
+- La frase privada de cifrado sigue excluida del repositorio publico.
 
 ## Publicar la web
 

@@ -1,84 +1,93 @@
-# MULTIMANDO WEB v6.1.0 / Anfitrion Python v1.5.0
+# MULTIMANDO WEB v6.2.0 / Anfitrion Python v1.8.1
 
-Esta es la distribucion COMPLETA, no un parche. MULTIMANDO es independiente de KOFMULTI.
+Distribucion COMPLETA (no es parche), independiente de otros proyectos. Permite
+**1 a 8 joysticks virtuales genericos vJoy / HID / DirectInput**, no Xbox/XInput.
+Los puestos se identifican en MULTIMANDO como **VJOY1..VJOY8**, aunque el nombre
+PnP que muestra Windows depende del controlador vJoy.
 
-## Instalacion completa de la WEB (WAMP o hosting PHP)
+## Instalacion web (WAMP/hosting PHP)
 
-1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_0_3_SIN_CARPETA.zip` SIN carpeta contenedora.
-2. Crea una carpeta `multimando/` en el hosting o WAMP y sube A SU INTERIOR
-   directamente `index.php`, `palanca.php`, `control.php`, `config.php`, `sala.php`,
-   `.htaccess`, y las carpetas `assets/` y `private/`. En WAMP, por ejemplo:
-   `C:\wamp64\www\multimando\index.php`.
-   Nunca dejes una carpeta `MULTIMANDO/` anidada dentro de `multimando/`.
-   Si actualizas sobre archivos anteriores, sobrescribe TODO el contenido.
-3. Abre `http://localhost/MULTIMANDO/` en WAMP, o `https://tudominio/MULTIMANDO/` en HTTPS publico.
-4. Requisitos: PHP 8.1+ con OpenSSL y zlib; cURL (preferible) y HTTPS con certificados CA configurados.
-5. El ZIP completo incluye `private/FRASE_CIFRADO.php` con la MISMA frase de la instalacion anterior.
-   ¡MANTEN ESTA FRASE PRIVADA! No la subas a GitHub ni compartas el ZIP publico.
-6. No abras los archivos PHP desde `file:///`; deben ejecutarse mediante Apache/PHP.
-7. Si WAMP muestra `No fue posible consultar la API`, comprueba PHP cURL/certificados CA; la
-   opcion AUTO usa `sala.php` para GET `/api/geturlmultimando`. El modo MANUAL evita la API.
+1. Extrae `MULTIMANDO_WEB_COMPLETA_v6_2_0_SIN_CARPETA.zip` dentro de la carpeta `multimando/`
+   de tu hosting (sin anidar otra carpeta). Sobrescribe los archivos anteriores.
+2. Sirve `index.php` y `palanca.php` desde Apache/PHP, no como `file://`.
+3. Requiere PHP 8.1+ con OpenSSL y zlib; configura el servidor HTTPS para el publico.
+4. `private/FRASE_CIFRADO.php` es SECRETA. Mantenla protegida con el `.htaccess`
+   suministrado, pero lo mas seguro es situarla fuera de la raiz publica.
+   NO SUBAS LA CLAVE NI LOS ZIP COMPLETOS A GITHUB PUBLICO.
+5. El JavaScript se distribuye cifrado en `private/palanca.enc`; `control.php`
+   lo descifra para entregar al navegador. No subas `control_decoded.js` al hosting.
+6. La opcion AUTO consulta la API `https://api.isupol.edu.ec/api/geturlmultimando`
+   a traves de `sala.php`. MANUAL permite usar un enlace `trycloudflare.com`.
 
-## Anfitrion Windows
+## Anfitrion Windows v1.8.0
 
-El archivo `MULTIMANDO_Anfitrion.py` v1.5.0 acompana esta version de la web.
-Copia el .py a la PC anfitriona y ejecutalo con Windows. Dependencias:
+- Instala vJoy compatible con tu version de Windows y, en **Configure vJoy**, habilita
+  los Device IDs del 1 al 8 que vayas a utilizar, cada uno con ejes X/Y y al menos
+  ocho botones. Para cruceta con POV configura un hat continuo si tu juego lo necesita.
+- Instala Python 3.10+ y dependencias:
 
-    py -m pip install websockets vgamepad
+      py -m pip install websockets pyvjoystick pygame
 
-ViGEmBus es necesario para los dos joysticks Xbox virtuales; `cloudflared` permite
-un WSS publico. En la ventana del anfitrion: ABRIR SALA y PUBLICAR INTERNET.
-El anfitrion gestiona P1/P2, cola FIFO y 600 s individuales, descontados solo con cola.
-No cambies `geturlmultimando` ni `posturlmultimando`; la API se usa para encontrar la URL.
+  `pygame` es para leer mandos fisicos USB/Wi-Fi en modo CONTROLADO;
+  los puestos REMOTO solo necesitan `websockets` y `pyvjoystick`.
+- El anfitrion crea dispositivos vJoy en Windows: **no** necesita ViGEmBus ni
+  `vgamepad` para esta distribucion.
+- Ejecuta `MULTIMANDO_Anfitrion.py`. Antes de pulsar ABRIR SALA elige **1 a 8
+  jugadores** y usa **CONFIGURAR VJOY** para establecer cada puesto como:
+  **REMOTO** (P3 = VJOY3 y participa en cola FIFO) o **CONTROLADO** (elige
+  mando fisico y utiliza el menu de botones APRENDER para mapearlo a VJOY).
+- Boton **IDENTIFICAR VJOY**: pulsa brevemente el boton 8 del dispositivo seleccionado
+  para que puedas identificarlo en la pantalla de configuracion del juego.
+- ABRIR SALA inicia el WebSocket en 127.0.0.1:8766 por defecto; PUBLICAR INTERNET
+  requiere `cloudflared` y publica la URL en la API de MULTIMANDO.
+- **Importante:** vJoy es un dispositivo DirectInput/HID generico. Algunos juegos
+  solo aceptan XInput y pueden no reconocer estos mandos. Aun no se ha probado
+  esta version con 8 vJoy reales simultaneos en Windows.
 
-## Controles visibles: X Y L / A B R
+## Reglas de jugadores y seguridad
 
-    X = tecla U  = boton Xbox X       Y = tecla I = boton Xbox Y
-    L = tecla O  = boton Xbox LB      A = tecla J = boton Xbox A
-    B = tecla K  = boton Xbox B       R = tecla L = boton Xbox RB
+- El **nombre tiene 10 caracteres como maximo** (web y servidor), sin truncarlo
+  en Python. Los nombres repetidos se bloquean. Reconexion segura con token de
+  sesion; no basta con copiar el nombre de otro participante.
+- Si eliges 2 puestos REMOTO y se conectan 3 jugadores, el tercero espera.
+  Los puestos CONTROLADO no entran en cola y nunca se asignan a visitantes.
+- Cuando un visitante recibe un REMOTO: aparece popup **3, 2, 1**, suena una alerta
+  breve en el 3, y solo DESPUES dispone de **10 segundos para pulsar o mover**.
+  Sin entrada y con cola, el visitante va al final de la fila, entra el siguiente
+  y todos los botones/ejes del VJOY desocupado quedan neutros.
+- La primera pulsacion valida inicia el turno completo de 600 segundos. Este
+  contador **solo descuenta mientras existe cola**; sin cola se congela.
+  Al finalizar, el jugador pasa al final y entra el siguiente FIFO.
+- La web cuenta **5 minutos mientras se espera** y muestra un popup con aviso
+  audible: SEGUIR ESPERANDO / CEDER MI TURNO. Si no responde en 60 segundos,
+  envía `q0` al servidor para retirar al usuario de la cola. El servidor NO manda
+  los recordatorios: solo acepta la decision del navegador.
+- Si se corta el WebSocket, servidor y web liberan botones y analogicos. El host
+  reserva el lugar por 35 segundos y la web reintenta hasta 40 segundos.
+  El anfitrion puede retirar un mando REMOTO y pasarlo a CONTROLADO;
+  el jugador afectado se desconecta sin reconexion automatica.
 
-    ARRIBA W    ABAJO S    IZQUIERDA A    DERECHA D
-    START Enter    SELECT Retroceso/Backspace
+## Protocolo ligero
 
-La palanca tactil tiene 8 direcciones. Se admiten raton, pantalla tactil, teclado,
-cruceta y analogico del gamepad fisico. `TECLAS` personaliza las asignaciones,
-las guarda en el navegador y respeta las preferencias anteriores durante migracion.
-
-## Protocolo WebSocket (ligero)
-
-- Conexión inicial: JSON hello, una sola vez: `{"type":"hello","name":"Bryan"}`.
-- Pulsaciones: 2 caracteres, por ejemplo `x1` (presiona X), `x0` (suelta X),
-  `u1` (arriba), `e0` (libera derecha), `t1` (START).
-- Estados: array JSON de 4 numeros:
-
-      [1,0,1,587]
-
-  Orden: `[puesto, posicion_en_espera, total_en_espera, segundos_restantes]`.
-  `puesto` 0=cola, 1=P1, 2=P2; segundo valor 0 cuando tiene mando.
-  Si espera, el tiempo se envia como 0; el navegador muestra `--:--`.
-  El contador corre cuando hay un P1/P2 y al menos un usuario en cola.
-  Una vez en P1/P2 y sin cola el tiempo queda congelado; no se gastan segundos.
-- La longitud de `[1,0,1,587]` es **11 bytes UTF-8**: 11 BYTES, NO 11 bits.
-  El tamano varia si crecen los numeros (p. ej. posicion de dos cifras).
-- El anfitrion envia actualizaciones al cambiar de asignacion o cola; cuando
-  el tiempo corre, sincroniza cada 10 s; sin cola, como mucho cada 60 s.
-- El navegador actualiza el contador localmente entre sincronizaciones.
-- Bienvenida y mensajes excepcionales siguen siendo JSON por legibilidad.
-- Python registra las pulsaciones en consola, con nombre del usuario y P1/P2.
+- `hello` JSON incluye nombre, token opcional y soporte de latidos.
+- `h`: latidos bidireccionales cada ~2 s; se liberan teclas al faltar señal.
+- Pulsaciones: 2 caracteres (`a1`, `a0`, `u1`, `u0`, etc.).
+- Modo analogico: 3 bytes binarios `A1 XX YY` con ejes firmados.
+- Estado individualizado: **6 enteros** `[puesto, posicion_cola, total_cola,
+  restantes_juego, restantes_activacion, restantes_popup]`, ejemplo
+  `[3,0,1,600,0,3]`. No se envia a Internet la lista de jugadores.
+- `q1` confirma seguir esperando y `q0` cede el turno desde la web.
+- JavaScript web preexistente en modo ANALOGICO, CRUCETA y MIXTO, teclado
+  configurable y diseno adaptable a movil.
 
 ## Archivos incluidos
 
-- index.php / palanca.php / control.php / sala.php / config.php
-- assets/palanca.css
-- private/palanca.enc, FRASE_CIFRADO.php, proteccion .htaccess y nota de seguridad
-- .htaccess y .gitignore de la raiz
+El ZIP web incluye PHP, hojas CSS y `private/palanca.enc` con su frase protegida.
+El ZIP completo agrega `ANFITRION/MULTIMANDO_Anfitrion.py` y este README.
+La web y Python **se actualizan juntos**, ya que el estado de 6 enteros y el
+plazo inicial 3+10 s requieren ambos componentes.
 
-## Seguridad
-
-No publiques `private/FRASE_CIFRADO.php` en GitHub ni lo coloques en una carpeta
-servida sin reglas de denegacion. La opcion AUTO consulta la API fija por PHP.
-El JavaScript entregado al navegador puede inspeccionarse (cifrado en reposo).
-No se transmiten imagenes ni audio de la PC. El host no ejecuta instrucciones arbitrarias.
+## Historial anterior
 
 ## v6.0: interruptor ANALOGICO / CRUCETA
 
@@ -172,3 +181,41 @@ Selector del mando: **ANALÓGICO / CRUCETA / MIXTO**.
 - Las cuatro direcciones principales y diagonales mantienen su indicador de pulsación iluminado. MIXTO sigue enviando comandos digitales de 2 caracteres y admite ocho direcciones; el ANALÓGICO conserva su movimiento proporcional.
 - Se mantienen el diseño vertical y horizontal, los botones START/SELECT separados, el crédito de autoría, la conexión AUTO, las teclas configurables y toda la lógica Python.
 - El JavaScript cifrado es exactamente el de v6.1.2; no requiere una nueva frase.
+
+## Reconexión automática (v6.1.4 / anfitrión v1.5.1)
+
+- Después de una conexión aceptada, el anfitrión entrega un token aleatorio de recuperación por WebSocket.
+- Ante un corte involuntario, la web muestra REINTENTANDO y consulta AUTO o URL manual cada 1,4 s durante hasta 40 s.
+- El anfitrión reserva el turno/mando durante 35 s después de detectar la desconexión. Suelta los botones de inmediato por seguridad.
+- Para recuperar una sesión, el navegador envía `hello` con `name` y `resume_token`. El servidor valida ambos, reconecta al usuario existente y conserva el tiempo restante y la posición en la cola.
+- Un nombre duplicado SIN token válido continúa rechazado; no es posible apropiarse de una sesión solo escribiendo el mismo nombre.
+- El token queda en `sessionStorage` de la pestaña. SALIR elimina el token y envía `bye` para liberar el mando sin esperar.
+- Si se pierde la conexión definitivamente o se cierra el anfitrión, el puesto deja de estar reservado al terminar el margen.
+- Actualiza la web y el anfitrión juntos; las versiones anteriores no admiten restauración con token.
+- Estos tiempos son márgenes de aplicación y no garantizan que una red inestable pueda reconectar.
+
+## v6.1.6 / Python v1.5.3: mando neutro ante perdida de enlace
+
+- El servidor nunca espera un mensaje de "soltar" para limpiar el mando:
+  cuando se cierra el WebSocket, cuando se recupera un socket anterior y cuando
+  un navegador deja de confirmar latidos durante 6 segundos, libera TODOS los
+  botones, direcciones, temporizadores de pulsacion y stick analogico del P1/P2
+  afectado. El otro jugador sigue funcionando normalmente.
+- La web y el servidor intercambian un caracter "h" en cada sentido cada 2 s.
+  Si no recibe confirmacion durante 7 s, el navegador limpia los controles,
+  muestra el reintento y busca recuperar su sesion con su token. Los clientes
+  antiguos sin soporte de latidos siguen funcionando mediante ping de WebSocket.
+- Un socket sustituido no puede volver a mandar acciones ni cerrar la sesion
+  del mismo jugador. Despues de reconectar, el mando comienza neutro.
+- El gamepad fisico exige regresar a estado neutral antes de reactivar acciones,
+  para no repetir un boton que ya estaba pulsado antes de la caida.
+- Se conserva la cola FIFO y el plazo de reserva de 35 s. El pie de pagina
+  muestra el credito FUTUREO - RYANEXX conforme a lo solicitado.
+
+## Publicacion GitHub
+
+Esta carpeta MANDOWEB corresponde a la web v6.2.0 y debe utilizarse con
+el anfitrion v1.8.1 de la carpeta ANFITRION. Los paquetes ZIP originales
+contienen una frase privada para descifrar palanca.enc; esa frase NO esta
+en GitHub y debe conservarse en el servidor de despliegue. Para instalar
+en el hosting, publica el contenido de esta carpeta en la ruta web actual.

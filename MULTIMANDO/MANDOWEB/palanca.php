@@ -430,7 +430,7 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .action-zone > .control-label { display: none; }
 }
 
-/* MULTIMANDO v6.1.3: MIXTO, cruceta tactil con mini joystick central.
+/* MULTIMANDO v6.1.5: MIXTO, cruceta tactil con mini joystick central.
    Apariencia diferente del ANALOGICO, sin octagono ni botones flotantes.
    El joystick sigue emitiendo exclusivamente direcciones digitales. */
 .joystick-frame .mixed-gate{display:none;pointer-events:none}
@@ -539,6 +539,30 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
 @media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
  .app-shell>footer{display:none}
 }
+
+/* Confirmacion de permanencia en cola cada 5 minutos. */
+.queue-dialog{position:fixed;inset:0;margin:auto;width:min(420px,calc(100vw - 24px));max-height:calc(100dvh - 22px);padding:0;border:1px solid #426687;border-radius:20px;background:#0d2137;color:#f1f8ff;box-shadow:0 20px 75px #000c;z-index:110;overflow:auto}
+.queue-dialog::backdrop{background:rgba(1,8,19,.83);backdrop-filter:blur(6px)}
+.queue-dialog-content{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:clamp(18px,4vw,30px)}
+.queue-dialog-icon{font-size:30px;line-height:1}
+.queue-dialog h2{font-size:clamp(17px,4vw,23px);line-height:1.15;margin:0;color:#e5f7ff}
+.queue-dialog p{font-size:13px;line-height:1.6;color:#c4d9ec;margin:0}
+.queue-dialog-actions{display:flex;width:100%;gap:9px;flex-wrap:wrap}
+.queue-dialog-actions button{flex:1 1 155px;min-height:48px;border-radius:10px;border:1px solid #5483a4;font-size:12px;font-weight:800;cursor:pointer;padding:10px 7px}
+.queue-dialog-actions .queue-keep{color:#061d2e;background:#76e3c4;border-color:#76e3c4}
+.queue-dialog-actions .queue-yield{color:#f6e9f2;background:#243b55;border-color:#58728f}
+.queue-dialog small{display:block;color:#8fb0cd;font-size:11px;line-height:1.5}
+
+/* v6.2.0: popup centrado antes de los 10 segundos de activacion. */
+.turn-dialog{position:fixed;inset:0;margin:auto;width:min(410px,calc(100vw - 28px));max-height:calc(100dvh - 25px);padding:0;border:1px solid #5092b4;border-radius:22px;background:radial-gradient(circle at top,#1b4268 0%,#0a2039 70%);color:#f5fbff;box-shadow:0 22px 90px #000e;z-index:120;overflow:hidden}
+.turn-dialog::backdrop{background:rgba(1,8,20,.82);backdrop-filter:blur(6px)}
+.turn-dialog-content{min-height:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:25px}
+.turn-dialog-icon{font-size:30px}
+.turn-dialog h2{margin:0;font-size:clamp(17px,4vw,24px);font-weight:900;letter-spacing:.06em}
+.turn-count-number{display:block;font-size:clamp(100px,25vw,158px);font-weight:950;line-height:.95;color:#76f4ff;text-shadow:0 0 24px #5bdcf9aa;animation:turnPulse 1s ease-in-out infinite}
+.turn-dialog p{font-size:12px;line-height:1.5;color:#b0d2ec;margin:0}
+@keyframes turnPulse{0%,100%{transform:scale(.95);opacity:.9}50%{transform:scale(1.05);opacity:1}}
+@media(prefers-reduced-motion:reduce){.turn-count-number{animation:none}}
 MULTIMANDO_CSS_FALLBACK;
 $cssFile = __DIR__ . '/assets/palanca.css';
 if (is_readable($cssFile)) {
@@ -558,7 +582,7 @@ if (is_readable($cssFile)) {
 <title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
-<script src="control.php?v=6.1.3" defer></script>
+<script src="control.php?v=6.2.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -569,7 +593,7 @@ if (is_readable($cssFile)) {
   </header>
 
   <section class="connect-panel" aria-label="Conectar control remoto">
-    <label class="nickname-field"><span>JUGADOR</span><input id="nickname" type="text" maxlength="24" autocomplete="nickname" spellcheck="false" placeholder="Escribe tu nombre" aria-label="Nombre del jugador"></label>
+    <label class="nickname-field"><span>JUGADOR</span><input id="nickname" type="text" maxlength="10" autocomplete="nickname" spellcheck="false" placeholder="Nombre (máx. 10)" aria-label="Nombre del jugador"></label>
     <div class="connect-tools">
       <label class="auto-choice" for="autoRoom" title="Activado: buscar sala usando /api/geturlmultimando">
         <input id="autoRoom" type="checkbox" checked aria-label="Obtener URL automáticamente desde la API">
@@ -646,8 +670,28 @@ if (is_readable($cssFile)) {
         <span class="micro-hint">WASD · U I O / J K L</span>
       </div>
     </div>
-    <div class="deck-footer"><span class="feedback-indicator" aria-hidden="true"></span><p id="feedback" aria-live="polite">Escribe tu nombre y pulsa CONECTAR.</p><span id="connectionSource">API MULTIMANDO</span><span class="deck-credit">Idea por: por Bryan Paredes Gracia (FORTUNEO - RYANEXX)</span></div>
+    <div class="deck-footer"><span class="feedback-indicator" aria-hidden="true"></span><p id="feedback" aria-live="polite">Escribe tu nombre y pulsa CONECTAR.</p><span id="connectionSource">API MULTIMANDO</span><span class="deck-credit">Idea original: Bryan Paredes Gracia (FUTUREO - RYANEXX)</span></div>
   </section>
+  <dialog id="queueDialog" class="queue-dialog" aria-labelledby="queueDialogTitle" aria-describedby="queueDialogDescription">
+    <div class="queue-dialog-content">
+      <div class="queue-dialog-icon" aria-hidden="true">⌛</div>
+      <h2 id="queueDialogTitle">¿DESEAS SEGUIR ESPERANDO?</h2>
+      <p id="queueDialogDescription">Han pasado 5 minutos desde que entraste a la cola o confirmaste tu espera. ¿Quieres mantener tu puesto o cederlo a los demás?</p>
+      <div class="queue-dialog-actions">
+        <button type="button" id="queueKeepBtn" class="queue-keep">SEGUIR ESPERANDO</button>
+        <button type="button" id="queueYieldBtn" class="queue-yield">CEDER MI TURNO</button>
+      </div>
+      <small>Responde en <strong id="queueResponseLeft">60</strong> segundos. Si no confirmas, saldrás automáticamente de la cola.</small>
+    </div>
+  </dialog>
+  <dialog id="turnDialog" class="turn-dialog" aria-labelledby="turnDialogTitle">
+    <div class="turn-dialog-content">
+      <div class="turn-dialog-icon" aria-hidden="true">🎮</div>
+      <h2 id="turnDialogTitle">¡TU TURNO EMPIEZA EN!</h2>
+      <strong id="turnCountdown" class="turn-count-number" aria-live="polite">3</strong>
+      <p>Prepara tu mando. Después tendrás 10 segundos para pulsar una tecla.</p>
+    </div>
+  </dialog>
   <dialog id="keyDialog" class="key-dialog" aria-labelledby="keyDialogTitle">
     <div class="key-dialog-head"><div><strong id="keyDialogTitle">CONFIGURAR TECLAS</strong><small>PERFIL: WASD + U I O / J K L · SELECT = RETROCESO. Los comandos enviados no cambian.</small></div><button type="button" id="closeKeys" class="key-dialog-close" aria-label="Cerrar configuración">CERRAR</button></div>
     <p class="key-instructions">Pulsa una opción y luego la tecla que quieras asignarle. Las asignaciones se guardan en este navegador. RESTAURAR TECLAS activa el perfil predeterminado.</p>
@@ -655,7 +699,7 @@ if (is_readable($cssFile)) {
     <p id="keyMessage" class="key-message" role="status">Configuración lista.</p>
     <div class="key-dialog-foot"><button id="resetKeys" type="button">RESTAURAR TECLAS</button><button type="button" id="saveKeys">LISTO</button></div>
   </dialog>
-  <footer><span class="footer-system">SOLO CONTROL REMOTO · JUGADORES, COLA Y TURNOS ADMINISTRADOS POR PYTHON</span><span class="footer-credit">Idea por: por Bryan Paredes Gracia (FORTUNEO - RYANEXX)</span></footer>
+  <footer><span class="footer-system">SOLO CONTROL REMOTO · JUGADORES, COLA Y TURNOS ADMINISTRADOS POR PYTHON</span><span class="footer-credit">Idea original: Bryan Paredes Gracia (FUTUREO - RYANEXX)</span></footer>
 </main>
 </body>
 </html>

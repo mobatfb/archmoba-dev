@@ -1,5 +1,6 @@
-ARCHIVOS PRIVADOS DE MULTIMANDO
+CONTENIDO PRIVADO DE MULTIMANDO
 
-No compartas FRASE_CIFRADO.php ni lo publiques en un repositorio publico.
-Este directorio esta protegido mediante .htaccess en Apache.
-En Nginx se requiere configurar una regla de acceso denegado.
+FRASE_CIFRADO.php es la misma frase privada de las versiones anteriores.
+Este directorio esta protegido por .htaccess para Apache/WAMP.
+No publiques esta carpeta ni la frase en GitHub ni en distribuciones publicas.
+control.php entrega JavaScript descifrado al navegador, por lo que sigue siendo inspeccionable.
