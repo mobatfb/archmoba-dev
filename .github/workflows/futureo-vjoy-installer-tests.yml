@@ -41,6 +41,20 @@ jobs:
             throw 'Falta gestion del certificado'
           }
           Write-Host 'Contrato de permisos del menu correcto; no se modifica Windows.'
+      - name: Comprobar diagnostico y alternativa CertUtil sin cambiar directivas
+        shell: powershell
+        run: |
+          $script = Get-Content '.\MULTIMANDO\FUTUREO_VJOY\instalador_windows\HERRAMIENTAS\instalador.ps1' -Raw
+          if ($script -notmatch "function ImportIntoMachineStore" -or $script -notmatch "function DiagnoseCertificate") {
+            throw 'Faltan las funciones de diagnostico de certificados.'
+          }
+          if ($script -notmatch "certutil.exe -addstore" -or $script -notmatch "TrustedPublisher") {
+            throw 'Falta la alternativa oficial de instalacion en almacenes de equipo.'
+          }
+          if ($script -notmatch "function CertPresent") { throw 'No se comprueba que el certificado este instalado' }
+          $bat = Get-Content '.\MULTIMANDO\FUTUREO_VJOY\instalador_windows\DIAGNOSTICAR_CERTIFICADO.bat' -Raw
+          if ($bat -notmatch "DiagnosticarCert") { throw 'BAT de diagnostico no inicia la opcion correcta' }
+          Write-Host 'Diagnostico y fallback certutil detectados, sin instalar certificados en CI.'
       - name: Compilar envoltura CSharp de SetupAPI sin instalar
         shell: powershell
         run: |
@@ -54,7 +68,7 @@ jobs:
         shell: powershell
         run: |
           $dir='.\MULTIMANDO\FUTUREO_VJOY\instalador_windows'
-          foreach($name in @("INSTALAR.bat","INSTALAR_1_MANDO.bat","INSTALAR_8_MANDOS.bat","PREPARAR_MODO_PRUEBA.bat","DESINSTALAR.bat","DIAGNOSTICAR.bat","VOLVER_MODO_NORMAL.bat")) {
+          foreach($name in @("INSTALAR.bat","INSTALAR_1_MANDO.bat","INSTALAR_8_MANDOS.bat","PREPARAR_MODO_PRUEBA.bat","DESINSTALAR.bat","DIAGNOSTICAR.bat","VOLVER_MODO_NORMAL.bat","DIAGNOSTICAR_CERTIFICADO.bat")) {
             $p = Join-Path $dir $name
             if(-not (Test-Path $p)) { throw "Falta: $name" }
             $text=Get-Content $p -Raw
