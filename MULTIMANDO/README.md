@@ -1,4 +1,4 @@
-# MULTIMANDO - Palanca web v5.0 (6 botones)
+# MULTIMANDO - Palanca web v5.1 (6 botones)
 
 Proyecto totalmente independiente de KOFMULTI. **PHP es sólo un mando remoto**: el anfitrión Python (a desarrollar) administra P1, P2, cola FIFO, usuarios y 10 minutos por turno sólo cuando exista cola.
 
@@ -7,7 +7,7 @@ Proyecto totalmente independiente de KOFMULTI. **PHP es sólo un mando remoto**:
 - **Palanca digital:** arrastrar con ratón o dedo, 8 direcciones y diagonales; flechas del teclado; cruceta física D-pad o analógico izquierdo de mando USB/Bluetooth compatible con Gamepad API.
 - **Seis botones con letras, sin figuras**: primera fila **A B C**, segunda fila **D E F**.
 - **TECLAS:** botón para configurar localmente cada tecla (direcciones, A-F, START y SELECT), guardado en `localStorage`. Si una tecla ya está asignada, se intercambian las asignaciones; no se envía la configuración a Python.
-- **Perfil predeterminado del teclado**: **W = arriba, A = izquierda, S = abajo, D = derecha**; botones **A/B/C = U/I/O** y **D/E/F = J/K/L**. **Enter** = START, **5** = SELECT. El usuario puede cambiarlo mediante TECLAS y restaurar el perfil predeterminado cuando quiera.
+- **Perfil predeterminado del teclado**: **W = arriba, A = izquierda, S = abajo, D = derecha**; botones **A/B/C = U/I/O** y **D/E/F = J/K/L**. **Enter** = START, **Retroceso / Backspace** = SELECT. El usuario puede cambiarlo mediante TECLAS y restaurar el perfil predeterminado cuando quiera.
 - **Mando físico estándar**: analógico izquierdo o D-pad; botones físicos 0-5 corresponden a A-F; 9 START y 8 SELECT. Dependiendo del control físico algunas plataformas pueden exponer otras asignaciones.
 
 ## Contrato WebSocket con el nuevo Python
@@ -42,3 +42,7 @@ Se ha probado la interfaz y la lógica de pulsaciones con WebSocket simulado. La
 ### Migración de perfiles desde v4
 
 La configuración guardada por el usuario en v4 se respeta en sus teclas personalizadas; las teclas que seguían con el valor de fábrica migran a WASD + UIO/JKL. Una vez guardada una modificación nueva, se utiliza `multimando_keys_v5`.
+
+### Parche v5.1: SELECT en retroceso
+
+El valor predeterminado de SELECT pasa de `Digit5` a `Backspace`. Los perfiles anteriores conservan los ajustes personalizados; si SELECT seguía usando la tecla `5` predeterminada, se migra a Backspace automáticamente. Backspace mantiene su comportamiento normal al escribir en un campo de texto. El comando WebSocket para Python no cambia: `select`.

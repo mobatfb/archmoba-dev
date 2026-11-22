@@ -15,7 +15,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
 <link rel="stylesheet" href="assets/palanca.css?v=5.0.0">
-<script src="control.php?v=5.0.0" defer></script>
+<script src="control.php?v=5.1.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -70,7 +70,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
           <button class="action-btn btn-f" type="button" data-action="bf" aria-label="Botón F">F</button>
         </div>
         <div class="aux-buttons">
-          <button class="aux-btn" type="button" data-action="select">SELECT</button>
+          <button class="aux-btn" type="button" data-action="select" title="SELECT: tecla Retroceso (Backspace)">SELECT</button>
           <button class="aux-btn aux-primary" type="button" data-action="start">START</button>
         </div>
         <span class="micro-hint">WASD · U I O / J K L</span>
@@ -79,7 +79,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
     <div class="deck-footer"><span class="feedback-indicator" aria-hidden="true"></span><p id="feedback" aria-live="polite">Escribe tu nombre y pulsa CONECTAR.</p><span id="connectionSource">API MULTIMANDO</span></div>
   </section>
   <dialog id="keyDialog" class="key-dialog" aria-labelledby="keyDialogTitle">
-    <div class="key-dialog-head"><div><strong id="keyDialogTitle">CONFIGURAR TECLAS</strong><small>PERFIL: WASD + U I O / J K L. Los comandos enviados no cambian.</small></div><button type="button" id="closeKeys" class="key-dialog-close" aria-label="Cerrar configuración">CERRAR</button></div>
+    <div class="key-dialog-head"><div><strong id="keyDialogTitle">CONFIGURAR TECLAS</strong><small>PERFIL: WASD + U I O / J K L · SELECT = RETROCESO. Los comandos enviados no cambian.</small></div><button type="button" id="closeKeys" class="key-dialog-close" aria-label="Cerrar configuración">CERRAR</button></div>
     <p class="key-instructions">Pulsa una opción y luego la tecla que quieras asignarle. Las asignaciones se guardan en este navegador. RESTAURAR TECLAS activa el perfil predeterminado.</p>
     <div id="keyGrid" class="key-grid" aria-label="Asignación de teclas"></div>
     <p id="keyMessage" class="key-message" role="status">Configuración lista.</p>
