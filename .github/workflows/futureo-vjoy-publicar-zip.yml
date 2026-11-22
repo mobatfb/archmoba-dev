@@ -40,9 +40,15 @@ jobs:
           Copy-Item (Join-Path $source '*.bat') -Destination $stage
           Copy-Item (Join-Path $source 'LEEME_PRIMERO.txt') -Destination $stage
           Copy-Item (Join-Path $source 'HERRAMIENTAS') -Destination $stage -Recurse
-          foreach($folder in @("PYTHON","FUENTE_DRIVER")) {
-            Copy-Item (Join-Path $componentes $folder) -Destination $stage -Recurse
-          }
+          # Python SIEMPRE desde main: el artefacto firmado anterior contiene GUI obsoleto.
+          # Solo el SYS/CAT/INF/CER se reutilizan de la compilacion firmada.
+          Copy-Item (Join-Path $repo 'MULTIMANDO\FUTUREO_VJOY\python') -Destination (Join-Path $stage 'PYTHON') -Recurse
+          Copy-Item (Join-Path $componentes 'FUENTE_DRIVER') -Destination $stage -Recurse
+          $gui = Join-Path $stage 'PYTHON\futureo_vjoy_manager.py'
+          if(-not (Test-Path $gui)) { throw "GUI actualizado ausente del ZIP" }
+          $guiSource = Get-Content $gui -Raw
+          if($guiSource.Contains('self.devcon')) { throw "GUI antiguo requiere devcon.exe" }
+          if(-not $guiSource.Contains('InstalarN')) { throw "GUI no utiliza instalador SetupAPI" }
           foreach($nombre in @("FutJoy.sys","FutJoy.inf","FUTUREO_VJOY_PRUEBA.cer","SHA256SUMS.txt","ATENCION_PRUEBAS.txt")) {
             Copy-Item (Join-Path $componentes $nombre) -Destination $driver
           }
@@ -63,7 +69,7 @@ jobs:
           if($valid -lt 4) { throw "No se verificaron los 4 archivos de la firma" }
           if(-not (Test-Path (Join-Path $stage "DESINSTALAR.bat"))) { throw "Falta desinstalador" }
           if(-not (Test-Path (Join-Path $stage "INSTALAR.bat"))) { throw "Falta instalador" }
-          $zip = Join-Path $source 'FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip'
+          $zip = Join-Path $source 'FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip'
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
           $size = (Get-Item $zip).Length
           if($size -lt 20000) { throw "ZIP sospechosamente pequeño" }
@@ -75,10 +81,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip
-          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_4_3_LAB_PRUEBA_MANDO_P1.zip.sha256
+          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_5_0_LAB_GUI_SIN_DEVCON.zip.sha256
           git diff --cached --name-only
-          git commit -m "FUTUREO VJOY v0.4.3: incluir prueba P1 y diagnostico corregido"
+          git commit -m "FUTUREO VJOY v0.5: publicar GUI SetupAPI sin DevCon y alias OEM"
           if($LASTEXITCODE -ne 0) { throw "No se pudo crear commit del ZIP" }
           git push origin HEAD:main
           if($LASTEXITCODE -ne 0) { throw "GitHub no permitio subir ZIP a main" }
