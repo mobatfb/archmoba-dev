@@ -1,0 +1,27 @@
+name: FUTUREO VJOY - pruebas Python
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/**"
+      - ".github/workflows/futureo-vjoy-checks.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  protocolo:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pruebas de protocolo, IDs y controles
+        run: python -m unittest discover -s MULTIMANDO/FUTUREO_VJOY/tests -v
+      - name: Sintaxis Python
+        run: python -m compileall -q MULTIMANDO/FUTUREO_VJOY/python
+      - name: Plan de nombres sin tocar el registro
+        run: python MULTIMANDO/FUTUREO_VJOY/python/nombres_windows.py --count 8
