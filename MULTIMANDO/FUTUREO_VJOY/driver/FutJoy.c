@@ -1,5 +1,6 @@
 /* FUTUREO VJOY - KMDF/VHF experimental gamepad prototype.
- * Not compiled, signed or tested on Windows. Test ONLY on disposable VM.
+ * Compila en WDK x64; TODAVIA NO firmado ni probado arrancando en Windows.
+ * Probar unicamente en laboratorio aislado despues de firma valida.
  */
 #include "FutJoy.h"
 
@@ -73,6 +74,10 @@ NTSTATUS FutJoyDeviceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init) {
   WDF_OBJECT_ATTRIBUTES attr;
   /* El driver recibe EvtFileCleanup tambien si el proceso termina sin
    * enviar una liberacion explicita de teclas. */
+  /* Cada gamepad admite un solo escritor. Evita mezclar entradas de
+   * dos procesos y que el cierre de uno reinicie el mando del otro.
+   * El hijo HID VHF pertenece a otra instancia de dispositivo. */
+  WdfDeviceInitSetExclusive(init, TRUE);
   WDF_FILEOBJECT_CONFIG fileCfg;
   WDF_FILEOBJECT_CONFIG_INIT(&fileCfg,NULL,NULL,FutJoyFileCleanup);
   WdfDeviceInitSetFileObjectConfig(init,&fileCfg,WDF_NO_OBJECT_ATTRIBUTES);
