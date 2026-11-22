@@ -1,6 +1,6 @@
 # FUTUREO VJOY - Controlador HID propio para MULTIMANDO
 
-**Estado: v0.3 experimental; .sys COMPILADO y .inf VALIDADO, ambos sin instalacion certificada.**
+**Estado: v0.4 experimental; fuente .sys compilable y .inf validado. Sin firma ni prueba fisica en Windows.**
 
 Proyecto experimental para crear hasta 8 gamepads HID independientes en Windows 10/11 x64. No reemplaza ni modifica vJoy o ViGEmBus instalados.
 
@@ -26,11 +26,12 @@ El INF declara etiquetas PnP "FUTUREO VJOY1 - PLAYER 1" hasta "FUTUREO VJOY8 - P
 - driver/FutJoy.vcxproj: proyecto base para Visual Studio + WDK.
 - python/futureo_vjoy.py: puente de estados por DeviceIoControl.
 - python/adapter_multimando.py: motor opcional con interfaz compatible con Room de MULTIMANDO, no integrado aun.
+- python/diagnostico_hid.py: consulta HID REAL (SetupAPI/HidD) para determinar si Windows publica nombres y PID independientes; solo lectura, no requiere administrador.
 - python/futureo_vjoy_manager.py: GUI para seleccionar 1-8, pedir instalacion en modo laboratorio, detectar y probar.
 - python/identificar_futureo.py: GUI de identificacion de mandos.
 - python/nombres_windows.py: alias numerados de joy.cpl/DirectInput con respaldo y restauracion.
 - tools/compilar_driver.ps1: verificacion y compilacion WDK local, sin instalar el driver.
-- tests/test_protocol.py: pruebas del protocolo sin Windows.
+- tests/test_protocol.py y tests/test_diagnostico_hid.py: contratos, nombres y simulaciones sin hardware.
 
 ## Importante: requisitos y limitaciones
 
@@ -42,7 +43,8 @@ El INF declara etiquetas PnP "FUTUREO VJOY1 - PLAYER 1" hasta "FUTUREO VJOY8 - P
 4. Probar primero en una maquina virtual de laboratorio. Un driver kernel experimental puede causar fallos del sistema.
    - El INF ya declara Vhf.sys como LowerFilters (antes faltaba).
    - El driver solicita enviar estado neutro cuando se cierra el cliente Python.
-   - La compilacion WDK y las pruebas reales aun estan PENDIENTES.
+   - Se limita a un unico proceso escritor por puesto (WdfDeviceInitSetExclusive).
+   - La compilacion WDK ya fue comprobada para el codigo anterior; falta el resultado del ultimo cambio y todas las pruebas de hardware en VM.
 5. El VID 0xF7A0 es SOLO ilustrativo: antes de distribuir usar identificadores de proveedor autorizados.
 6. FutJoy.sys YA COMPILA en GitHub Actions (Windows x64, 0 errores/0 advertencias). FutJoy.inf paso InfVerif /w. No esta firmado ni probado como hardware HID ni integrado con MULTIMANDO Anfitrion v1.8.1.
 7. No desactivar Secure Boot o protecciones del sistema para forzar la instalacion.
@@ -187,3 +189,55 @@ enumeracion en joy.cpl, nombres por juego y estabilidad del controlador.
 Referencias:
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/driver-signing-offerings
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-reqs
+
+## Nuevo en v0.4: diagnostico HID de identidad REAL (solo lectura)
+
+El objetivo es comprobar exactamente lo que los juegos pueden encontrar,
+no solamente los nombres establecidos en el INF. Despues de instalar
+de forma valida en un equipo Windows de laboratorio:
+
+    py python\diagnostico_hid.py --count 8
+
+Para generar un resultado estructurado que se pueda compartir:
+
+    py python\diagnostico_hid.py --count 8 --json
+
+Tambien esta integrado en la GUI: boton **VER IDENTIDAD HID**.
+
+El diagnostico enumera interfaces HID presentes utilizando SetupAPI y
+HidD_GetAttributes/HidD_GetProductString. Para cada puesto muestra:
+- VID:PID hexadecimal (de laboratorio)
+- si hay una coleccion HID presente
+- el Product String HID REAL, si Windows lo devuelve
+- si los ocho Product Strings son diferentes
+
+Este analisis es estrictamente de lectura, no modifica el Registro,
+no requiere administrador, no instala drivers y no crea joysticks.
+Si no se detecta nada, NO significa que el driver no compile;
+significa que ese Windows no expone interfaces HID FUTUREO accesibles.
+
+IMPORTANTE: el protocolo VHF puede entregar nombres HID genericos;
+un nombre numerado en el INF o un alias OEM DirectInput NO garantiza
+el mismo nombre en el desplegable de un juego. No anunciar como logro
+esa funcion hasta contrastarla en juegos reales.
+
+### Seguridad del manejo de dispositivos
+
+Cada FUTUREO VJOY solo permite un escritor al mismo tiempo. El puente
+Python abre el control con uso exclusivo, de forma que no existan dos
+anfitriones mandando ordenes contradictorias a un mismo slot.
+Al cerrar el cliente, el driver intenta neutralizar ejes y botones.
+
+Pendiente de implementacion: seguridad por usuario de los enlaces
+de dispositivo, watchdog de actividad, cierre seguro ante fallos
+de energia, pruebas de Windows con Driver Verifier y firma del driver.
+
+Pruebas simuladas de nombres y exclusividad se ejecutan en GitHub Actions,
+pero NO constituyen prueba de un dispositivo instalado ni de su nombre
+real anunciado a los juegos.
+
+### Rutas de trabajo
+
+- Anfitrion estable con vJoy convencional: `../ANFITRION/`.
+- Prototipo FUTUREO (sin integrar al anfitrion estable): esta carpeta.
+- Nueva interfaz de diagnostico: `python/diagnostico_hid.py`.
