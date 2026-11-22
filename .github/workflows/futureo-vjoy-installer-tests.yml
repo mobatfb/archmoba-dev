@@ -74,4 +74,10 @@ jobs:
             $text=Get-Content $p -Raw
             if($text -notmatch "instalador\.ps1" ) { throw "Sin referencia al instalador: $name" }
           }
-          Write-Host "Entradas BAT correctas, sin modificaciones de Windows durante CI."
+          $probe = Join-Path $dir 'PROBAR_MANDO_1.bat'
+          if(-not (Test-Path $probe)) { throw 'Falta PROBAR_MANDO_1.bat' }
+          $probeSource = Get-Content $probe -Raw
+          if($probeSource -notmatch '--demo 1' -or $probeSource -notmatch 'joy.cpl') {
+            throw 'La prueba debe abrir joy.cpl y enviar una demo solo a P1'
+          }
+          Write-Host "Entradas BAT y prueba P1 correctas, sin modificaciones de Windows durante CI."
