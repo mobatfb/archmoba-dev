@@ -98,3 +98,53 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .status-hud .stat > strong { font-size: clamp(18px, 2vw, 24px); line-height: 1.15; }
   .status-hud .stat > small { display: none; }
 }
+
+
+/* MULTIMANDO v5.4 - Modo AUTO y adaptación fluida de la barra de conexión. */
+.auto-choice{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;min-width:76px;padding:0 9px;border:1px solid #3d708d;border-radius:9px;background:#0e263e;color:#c4efff;font-size:10px;font-weight:900;letter-spacing:.08em;white-space:nowrap;cursor:pointer;user-select:none;touch-action:manipulation}
+.auto-choice:hover{border-color:var(--cyan);background:#173955}.auto-choice:focus-within{outline:2px solid var(--outline);outline-offset:2px}
+.auto-choice input{appearance:none;-webkit-appearance:none;width:16px;height:16px;min-width:16px;border:2px solid #6890a9;border-radius:4px;background:#0a1a31;cursor:pointer;display:grid;place-items:center;margin:0}
+.auto-choice input:checked{border-color:#79efff;background:#6fe8ff}.auto-choice input:checked::after{content:'✓';font-size:12px;line-height:1;color:#082338;font-weight:1000}
+.auto-choice:has(input:checked){border-color:#52cbdc;background:#0c374a}.auto-choice:has(input:disabled){opacity:.65;cursor:not-allowed}
+.auto-choice input:disabled{cursor:not-allowed}
+.connect-panel>.manual-popover{position:absolute;z-index:20;right:9px;top:calc(100% + 7px);left:auto;width:min(420px,calc(100vw - 34px));max-width:calc(100vw - 34px);padding:13px;border:1px solid #4e8199;border-radius:11px;background:#0f2a42;box-shadow:0 15px 35px #000c}
+.connect-panel>.manual-popover[hidden]{display:none!important}
+.connect-panel>.manual-popover label{font-size:10px}
+.connect-panel>.manual-popover input{width:100%}
+.connect-panel>.manual-popover small{line-height:1.4}
+/* 960px+ conserva conexión + 3 indicadores en una única fila */
+@media(min-width:960px){
+ .app-shell{grid-template-columns:minmax(0,1.46fr) minmax(0,1fr)}
+ .connect-panel{grid-template-columns:minmax(0,1fr) auto;gap:7px;min-width:0}
+ .nickname-field{min-width:0;gap:7px}
+ .nickname-field input{min-width:0;max-width:none;width:100%}
+ .connect-tools{flex:none;gap:5px}
+ .auto-choice{height:36px;min-width:68px;padding:0 7px;gap:5px;font-size:9px}
+ .connect-btn,.disconnect-btn{padding:0 8px}
+ .status-hud .stat{min-width:0}
+ .status-hud .stat>span{font-size:clamp(7px,.7vw,9px);white-space:nowrap}
+}
+/* Tabletas: entrada y estados ordenados, botón AUTO claramente visible */
+@media(min-width:681px) and (max-width:959px){
+ .app-shell{gap:7px}
+ .nickname-field input{max-width:none}
+ .connect-panel{padding:8px 10px}
+ .status-hud .stat{min-width:0}
+ .status-hud .stat>strong{font-size:clamp(22px,2.8vw,28px)}
+}
+@media(max-width:680px){
+ .auto-choice{height:36px;min-width:60px;padding:0 6px;gap:4px;font-size:9px}
+ .auto-choice input{width:15px;height:15px;min-width:15px}
+ .connect-panel>.manual-popover{right:5px;top:calc(100% + 5px);width:calc(100vw - 26px)}
+}
+/* En móviles muy estrechos, el nombre necesita un renglón propio. */
+@media(max-width:359px){
+ .connect-panel{grid-template-columns:minmax(0,1fr);gap:5px;padding:6px 7px}
+ .nickname-field{width:100%}.nickname-field input{max-width:none;height:30px}
+ .connect-tools{justify-content:flex-end;width:100%;gap:6px}
+ .auto-choice,.connect-btn,.disconnect-btn{height:30px}
+ .connect-tools .auto-choice{margin-right:auto}
+ .auto-choice{min-width:67px}
+ .connect-panel>.manual-popover{right:3px;width:calc(100vw - 22px)}
+}
+@media(max-height:560px){.auto-choice{height:31px}.auto-choice input{width:14px;height:14px;min-width:14px}}

@@ -8,7 +8,6 @@ if (!defined('MULTIMANDO_INTERNAL')) {
 }
 return [
     'api_get_url' => 'https://api.isupol.edu.ec/api/geturlmultimando',
-    // Opcional: enlace directo HTTPS de Cloudflare para pruebas, sin usar la API.
-    'manual_room_url' => '',
+    // AUTO consulta siempre la API. La URL manual se configura en la palanca web.
     'allowed_tunnel_domain' => '.trycloudflare.com',
 ];

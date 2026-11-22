@@ -14,8 +14,8 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="theme-color" content="#071222">
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
-<link rel="stylesheet" href="assets/palanca.css?v=5.3.0">
-<script src="control.php?v=5.2.0" defer></script>
+<link rel="stylesheet" href="assets/palanca.css?v=5.4.0">
+<script src="control.php?v=5.4.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -28,12 +28,17 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
   <section class="connect-panel" aria-label="Conectar control remoto">
     <label class="nickname-field"><span>JUGADOR</span><input id="nickname" type="text" maxlength="24" autocomplete="nickname" spellcheck="false" placeholder="Escribe tu nombre" aria-label="Nombre del jugador"></label>
     <div class="connect-tools">
-      <details class="manual-connection" id="manualConnection">
-        <summary title="Pegar enlace directo de la sala" aria-label="Configurar enlace directo"><span aria-hidden="true">🔗</span><span class="manual-label">URL</span></summary>
-        <div class="manual-popover"><label for="directUrl">ENLACE DIRECTO DE LA SALA</label><input id="directUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://...trycloudflare.com/"><small>Déjalo vacío para buscar la sala automáticamente por API.</small></div>
-      </details>
+      <label class="auto-choice" for="autoRoom" title="Activado: buscar sala usando /api/geturlmultimando">
+        <input id="autoRoom" type="checkbox" checked aria-label="Obtener URL automáticamente desde la API">
+        <span>AUTO</span>
+      </label>
       <button class="connect-btn" type="button" id="connectBtn">CONECTAR</button>
       <button class="disconnect-btn" type="button" id="disconnectBtn" disabled>SALIR</button>
+    </div>
+    <div class="manual-popover" id="manualRoom" hidden>
+      <label for="directUrl">URL MANUAL DEL ANFITRIÓN</label>
+      <input id="directUrl" type="url" autocomplete="off" spellcheck="false" inputmode="url" placeholder="https://sala.trycloudflare.com/">
+      <small>Desactiva AUTO para escribir la URL de tu sala. Con AUTO marcado se consulta siempre la API.</small>
     </div>
     <p class="error-text" id="connectionError" role="alert" hidden></p>
   </section>

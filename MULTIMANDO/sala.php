@@ -32,11 +32,7 @@ function safe_websocket_url(string $raw, string $suffix): ?string {
     return 'wss://' . $host . ($path !== '' ? $path : '/');
 }
 
-if (!empty($config['manual_room_url'])) {
-    $url = safe_websocket_url((string)$config['manual_room_url'], (string)$config['allowed_tunnel_domain']);
-    if ($url === null) reply(500, ['status' => 'error', 'message' => 'La URL manual en config.php no es válida.']);
-    reply(200, ['status' => 'success', 'url' => $url, 'source' => 'config']);
-}
+// Modo AUTO: consultar SIEMPRE la API fija. La URL manual sólo se usa en el navegador.
 $api = (string)($config['api_get_url'] ?? '');
 if ($api !== 'https://api.isupol.edu.ec/api/geturlmultimando') {
     reply(500, ['status' => 'error', 'message' => 'API no permitida.']);
