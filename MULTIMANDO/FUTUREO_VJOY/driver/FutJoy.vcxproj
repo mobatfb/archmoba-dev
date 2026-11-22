@@ -38,7 +38,7 @@
       <WarningLevel>Level4</WarningLevel>
       <ExceptionHandling>false</ExceptionHandling>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <PreprocessorDefinitions>_KERNEL_MODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>VhfKm.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -48,7 +48,9 @@
     <ClCompile Include="FutJoy.c" />
     <ClInclude Include="FutJoy.h" />
     <FilesToPackage Include="$(TargetPath)" Condition="'$(ConfigurationType)'=='Driver'" />
-    <Inf Include="FutJoy.inf" />
+    <!-- En CI se compila el .sys; INF/CAT se validan aparte en un Windows WDK completo. -->
+    <Inf Include="FutJoy.inf" Condition="'$(FUTJOY_COMPILE_ONLY)' != 'true'" />
+    <None Include="FutJoy.inf" Condition="'$(FUTJOY_COMPILE_ONLY)' == 'true'" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
