@@ -418,3 +418,80 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .aux-btn { height: 26px; }
   .action-zone > .control-label { display: none; }
 }
+
+/* MULTIMANDO v6.1.2: MIXTO distingue visualmente el control de ocho rumbos.
+   Solo cambia la apariencia, el protocolo mixto sigue siendo DIGITAL. */
+.joystick-frame .mixed-gate{display:none;pointer-events:none}
+.joystick-frame.mixed-mode{
+ border:0;border-radius:0;
+ clip-path:polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%);
+ background:linear-gradient(135deg,#9a7cf7 0%,#6ce3ff 47%,#8879e2 100%);
+ box-shadow:none;
+}
+.joystick-frame.mixed-mode::before{
+ content:"";position:absolute;inset:3px;pointer-events:none;
+ clip-path:polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%);
+ background:radial-gradient(circle at 48% 44%,#25335e 3%,#171b3b 56%,#0d1833 88%);
+}
+.joystick-frame.mixed-mode.engaged{background:linear-gradient(130deg,#8ce8fb,#b48bff,#8ce8fb)}
+.joystick-frame.mixed-mode .joystick-label,.joystick-frame.mixed-mode .joystick-grid{display:none}
+.joystick-frame.mixed-mode .mixed-gate{display:block;position:absolute;inset:0;z-index:1}
+.mixed-gate>span{
+ position:absolute;display:grid;place-items:center;width:17%;height:17%;max-width:43px;max-height:43px;
+ border-radius:7px;border:1px solid #729cb866;background:#162e4eaa;
+ color:#a2dafa;font-size:clamp(10px,1.5vw,18px);font-weight:900;
+ line-height:1;transition:background .08s,color .08s,box-shadow .08s;
+}
+.mixed-gate>span.active{background:#72e5ff;color:#09293f;border-color:#c8f9ff;box-shadow:0 0 11px #72e5ffa8}
+.mixed-gate .gate-nw{top:18%;left:18%}
+.mixed-gate .gate-n{top:4%;left:41.5%}
+.mixed-gate .gate-ne{top:18%;right:18%}
+.mixed-gate .gate-w{top:41.5%;left:4%}
+.mixed-gate .gate-e{top:41.5%;right:4%}
+.mixed-gate .gate-sw{bottom:18%;left:18%}
+.mixed-gate .gate-s{bottom:4%;left:41.5%}
+.mixed-gate .gate-se{bottom:18%;right:18%}
+.joystick-frame.mixed-mode .joystick-base{z-index:2}
+.joystick-frame.mixed-mode .joystick-thumb{
+ border-radius:26%;border-color:#c29ff7;
+ background:linear-gradient(145deg,#987ad3 0%,#504b8f 45%,#1e345a 100%);
+ box-shadow:inset 0 0 0 3px #22284e,0 5px 17px #0009,0 0 0 2px #171831;
+}
+.joystick-frame.mixed-mode .thumb-light{border-radius:3px;transform:rotate(45deg);border-color:#b8f2ff;background:#69bcd5;box-shadow:0 0 10px #72e5ff90}
+@media(max-width:680px){.mixed-gate>span{font-size:clamp(9px,2.5vw,14px);border-radius:5px}}
+
+/* START / SELECT descienden un poco mas para no interceptar A/B/R.
+   En desktop se conserva la posicion original. */
+@media (orientation:portrait) and (max-width:680px) and (pointer:coarse){
+ .action-zone .aux-buttons{margin-top:clamp(11px,1.6dvh,17px)}
+}
+@media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
+ .action-zone .aux-buttons{margin-top:16px}
+ .deck-footer > span.deck-credit:last-child{display:block;font-size:8px;color:#83cce5;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:53%;flex:none}
+}
+@media (orientation:landscape) and (max-height:340px) and (pointer:coarse) and (hover:none){
+ .action-zone .aux-buttons{margin-top:11px}
+ .deck-footer > span.deck-credit:last-child{font-size:7px;max-width:55%}
+}
+
+/* Al agregar el credito como ultimo span, la etiqueta de origen de sala ya
+   no es el ultimo hijo. Conservamos su ocultamiento anterior en movil. */
+@media(max-width:680px){.deck-footer #connectionSource{display:none}}
+@media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
+ .deck-footer #connectionSource{display:none}
+}
+
+/* Reconocimiento de la idea en el pie. Se reserva espacio de juego en horizontal
+   moviles (donde se muestra dentro de la propia barra de estado). */
+.app-shell>footer{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:2px 14px;white-space:normal;overflow:visible;line-height:1.3}
+.footer-system{color:#6487a5}
+.footer-credit{color:#b8e7ff;font-weight:850;letter-spacing:.025em;white-space:nowrap}
+.deck-credit{display:none}
+@media (orientation:portrait) and (max-width:680px){
+ .app-shell>footer .footer-system{display:none}
+ .app-shell>footer .footer-credit{white-space:normal;font-size:9px;line-height:1.2}
+}
+/* Especificidad: mantener oculta la linea de pie general al girar el telefono. */
+@media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
+ .app-shell>footer{display:none}
+}

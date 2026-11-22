@@ -429,6 +429,83 @@ footer{text-align:center;color:#6487a5;letter-spacing:.06em;font-size:9px;font-w
   .aux-btn { height: 26px; }
   .action-zone > .control-label { display: none; }
 }
+
+/* MULTIMANDO v6.1.2: MIXTO distingue visualmente el control de ocho rumbos.
+   Solo cambia la apariencia, el protocolo mixto sigue siendo DIGITAL. */
+.joystick-frame .mixed-gate{display:none;pointer-events:none}
+.joystick-frame.mixed-mode{
+ border:0;border-radius:0;
+ clip-path:polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%);
+ background:linear-gradient(135deg,#9a7cf7 0%,#6ce3ff 47%,#8879e2 100%);
+ box-shadow:none;
+}
+.joystick-frame.mixed-mode::before{
+ content:"";position:absolute;inset:3px;pointer-events:none;
+ clip-path:polygon(27% 0,73% 0,100% 27%,100% 73%,73% 100%,27% 100%,0 73%,0 27%);
+ background:radial-gradient(circle at 48% 44%,#25335e 3%,#171b3b 56%,#0d1833 88%);
+}
+.joystick-frame.mixed-mode.engaged{background:linear-gradient(130deg,#8ce8fb,#b48bff,#8ce8fb)}
+.joystick-frame.mixed-mode .joystick-label,.joystick-frame.mixed-mode .joystick-grid{display:none}
+.joystick-frame.mixed-mode .mixed-gate{display:block;position:absolute;inset:0;z-index:1}
+.mixed-gate>span{
+ position:absolute;display:grid;place-items:center;width:17%;height:17%;max-width:43px;max-height:43px;
+ border-radius:7px;border:1px solid #729cb866;background:#162e4eaa;
+ color:#a2dafa;font-size:clamp(10px,1.5vw,18px);font-weight:900;
+ line-height:1;transition:background .08s,color .08s,box-shadow .08s;
+}
+.mixed-gate>span.active{background:#72e5ff;color:#09293f;border-color:#c8f9ff;box-shadow:0 0 11px #72e5ffa8}
+.mixed-gate .gate-nw{top:18%;left:18%}
+.mixed-gate .gate-n{top:4%;left:41.5%}
+.mixed-gate .gate-ne{top:18%;right:18%}
+.mixed-gate .gate-w{top:41.5%;left:4%}
+.mixed-gate .gate-e{top:41.5%;right:4%}
+.mixed-gate .gate-sw{bottom:18%;left:18%}
+.mixed-gate .gate-s{bottom:4%;left:41.5%}
+.mixed-gate .gate-se{bottom:18%;right:18%}
+.joystick-frame.mixed-mode .joystick-base{z-index:2}
+.joystick-frame.mixed-mode .joystick-thumb{
+ border-radius:26%;border-color:#c29ff7;
+ background:linear-gradient(145deg,#987ad3 0%,#504b8f 45%,#1e345a 100%);
+ box-shadow:inset 0 0 0 3px #22284e,0 5px 17px #0009,0 0 0 2px #171831;
+}
+.joystick-frame.mixed-mode .thumb-light{border-radius:3px;transform:rotate(45deg);border-color:#b8f2ff;background:#69bcd5;box-shadow:0 0 10px #72e5ff90}
+@media(max-width:680px){.mixed-gate>span{font-size:clamp(9px,2.5vw,14px);border-radius:5px}}
+
+/* START / SELECT descienden un poco mas para no interceptar A/B/R.
+   En desktop se conserva la posicion original. */
+@media (orientation:portrait) and (max-width:680px) and (pointer:coarse){
+ .action-zone .aux-buttons{margin-top:clamp(11px,1.6dvh,17px)}
+}
+@media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
+ .action-zone .aux-buttons{margin-top:16px}
+ .deck-footer > span.deck-credit:last-child{display:block;font-size:8px;color:#83cce5;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:53%;flex:none}
+}
+@media (orientation:landscape) and (max-height:340px) and (pointer:coarse) and (hover:none){
+ .action-zone .aux-buttons{margin-top:11px}
+ .deck-footer > span.deck-credit:last-child{font-size:7px;max-width:55%}
+}
+
+/* Al agregar el credito como ultimo span, la etiqueta de origen de sala ya
+   no es el ultimo hijo. Conservamos su ocultamiento anterior en movil. */
+@media(max-width:680px){.deck-footer #connectionSource{display:none}}
+@media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
+ .deck-footer #connectionSource{display:none}
+}
+
+/* Reconocimiento de la idea en el pie. Se reserva espacio de juego en horizontal
+   moviles (donde se muestra dentro de la propia barra de estado). */
+.app-shell>footer{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:2px 14px;white-space:normal;overflow:visible;line-height:1.3}
+.footer-system{color:#6487a5}
+.footer-credit{color:#b8e7ff;font-weight:850;letter-spacing:.025em;white-space:nowrap}
+.deck-credit{display:none}
+@media (orientation:portrait) and (max-width:680px){
+ .app-shell>footer .footer-system{display:none}
+ .app-shell>footer .footer-credit{white-space:normal;font-size:9px;line-height:1.2}
+}
+/* Especificidad: mantener oculta la linea de pie general al girar el telefono. */
+@media (orientation:landscape) and (max-height:520px) and (pointer:coarse) and (hover:none){
+ .app-shell>footer{display:none}
+}
 MULTIMANDO_CSS_FALLBACK;
 $cssFile = __DIR__ . '/assets/palanca.css';
 if (is_readable($cssFile)) {
@@ -448,7 +525,7 @@ if (is_readable($cssFile)) {
 <title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
-<script src="control.php?v=6.1.0" defer></script>
+<script src="control.php?v=6.1.2" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -498,6 +575,16 @@ if (is_readable($cssFile)) {
         <div class="joystick-frame" id="joystick" tabindex="0" role="application" aria-label="Joystick analógico calibrado; arrastra desde el centro en cualquier dirección">
           <span class="joystick-label north">▲</span><span class="joystick-label east">▶</span><span class="joystick-label south">▼</span><span class="joystick-label west">◀</span>
           <div class="joystick-grid" aria-hidden="true"></div>
+          <div class="mixed-gate" aria-hidden="true">
+            <span data-rumbo="ar-iz" class="gate-nw">&#8598;</span>
+            <span data-rumbo="ar" class="gate-n">&#8593;</span>
+            <span data-rumbo="ar-de" class="gate-ne">&#8599;</span>
+            <span data-rumbo="iz" class="gate-w">&#8592;</span>
+            <span data-rumbo="de" class="gate-e">&#8594;</span>
+            <span data-rumbo="ab-iz" class="gate-sw">&#8601;</span>
+            <span data-rumbo="ab" class="gate-s">&#8595;</span>
+            <span data-rumbo="ab-de" class="gate-se">&#8600;</span>
+          </div>
           <div class="joystick-base" aria-hidden="true"><div class="joystick-thumb" id="joystickThumb"><span class="thumb-light"></span></div></div>
         </div>
         <div class="dpad-frame" id="dpad" role="group" aria-label="Cruceta digital: cuatro botones, arrastra para diagonales" hidden>
@@ -526,7 +613,7 @@ if (is_readable($cssFile)) {
         <span class="micro-hint">WASD · U I O / J K L</span>
       </div>
     </div>
-    <div class="deck-footer"><span class="feedback-indicator" aria-hidden="true"></span><p id="feedback" aria-live="polite">Escribe tu nombre y pulsa CONECTAR.</p><span id="connectionSource">API MULTIMANDO</span></div>
+    <div class="deck-footer"><span class="feedback-indicator" aria-hidden="true"></span><p id="feedback" aria-live="polite">Escribe tu nombre y pulsa CONECTAR.</p><span id="connectionSource">API MULTIMANDO</span><span class="deck-credit">Idea por: por Bryan Paredes Gracia (FORTUNEO - RYANEXX)</span></div>
   </section>
   <dialog id="keyDialog" class="key-dialog" aria-labelledby="keyDialogTitle">
     <div class="key-dialog-head"><div><strong id="keyDialogTitle">CONFIGURAR TECLAS</strong><small>PERFIL: WASD + U I O / J K L · SELECT = RETROCESO. Los comandos enviados no cambian.</small></div><button type="button" id="closeKeys" class="key-dialog-close" aria-label="Cerrar configuración">CERRAR</button></div>
@@ -535,7 +622,7 @@ if (is_readable($cssFile)) {
     <p id="keyMessage" class="key-message" role="status">Configuración lista.</p>
     <div class="key-dialog-foot"><button id="resetKeys" type="button">RESTAURAR TECLAS</button><button type="button" id="saveKeys">LISTO</button></div>
   </dialog>
-  <footer>SOLO CONTROL REMOTO · JUGADORES, COLA Y TURNOS ADMINISTRADOS POR PYTHON</footer>
+  <footer><span class="footer-system">SOLO CONTROL REMOTO · JUGADORES, COLA Y TURNOS ADMINISTRADOS POR PYTHON</span><span class="footer-credit">Idea por: por Bryan Paredes Gracia (FORTUNEO - RYANEXX)</span></footer>
 </main>
 </body>
 </html>

@@ -155,3 +155,13 @@ Selector del mando: **ANALÓGICO / CRUCETA / MIXTO**.
 - El tamaño de las zonas de control se adapta a la altura real util del navegador, incluso con sus barras visibles.
 - NO cambia la vista vertical ni la de escritorio con raton. Tampoco cambia el JavaScript cifrado, mandos, perfiles, WebSocket, API, Python o temporizadores.
 - ZIP de web completa con los 13 archivos en la raiz, sin carpeta MULTIMANDO/.
+
+
+## v6.1.2 - MIXTO octagonal, botones auxiliares y credito
+
+- MIXTO: marco octagonal, 8 flechas alrededor y mando interior cuadrado con centro en diamante. La direccion activa se ilumina. Visualmente distinto del ANALOGICO redondo y de la CRUCETA de cuatro teclas.
+- MIXTO sigue enviando los mismos eventos digitales de dos caracteres; ANALOGICO conserva la intensidad binaria de tres bytes. El Python 1.5 no cambia.
+- START y SELECT: una separacion tactil adicional en movil vertical y horizontal para que no interfieran con A/B/R. La vista PC permanece igual.
+- Credito final: Idea por: por Bryan Paredes Gracia (FORTUNEO - RYANEXX)
+- Contenido web completo, 13 archivos directamente en la raiz del ZIP, sin carpeta contenedora.
+- El JavaScript se cifra con la MISMA frase AES-GCM de versiones anteriores, que permanece privada y no se sube al repositorio.
