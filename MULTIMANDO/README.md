@@ -1,55 +1,40 @@
-# MULTIMANDO · Palanca web v2.0
+# MULTIMANDO - Palanca web v4.0 (6 botones)
 
-Control remoto web **independiente de KOFMULTI**. Todo el mando cabe en **una sola pantalla** en computadora, tablet y teléfono móvil (vertical u horizontal), sin panel de administración. El PHP **no gestiona usuarios ni tiempos**: sólo permite conectarse a la sala WebSocket y enviar controles; muestra el estado que publica el anfitrión Python.
+Proyecto totalmente independiente de KOFMULTI. **PHP es sólo un mando remoto**: el anfitrión Python (a desarrollar) administra P1, P2, cola FIFO, usuarios y 10 minutos por turno sólo cuando exista cola.
+
+## Vista del mando
+
+- **Palanca digital:** arrastrar con ratón o dedo, 8 direcciones y diagonales; flechas del teclado; cruceta física D-pad o analógico izquierdo de mando USB/Bluetooth compatible con Gamepad API.
+- **Seis botones con letras, sin figuras**: primera fila **A B C**, segunda fila **D E F**.
+- **TECLAS:** botón para configurar localmente cada tecla (direcciones, A-F, START y SELECT), guardado en `localStorage`. Si una tecla ya está asignada, se intercambian las asignaciones; no se envía la configuración a Python.
+- **Teclas predeterminadas**: flechas para dirección, **A/S/D** para A/B/C, **Z/X/C** para D/E/F, **Enter** para START y **5** para SELECT.
+- **Mando físico estándar**: analógico izquierdo o D-pad; botones físicos 0-5 corresponden a A-F; 9 START y 8 SELECT. Dependiendo del control físico algunas plataformas pueden exponer otras asignaciones.
+
+## Contrato WebSocket con el nuevo Python
+
+El navegador envía inicialmente `{"type":"hello","name":"Ana"}`. Después, cada pulsación envía, por ejemplo, `{"type":"input","action":"iz","down":true}` y su liberación `{"type":"input","action":"iz","down":false}`.
+
+| Control | Comando | Control | Comando |
+|---|---|---|---|
+| Arriba | `ar` | A | `ba` |
+| Abajo | `ab` | B | `bb` |
+| Izquierda | `iz` | C | `bc` |
+| Derecha | `de` | D | `bd` |
+| START | `start` | E | `be` |
+| SELECT | `select` | F | `bf` |
+
+Una diagonal envía dos comandos simultáneos, p. ej. `ar` + `iz`. Los comandos no dependen de la tecla elegida por el usuario. Python debe reconocer **exactamente estas acciones**, no las acciones anteriores de KOF ni de MULTIMANDO v2.
+
+El anfitrión Python emitirá `welcome`, `state`, `notice`, `error` con `slot` (1 o 2), `waiting_position`, `queue`, `timer_remaining`, `timer_running`; la web sólo los representa. **No administra** colas o tiempos y **no usa la API POST**.
 
 ## Instalación
 
-1. En un hosting HTTPS con **PHP 8.1+**, OpenSSL y zlib, subir toda la carpeta `MULTIMANDO` del **ZIP privado**, incluidos `private/FRASE_CIFRADO.php` y `private/palanca.enc`.
-2. Abrir `https://tusitio.example/MULTIMANDO/` o `.../MULTIMANDO/palanca.php`.
-3. Escribir un nombre y pulsar **CONECTAR**. `sala.php` consulta **únicamente por GET** `https://api.isupol.edu.ec/api/geturlmultimando` y valida el enlace HTTPS de `*.trycloudflare.com`.
-4. Opcionalmente, desplegar el botón **URL** (🔗) y pegar un enlace HTTPS válido de Cloudflare para conectarse sin depender del GET.
-5. Cuando Python asigne P1 o P2, usar la palanca y los botones. Si Python envía un estado de espera, se mostrará el puesto correspondiente.
+1. Hosting HTTPS con **PHP 8.1+, OpenSSL y zlib**.
+2. Subir la carpeta `MULTIMANDO` del ZIP privado, incluido `private/FRASE_CIFRADO.php` y `private/palanca.enc`.
+3. Abrir `https://tusitio.example/MULTIMANDO/` (`index.php` abre `palanca.php`).
+4. Introducir nombre, conectar y aguardar a que el anfitrión Python asigne un control.
+5. `sala.php` sólo consulta `https://api.isupol.edu.ec/api/geturlmultimando`, y acepta Cloudflare Quick Tunnel con HTTPS/WSS. Como alternativa está el enlace directo.
 
-## Controles del jugador
+`config.php` guarda la API GET y un enlace manual opcional. El cifrado AES-256-GCM + gzip protege el JS almacenado, pero **no puede impedir que alguien inspeccione el JavaScript servido a su navegador**. El archivo `private/FRASE_CIFRADO.php` se incluye **solo en el ZIP privado**, nunca en el repositorio público. Protege `private` en Apache o Nginx.
 
-- **Palanca:** arrastre táctil/mouse con diagonales; teclado con flechas; cruceta o analógico izquierdo de un gamepad estándar conectado al navegador.
-- **Acciones:** teclado A/S/Z/X, que envía `A/C/B/D` respectivamente; botones táctiles A/S/Z/X; gamepad estándar A/B/X/Y (se traduce a `A/B/C/D`).
-- **START:** Enter o botón START; gamepad estándar Start.
-- **SELECT:** tecla 5 o botón SELECT; gamepad estándar Back/Select.
-- **CONECTAR/SALIR:** sólo inician o cierran la propia conexión; **no hay botones para administrar turnos, expulsar personas, editar la cola o cambiar los tiempos**.
-
-## Responsabilidades
-
-| Parte | Responsabilidad |
-|---|---|
-| PHP `palanca.php`/`index.php` | Mostrar exclusivamente la interfaz del control remoto. |
-| PHP `sala.php` | Leer, **nunca escribir**, la URL publicada en la API de MULTIMANDO. |
-| PHP `control.php` | Descifrar en servidor el JavaScript y entregarlo al navegador. |
-| JS `private/palanca.enc` | Enviar `hello` y acciones `input` por WebSocket, leer `welcome`, `state`, `notice`, `error`. |
-| Python (pendiente) | Abrir la sala, publicar la URL con `/api/posturlmultimando`, validar nombres, administrar P1/P2, cola FIFO, sesiones y 10 minutos por jugador sólo mientras exista cola. |
-
-El cronómetro mostrado por el navegador **no decide ni aplica vencimientos**: únicamente representa `timer_remaining`/`remaining_seconds` y `timer_running` recibidos del servidor Python. Cuando el anfitrión no envía tiempo, se indica `--:--`, sin inventar un valor. El cliente **no envía** `request`, `yield`, cambios de turnos, ni acciones administrativas.
-
-### Mensajes WebSocket esperados del Python
-
-```json
-{"type":"hello","name":"Ana"}
-{"type":"welcome","you":1,"room_id":"ABC123"}
-{"type":"state","slot":1,"waiting_position":0,"room_id":"ABC123","queue":[{"name":"Beto"}],"timer_remaining":599,"timer_running":true}
-{"type":"input","action":"UP","down":true}
-{"type":"input","action":"UP","down":false}
-```
-
-Acciones admitidas: `UP`, `DOWN`, `LEFT`, `RIGHT`, `A`, `B`, `C`, `D`, `START`, `SELECT`. Python define las asignaciones y su propia lógica de sesión; la estructura anterior es el contrato propuesto para el futuro anfitrión MULTIMANDO, no una promesa de compatibilidad con otro anfitrión.
-
-## Cifrado y seguridad
-
-- El archivo JavaScript está cifrado en reposo como **AES-256-GCM + gzip** en `private/palanca.enc`.
-- La frase se encuentra **sólo en el paquete ZIP privado**, bajo `MULTIMANDO/private/FRASE_CIFRADO.php`. **No está en GitHub público**. Mantén ese archivo protegido; Apache bloquea el directorio `private` mediante `.htaccess`. En Nginx configura una denegación equivalente.
-- La página puede inspeccionarse en el navegador; el cifrado **no impide por completo copiar el JS que el navegador necesita ejecutar**.
-- `config.php` guarda sólo la API GET y un enlace directo opcional. No contiene contraseñas. El navegador nunca usa `/api/posturlmultimando`.
-- No publicar el ZIP privado en repositorios públicos.
-
-## Pruebas realizadas
-
-PHP validado sintácticamente; cifrado descifrado y comparado con el JavaScript original; pruebas de diseño sin scroll a 1440×900, 1366×768, 1024×768, 390×844, 360×640, 320×568, 844×390 y 1280×600. Simulación WebSocket: conexión, P1, entradas de teclado/botones, cola y tiempo desde Python. La comunicación con un anfitrión Python real queda pendiente de implementarlo.
+Se ha probado la interfaz y la lógica de pulsaciones con WebSocket simulado. La interoperabilidad con el futuro anfitrión Python requiere implementarlo y probar con control físico real.

@@ -14,8 +14,8 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
 <meta name="theme-color" content="#071222">
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
 <title>MULTIMANDO | Control remoto</title>
-<link rel="stylesheet" href="assets/palanca.css?v=2.0.0">
-<script src="control.php?v=2.0.0" defer></script>
+<link rel="stylesheet" href="assets/palanca.css?v=4.0.0">
+<script src="control.php?v=4.0.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -47,7 +47,7 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
   <section class="control-deck" aria-label="Palanca y botones remotos">
     <div class="deck-header">
       <div class="deck-title"><span class="tiny-led"></span><strong>PALANCA DIGITAL</strong><small id="roomId">SALA —</small></div>
-      <div class="deck-badges"><span id="gamepadStatus">TECLADO · TÁCTIL</span><span class="slot-indicator" id="slotIndicator">SIN TURNO</span></div>
+      <div class="deck-badges"><button type="button" class="keys-config-btn" id="openKeys" title="Personalizar teclas del mando">TECLAS</button><span id="gamepadStatus">TECLADO · TÁCTIL</span><span class="slot-indicator" id="slotIndicator">SIN TURNO</span></div>
     </div>
     <div class="controls" id="controllerArea">
       <div class="joystick-zone">
@@ -61,21 +61,30 @@ header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-sr
       </div>
       <div class="action-zone">
         <span class="control-label">ACCIONES</span>
-        <div class="action-buttons">
-          <button class="action-btn btn-a" type="button" data-action="A" aria-label="Botón A">A</button>
-          <button class="action-btn btn-s" type="button" data-action="C" aria-label="Botón S">S</button>
-          <button class="action-btn btn-z" type="button" data-action="B" aria-label="Botón Z">Z</button>
-          <button class="action-btn btn-x" type="button" data-action="D" aria-label="Botón X">X</button>
+        <div class="action-buttons" aria-label="Seis botones en dos filas: A B C y D E F">
+          <button class="action-btn btn-a" type="button" data-action="ba" aria-label="Botón A">A</button>
+          <button class="action-btn btn-b" type="button" data-action="bb" aria-label="Botón B">B</button>
+          <button class="action-btn btn-c" type="button" data-action="bc" aria-label="Botón C">C</button>
+          <button class="action-btn btn-d" type="button" data-action="bd" aria-label="Botón D">D</button>
+          <button class="action-btn btn-e" type="button" data-action="be" aria-label="Botón E">E</button>
+          <button class="action-btn btn-f" type="button" data-action="bf" aria-label="Botón F">F</button>
         </div>
         <div class="aux-buttons">
-          <button class="aux-btn" type="button" data-action="SELECT">SELECT</button>
-          <button class="aux-btn aux-primary" type="button" data-action="START">START</button>
+          <button class="aux-btn" type="button" data-action="select">SELECT</button>
+          <button class="aux-btn aux-primary" type="button" data-action="start">START</button>
         </div>
-        <span class="micro-hint">A · S · Z · X / ENTER · 5</span>
+        <span class="micro-hint">A/S/D · Z/X/C · ENTER/5</span>
       </div>
     </div>
     <div class="deck-footer"><span class="feedback-indicator" aria-hidden="true"></span><p id="feedback" aria-live="polite">Escribe tu nombre y pulsa CONECTAR.</p><span id="connectionSource">API MULTIMANDO</span></div>
   </section>
+  <dialog id="keyDialog" class="key-dialog" aria-labelledby="keyDialogTitle">
+    <div class="key-dialog-head"><div><strong id="keyDialogTitle">CONFIGURAR TECLAS</strong><small>Las teclas cambian, los comandos enviados permanecen fijos.</small></div><button type="button" id="closeKeys" class="key-dialog-close" aria-label="Cerrar configuración">CERRAR</button></div>
+    <p class="key-instructions">Pulsa una opción y luego la tecla que quieras asignarle. Las asignaciones se guardan en este navegador.</p>
+    <div id="keyGrid" class="key-grid" aria-label="Asignación de teclas"></div>
+    <p id="keyMessage" class="key-message" role="status">Configuración lista.</p>
+    <div class="key-dialog-foot"><button id="resetKeys" type="button">RESTAURAR TECLAS</button><button type="button" id="saveKeys">LISTO</button></div>
+  </dialog>
   <footer>SOLO CONTROL REMOTO · JUGADORES, COLA Y TURNOS ADMINISTRADOS POR PYTHON</footer>
 </main>
 </body>
