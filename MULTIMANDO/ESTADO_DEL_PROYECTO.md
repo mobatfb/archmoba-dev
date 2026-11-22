@@ -5,7 +5,7 @@ Fecha: 22 de noviembre de 2026. Actualizar tras cada cambio.
 ## Estructura de GitHub
 
 - `MANDOWEB/`: web PHP v6.2.0 (actualizada en GitHub).
-- `ANFITRION/`: Python anfitrion v1.8.1 (actualizado en GitHub); vJoy, de 1 a 8 mandos.
+- `ANFITRION/`: dos variantes originales, VXBOX v1.5.3 (ViGEmBus, dos mandos) y VJOY v1.8.1 (vJoy, hasta ocho).
 - `FUTUREO_VJOY/`: codigo C/KMDF con VHF, GUI Python, pruebas y herramientas Windows.
 
 ## Publicacion verificada de versiones
@@ -62,3 +62,9 @@ Fuentes oficiales de firma:
 - El nuevo artefacto sin firma se almacena en esa ejecucion y caduca
   aproximadamente 7 dias despues de su creacion.
 - Sin pruebas en hardware HID instalado. No instalar en el PC principal.
+
+## Copias diferenciadas de ANFITRION — 22-nov-2026
+
+- `ANFITRION/MULTIMANDO_VXBOX_Anfitrion_v1_5_3.py` — copia recuperada del anfitrion anterior MULTI 8 (XInput / ViGEmBus), sin modificaciones.
+- `ANFITRION/MULTIMANDO_VJOY_Anfitrion_v1_8_1.py` — copia del anfitrion MULTI 8 (HID / vJoy), sin modificaciones.
+- El nombre anterior `ANFITRION/MULTIMANDO_Anfitrion.py` se sustituyo por la variante identificada VJOY para evitar confusiones. La raiz del sitio web y el driver FUTUREO_VJOY no se modificaron.

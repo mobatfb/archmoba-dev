@@ -5,13 +5,14 @@ Repositorio de desarrollo de MULTIMANDO. La web se ha trasladado a una carpeta d
 ## Estructura del proyecto
 
 - [`MANDOWEB/`](MANDOWEB/) - Sitio PHP, estilos y recursos web. Version publicada: v6.2.0.
-- [`ANFITRION/`](ANFITRION/) - Aplicacion Python del anfitrion v1.8.1 para Windows y hasta 8 mandos vJoy.
+- [`ANFITRION/`](ANFITRION/) - Dos anfitriones separados: VXBOX v1.5.3 (2 Xbox) y VJOY v1.8.1 (hasta 8 vJoy).
 - [`FUTUREO_VJOY/`](FUTUREO_VJOY/) - Driver HID experimental y herramientas de administracion.
 
 ## Versiones publicadas
 
 - Web: MANDOWEB v6.2.0; 1 a 8 jugadores, cola FIFO y modos analogico/cruceta/mixto.
-- Anfitrion: ANFITRION v1.8.1 con autoinstalacion de dependencias Python y cloudflared opcional.
+- Anfitrion VXBOX v1.5.3: [`MULTIMANDO_VXBOX_Anfitrion_v1_5_3.py`](ANFITRION/MULTIMANDO_VXBOX_Anfitrion_v1_5_3.py), variante antigua para dos mandos Xbox.
+- Anfitrion VJOY v1.8.1: [`MULTIMANDO_VJOY_Anfitrion_v1_8_1.py`](ANFITRION/MULTIMANDO_VJOY_Anfitrion_v1_8_1.py), variante MULTI 8 para hasta ocho vJoy.
 - Driver experimental: FUTUREO_VJOY (aun no firmado, no instalable normalmente).
 - La frase privada de cifrado sigue excluida del repositorio publico.
 
