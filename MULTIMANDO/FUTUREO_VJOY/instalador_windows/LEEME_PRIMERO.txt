@@ -1,6 +1,6 @@
 FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
 =====================================================
-Version: LAB v0.4.1; Windows 10/11 x64; 22-11-2026.
+Version: LAB v0.4.2; Windows 10/11 x64; 22-11-2026.
 
 OBJETIVO
 --------
@@ -26,9 +26,12 @@ PASOS
 5. Ejecutar de nuevo INSTALAR.bat. Elegir 2: INSTALAR 1 MANDO.
    El script comprueba SHA-256 del paquete y el certificado, pide permiso
    para confiar en el certificado de prueba y verifica las firmas.
-   Corrige el error anterior 0x80070005 al importar el certificado desde
-   el menu sin elevar la ventana. Si sigue apareciendo, revisa los permisos
-   de la cuenta y las directivas locales; no desactives protecciones.
+   La version v0.4.2 muestra que almacen rechazó el certificado.
+   Si Import-Certificate falla, prueba la herramienta oficial CertUtil sin
+   modificar directivas ni permisos de Windows. Si persiste el error,
+   usa DIAGNOSTICAR_CERTIFICADO.bat y entrega su resultado. En equipos
+   administrados una directiva puede impedir instalar certificados.
+   NO desactives protecciones ni cambies permisos del Registro.
    Instala FutJoy.inf y crea ROOT\FUTJOY01 con funciones SetupAPI.
 6. Abrir Ejecutar de Windows (Win+R) y escribir: joy.cpl
    Comprobar si aparece el mando y si mueve sus ejes/botones.
@@ -46,6 +49,7 @@ INSTALAR_1_MANDO.bat         Prueba inicial recomendada.
 INSTALAR_8_MANDOS.bat        Crea hasta 8 mandos (tras probar P1).
 PREPARAR_MODO_PRUEBA.bat     Habilita modo de pruebas con confirmacion.
 DIAGNOSTICAR.bat            Verifica dispositivos y nombres HID.
+DIAGNOSTICAR_CERTIFICADO.bat  Consulta almacenes y firmas (solo lectura).
 DESINSTALAR.bat             Retira los mandos creados y el driver de prueba.
 VOLVER_MODO_NORMAL.bat       Desactiva el modo de pruebas si lo deseas.
 ABRIR_GUI.bat               Interfaz grafica Python (opcional).
@@ -92,3 +96,10 @@ solicitar autorizacion UAC. Antes, las opciones del menu omitian
 la elevacion y la importacion del certificado devolvia E_ACCESSDENIED.
 Se verifica administrador antes de modificar LocalMachine y se revierten
 certificados nuevos si falla uno de los dos almacenes de confianza.
+
+CORRECCION v0.4.2: cuando falla una importacion en LocalMachine/Root o
+LocalMachine/TrustedPublisher, el instalador indica el almacen exacto,
+prueba CertUtil oficial y verifica la presencia del certificado. Si sigue
+bloqueado, se detiene sin crear dispositivos y revierte las importaciones
+nuevas de esta ejecucion. Ejecuta DIAGNOSTICAR_CERTIFICADO.bat para
+comprobar la situacion sin realizar cambios.
