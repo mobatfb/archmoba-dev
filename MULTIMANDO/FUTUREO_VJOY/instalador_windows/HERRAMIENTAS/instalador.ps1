@@ -5,7 +5,7 @@
  Ejecucion manual y consciente. No apaga Secure Boot ni BitLocker.
 #>
 param(
-  [ValidateSet('Menu','Preparar','Instalar1','Instalar8','Diagnosticar','Desinstalar','ModoNormal')]
+  [ValidateSet('Menu','Preparar','Instalar1','Instalar8','Diagnosticar','DiagnosticarCert','Desinstalar','ModoNormal')]
   [string] $Accion = 'Menu'
 )
 $ErrorActionPreference = 'Stop'
@@ -110,49 +110,104 @@ function PrepareTestMode {
   if($LASTEXITCODE -ne 0){ throw 'Windows rechazo el cambio. Secure Boot puede bloquearlo. No lo desactives sin revisar BitLocker.' }
   Write-Host 'TESTSIGNING configurado. REINICIA LA PC MANUALMENTE antes de instalar.' -ForegroundColor Green
 }
+function CertPresent([string] $StoreName, [string] $Thumb) {
+  $location='Cert:\LocalMachine\' + $StoreName + '\' + $Thumb
+  return [bool](Test-Path -LiteralPath $location -ErrorAction Stop)
+}
+function ImportIntoMachineStore([string] $StoreName, [string] $Thumb) {
+  # Solo Root y TrustedPublisher, siempre despues de consentimiento y UAC.
+  if($StoreName -notin @('Root','TrustedPublisher')) {throw "Almacen no permitido: $StoreName"}
+  if(CertPresent $StoreName $Thumb){
+    Write-Host "Certificado ya presente en LocalMachine\$StoreName" -ForegroundColor Green
+    return $false
+  }
+  Write-Host "Importando certificado en LocalMachine\$StoreName ..." -ForegroundColor Cyan
+  try {
+    $result=Import-Certificate -FilePath $Cer -CertStoreLocation ('Cert:\LocalMachine\' + $StoreName) -ErrorAction Stop
+    if(-not $result){throw 'Import-Certificate no devolvio resultado.'}
+  } catch {
+    $powerShellError=$_.Exception.Message
+    Write-Warning "Import-Certificate fallo en $StoreName : $powerShellError"
+    Write-Host "Intentando la herramienta oficial de Windows: certutil -addstore $StoreName (sin forzar ni cambiar politicas) ..."
+    $oldPreference=$ErrorActionPreference
+    try {
+      $ErrorActionPreference='Continue'
+      $output=(& certutil.exe -addstore $StoreName $Cer 2>&1 | Out-String).Trim()
+      $code=$LASTEXITCODE
+    } finally {
+      $ErrorActionPreference=$oldPreference
+    }
+    if($code -ne 0){
+      throw "Acceso denegado o politica de seguridad en LocalMachine\$StoreName. Import-Certificate: $powerShellError. CertUtil [$code]: $output. No se cambiaran permisos del Registro ni politicas."
+    }
+    Write-Host "CertUtil finalizo correctamente en $StoreName." -ForegroundColor Green
+  }
+  if(-not (CertPresent $StoreName $Thumb)){
+    throw "El certificado NO aparece en LocalMachine\$StoreName despues de importarlo."
+  }
+  return $true
+}
 function ImportTestCertificate([System.Security.Cryptography.X509Certificates.X509Certificate2] $cert){
   Write-Host 'La instalacion confiara temporalmente en un certificado de prueba.' -ForegroundColor Yellow
   Write-Host 'Esto cambia las autoridades de confianza de LocalMachine. Certificado:'
   Write-Host " $($cert.Subject)"
   Write-Host " Huella: $($cert.Thumbprint)"
   if(-not (Confirm 'CONFIRMAS que quieres confiar en este certificado de prueba?')) { throw 'Importacion cancelada por el usuario.' }
-  # No modificar el almacen de confianza sin privilegios elevados.
   AssertLab
-  $rootPath = 'Cert:\LocalMachine\Root\' + $cert.Thumbprint
-  $publisherPath = 'Cert:\LocalMachine\TrustedPublisher\' + $cert.Thumbprint
-  $addedRoot = $false
-  $addedPublisher = $false
+  Write-Host ("Permisos de administrador: " + (IsAdmin))
+  $thumb=$cert.Thumbprint
+  $addedRoot=$false
+  $addedPublisher=$false
   try {
-    if (-not (Test-Path -LiteralPath $rootPath)) {
-      $res=Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\LocalMachine\Root' -ErrorAction Stop
-      if(-not $res){throw 'No se pudo agregar certificado en Root.'}
-      $addedRoot = $true
-    }
-    if (-not (Test-Path -LiteralPath $publisherPath)) {
-      $res=Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' -ErrorAction Stop
-      if(-not $res){throw 'No se pudo agregar certificado en TrustedPublisher.'}
-      $addedPublisher = $true
+    $addedRoot=ImportIntoMachineStore 'Root' $thumb
+    $addedPublisher=ImportIntoMachineStore 'TrustedPublisher' $thumb
+    foreach($file in @($Sys,$Cat)){
+      $signature=Get-AuthenticodeSignature -FilePath $file
+      if($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or
+         $signature.SignerCertificate.Thumbprint -ne $thumb) {
+        throw "La firma no se pudo verificar: $file ($($signature.Status))."
+      }
     }
   } catch {
-    # Revertir solo los cambios de ESTA ejecucion; nunca borrar los previos.
-    if($addedPublisher) {
-      try { Remove-Item -LiteralPath $publisherPath -Force -ErrorAction Stop }
-      catch { Write-Warning 'No se pudo revertir la confianza en TrustedPublisher.' }
+    $originalError=$_.Exception.Message
+    # Quitar solo certificados importados por ESTE intento, no los previos.
+    if($addedPublisher){
+      try{Remove-Item -LiteralPath ('Cert:\LocalMachine\TrustedPublisher\' + $thumb) -Force -ErrorAction Stop}
+      catch{Write-Warning "No se pudo revertir TrustedPublisher: $($_.Exception.Message)"}
     }
-    if($addedRoot) {
-      try { Remove-Item -LiteralPath $rootPath -Force -ErrorAction Stop }
-      catch { Write-Warning 'No se pudo revertir la confianza en Root.' }
+    if($addedRoot){
+      try{Remove-Item -LiteralPath ('Cert:\LocalMachine\Root\' + $thumb) -Force -ErrorAction Stop}
+      catch{Write-Warning "No se pudo revertir Root: $($_.Exception.Message)"}
     }
-    throw "No fue posible importar el certificado a LocalMachine. Es necesario ejecutar el instalador con UAC de administrador; una directiva de seguridad tambien puede impedirlo. Detalle: $($_.Exception.Message)"
+    throw "Instalacion cancelada antes de crear mandos. $originalError. Ejecuta el diagnostico de certificado; si el equipo tiene directivas que impiden escribir en LocalMachine, no se deben eludir."
   }
-  foreach($file in @($Sys,$Cat)){
-    $signature=Get-AuthenticodeSignature -FilePath $file
-    if($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or
-       $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
-      throw "La firma del archivo no se pudo verificar: $file ($($signature.Status))"
+  Write-Host 'Firmas SYS y CAT verificadas con el certificado de laboratorio.' -ForegroundColor Green
+}
+function DiagnoseCertificate {
+  Head 'DIAGNOSTICO DEL CERTIFICADO - SOLO LECTURA'
+  Write-Host ("Administrador elevado: " + (IsAdmin))
+  Write-Host ("Sistema Windows x64: " + [Environment]::Is64BitOperatingSystem)
+  try{
+    $cert=VerifyFiles
+    foreach($store in @('Root','TrustedPublisher')){
+      try{
+        Write-Host ("LocalMachine\" + $store + ": certificado " +
+                    $(if(CertPresent $store $cert.Thumbprint){'PRESENTE'}else{'AUSENTE'}))
+      } catch{
+        Write-Host "LocalMachine\$store : error al consultar: $($_.Exception.Message)" -ForegroundColor Yellow
+      }
     }
-  }
-  Write-Host 'Firmas SYS y CAT verificadas con el certificado de prueba.' -ForegroundColor Green
+    foreach($file in @($Sys,$Cat)){
+      try{
+        $sig=Get-AuthenticodeSignature -FilePath $file
+        Write-Host "$([IO.Path]::GetFileName($file)): $($sig.Status)"
+      } catch {
+        Write-Host "$file : error de firma: $($_.Exception.Message)" -ForegroundColor Yellow
+      }
+    }
+  } catch {Write-Host ("Diagnostico: " + $_.Exception.Message) -ForegroundColor Red}
+  Write-Host 'Si una directiva bloquea los almacenes, contacta al administrador del equipo.'
+  Write-Host 'No se modificaron almacenes, controladores, modo de pruebas ni protecciones.'
 }
 function BuildRootClass {
   $code=@'
@@ -307,11 +362,12 @@ function Menu {
     Write-Host '4. DIAGNOSTICAR DISPOSITIVOS Y NOMBRES HID'
     Write-Host '5. DESINSTALAR FUTUREO VJOY'
     Write-Host '6. RESTAURAR MODO NORMAL TESTSIGNING OFF'
+    Write-Host '7. DIAGNOSTICAR CERTIFICADOS (SOLO LECTURA)'
     Write-Host '0. SALIR'
     $reply=Read-Host 'Elige opcion'
     $target=switch($reply){
       '1' {'Preparar'} '2' {'Instalar1'} '3' {'Instalar8'}
-      '4' {'Diagnosticar'} '5' {'Desinstalar'} '6' {'ModoNormal'}
+      '4' {'Diagnosticar'} '5' {'Desinstalar'} '6' {'ModoNormal'} '7' {'DiagnosticarCert'}
       '0' {'Salir'} default {'Invalido'}
     }
     if($target -eq 'Salir'){break}
@@ -327,6 +383,7 @@ function Execute([string] $action) {
     'Instalar1' {InstallPads 1}
     'Instalar8' {InstallPads 8}
     'Diagnosticar' {PrintStatus}
+    'DiagnosticarCert' {DiagnoseCertificate}
     'Desinstalar' {UninstallPads}
     'ModoNormal' {DisableTestMode}
     default {throw "Accion incorrecta: $action"}
