@@ -62,7 +62,10 @@ def ask_elevation_for_labels() -> bool:
     if code <= 32:
         messagebox.showerror("UAC cancelado", f"No se abrio como administrador (codigo {code}).")
         return False
-    return True
+    messagebox.showinfo("Nueva ventana elevada",
+                        "Se abrio el administrador con permisos. "
+                        "Utiliza ESA nueva ventana y pulsa ETIQUETAR EN WINDOWS.")
+    return False  # No intentar escribir desde la ventana sin elevar.
 
 class App:
     def __init__(self):
@@ -128,7 +131,6 @@ class App:
             " se podran restaurar. No cambia las cadenas HID internas."):
             return
         self._run_labels(["--apply", "--count", str(self.count.get())])
-        messagebox.showinfo("Nombre OEM", "Al terminar, CIERRA joy.cpl y vuelve a abrirlo para comprobar la etiqueta.\nEl nombre HID interno puede seguir siendo HID VHF Driver.")
 
     def labels_restore(self):
         if not ask_elevation_for_labels():
@@ -146,7 +148,13 @@ class App:
                                   creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
             if result.returncode:
                 raise RuntimeError((result.stderr or result.stdout).strip()[-350:])
-            self.results.put(("info",result.stdout.strip()[-300:]))
+            extra = (
+                " Cierra por completo joy.cpl y vuelve a abrirlo para "
+                "comprobar la etiqueta. La cadena HID interna puede seguir "
+                "siendo 'HID VHF Driver'."
+                if "--apply" in args else ""
+            )
+            self.results.put(("info",result.stdout.strip()[-300:] + extra))
         self.background(worker)
 
     def diagnostico_hid(self):
