@@ -24,6 +24,23 @@ jobs:
             throw "El instalador tiene errores de sintaxis PowerShell"
           }
           Write-Host 'Sintaxis PowerShell correcta'
+      - name: Validar UAC del menu y manejo de certificados
+        shell: powershell
+        run: |
+          $path = '.\MULTIMANDO\FUTUREO_VJOY\instalador_windows\HERRAMIENTAS\instalador.ps1'
+          $lines = Get-Content $path
+          $line = $lines | Where-Object { $_.Trim().StartsWith('$needsAdmin =') } | Select-Object -First 1
+          if (-not $line -or -not $line.Contains("'Menu'")) {
+            throw 'El menu no solicita UAC: error 0x80070005 puede repetirse'
+          }
+          $source = Get-Content $path -Raw
+          if ($source -notmatch 'Start-Process.*-Verb RunAs.*-PassThru') {
+            throw 'Falta elevacion explicita con UAC'
+          }
+          if ($source -notmatch 'function ImportTestCertificate' -or $source -notmatch 'Import-Certificate') {
+            throw 'Falta gestion del certificado'
+          }
+          Write-Host 'Contrato de permisos del menu correcto; no se modifica Windows.'
       - name: Compilar envoltura CSharp de SetupAPI sin instalar
         shell: powershell
         run: |
