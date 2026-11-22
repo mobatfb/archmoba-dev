@@ -1,0 +1,83 @@
+FUTUREO VJOY - PAQUETE EXPERIMENTAL PARA PC SECUNDARIA
+=====================================================
+Version: LAB v0.4; Windows 10/11 x64; 22-11-2026.
+
+OBJETIVO
+--------
+Probar el driver propio FUTUREO VJOY con 1 hasta 8 mandos virtuales HID.
+NO ES UN CONTROLADOR OFICIAL NI DE PRODUCCION. Puede bloquearse, no cargar,
+mostrar nombres genericos o causar errores de Windows. No se ha probado
+in situ en la computadora del usuario.
+
+PASOS
+-----
+1. Extraer TODO el ZIP en una carpeta de la PC secundaria. No ejecutar
+   directamente los .BAT dentro del ZIP.
+2. Tener una copia de seguridad y la clave de recuperacion BitLocker
+   si ese equipo tiene cifrado de disco. Windows 10/11 x64 requerido.
+3. Ejecutar INSTALAR.bat (doble clic).
+4. Elegir 1: PREPARAR MODO PRUEBA. Aceptar el cambio solo si lo deseas.
+   El script usa BCDEDIT /SET TESTSIGNING ON. Reiniciar MANUALMENTE.
+   Si Windows rechaza el cambio por Secure Boot, el script no lo desactiva.
+   Decide si deseas usar una VM o cambiar firmware tras revisar BitLocker.
+5. Ejecutar de nuevo INSTALAR.bat. Elegir 2: INSTALAR 1 MANDO.
+   El script comprueba SHA-256 del paquete y el certificado, pide permiso
+   para confiar en el certificado de prueba y verifica las firmas.
+   Instala FutJoy.inf y crea ROOT\FUTJOY01 con funciones SetupAPI.
+6. Abrir Ejecutar de Windows (Win+R) y escribir: joy.cpl
+   Comprobar si aparece el mando y si mueve sus ejes/botones.
+7. Si P1 funciona, usar INSTALAR_8_MANDOS.bat o opcion 3 del menu.
+8. Abrir DIAGNOSTICAR.bat; si tienes Python 3 tambien comprueba el
+   Product String HID real de cada PID, sin alterar dispositivos.
+9. ABRIR_GUI.bat abre la interfaz Python opcional (requiere Python 3).
+10. Para eliminar los mandos, DESINSTALAR.bat. Al terminar las pruebas,
+    VOLVER_MODO_NORMAL.bat desactiva TESTSIGNING (reinicio manual).
+
+ARCHIVOS
+--------
+INSTALAR.bat                 Menu completo de instalacion y diagnostico.
+INSTALAR_1_MANDO.bat         Prueba inicial recomendada.
+INSTALAR_8_MANDOS.bat        Crea hasta 8 mandos (tras probar P1).
+PREPARAR_MODO_PRUEBA.bat     Habilita modo de pruebas con confirmacion.
+DIAGNOSTICAR.bat            Verifica dispositivos y nombres HID.
+DESINSTALAR.bat             Retira los mandos creados y el driver de prueba.
+VOLVER_MODO_NORMAL.bat       Desactiva el modo de pruebas si lo deseas.
+ABRIR_GUI.bat               Interfaz grafica Python (opcional).
+DRIVER/FutJoy.sys           Driver KMDF x64 firmado para LABORATORIO.
+DRIVER/FutJoy.inf           Definiciones PnP ROOT\FUTJOY01..08.
+DRIVER/FutJoy.cat           Catalogo firmado para la prueba.
+DRIVER/FUTUREO_VJOY_PRUEBA.cer Certificado PUBLICO (no incluye clave privada).
+DRIVER/SHA256SUMS.txt       Comprobacion de integridad local de 4 archivos.
+PYTHON/                     GUI, identificador y diagnostico de HID.
+FUENTE_DRIVER/              Codigo fuente C/INF y documentacion (opcional).
+
+SEGURIDAD
+---------
+- NO desactiva Secure Boot, BitLocker o Integridad de memoria.
+- NO altera vJoy ni ViGEmBus. Solo manipula IDs ROOT\FUTJOY01..08.
+- Importar un certificado de prueba en LocalMachine/Root permite confiar
+  en software firmado con ese certificado. Retiralo al finalizar las pruebas.
+- La firma de prueba permite desarrollar en laboratorio, no sustituye la
+  firma oficial de Microsoft para distribuir el controlador.
+- Si el driver produce BSOD, arranca en modo seguro y desinstala el driver
+  desde el Administrador de dispositivos. Revisa setupapi.dev.log.
+- Si BCDEdit pide desactivar Secure Boot, no lo cambies automaticamente.
+  Con BitLocker activo podrias necesitar la clave de recuperacion.
+- Aunque cada PID es diferente, algunos juegos muestran el mismo nombre.
+  El diagnostico muestra si la cadena HID Product String es distinta.
+- HID/DirectInput no es un gamepad Xbox XInput. Los juegos solo XInput pueden
+  no reconocerlo.
+- VID 0xF7A0 es un ID de laboratorio, NO un VID licenciado.
+
+ESTADO DE VERIFICACION
+----------------------
+El codigo fuente supero compilacion WDK y pruebas Python CI. Se publico
+un paquete firmado de laboratorio por GitHub Actions y se comprobaron
+hashes y firma cuando fue posible. NO se ha probado su instalacion y
+funcionamiento real en una PC de usuario. Usa la PC secundaria bajo tu
+responsabilidad y conserva la opcion de rollback.
+
+Documentacion oficial Microsoft:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option
+https://learn.microsoft.com/en-us/windows-hardware/drivers/install/test-signing
+https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/devcon-install
