@@ -1,3 +1,40 @@
+## FUTUREO VJOY v0.6.0 LAB: motor alternativo con nombres HID reales
+
+**[Descargar ZIP LAB v0.6.0 (despues de publicacion de GitHub Actions)](instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip)**
+
+Los alias OEM y PnP de v0.5.1/v0.5.2 no consiguieron cambiar el nombre
+generico VHF en joy.cpl. Microsoft documenta que VHF controla
+`IOCTL_HID_GET_STRING` y que la configuracion `VHF_CONFIG` no permite
+suministrar un nombre de producto propio, aunque si VID/PID.
+
+Este prototipo **no usa FutJoy.sys**. Es un motor opcional, separado, basado
+en **HIDMaestro v2.3.0 (MIT)**, con un minidriver UMDF2 que permite asignar
+un Product String HID distinto por mando:
+
+- P1: FUTUREO VJOY1 - PLAYER 1 | VID F7A0 / PID 2201
+- P2: FUTUREO VJOY2 - PLAYER 2 | VID F7A0 / PID 2202
+- P3: FUTUREO VJOY3 - PLAYER 3 | VID F7A0 / PID 2203
+- P4: FUTUREO VJOY4 - PLAYER 4 | VID F7A0 / PID 2204
+- P5..P8: mismo esquema, hasta PID 2208.
+
+Cada control tiene dos ejes (X/Y) y 16 botones. El paquete incluye una
+aplicacion independiente WinForms `FUTUREO_NOMBRES_REALES.exe`; no
+sustituye la GUI Python existente, no borra los mandos P1-P8 ya instalados
+y todavia **no incluye integracion MULTIMANDO**. El usuario debe confirmar
+la instalacion opcional del nuevo motor y ejecutarla con privilegios UAC.
+Solo equipo secundario, no equipo principal.
+
+**IMPORTANTE:** la compilacion automatizada y la firma proporcionada por
+HIDMaestro no prueban el resultado en el equipo del usuario. Instalar el
+motor de terceros modifica el almacen de controladores y la confianza en
+un certificado local; cerrar la aplicacion elimina sus mandos, pero no
+desinstala automaticamente ese controlador. Para retirarlo, usar la
+herramienta oficial HIDMaestroUninstall, revisando primero `--preview`.
+
+Se mantienen todas las versiones v0.5.x intactas. Fuentes de referencia:
+[Microsoft VHF](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-),
+[HIDMaestro (MIT)](https://github.com/hifihedgehog/HIDMaestro).
+
 ## FUTUREO VJOY v0.5.2 LAB - prueba de nombres PnP sin cambiar el SYS
 
 **[ZIP v0.5.2: prueba de nombres PnP (publicado por GitHub Actions)](instalador_windows/FUTUREO_VJOY_v0_5_2_LAB_NOMBRES_PNP.zip)**

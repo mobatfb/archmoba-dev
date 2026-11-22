@@ -1,0 +1,83 @@
+name: FUTUREO VJOY v0.6.0 - motor nombres HID reales
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/motor_nombres_reales/**"
+      - ".github/workflows/futureo-vjoy-nombres-reales.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  construir:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Obtener HIDMaestro v2.3.0 y verificar hash
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP 'hidmaestro-official'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          gh release download v2.3.0 -R hifihedgehog/HIDMaestro -p 'HIDMaestro-v2.3.0.zip' -D $root
+          if($LASTEXITCODE -ne 0){ throw "No se pudo obtener el release oficial" }
+          $zip=Join-Path $root 'HIDMaestro-v2.3.0.zip'
+          $expected='FDDB61B76D076AA2CF508A46C1E30E23AA75B4AE622D52B15E7259959FD12295'
+          if((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected){ throw "SHA256 no coincide" }
+          $expanded=Join-Path $root 'expanded'
+          Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
+          $dll=Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter 'HIDMaestro.Core.dll' | Select-Object -First 1
+          if(-not $dll -or $dll.Length -lt 5000000){throw "DLL ausente"}
+          $proj='MULTIMANDO/FUTUREO_VJOY/motor_nombres_reales'
+          Copy-Item -LiteralPath $dll.FullName -Destination $proj
+          $license=Get-ChildItem -LiteralPath $expanded -Recurse -File | Where-Object {$_.Name -in @('LICENSE','LICENSE.txt')} | Select-Object -First 1
+          $notice=Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter 'THIRD-PARTY-NOTICES.txt' | Select-Object -First 1
+          if(-not $license -or -not $notice){throw "Licencias o avisos de terceros ausentes"}
+          Copy-Item $license.FullName -Destination (Join-Path $proj 'HIDMAESTRO_LICENSE.txt')
+          Copy-Item $notice.FullName -Destination (Join-Path $proj 'THIRD-PARTY-NOTICES.txt')
+      - name: Compilar WinForms x64 sin instalar controladores
+        shell: pwsh
+        run: |
+          $proj='MULTIMANDO/FUTUREO_VJOY/motor_nombres_reales/FutureoNombresReales.csproj'
+          $dest=Join-Path $env:RUNNER_TEMP 'futureo-compiled'
+          dotnet publish $proj -c Release -r win-x64 --self-contained false -o $dest
+          if($LASTEXITCODE -ne 0){throw "Compilacion fallida"}
+          if(-not (Test-Path (Join-Path $dest 'FUTUREO_NOMBRES_REALES.exe'))){throw "Sin EXE"}
+          if(-not (Test-Path (Join-Path $dest 'HIDMaestro.Core.dll'))){throw "Sin motor"}
+      - name: Comprimir ZIP y calcular SHA256
+        shell: pwsh
+        run: |
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-stage'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'futureo-compiled/*') -Destination $stage -Recurse -Force
+          $src='MULTIMANDO/FUTUREO_VJOY/motor_nombres_reales'
+          foreach($name in @('LEEME_NOMBRES_REALES.txt','HIDMAESTRO_LICENSE.txt','THIRD-PARTY-NOTICES.txt')){
+            Copy-Item (Join-Path $src $name) -Destination $stage
+          }
+          $dir='MULTIMANDO/FUTUREO_VJOY/instalador_windows'
+          $name='FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip'
+          $zip=Join-Path $dir $name
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          $size=(Get-Item $zip).Length
+          if($size -lt 10000000 -or $size -gt 90000000){throw "ZIP tamaño anormal: $size"}
+          $hash=(Get-FileHash $zip -Algorithm SHA256).Hash
+          Set-Content -LiteralPath ($zip+'.sha256') -Value ($hash+'  '+$name) -Encoding ascii
+          Write-Host "ZIP: $zip; bytes $size; SHA256 $hash"
+      - name: Publicar ZIP al repo sin tocar v0.5.x
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip
+          git add -- MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_v0_6_0_LAB_NOMBRES_REALES_UMDF2.zip.sha256
+          git diff --cached --quiet
+          if($LASTEXITCODE -eq 0){throw "No se genero ZIP nuevo"}
+          git commit -m "FUTUREO VJOY v0.6.0 LAB: publicar motor con Product String por puesto"
+          if($LASTEXITCODE -ne 0){throw "Fallo commit"}
+          git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){throw "Fallo push"}

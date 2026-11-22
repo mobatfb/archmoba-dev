@@ -1,0 +1,56 @@
+FUTUREO VJOY - v0.6.0 LAB - MOTOR ALTERNATIVO DE NOMBRES REALES
+=================================================================
+EXCLUSIVAMENTE equipo secundario de laboratorio; Windows 10/11 x64.
+
+PROBLEMA:
+VHF genera nombres HID genericos. Los intentos de renombrar OEM/PnP
+de la v0.5.1 y v0.5.2 no hicieron cambiar los nombres en joy.cpl.
+
+PRUEBA NUEVA:
+Este programa usa HIDMaestro v2.3.0, software independiente, MIT.
+Crea 1..8 controladores virtuales HID con Product String propio:
+  P1 - FUTUREO VJOY1 - PLAYER 1 (VID F7A0, PID 2201)
+  P2 - FUTUREO VJOY2 - PLAYER 2 (VID F7A0, PID 2202)
+  P3 - FUTUREO VJOY3 - PLAYER 3 (VID F7A0, PID 2203)
+  P4 - FUTUREO VJOY4 - PLAYER 4 (VID F7A0, PID 2204)
+  P5-P8 analogamente hasta PID 2208.
+Ejes X/Y y 16 botones. MOTOR DISTINTO: no usa FutJoy.sys.
+No conecta todavia con MULTIMANDO: es un ensayo para demostrar nombres
+reales en joy.cpl y la creacion de entradas separadas.
+
+COMO PROBAR:
+1. No desinstales tus cuatro dispositivos FUTJOY existentes.
+2. Extrae todo el ZIP en carpeta propia.
+3. Instala .NET Desktop Runtime 10 x64 si el EXE lo solicita.
+   El motor incluido se compila para .NET 10 Windows.
+4. Clic derecho FUTUREO_NOMBRES_REALES.exe > Ejecutar como administrador.
+5. Revisa advertencias y pulsa PREPARAR MOTOR UMDF2.
+   El programa pide confirmacion ANTES de instalar un controlador de terceros
+   test-signed de modo usuario y confiar en el certificado local.
+6. Selecciona Cantidad=4, pulsa CREAR MANDOS CON NOMBRES.
+7. Abre joy.cpl, identifica las entradas FUTUREO VJOY1..VJOY4.
+   Los cuatro VHF originales tambien pueden seguir visibles; eso es
+   normal y no significa que se hayan duplicado los mismos dispositivos.
+8. Pulsar IDENTIFICAR para probar eje X / boton 1.
+9. QUITAR MANDOS o cerrar la aplicacion quita solo los creados por ella.
+
+NO hacer:
+- No instalar en el PC principal; no cambiar protecciones automáticas.
+- No borrar dispositivos ROOT\\FUTJOY01..08 antes de validar el nuevo.
+- No asumir que estos nuevos controladores son XInput.
+- No copiar el modulo DLL sin revisar su licencia y sus avisos de terceros.
+
+IMPORTANTE:
+No se ha validado su funcionamiento real en tu PC; la compilacion en
+GitHub Actions NO equivale a prueba de driver, ni al resultado joy.cpl.
+La instalacion de HIDMaestro modifica almacenes de certificados y driver store
+y puede persistir luego de cerrar la aplicacion. Desinstalacion de ese motor:
+usar la herramienta oficial HIDMaestroUninstall de su publicacion oficial,
+primero con --preview, luego --yes solo si decides retirar HIDMaestro.
+En la prueba no se desinstala automaticamente.
+
+DEPENDENCIA DE TERCEROS:
+HIDMaestro, version 2.3.0 (licencia MIT), de hifihedgehog.
+https://github.com/hifihedgehog/HIDMaestro
+No es proyecto ni driver oficial de Microsoft ni OpenAI.
+Repositorio FUTUREO original conserva sus ZIP v0.5.1/0.5.2.
