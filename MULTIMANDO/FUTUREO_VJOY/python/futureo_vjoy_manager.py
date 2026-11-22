@@ -88,6 +88,7 @@ class App:
         bar.pack(pady=8)
         ttk.Button(bar,text="IDENTIFICAR VJOY",command=self.test).pack(side="left",padx=8)
         ttk.Button(bar,text="COMPROBAR INSTALACION",command=self.check).pack(side="left",padx=8)
+        ttk.Button(bar,text="VER IDENTIDAD HID",command=self.diagnostico_hid).pack(side="left",padx=8)
         namebar=tk.Frame(self.root,bg="#0d1b30")
         namebar.pack(pady=3)
         ttk.Button(namebar,text="ETIQUETAR EN WINDOWS",command=self.labels_apply).pack(side="left",padx=8)
@@ -126,6 +127,29 @@ class App:
             self.results.put(("info",result.stdout.strip()[-300:]))
         self.background(worker)
 
+    def diagnostico_hid(self):
+        """Consultar identidades de Windows; no instala ni renombra nada."""
+        script=Path(__file__).with_name("diagnostico_hid.py")
+        def worker():
+            result=subprocess.run(
+                [sys.executable,str(script),"--count",str(self.count.get())],
+                capture_output=True,text=True,errors="replace",timeout=45,
+                creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+            message = (result.stdout or result.stderr).strip()
+            if result.returncode:
+                raise RuntimeError(message[-450:] or "No se pudo consultar el HID")
+            self.results.put(("diagnostic",message))
+        self.background(worker)
+
+    def show_diagnostic(self, content: str):
+        window=tk.Toplevel(self.root)
+        window.title("FUTUREO VJOY | Diagnostico HID (solo lectura)")
+        window.geometry("780x450")
+        view=tk.Text(window,wrap="word",font=("Consolas",10),padx=12,pady=12)
+        view.pack(expand=True,fill="both")
+        view.insert("1.0",content)
+        view.configure(state="disabled")
+
     def browse(self):
         chosen=filedialog.askopenfilename(filetypes=[("Ejecutable Windows","*.exe")])
         if chosen: self.devcon.set(chosen)
@@ -135,7 +159,10 @@ class App:
             while True:
                 kind,msg=self.results.get_nowait()
                 if kind=="done": self.busy=False
-                if msg: self.status.set(msg)
+                elif kind=="diagnostic":
+                    self.show_diagnostic(msg)
+                    self.status.set("Diagnostico HID: comprobacion terminada (solo lectura)")
+                elif msg: self.status.set(msg)
         except queue.Empty:
             pass
         self.root.after(100,self.poll)
