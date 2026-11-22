@@ -30,9 +30,14 @@ function IsAdmin {
   return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 function Elevate([string] $Option) {
+  # El menu tambien debe elevarse: sus acciones se ejecutan en este mismo proceso.
   $ps='"' + $PSCommandPath + '"'
   $arg='-NoProfile -ExecutionPolicy Bypass -File ' + $ps + ' -Accion ' + $Option
-  Start-Process -FilePath powershell.exe -ArgumentList $arg -Verb RunAs -Wait
+  Write-Host 'Solicitando permisos de administrador (UAC)...' -ForegroundColor Yellow
+  $child=Start-Process -FilePath powershell.exe -ArgumentList $arg -Verb RunAs -Wait -PassThru -ErrorAction Stop
+  if ($child.ExitCode -ne 0) {
+    throw "La ventana elevada finalizo con codigo $($child.ExitCode). Revisa el mensaje mostrado alli."
+  }
 }
 function Confirm([string] $Question) {
   $reply=Read-Host ($Question + ' (escribe SI para continuar)')
@@ -111,10 +116,35 @@ function ImportTestCertificate([System.Security.Cryptography.X509Certificates.X5
   Write-Host " $($cert.Subject)"
   Write-Host " Huella: $($cert.Thumbprint)"
   if(-not (Confirm 'CONFIRMAS que quieres confiar en este certificado de prueba?')) { throw 'Importacion cancelada por el usuario.' }
-  $res=Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\LocalMachine\Root'
-  if(-not $res){throw 'No se pudo agregar certificado en Root.'}
-  $res=Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher'
-  if(-not $res){throw 'No se pudo agregar certificado en TrustedPublisher.'}
+  # No modificar el almacen de confianza sin privilegios elevados.
+  AssertLab
+  $rootPath = 'Cert:\LocalMachine\Root\' + $cert.Thumbprint
+  $publisherPath = 'Cert:\LocalMachine\TrustedPublisher\' + $cert.Thumbprint
+  $addedRoot = $false
+  $addedPublisher = $false
+  try {
+    if (-not (Test-Path -LiteralPath $rootPath)) {
+      $res=Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\LocalMachine\Root' -ErrorAction Stop
+      if(-not $res){throw 'No se pudo agregar certificado en Root.'}
+      $addedRoot = $true
+    }
+    if (-not (Test-Path -LiteralPath $publisherPath)) {
+      $res=Import-Certificate -FilePath $Cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPublisher' -ErrorAction Stop
+      if(-not $res){throw 'No se pudo agregar certificado en TrustedPublisher.'}
+      $addedPublisher = $true
+    }
+  } catch {
+    # Revertir solo los cambios de ESTA ejecucion; nunca borrar los previos.
+    if($addedPublisher) {
+      try { Remove-Item -LiteralPath $publisherPath -Force -ErrorAction Stop }
+      catch { Write-Warning 'No se pudo revertir la confianza en TrustedPublisher.' }
+    }
+    if($addedRoot) {
+      try { Remove-Item -LiteralPath $rootPath -Force -ErrorAction Stop }
+      catch { Write-Warning 'No se pudo revertir la confianza en Root.' }
+    }
+    throw "No fue posible importar el certificado a LocalMachine. Es necesario ejecutar el instalador con UAC de administrador; una directiva de seguridad tambien puede impedirlo. Detalle: $($_.Exception.Message)"
+  }
   foreach($file in @($Sys,$Cat)){
     $signature=Get-AuthenticodeSignature -FilePath $file
     if($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or
@@ -302,8 +332,23 @@ function Execute([string] $action) {
     default {throw "Accion incorrecta: $action"}
   }
 }
-if($Accion -in @('Preparar','Instalar1','Instalar8','Desinstalar','ModoNormal') -and -not (IsAdmin)) {
-  try { Elevate $Accion } catch { Write-Host "No se concedio permiso administrador: $_" -ForegroundColor Red }
+# IMPORTANTE: el menu invoca Execute directamente. Si el menu no esta
+# elevado, todas sus acciones se ejecutarian sin UAC y fallaria la
+# importacion en Cert:\LocalMachine\Root con 0x80070005.
+$needsAdmin = $Accion -in @('Menu','Preparar','Instalar1','Instalar8','Desinstalar','ModoNormal')
+if ($needsAdmin -and -not (IsAdmin)) {
+  try {
+    Elevate $Accion
+  } catch {
+    Write-Host "ERROR DE PERMISOS: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host 'Para instalar, abre INSTALAR.bat con clic derecho > Ejecutar como administrador.' -ForegroundColor Yellow
+    exit 1
+  }
 } else {
-  try { Execute $Accion } catch { Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+  try {
+    Execute $Accion
+  } catch {
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+  }
 }
