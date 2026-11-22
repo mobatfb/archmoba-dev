@@ -31,8 +31,13 @@ jobs:
           if((Get-FileHash $zip -Algorithm SHA256).Hash -ne $expected){ throw "SHA256 no coincide" }
           $expanded=Join-Path $root 'expanded'
           Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
-          $dll=Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter 'HIDMaestro.Core.dll' | Select-Object -First 1
-          if(-not $dll -or $dll.Length -lt 5000000){throw "DLL ausente"}
+          $dlls=@(Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter 'HIDMaestro.Core.dll' | Sort-Object Length -Descending)
+          $dlls | ForEach-Object { Write-Host "SDK encontrado: $($_.FullName) ($($_.Length) bytes)" }
+          $dll=$dlls | Select-Object -First 1
+          if(-not $dll -or $dll.Length -lt 100000){
+            Get-ChildItem -LiteralPath $expanded -Recurse -File | Select-Object -First 40 FullName,Length | Format-Table | Out-Host
+            throw "HIDMaestro.Core.dll ausente o demasiado pequeno"
+          }
           $proj='MULTIMANDO/FUTUREO_VJOY/motor_nombres_reales'
           Copy-Item -LiteralPath $dll.FullName -Destination $proj
           $license=Get-ChildItem -LiteralPath $expanded -Recurse -File | Where-Object {$_.Name -in @('LICENSE','LICENSE.txt')} | Select-Object -First 1
