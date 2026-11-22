@@ -54,10 +54,28 @@ VOID FutJoyCleanup(WDFOBJECT object) {
     ctx->VhfHandle=NULL;
   }
 }
+/* La finalizacion de un cliente (incluso si su proceso falla) restablece
+ * todos los botones y centra los ejes. No requiere mensaje 'soltar'.
+ * El control de reconexion de red sigue a cargo del anfitrion MULTIMANDO.
+ */
+VOID FutJoyFileCleanup(WDFFILEOBJECT fileObject) {
+  WDFDEVICE device=WdfFileObjectGetDevice(fileObject);
+  PFUTJOY_CONTEXT ctx=FutJoyContext(device);
+  FUTJOY_STATE neutral={0};
+  if (ctx->VhfHandle) {
+    (void)SendState(ctx,&neutral);
+  }
+}
+
 NTSTATUS FutJoyDeviceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init) {
   UNREFERENCED_PARAMETER(driver);
   WDFDEVICE device;
   WDF_OBJECT_ATTRIBUTES attr;
+  /* El driver recibe EvtFileCleanup tambien si el proceso termina sin
+   * enviar una liberacion explicita de teclas. */
+  WDF_FILEOBJECT_CONFIG fileCfg;
+  WDF_FILEOBJECT_CONFIG_INIT(&fileCfg,NULL,NULL,FutJoyFileCleanup);
+  WdfDeviceInitSetFileObjectConfig(init,&fileCfg,WDF_NO_OBJECT_ATTRIBUTES);
   WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,FUTJOY_CONTEXT);
   attr.EvtCleanupCallback=FutJoyCleanup;
   NTSTATUS status=WdfDeviceCreate(&init,&attr,&device);
