@@ -5,8 +5,10 @@
  Ejecucion manual y consciente. No apaga Secure Boot ni BitLocker.
 #>
 param(
-  [ValidateSet('Menu','Preparar','Instalar1','Instalar8','Diagnosticar','DiagnosticarCert','Desinstalar','ModoNormal')]
-  [string] $Accion = 'Menu'
+  [ValidateSet('Menu','Preparar','Instalar1','Instalar8','InstalarN','QuitarN','Diagnosticar','DiagnosticarCert','Desinstalar','ModoNormal')]
+  [string] $Accion = 'Menu',
+  [ValidateRange(1,8)]
+  [int] $Cantidad = 1
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -32,7 +34,7 @@ function IsAdmin {
 function Elevate([string] $Option) {
   # El menu tambien debe elevarse: sus acciones se ejecutan en este mismo proceso.
   $ps='"' + $PSCommandPath + '"'
-  $arg='-NoProfile -ExecutionPolicy Bypass -File ' + $ps + ' -Accion ' + $Option
+  $arg='-NoProfile -ExecutionPolicy Bypass -File ' + $ps + ' -Accion ' + $Option + ' -Cantidad ' + $Cantidad
   Write-Host 'Solicitando permisos de administrador (UAC)...' -ForegroundColor Yellow
   $child=Start-Process -FilePath powershell.exe -ArgumentList $arg -Verb RunAs -Wait -PassThru -ErrorAction Stop
   if ($child.ExitCode -ne 0) {
@@ -312,6 +314,27 @@ function InstallPads([int] $quantity) {
   PrintStatus
   Write-Host 'Revisa en Windows: Win+R -> joy.cpl. Si el dispositivo tiene error, no lo uses en un juego.' -ForegroundColor Yellow
 }
+# Quitar UN SOLO puesto root, sin eliminar el driver compartido ni certificados.
+# Permite que P1-P8 continuen funcionando de manera independiente.
+function RemovePad([int] $slot) {
+  AssertLab
+  if($slot -lt 1 -or $slot -gt 8){throw "Puesto fuera de rango"}
+  $prefix='ROOT\FUTJOY{0:D2}\' -f $slot
+  Head "QUITAR SOLAMENTE FUTUREO VJOY$slot"
+  if(-not (Confirm "Eliminar el dispositivo $prefix* sin afectar los demas mandos?")){return}
+  $devs=@(Get-PnpDevice -ErrorAction SilentlyContinue |
+     Where-Object { $_.InstanceId -and $_.InstanceId.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) })
+  if($devs.Count -eq 0){
+    Write-Host "VJOY$slot no esta instalado; no se modifico nada." -ForegroundColor Yellow
+    return
+  }
+  foreach($dev in $devs){
+    Write-Host "Quitando SOLO $($dev.InstanceId) ..." -ForegroundColor Cyan
+    & pnputil.exe /remove-device $dev.InstanceId
+    if($LASTEXITCODE -ne 0){throw "Windows no pudo retirar $($dev.InstanceId) (pnputil $LASTEXITCODE)"}
+  }
+  Write-Host "FUTUREO VJOY$slot retirado. El driver y los certificados se conservaron." -ForegroundColor Green
+}
 function UninstallPads {
   AssertLab
   Head 'DESINSTALAR FUTUREO VJOY'
@@ -382,6 +405,8 @@ function Execute([string] $action) {
     'Preparar' {PrepareTestMode}
     'Instalar1' {InstallPads 1}
     'Instalar8' {InstallPads 8}
+    'InstalarN' {InstallPads $Cantidad}
+    'QuitarN' {RemovePad $Cantidad}
     'Diagnosticar' {PrintStatus}
     'DiagnosticarCert' {DiagnoseCertificate}
     'Desinstalar' {UninstallPads}
@@ -392,7 +417,7 @@ function Execute([string] $action) {
 # IMPORTANTE: el menu invoca Execute directamente. Si el menu no esta
 # elevado, todas sus acciones se ejecutarian sin UAC y fallaria la
 # importacion en Cert:\LocalMachine\Root con 0x80070005.
-$needsAdmin = $Accion -in @('Menu','Preparar','Instalar1','Instalar8','Desinstalar','ModoNormal')
+$needsAdmin = $Accion -in @('Menu','Preparar','Instalar1','Instalar8','InstalarN','QuitarN','Desinstalar','ModoNormal')
 if ($needsAdmin -and -not (IsAdmin)) {
   try {
     Elevate $Accion
