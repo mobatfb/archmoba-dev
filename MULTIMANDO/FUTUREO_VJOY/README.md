@@ -1,3 +1,41 @@
+## FUTUREO VJOY v0.8.2 + Extension Chrome/Edge v1.0.0
+
+**[Descargar paquete TODO EN UNO (EXE + extension + manual)](instalador_windows/FUTUREO_VJOY_NAVEGADOR_PACK_v0_8_2.zip)**
+
+**[Descargar solo la extension Chrome/Edge (.ZIP)](instalador_windows/FUTUREO_VJOY_EXTENSION_CHROME_EDGE_v1_0_0.zip)**
+
+**[Descargar FUTUREO v0.8.2 portable (.EXE)](instalador_windows/FUTUREO_VJOY_BROWSER_BRIDGE_v0_8_2_WIN64.exe)**
+
+Se agrega un **puente local autenticado** para que los juegos web autorizados
+puedan consultar los estados de hasta 8 mandos `FUTUREO_VJOY1..8` a traves
+de una vista JavaScript de `navigator.getGamepads()`. El nuevo EXE
+mantiene la GUI MINI plegable, los 16 botones, el D-Pad y el
+analogico izquierdo de v0.8.1.
+
+**Instalacion:**
+1. Cierra versiones anteriores y abre el EXE v0.8.2 en Windows x64.
+2. Crea los mandos. Pulsa **CLAVE WEB** para copiar la clave de vinculacion.
+3. En Chrome abre `chrome://extensions` o en Edge `edge://extensions`,
+   activa Modo desarrollador y pulsa **Cargar descomprimida** sobre
+   la carpeta EXTRAIDA de la extension (contiene `manifest.json`).
+4. En la extension pega la clave, pulsa **Guardar clave** y
+   **Comprobar puente local**.
+5. Abre la pagina del juego, activa la opcion **Permitir mandos en este sitio**
+   y recarga. En el navegador comprueba `navigator.getGamepads()`.
+
+**La extension no cambia la enumeracion HID nativa del navegador**.
+Ofrece objetos compatibles con el uso habitual de Gamepad API, lo
+que puede servir para juegos JavaScript, pero no garantiza que todos
+los motores (incluido KOF2022) los acepten. No emula XInput a nivel
+Windows ni modifica el controlador o TESTSIGNING.
+
+El servicio solo escucha en `127.0.0.1:38471`, es de **solo lectura**
+y requiere una clave. Cada dominio requiere consentimiento explicito.
+
+[Codigo del bridge para Windows](browser_bridge_v082/) |
+[Codigo de la extension](browser_extension_v100/) |
+[Pruebas del shim](browser_extension_tests/).
+
 ## FUTUREO VJOY v0.8.1 - Interfaz MINI y paneles plegables
 
 **[EXE portable v0.8.1](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_8_1_WIN64.exe)**

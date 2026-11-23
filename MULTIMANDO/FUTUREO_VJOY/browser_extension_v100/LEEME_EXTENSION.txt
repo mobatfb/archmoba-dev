@@ -1,0 +1,122 @@
+FUTUREO GAMEPAD BRIDGE v1.0 - EXTENSION CHROME / EDGE
+==========================================================
+OBJETIVO
+--------
+Compatibilidad por Javascript con juegos de navegador que consultan
+navigator.getGamepads() o escuchan eventos gamepadconnected.
+La extension NO hace que Chrome detecte nativamente un nuevo USB
+o un dispositivo XInput. Crea una interfaz Gamepad API compatible
+para la pagina web, alimentada por el EXE FUTUREO v0.8.2.
+
+REQUISITOS
+----------
+- Windows 10/11 x64.
+- FUTUREO_VJOY_BROWSER_BRIDGE_v0_8_2_WIN64.exe (actualiza la app v0.8.1).
+- Chrome o Edge actual con soporte para extensiones Manifest V3.
+- Mandos ya funcionales en Windows al iniciar FUTUREO.
+- El juego debe utilizar la API de mandos de Javascript. NO se
+  garantiza compatibilidad con juegos que solo aceptan teclado o
+  validan que los objetos Gamepad sean instancias nativas del navegador.
+
+INSTALAR EXTENSION (NO SE INSTALA HACIENDO DOBLE CLIC EN EL ZIP)
+----------------------------------------------------------------
+1. Descarga FUTUREO_VJOY_EXTENSION_CHROME_EDGE_v1_0_0.zip.
+2. Extrae el ZIP en una carpeta fija de Windows. Conservala.
+3. En Chrome: chrome://extensions
+   En Edge:   edge://extensions
+4. Activa "Modo de desarrollador".
+5. Pulsa "Cargar descomprimida" / "Load unpacked".
+6. Selecciona la carpeta EXTRAIDA que contiene manifest.json.
+7. Fija FUTUREO Gamepad Bridge en la barra de extensiones.
+
+CONFIGURAR Y USAR
+-----------------
+1. Cierra FUTUREO anterior y ejecuta
+   FUTUREO_VJOY_BROWSER_BRIDGE_v0_8_2_WIN64.exe
+2. En FUTUREO, pulsa INICIAR > INSTALAR Y CREAR MANDOS.
+3. En la misma pantalla, pulsa CLAVE WEB (queda copiada).
+4. Abre el icono de FUTUREO Gamepad Bridge en Chrome/Edge.
+5. Pega la clave en el campo correspondiente. Pulsa GUARDAR CLAVE.
+6. Pulsa COMPROBAR PUENTE LOCAL. Debe indicar los mandos encontrados.
+7. Abre la pagina donde esta KOF2022 (o el juego que corresponda).
+8. Abre nuevamente la extension: veras el origen actual.
+9. Activa "Permitir mandos en este sitio". Se recarga la pagina.
+10. En el juego, utiliza su configuracion de mandos. Si hace falta,
+    pulsa "AUTO PRUEBA" en FUTUREO MONITOR y regresa al navegador
+    antes de los 3 segundos de espera.
+11. Si quieres probar la enumeracion, abre hardwaretester.com/gamepad,
+    activa tambien ESE sitio, recarga y revisa FUTUREO_VJOY1..8.
+
+MAPEO A GAMEPAD API STANDARD
+---------------------------
+El puente mantiene 16 botones ORIGINALES, D-Pad y analogico:
+Gamepad API indice | FUTUREO original
+0 A                | boton A (original indice 4)
+1 B                | boton B (original indice 5)
+2 X                | boton X (original indice 1)
+3 Y                | boton Y (original indice 2)
+4 L1               | boton L (original indice 3)
+5 R1               | boton R (original indice 6)
+6 L2               | boton P1 (original indice 14)
+7 R2               | boton P2 (original indice 15)
+8 SELECT           | boton SELECT (original indice 7)
+9 START            | boton START (original indice 8)
+10 L3              | boton L3 (original indice 9)
+11 R3              | boton R3 (original indice 10)
+12-15 DPad         | D-Pad HID Hat (8 direcciones)
+16 HOME            | boton HOME (original indice 11)
+17 TOUCH           | boton TOUCH (original indice 12)
+18 SHARE           | boton SHARE (original indice 13)
+19 EXTRA           | boton EXTRA (original indice 16)
+axes 0/1           | stick izquierdo X/Y
+axes 2/3           | 0,0 (no tenemos stick derecho)
+
+El navegador vera 20 elementos en Gamepad.buttons porque cuatro
+posiciones se usan para representar las DIRECCIONES del D-Pad.
+Eso NO aumenta los 16 botones fisicos del dispositivo virtual.
+
+PRIVACIDAD Y SEGURIDAD
+---------------------
+- Se requiere activar el origen de cada sitio manualmente (opt-in).
+- Clave secreta de 64 caracteres para el puente localhost.
+- La extension guarda la clave con chrome.storage.local.
+- Los sitios web NO reciben la clave.
+- La app comparte solo estados de mandos en 127.0.0.1:38471.
+- No hay envio de entradas a Internet desde el puente.
+- La extension no intercepta contrasenas, teclado, cookies o sesiones.
+- No se ejecutan acciones de control sobre el equipo: servicio
+  localhost de SOLO LECTURA, GET /state.
+- Puedes desactivar la extension para un sitio desde su icono.
+- La extension inyecta codigo en la pagina autorizada porque los
+  juegos deben llamar al reemplazo de navigator.getGamepads().
+
+LIMITACIONES CONOCIDAS
+---------------------
+- No crea una instancia nativa de la clase Gamepad del navegador,
+  sino un objeto Javascript con el mismo contrato habitual.
+  Algunos motores validan la identidad nativa y pueden rechazarlo.
+- Los eventos gamepadconnected se simulan mediante un Event con
+  la propiedad gamepad cuando el constructor GamepadEvent nativo
+  rechaza un objeto Javascript.
+- Los navegadores pueden impedir inyectar/usar Gamepad API en
+  ciertos iframes por Permissions-Policy o páginas restringidas.
+- Las pestañas Chrome Web Store, chrome:// y edge:// no admiten
+  inyeccion ordinaria de content scripts.
+- No modifica el controlador HID ni emula XInput a nivel Windows.
+- Necesita que FUTUREO v0.8.2 siga abierto.
+- La pulsacion con el mouse en FUTUREO cambia el foco: para probar,
+  utiliza la AUTO PRUEBA de MONITOR y Alt+Tab al navegador.
+
+COMPROBACION EN CONSOLA DEL NAVEGADOR
+------------------------------------
+  [...navigator.getGamepads()].filter(Boolean)
+    .map(p => ({id:p.id,mapping:p.mapping,buttons:p.buttons.length,
+                axes:p.axes.length}))
+
+Se esperan las entradas FUTUREO_VJOY1, FUTUREO_VJOY2... con
+mapping = 'standard', buttons.length=20 y axes.length=4, SI
+el sitio esta autorizado y el puente esta vinculado.
+
+FUENTE
+------
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/browser_extension_v100

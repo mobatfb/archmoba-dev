@@ -1,0 +1,65 @@
+FUTUREO VJOY v0.8.2 - PORTABLE + PUENTE DE NAVEGADOR
+======================================================
+Esta version agrega un puente autenticado en 127.0.0.1:38471 a
+la interfaz v0.8.1 (INICIAR / PROBAR / MONITOR).
+
+FUNCIONES ANTERIORES QUE SE CONSERVAN:
+- Hasta 8 mandos FUTUREO_VJOY1..8
+- 16 botones originales
+- D-Pad de 8 posiciones y joystick izquierdo X/Y
+- Monitor de pulsaciones, pliegue de paneles y vista MINI
+- HIDMaestro 2.3.0 UMDF2 + nombres OEM reversibles
+
+NOVEDAD:
+- Servicio de estados de solo lectura de 127.0.0.1:38471.
+- Boton CLAVE WEB en INICIAR para copiar una clave de
+  vinculacion de 64 caracteres hexadecimales.
+- La clave se conserva para el usuario en:
+  %LOCALAPPDATA%\FUTUREO_VJOY\browser_bridge_token.txt
+- El servicio no acepta peticiones sin clave, no permite
+  control remoto de Windows ni cambios de mando.
+- Solo se escucha en 127.0.0.1; no se abre a la red local.
+- La extension Chrome/Edge requiere activacion por sitio.
+- El servicio publica solo el estado de los mandos que la
+  aplicacion ha creado y actualizado; no lee otros joysticks.
+- Requiere ejecutar FUTUREO v0.8.2 para usar la extension.
+- NO cambia TESTSIGNING ni desinstala controladores previos.
+
+PASOS
+-----
+1. Cierra la version v0.8.1 y cualquier otra copia de FUTUREO.
+2. Ejecuta FUTUREO_VJOY_BROWSER_BRIDGE_v0_8_2_WIN64.exe.
+3. Pulsa INSTALAR Y CREAR MANDOS; cierra/reabre joy.cpl.
+4. Pulsa CLAVE WEB para copiar el codigo de vinculacion.
+5. Instala la extension descomprimida de Chrome/Edge.
+6. Pega la clave y autoriza especificamente la pagina del juego.
+7. Recarga esa pagina y comprueba navigator.getGamepads().
+8. Puedes usar AUTO PRUEBA en FUTUREO > MONITOR para emitir
+   pulsaciones tras una espera de 3 segundos; cambia al navegador
+   con Alt+Tab durante esa espera.
+
+IMPORTANTE
+----------
+Esta extension ofrece una vista de Gamepad API a las paginas web.
+NO obliga al navegador a enumerar el HID en su subsistema nativo,
+ni garantiza compatibilidad con KOF2022. Algunos juegos usan teclado,
+su propio motor o validan objetos Gamepad nativos.
+Si no aparece en el tester, verifica primero que la extension
+esta activada para ese sitio y que muestra PUENTE CONECTADO.
+
+DEPENDENCIAS
+------------
+Motor de dispositivo: HIDMaestro v2.3.0, licencia MIT.
+Puente TCP solo lectura, formato JSON, no se usan DLL nuevas.
+Proyecto autocontenido .NET 10 Windows x64, un unico ejecutable.
+
+VERIFICACION
+------------
+GitHub Actions prueba el descriptor HID, la GUI mini plegable,
+el servicio localhost rechazando claves incorrectas y aceptando
+la correcta, y el empaquetado autocontenido.
+No se instalan drivers en el runner de pruebas.
+
+CODIGO
+------
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/browser_bridge_v082

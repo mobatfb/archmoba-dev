@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FUTUREO Gamepad Bridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">FUTUREO <span>VJOY</span></div>
+      <div class="subtitle">BRIDGE PARA CHROME / EDGE</div>
+    </header>
+
+    <section class="section">
+      <h2>1 · Vincular FUTUREO</h2>
+      <p>En FUTUREO v0.8.2 pulsa <b>CLAVE WEB</b> y pégala aquí.</p>
+      <div class="token">
+        <input id="token" type="password" autocomplete="off"
+               spellcheck="false" placeholder="Clave de vinculación de 64 caracteres">
+        <button id="show" class="minor" type="button" title="Mostrar/ocultar">Ver</button>
+      </div>
+      <button id="saveToken" class="full" type="button">Guardar clave</button>
+    </section>
+
+    <section class="section">
+      <h2>2 · Activar el juego actual</h2>
+      <p id="site" class="site">Buscando pestaña…</p>
+      <div class="toggle">
+        <span>Permitir mandos en este sitio</span>
+        <label class="switch">
+          <input id="enabled" type="checkbox">
+          <span class="track"></span>
+        </label>
+      </div>
+      <p class="tip">La página se recargará para instalar la compatibilidad antes de iniciar el juego.</p>
+    </section>
+
+    <section class="section">
+      <h2>3 · Diagnóstico</h2>
+      <button id="test" class="full secondary" type="button">Comprobar puente local</button>
+      <div id="result" class="result" role="status">Extensión instalada; vincula tu aplicación.</div>
+      <button id="tester" class="full outline" type="button">Abrir Gamepad Tester</button>
+    </section>
+
+    <footer>El controlador de Windows no se modifica. Los datos solo se comparten con sitios autorizados.</footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

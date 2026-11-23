@@ -1,0 +1,39 @@
+:root { color-scheme: dark; font-family: "Segoe UI", Arial, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; width: 354px; background: #0b182b; color: #e9f5ff; font-size: 12px; }
+main { padding: 13px; }
+header { background: #132a43; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid #1b5473; }
+.brand { font-size: 19px; letter-spacing: 1.3px; font-weight: 800; color: #75e9f1; }
+.brand span { color: white; }
+.subtitle { color: #9cbacf; font-size: 10px; letter-spacing: 1px; margin-top: 3px; }
+.section { background: #14283e; border-radius: 9px; padding: 11px; margin-bottom: 9px; border: 1px solid #284b68; }
+h2 { margin: 0 0 7px; font-size: 12px; color: #71dce9; }
+p { margin: 0 0 9px; color: #bdcfdb; line-height: 1.4; }
+.token { display: flex; gap: 4px; margin-bottom: 7px; }
+input[type="password"], input[type="text"] { flex: 1; min-width: 0; border-radius: 5px;
+  background: #091a2a; color: white; border: 1px solid #3d657f; padding: 8px;
+  font-family: Consolas, monospace; font-size: 11px; }
+button { background: #147fa7; color: white; border: none; border-radius: 6px;
+  padding: 8px; font-weight: 700; font-size: 11px; cursor: pointer; }
+button:hover { filter: brightness(1.16); }
+button:focus-visible, input:focus-visible { outline: 2px solid #8deefa; }
+button.full { display: block; width: 100%; }
+button.minor { min-width: 46px; background: #2b485e; }
+button.secondary { background: #275b77; }
+button.outline { background: transparent; border: 1px solid #3b647d; margin-top: 8px; }
+.site { word-break: break-all; font-family: Consolas, monospace; color: #e2eff6; }
+.toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.tip { margin: 7px 0 0; font-size: 10px; color: #99b4c7; }
+.switch { position: relative; width: 42px; height: 24px; display: inline-block; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.track { position: absolute; inset: 0; border-radius: 12px; background: #466074;
+  transition: background .2s; cursor: pointer; }
+.track:before { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: white; transition: transform .2s; }
+.switch input:checked + .track { background: #19ae91; }
+.switch input:checked + .track:before { transform: translateX(18px); }
+.result { background: #091c2e; border: 1px solid #2a506d; padding: 9px;
+  border-radius: 5px; color: #bcd6e6; margin-top: 8px; white-space: pre-wrap; line-height: 1.5; }
+.result.ok { border-color: #197e6f; color: #8ee6c4; }
+.result.err { border-color: #a05b65; color: #ffa6a6; }
+footer { color: #8dabbf; font-size: 10px; line-height: 1.4; margin: 6px 3px 0; }
