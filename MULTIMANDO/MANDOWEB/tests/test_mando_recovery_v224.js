@@ -127,7 +127,7 @@ async function main() {
  assert.ok(ws.sent.includes("a0"),"El boton A libera comando del anfitrion");
  const joy=t.map.joystick;
  joy.dispatch("pointerdown",{pointerId:2,clientX:180,clientY:100,preventDefault(){}});
- assert.ok(ws.sent.some(x=>x instanceof Uint8Array&&x[0]===0xa1),
+ assert.ok(ws.sent.some(x=>ArrayBuffer.isView(x)&&x[0]===0xa1),
    "El joystick envia paquete binario A1");
  joy.dispatch("pointerup",{pointerId:2});
  t.map.disconnectBtn.dispatch("click");
