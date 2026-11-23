@@ -96,7 +96,7 @@ function axes(x,y,force=false){
  if(!force&&mode!=="analog")return;
  const t=performance.now();
  x=Math.min(127,Math.max(-127,Math.round(x)));y=Math.min(127,Math.max(-127,Math.round(y)));
- if(!force&&t-axisAt<31&&(x!==0||y!==0))return;
+ if(!force&&t-axisAt<31&&(x!==0||y!==0)&&!(previousAxes[0]===0&&previousAxes[1]===0))return;
  if(!force&&x===previousAxes[0]&&y===previousAxes[1])return;
  axisAt=t;previousAxes=[x,y];
  if(allowed()||(x===0&&y===0))send(new Uint8Array([0xa1,x&255,y&255]));
