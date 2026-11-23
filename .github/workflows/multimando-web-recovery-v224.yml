@@ -1,0 +1,99 @@
+name: MULTIMANDO WEB v2.2.4 - MANDO DE RESCATE
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/MANDOWEB/**'
+      - '.github/workflows/multimando-web-recovery-v224.yml'
+  workflow_dispatch:
+concurrency:
+  group: multimando-web-v224-build
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probar PHP, mando de rescate y stream
+        shell: bash
+        run: |
+          php -l MULTIMANDO/MANDOWEB/index.php
+          php -l MULTIMANDO/MANDOWEB/palanca.php
+          php -l MULTIMANDO/MANDOWEB/control.php
+          php -l MULTIMANDO/MANDOWEB/sala.php
+          php -l MULTIMANDO/MANDOWEB/config.php
+          node --check MULTIMANDO/MANDOWEB/assets/mando-recovery.js
+          node --check MULTIMANDO/MANDOWEB/assets/mando-rescate.js
+          node --check MULTIMANDO/MANDOWEB/assets/futureo-stream.js
+          node MULTIMANDO/MANDOWEB/tests/test_mando_recovery_v224.js
+          node MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v22.js
+      - name: Generar ZIP web completa SIN clave cifrada
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          repo=Path('MULTIMANDO')
+          base=repo/'MANDOWEB'
+          dest=repo/'FUTUREO_VJOY'/'instalador_windows'/'MULTIMANDO_WEB_COMPLETA_MANDO_RESCATE_v2_2_4.zip'
+          public=[
+              '.htaccess','index.php','palanca.php','control.php',
+              'sala.php','config.php','assets/palanca.css',
+              'assets/futureo-stream.js','assets/mando-recovery.js',
+              'assets/mando-rescate.js','private/.htaccess',
+          ]
+          doc="""MULTIMANDO WEB v2.2.4 - MANDO DE RESCATE + STREAM
+          ==================================================
+          DESCOMPRIMIR directamente en el DOCUMENT ROOT de /multimando/
+          sin crear otra carpeta.
+          INCLUYE: index.php, palanca.php, control.php, sala.php,
+          config.php, los JS de mando y stream, CSS y .htaccess.
+          IMPORTANTE: se ha excluido private/palanca.enc y
+          private/FRASE_CIFRADO.php para no sobrescribir secretos.
+          Conserva esos dos archivos en el hosting si ya funcionan.
+          El mando original tiene prioridad si control.php funciona.
+          Si control.php responde 404 o 503, el navegador activa
+          automaticamente assets/mando-rescate.js en su lugar.
+          No necesita una clave privada para este RESCATE;
+          conecta al mismo Cloudflare / con hello, turnos y mandos.
+          Los espectadores siguen viendo la imagen en /stream
+          aunque NO pulsen CONECTAR.
+          No se modifica el anfitrion FUTUREO v2.2.1.
+          Compueba: control.php, sala.php, y la sala ABIERTA.
+          Si la web esta instalada en una ruta diferente, revisa
+          las URL relativas y tu administrador de archivos.
+          NO se instala automaticamente en el servidor real.
+          """
+          doc='\n'.join(line.strip() for line in doc.splitlines())+'\n'
+          with ZipFile(dest,'w',ZIP_DEFLATED,compresslevel=9) as z:
+              for path in public:
+                  f=base/path
+                  assert f.is_file(), 'Archivo publico faltante: '+path
+                  z.write(f,arcname=path)
+              z.writestr('LEEME_INSTALACION.txt',doc)
+          with ZipFile(dest) as z:
+              entries=set(z.namelist())
+              assert z.testzip() is None
+              assert set(public).issubset(entries)
+              assert not any(name.endswith('palanca.enc') or
+                  'FRASE_CIFRADO' in name or name=='assets/control_decoded.js'
+                  for name in entries)
+          print('WEB COMPLETA:',dest, dest.stat().st_size,'bytes')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MULTIMANDO_WEB_COMPLETA_MANDO_RESCATE_v2_2_4
+          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_COMPLETA_MANDO_RESCATE_v2_2_4.zip
+          retention-days: 30
+      - name: Publicar ZIP verificado en GitHub
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_COMPLETA_MANDO_RESCATE_v2_2_4.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "build(multimando): web v2.2.4 con mando de rescate"
+            git pull --rebase origin main
+            git push
+          fi
