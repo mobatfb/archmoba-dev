@@ -6,7 +6,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
 // Nonce allows a built-in stylesheet without weakening the CSP for scripts.
 $styleNonce = base64_encode(random_bytes(16));
-header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'nonce-{$styleNonce}'; img-src 'self' data:; connect-src 'self' wss:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+header("Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'nonce-{$styleNonce}'; img-src 'self' data: blob:; connect-src 'self' wss:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
 // Prefer the local stylesheet when installed; fallback works if it was omitted.
 $embeddedStyle = <<<'MULTIMANDO_CSS_FALLBACK'
 :root{color-scheme:dark;--bg:#060d1c;--ink:#f0f7ff;--muted:#88a4c2;--cyan:#5be1fb;--lime:#a8f69a;--gold:#ffd687;--pink:#ff759d;--stroke:#294363;--outline:#71e7f6;--key-size:clamp(55px,min(21.5vw,18dvh),133px);--stick-size:min(45vw,49dvh,400px)}
@@ -582,7 +582,57 @@ if (is_readable($cssFile)) {
 <title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
+<style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>">
+/* FUTUREO VJOY 2.1 - streaming publico adaptativo, sin requerir turno */
+.app-shell{height:auto;min-height:100dvh;grid-template-rows:auto auto auto auto minmax(330px,1fr) auto}
+.futureo-stream-panel{min-width:0;display:flex;flex-direction:column;overflow:hidden;gap:0;
+ border:1px solid #345c83;border-radius:18px;background:linear-gradient(160deg,#102b49,#07152b);
+ box-shadow:0 0 14px #1c9ac020}
+.futureo-stream-head{display:flex;justify-content:space-between;align-items:center;gap:12px;
+ padding:9px 13px;border-bottom:1px solid #294766}
+.futureo-stream-head strong{font-size:clamp(12px,1.8vw,15px);letter-spacing:.08em}
+.futureo-stream-badge{font-size:10px;background:#334b63;color:#dce8f4;border-radius:15px;padding:6px 10px;
+ font-weight:900;letter-spacing:.05em}
+.futureo-live .futureo-stream-badge{background:#a81b37;color:white}
+.futureo-stream-media{position:relative;display:grid;place-items:center;overflow:hidden;
+ background:#030a13;aspect-ratio:16/9;min-height:0}
+.futureo-stream-media img{display:block;object-fit:contain;width:100%;height:100%;max-height:100%}
+.futureo-stream-media img[hidden]{display:none}
+.futureo-stream-empty{position:absolute;inset:0;display:grid;place-items:center;
+ font-size:clamp(13px,2.2vw,21px);color:#799ec4;letter-spacing:.04em;text-align:center;padding:14px;pointer-events:none}
+.futureo-stream-media img:not([hidden]) + .futureo-stream-empty{display:none}
+.futureo-stream-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;
+ padding:9px 12px;color:#a8c6df;font-size:clamp(10px,1.7vw,12px)}
+.futureo-stream-foot span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.futureo-stream-expand{border:1px solid #3e7095;background:#142c48;border-radius:8px;
+ color:#d9f7ff;padding:7px 10px;font-weight:750}
+.futureo-stream-expanded .futureo-stream-media{aspect-ratio:16/9}
+.control-deck{min-width:0}
+@media(min-width:1000px){
+ .app-shell{max-width:1500px;grid-template-columns:minmax(0,1.14fr) minmax(440px,1fr);
+  grid-template-rows:auto auto auto minmax(360px,1fr) auto;align-content:start}
+ .app-header,.connect-panel,.status-hud,.app-shell>footer{grid-column:1/-1}
+ .futureo-stream-panel{grid-column:1;grid-row:4;align-self:start}
+ .control-deck{grid-column:2;grid-row:4;align-self:stretch}
+ .futureo-stream-media{flex:1;aspect-ratio:16/9}
+ .futureo-stream-panel{max-height:calc(100vh - 240px)}
+}
+@media(max-width:999px){
+ .app-shell{grid-template-columns:minmax(0,1fr)}
+ .futureo-stream-panel{width:100%}
+ .control-deck{min-height:380px}
+}
+@media(max-width:600px){
+ .app-shell{gap:7px;min-height:100dvh;grid-template-rows:auto auto auto auto auto auto}
+ .futureo-stream-head{padding:7px 10px}
+ .futureo-stream-media{aspect-ratio:16/9}
+ .futureo-stream-foot{padding:6px 9px}
+ .futureo-stream-media{min-height:140px}
+ .control-deck{min-height:310px}
+}
+</style>
 <script src="control.php?v=6.2.0" defer></script>
+<script src="assets/futureo-stream.js?v=2.1.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -614,6 +664,18 @@ if (is_readable($cssFile)) {
     <div class="stat"><span>MI CONTROL</span><strong id="mySlot">—</strong><small id="myStatus">Sin asignar</small></div>
     <div class="stat"><span>TIEMPO RESTANTE</span><strong class="mono" id="timeLeft">--:--</strong><small id="clockStatus">Definido por el anfitrión</small></div>
     <div class="stat"><span>EN ESPERA</span><strong class="mono" id="queueCount">—</strong><small id="myQueuePosition">Sin conexión</small></div>
+  </section>
+
+  <section id="futureoStream" class="futureo-stream-panel" aria-label="Transmision publica del juego" aria-live="off">
+    <div class="futureo-stream-head"><strong>● PANTALLA DEL JUEGO</strong><span id="futureoStreamBadge" class="futureo-stream-badge">SIN TRANSMISION</span></div>
+    <div class="futureo-stream-media">
+      <img id="futureoStreamImage" alt="Imagen en directo de la ventana del juego" hidden decoding="async">
+      <div class="futureo-stream-empty">▣<span style="display:block">Esperando imagen del anfitrión</span></div>
+    </div>
+    <div class="futureo-stream-foot">
+      <span id="futureoStreamStatus" role="status">Puedes mirar sin conectarte, sin turno y sin entrar a la cola.</span>
+      <button id="futureoStreamSettings" class="futureo-stream-expand" type="button" aria-label="Ampliar imagen">AMPLIAR</button>
+    </div>
   </section>
 
   <section class="control-deck" aria-label="Palanca y botones remotos">
