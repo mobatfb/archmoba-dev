@@ -26,8 +26,8 @@ async function checkModule(){
  try{
   const res=await fetch(candidate.src,{cache:"no-store",credentials:"same-origin",
     signal:AbortSignal.timeout(9500)});
-  const type=(res.headers.get("content-type")||"").toLowerCase();
   if(!res.ok){fallback("HTTP "+res.status);return;}
+  const type=(res.headers?.get("content-type")||"").toLowerCase();
   if(type.includes("text/html") || type.includes("application/xhtml")){
    fallback("el servidor responde HTML");return;
   }
