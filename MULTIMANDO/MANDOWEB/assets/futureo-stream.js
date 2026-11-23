@@ -17,7 +17,7 @@
   const ENDPOINT = "sala.php";
   const MAGIC = [70, 74, 50, 50]; // FJ22
   const MAX_PACKET = 180020;
-  let ws = null, connecting = false, stopped = false, generation = 0;
+  let ws = null, connecting = false, stopped = false, generation = 0, streamEpoch = 0;
   let pending = null, decoding = false;
   let frameCounter = 0, lastRenderedSeq = -1, lastFrameAt = 0;
   let fpsStart = performance.now(), painted = 0, fpsVisible = 0;
@@ -32,6 +32,7 @@
   }
 
   function clearPicture(message) {
+    ++streamEpoch;
     pending = null;
     canvas.hidden = true;
     update(message, false);
@@ -123,6 +124,7 @@
     }
     stalled = 0;
     frame.token = token;
+    frame.epoch = streamEpoch;
     if (pending) dropped++;
     pending = frame; // Reemplazar, NO colocar en una cola.
     drainLatest();
@@ -152,7 +154,7 @@
         let bitmap;
         try {
           bitmap = await decodeJPEG(job.blob);
-          if (job.token !== generation ||
+          if (job.token !== generation || job.epoch !== streamEpoch ||
               (pending && pending.seq > job.seq) ||
               job.seq <= lastRenderedSeq) {
             dropped++;
@@ -228,8 +230,10 @@
         if (typeof event.data === "string") {
           try {
             const msg = JSON.parse(event.data);
-            if (msg.type === "futureo_stream" && !msg.active)
-              clearPicture("El anfitrion no esta transmitiendo");
+            if (msg.type === "futureo_stream") {
+              if (!msg.active) clearPicture("El anfitrion no esta transmitiendo");
+              else clearPicture("Captura iniciada. Esperando imagen actual...");
+            }
           } catch { /* texto inesperado, no afecta la imagen */ }
           return;
         }
