@@ -1,3 +1,37 @@
+## FUTUREO VJOY v0.8.0 - Portable con INICIAR, PROBAR y MONITOR
+
+**[Descargar EXE portable v0.8.0](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_8_0_WIN64.exe)**
+
+**[Descargar ZIP completo v0.8.0](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_8_0_WIN64.zip)**
+
+Se agrego una interfaz gamer de **3 secciones**, manteniendo la v0.7.0 como respaldo:
+
+- **INICIAR:** seleccion de 1..8 controladores `FUTUREO_VJOY1` a
+  `FUTUREO_VJOY8`, instalacion UMDF2 consentida y lista de activos.
+- **PROBAR:** tira de seleccion de mandos, mando virtual clicable con
+  **16 botones**, **analogico izquierdo de dos ejes X/Y** y **D-Pad
+  de ocho direcciones**; modos ANALOGICO, CRUCETA y MIXTO.
+  Opcion MANTENER BOTONES para configurar juegos y soltar entradas.
+- **MONITOR:** tira de mandos activos, luces de los 16 botones,
+  estado de D-Pad y ejes, contador de transmisiones y
+  registro cronologico por mando. Incluye **AUTO PRUEBA** para
+  visualizar pulsaciones sin abandonar la seccion.
+
+El descriptor HID contiene **X/Y de 16 bits, 16 botones y Hat Switch
+de 8 posiciones**. El SDK HIDMaestro 2.3.0 actualiza etiquetas OEM
+de forma reversible. El ejecutable es autocontenido (Windows x64),
+aunque el controlador debe instalarse en Windows con UAC.
+No se cambia TESTSIGNING y no se eliminan drivers previos.
+
+**Limitaciones:** el MONITOR muestra las señales que esta aplicacion
+envia a los mandos virtuales, no una lectura independiente desde
+Windows. El D-Pad no garantiza por si solo que el navegador clasifique
+el mando como `mapping: "standard"`; la compatibilidad con KOF2022
+requiere verificarse. Para utilizar el mando visual con juegos en
+navegador, el foco de la ventana puede influir en la recepcion.
+
+[Codigo fuente v0.8.0 y manual](portable_v080/).
+
 ## FUTUREO VJOY v0.7.0 - instalador PORTABLE de un solo ejecutable
 
 **[Descargar EXE portable v0.7.0](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_7_0_WIN64.exe)**

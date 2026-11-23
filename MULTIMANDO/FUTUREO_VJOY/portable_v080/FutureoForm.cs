@@ -673,8 +673,10 @@ internal sealed class FutureoForm : Form
                     },
                     Buttons = HMButton.None, Hat = HMHat.None
                 });
-                pad.Controller.Dispose();
             }
+            catch (Exception ex) { Log($"P{pad.Slot}: error al liberar entradas: {ex.Message}"); }
+            // Dispose must still run when a last neutral packet fails.
+            try { pad.Controller.Dispose(); }
             catch (Exception ex) { Log($"P{pad.Slot}: error al retirar: {ex.Message}"); }
         }
         pads.Clear();
@@ -908,7 +910,9 @@ internal sealed class FutureoForm : Form
         var line = $"[{DateTime.Now:HH:mm:ss.fff}] P{pad.Slot}: {description}";
         pad.Events.Insert(0, line);
         if (pad.Events.Count > 250) pad.Events.RemoveAt(pad.Events.Count - 1);
-        if (currentSection == 2 && selectedSlot == pad.Slot)
+        // El historial se acumula incluso mientras el usuario esta en PROBAR:
+        // al cambiar a MONITOR se ven los eventos anteriores del mismo mando.
+        if (monitorRenderedSlot == pad.Slot && selectedSlot == pad.Slot)
         {
             monitorEvents.Items.Insert(0, line);
             if (monitorEvents.Items.Count > 250)
