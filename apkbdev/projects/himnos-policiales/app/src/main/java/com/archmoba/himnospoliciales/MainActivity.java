@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -16,9 +17,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.HapticFeedbackConstants;
+import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.TextView;
+import android.util.TypedValue;
 import android.content.res.AssetFileDescriptor;
 import java.io.InputStream;
 import java.util.Locale;
@@ -38,6 +42,7 @@ public final class MainActivity extends Activity {
     private boolean fadingOut = false;
     private PlayerArtwork view;
     private PromoBanner promotion;
+    private TextView shareButton;
 
     @Override public void onCreate(Bundle bundle) {
         super.onCreate(bundle);
@@ -53,7 +58,38 @@ public final class MainActivity extends Activity {
         layers.addView(promotion, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+        // Botón visible arriba a la izquierda; comparte el APK real instalado.
+        shareButton = new TextView(this);
+        shareButton.setText("Compartir con un amigo");
+        shareButton.setContentDescription("Compartir con un amigo: enviar archivo APK");
+        shareButton.setTextColor(Color.WHITE);
+        shareButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        shareButton.setGravity(Gravity.CENTER);
+        shareButton.setTypeface(android.graphics.Typeface.create(
+                "sans-serif-medium", android.graphics.Typeface.BOLD));
+        shareButton.setPadding(dp(12), dp(8), dp(12), dp(8));
+        shareButton.setMinHeight(dp(48));
+        shareButton.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * .77f));
+        GradientDrawable shareBackground = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xEF14518A, 0xF006244A});
+        shareBackground.setCornerRadius(dp(13));
+        shareBackground.setStroke(dp(1), 0xFFE0BA5C);
+        shareButton.setBackground(shareBackground);
+        shareButton.setElevation(dp(4));
+        FrameLayout.LayoutParams sharePosition = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.START);
+        sharePosition.leftMargin = dp(10);
+        sharePosition.topMargin = dp(8);
+        layers.addView(shareButton, sharePosition);
+        shareButton.setOnClickListener(clicked -> ApkSharer.share(this, shareButton));
         setContentView(layers);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     @Override protected void onResume() {

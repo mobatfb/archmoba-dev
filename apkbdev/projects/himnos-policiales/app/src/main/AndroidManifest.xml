@@ -17,5 +17,15 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Solo se expone una copia temporal del APK para compartir, en modo lectura. -->
+        <provider
+            android:name=".ApkFileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/apk_share_paths" />
+        </provider>
     </application>
 </manifest>

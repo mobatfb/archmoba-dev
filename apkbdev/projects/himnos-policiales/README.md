@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.6
+# Himnos Policiales para Android — v1.3.7
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -41,3 +41,11 @@ python3 apkbdev/tools/build_apk.py --project himnos-policiales
 
 `.github/workflows/apkbdev-build.yml` compila y publica el APK en GitHub Releases.
 Los cuatro recursos WEBP aprobados y los audios se verifican mediante SHA-256 durante la compilación.
+
+## Compartir con un amigo (v1.3.7)
+- Botón **«Compartir con un amigo»** en la esquina superior izquierda, con recuadro azul institucional y borde dorado.
+- Al tocarlo, se realiza una **copia real de la APK instalada** desde `ApplicationInfo.sourceDir` a `cache/shared-apk/` en segundo plano. El archivo compartido se llama `Himnos_Policiales_v1.3.7.apk` (el número se obtiene automáticamente de la versión instalada).
+- Se abre el selector de Android (`ACTION_SEND`) y se adjunta **el archivo APK**, no un enlace. Se usa `FileProvider` para conceder permisos temporales de solo lectura; sin permisos de almacenamiento ni conexión a Internet.
+- No se incrusta una APK antigua como recurso porque eso enviaría otra versión; y una APK no puede contener una copia binaria idéntica de sí misma. Se comparte la misma APK realmente instalada, incluida su firma.
+- El funcionamiento depende de que la aplicación de destino admita adjuntos APK; Bluetooth/Quick Share y otros mecanismos compatibles podrán recibirla.
+- Sigue siendo una APK **debug**, por lo que para actualizaciones confiables es recomendable distribuir una build de producción con firma estable.
