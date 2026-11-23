@@ -107,7 +107,7 @@ async function main() {
  vm.runInNewContext(source,t.context,{filename:"mando-rescate.js"});
  assert.equal(t.context.window.__MULTIMANDO_RESCUE_ACTIVE__,true);
  t.map.connectBtn.dispatch("click");
- await Promise.resolve();await Promise.resolve();await Promise.resolve();
+ await new Promise(resolve=>setImmediate(resolve));
  assert.equal(Sock.sockets.length,1,"CONECTAR debe abrir WebSocket al tunel");
  const ws=Sock.sockets[0];
  assert.equal(ws.url,"wss://room.trycloudflare.com/");
@@ -140,7 +140,7 @@ async function main() {
     mode==="html"?{ok:true,headers:{get:()=> "text/html"},text:async()=>"<html>404</html>"}:
     {ok:true,headers:{get:()=> "text/javascript"},text:async()=>"(function(){})();"};
   vm.runInNewContext(loader,env.context,{filename:"mando-recovery.js"});
-  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  await new Promise(resolve=>setImmediate(resolve));
   const count=env.inserted.filter(e=>String(e.src).includes("mando-rescate.js")).length;
   assert.equal(count,mode==="ok"?0:1,mode);
  }
