@@ -636,6 +636,7 @@ if (is_readable($cssFile)) {
  .control-deck{min-height:310px}
 }
 </style>
+<script src="assets/mando-recovery.js?v=2.2.4" defer></script>
 <script src="control.php?v=6.2.0" defer></script>
 <script src="assets/futureo-stream.js?v=2.2.0" defer></script>
 </head>
