@@ -32,9 +32,5 @@ $zipped = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $
 if (!is_string($zipped)) fail_script('No se pudo descifrar. Revisa la frase.');
 $js = gzdecode($zipped);
 if (!is_string($js) || strlen($js) > 200000) fail_script('JavaScript descifrado no válido.');
-// Senal al diagnostico web: se agrega AL FINAL para conservar directivas
-// 'use strict' y cualquier inicializacion del modulo original cifrado.
-$ready = "\n;window.__MULTIMANDO_CONTROL_MODULE_LOADED__=true;\n";
-header('Content-Length: ' . (strlen($js) + strlen($ready)));
+header('Content-Length: ' . strlen($js));
 echo $js;
-echo $ready;
