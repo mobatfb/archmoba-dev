@@ -38,7 +38,7 @@ jobs:
               for name in ('MULTIMANDO_FUTUREO_Anfitrion_v2_1_0.py','futureo_stream.py'):
                   z.write(root/'ANFITRION'/name, arcname='ANFITRION/'+name)
               for file in sorted((root/'MANDOWEB').rglob('*')):
-                  if not file.is_file() or file.name.startswith('.'):
+                  if not file.is_file() or file.name == '.gitignore':
                       continue
                   if file.name == 'FRASE_CIFRADO.php' or file.name == 'control_decoded.js':
                       continue
