@@ -601,6 +601,11 @@ if (is_readable($cssFile)) {
 .futureo-stream-empty{position:absolute;inset:0;display:grid;place-items:center;
  font-size:clamp(13px,2.2vw,21px);color:#799ec4;letter-spacing:.04em;text-align:center;padding:14px;pointer-events:none}
 .futureo-stream-media img:not([hidden]) + .futureo-stream-empty{display:none}
+.futureo-stream-empty{display:flex;flex-direction:column;gap:7px}
+.futureo-stream-empty span:first-child{font-size:36px}
+.futureo-stream-expanded{position:fixed!important;inset:3vh 3vw;z-index:1000;max-height:94vh!important;box-shadow:0 0 0 100vmax #000c,0 0 35px #36bbdf80}
+.futureo-stream-expanded .futureo-stream-media{flex:1;min-height:0;aspect-ratio:auto}
+.futureo-stream-expanded .futureo-stream-foot{min-height:42px}
 .futureo-stream-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;
  padding:9px 12px;color:#a8c6df;font-size:clamp(10px,1.7vw,12px)}
 .futureo-stream-foot span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -670,7 +675,7 @@ if (is_readable($cssFile)) {
     <div class="futureo-stream-head"><strong>● PANTALLA DEL JUEGO</strong><span id="futureoStreamBadge" class="futureo-stream-badge">SIN TRANSMISION</span></div>
     <div class="futureo-stream-media">
       <img id="futureoStreamImage" alt="Imagen en directo de la ventana del juego" hidden decoding="async">
-      <div class="futureo-stream-empty">▣<span style="display:block">Esperando imagen del anfitrión</span></div>
+      <div class="futureo-stream-empty"><span>▣</span><span>Esperando imagen del anfitrión</span></div>
     </div>
     <div class="futureo-stream-foot">
       <span id="futureoStreamStatus" role="status">Puedes mirar sin conectarte, sin turno y sin entrar a la cola.</span>
