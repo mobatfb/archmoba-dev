@@ -1150,8 +1150,8 @@ internal sealed class FutureoForm : Form
                 finished.TrySetResult(result);
             }));
         }
-        catch (InvalidOperationException) { finished.TrySetResult(false); }
         catch (ObjectDisposedException) { finished.TrySetResult(false); }
+        catch (InvalidOperationException) { finished.TrySetResult(false); }
         return finished.Task;
     }
 
