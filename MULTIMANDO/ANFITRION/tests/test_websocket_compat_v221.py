@@ -21,14 +21,19 @@ host = MultimandoServer(0, DummyPads(2), lambda kind, value: events.append((kind
 host.start()
 try:
     # El visor sin nombre/turno tampoco requiere hello: un canal diferente.
-    viewer = connect(f"ws://127.0.0.1:{host.port}/stream", open_timeout=4)
-    try:
+    with connect(f"ws://127.0.0.1:{host.port}/stream", open_timeout=4) as viewer:
         reply = json.loads(viewer.recv(timeout=4))
         assert reply["type"] == "futureo_stream"
         assert reply["active"] is False
         assert not host.room.players, "Espectador anonimo no ocupa plaza"
-    finally:
-        viewer.close()
+
+    # La liberacion del espectador ocurre en el hilo del servidor;
+    # esperar su close handshake, sin asumir sincronismo instantaneo.
+    for attempt in range(30):
+        if host.stream_hub.viewers == 0:
+            break
+        time.sleep(0.1)
+    assert host.stream_hub.viewers == 0, "No se libero el espectador cerrado"
 
     # MANDO: URLs con rutas o parametros como clientes antiguos.
     for i, route in enumerate(("/ws?game=old", "/control/legacy", "/?room=1"), 1):
