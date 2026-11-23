@@ -92,9 +92,17 @@ class FrameHub:
         seen = -1
         try:
             while not stop.is_set():
+                # websockets procesa CLOSE en su hilo receptor. Si el visor
+                # cierra sin que haya imagenes nuevas, no puede quedar
+                # ocupado indefinidamente esperando otra captura.
+                if getattr(websocket, "close_code", None) is not None:
+                    break
+                ws_state = getattr(websocket, "state", None)
+                if getattr(ws_state, "name", "") in ("CLOSING", "CLOSED"):
+                    break
                 with self.cv:
                     if seen == self.seq:
-                        self.cv.wait(timeout=0.8)
+                        self.cv.wait(timeout=0.25)
                     if seen == self.seq:
                         continue
                     seen = self.seq
