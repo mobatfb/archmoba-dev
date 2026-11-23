@@ -1,3 +1,20 @@
+## NUEVO - ANFITRION FUTUREO v2.3.0 ORGANIZADO POR PANELES
+
+**[DESCARGAR ZIP v2.3.0 - PY + MOTOR STREAM](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_3_0_PANELES.zip)** |
+[Python v2.3.0](instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_3_0.py) |
+[Manual de instalacion y cambios](../ANFITRION/README_PANELES_V2_3_0.md).
+
+La interfaz Tkinter se organiza en 5 pestanas:
+**Inicio**, **Transmision**, **Jugadores y cola**, **Configuracion** y
+**Eventos**. Vista previa en Inicio y Transmision, indicadores permanentes,
+tabla ampliada, solo botones P1-Pn habilitados y consola propia.
+No altera FUTUREO v0.8.4, Cloudflare, WebSocket, control web o FIFO.
+La version v2.2.1 sigue disponible como respaldo.
+
+**Validado automaticamente:** sintaxis, --selftest motor y una prueba
+de Tkinter con display virtual Xvfb para los 5 paneles. Requiere
+prueba final de dispositivos y captura en tu Windows.
+
 ## IMPORTANTE - Reparacion web v2.2.2 SIN SOBRESCRIBIR CIFRADO
 
 **[PARCHE WEB v2.2.2 SEGURO](instalador_windows/MULTIMANDO_WEB_v2_2_2_PARChe_SIN_PRIVADOS.zip)** |
