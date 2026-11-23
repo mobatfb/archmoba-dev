@@ -1,16 +1,16 @@
-name: MULTIMANDO FUTUREO v2.2.2 - ZIP SEGURO (sin privados)
+name: MULTIMANDO FUTUREO v2.2.3 - reparar control.php 404
 on:
   push:
     paths:
       - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_1.py'
       - 'MULTIMANDO/ANFITRION/futureo_stream_v22.py'
       - 'MULTIMANDO/ANFITRION/tests/test_websocket_compat_v221.py'
-      - 'MULTIMANDO/ANFITRION/README_STREAM_V2_2_2.md'
+      - 'MULTIMANDO/ANFITRION/README_STREAM_v2_2_3_REPARA_CONTROL.txt'
       - 'MULTIMANDO/MANDOWEB/**'
       - '.github/workflows/multimando-futureo-stream-package.yml'
   workflow_dispatch:
 concurrency:
-  group: multimando-futureo-safe-package-v222
+  group: multimando-futureo-safe-package-v223
   cancel-in-progress: true
 permissions:
   contents: write
@@ -45,15 +45,15 @@ jobs:
           root = pathlib.Path('MULTIMANDO')
           web = root / 'MANDOWEB'
           delivery = root / 'FUTUREO_VJOY' / 'instalador_windows'
-          full = delivery / 'MULTIMANDO_FUTUREO_STREAM_v2_2_2_SEGURO.zip'
-          patch = delivery / 'MULTIMANDO_WEB_v2_2_2_PARChe_SIN_PRIVADOS.zip'
-          readme = root / 'ANFITRION' / 'README_STREAM_V2_2_2.md'
+          full = delivery / 'MULTIMANDO_FUTUREO_STREAM_v2_2_3_SEGURO.zip'
+          patch = delivery / 'MULTIMANDO_WEB_v2_2_3_REPARA_CONTROL_PHP.zip'
+          readme = root / 'ANFITRION' / 'README_STREAM_v2_2_3_REPARA_CONTROL.txt'
           def allowed(f):
               if not f.is_file():
                   return False
               rel = f.relative_to(web)
               # NUNCA SOBRESCRIBIR CIFRADO NI CLAVE:
-              if 'private' in rel.parts or f.name in ('control.php', 'control_decoded.js'):
+              if 'private' in rel.parts or f.name == 'control_decoded.js':
                   return False
               if f.name == '.gitignore' or f.name == 'control-health.js':
                   return False
@@ -66,7 +66,7 @@ jobs:
                       z.write(f, arcname='WEB/' + f.relative_to(web).as_posix())
               z.write(readme, arcname='LEEME_PRIMERO_REPARAR_MANDO.txt')
           with zipfile.ZipFile(patch, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-              for rel in ('palanca.php', 'assets/futureo-stream.js'):
+              for rel in ('control.php', 'palanca.php', 'assets/futureo-stream.js'):
                   f = web / rel
                   assert allowed(f), f
                   z.write(f, arcname='WEB/' + rel)
@@ -76,10 +76,11 @@ jobs:
                   names = z.namelist()
                   assert z.testzip() is None
                   assert 'WEB/palanca.php' in names
+                  assert 'WEB/control.php' in names
                   assert 'WEB/assets/futureo-stream.js' in names
                   assert not any(
                       name.startswith('WEB/private/')
-                      or name in ('WEB/control.php', 'WEB/assets/control-health.js')
+                      or name == 'WEB/assets/control-health.js'
                       or 'FRASE_CIFRADO' in name or name.endswith('palanca.enc')
                       for name in names
                   ), 'ERROR: archivo privado/cifrado incluido!'
@@ -89,18 +90,18 @@ jobs:
         with:
           name: MULTIMANDO_FUTUREO_WEB_v2_2_2_SAFE
           path: |
-            MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_2_SEGURO.zip
-            MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_v2_2_2_PARChe_SIN_PRIVADOS.zip
+            MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_3_SEGURO.zip
+            MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_v2_2_3_REPARA_CONTROL_PHP.zip
           retention-days: 30
       - name: Publicar los dos ZIP seguros en el repositorio
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_2_SEGURO.zip
-          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_v2_2_2_PARChe_SIN_PRIVADOS.zip
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_3_SEGURO.zip
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_v2_2_3_REPARA_CONTROL_PHP.zip
           if ! git diff --cached --quiet; then
-            git commit -m "build(multimando): paquetes v2.2.2 sin clave ni palanca cifrada"
+            git commit -m "build(multimando): paquetes v2.2.3 con control.php y sin secretos"
             git pull --rebase origin main
             git push
           fi
