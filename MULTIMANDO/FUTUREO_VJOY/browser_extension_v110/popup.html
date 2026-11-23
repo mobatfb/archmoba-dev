@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FUTUREO Gamepad Bridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">FUTUREO <span>VJOY</span></div>
+      <div class="subtitle">GAMEPAD BRIDGE · AUTOMÁTICO</div>
+    </header>
+    <section class="section">
+      <div class="topline">
+        <h2>CONEXIÓN AUTOMÁTICA</h2>
+        <div id="dot" class="dot"></div>
+      </div>
+      <p>Sin claves ni configuración por página. Abre FUTUREO v0.8.3 e inicia tus mandos.</p>
+      <div id="status" class="status" role="status">Comprobando conexión local…</div>
+      <div id="pads" class="pads"></div>
+    </section>
+    <button id="tester" class="full" type="button">Abrir Gamepad Tester</button>
+    <footer>Solo usa la conexión local 127.0.0.1. Al estar activa, las páginas web pueden consultar los estados de los mandos mediante Gamepad API. Desactiva la extensión desde Chrome/Edge si no quieres compartirlos.</footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

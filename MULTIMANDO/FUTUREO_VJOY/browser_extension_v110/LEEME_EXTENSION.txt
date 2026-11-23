@@ -1,0 +1,88 @@
+FUTUREO GAMEPAD BRIDGE AUTOMATICO v1.1.0
+========================================
+EXTENSION PARA CHROME Y EDGE - SIN CLAVES
+----------------------------------------
+Es la variante sencilla que solicitaste. NO tienes que copiar claves,
+crear usuarios, permitir cada sitio, vincular nada ni pulsar "conectar".
+Solo debes instalar la extension UNA VEZ en el navegador y usar
+FUTUREO VJOY v0.8.3 en tu computadora.
+
+INSTALACION UNA SOLA VEZ
+-----------------------
+1. Descarga FUTUREO_VJOY_EXTENSION_AUTO_CHROME_EDGE_v1_1_0.zip.
+2. Extrae el ZIP en una carpeta fija.
+3. Abre chrome://extensions o edge://extensions.
+4. Activa Modo de desarrollador y Cargar descomprimida.
+5. Selecciona la carpeta que contiene manifest.json.
+6. Cierra y vuelve a abrir la pagina web del juego.
+
+USO DIARIO (SIN CONFIGURACION)
+------------------------------
+1. Abre FUTUREO_VJOY_BROWSER_AUTO_v0_8_3_WIN64.exe.
+2. Inicia tus mandos desde la seccion INICIAR de FUTUREO.
+3. Abre la pagina de KOF2022 o el juego compatible.
+4. La extension se conecta automaticamente a FUTUREO y ofrece
+   los mandos al sitio a traves de navigator.getGamepads().
+5. No necesitas entrar al menu de la extension ni tocar switches.
+6. Para ver el estado, haz clic en su icono; el diagnostico
+   detecta automaticamente los mandos conectados.
+
+Si tenias instalada la extension v1.0.0 con CLAVE WEB,
+DESACTIVALA O ELIMINALA en chrome://extensions antes de
+cargar la nueva v1.1.0, porque pueden interferir entre ellas.
+
+FUNCIONES
+---------
+- Hasta 8 mandos FUTUREO_VJOY1 a FUTUREO_VJOY8.
+- 16 botones reales originales del descriptor HID.
+- Joystick izquierdo con X/Y.
+- D-Pad de 8 direcciones convertido a 4 botones standard.
+- Vista standard de Gamepad API (20 posiciones de botones,
+  4 ejes con joystick derecho a cero).
+- Los eventos gamepadconnected/gamepaddisconnected se simulan.
+- Mantiene los controles nativos ajenos a FUTUREO.
+
+ALCANCE Y PRIVACIDAD
+-------------------
+- El servidor Windows escucha SOLO en 127.0.0.1:38471.
+- No acepta comandos; responde a GET /state con estado de los
+  mandos y rechaza Host incorrecto y Origin de sitios web.
+- No publica Access-Control-Allow-Origin.
+- La extension obtiene la informacion desde su service worker;
+  una pagina web no tiene acceso directo al servicio local.
+- La extension se activa AUTOMATICAMENTE en paginas HTTP/HTTPS.
+  Cuando FUTUREO esta abierto, esas paginas pueden consultar
+  los estados de los mandos virtuales, como con la Gamepad API.
+- Si no quieres exponer pulsaciones en cualquier pagina,
+  desactiva la extension desde chrome://extensions o Edge.
+- Sin claves el punto local puede ser leido tambien por otras
+  aplicaciones del propio equipo. No se envian datos a Internet
+  desde el servicio local.
+- No lee contrasenas, archivos, teclado ni cookies.
+- No modifica Windows, XInput, drivers fisicos o TESTSIGNING.
+
+LIMITACIONES
+------------
+Una extension NO puede hacer que Chrome enumere fisicamente el
+controlador como si fuera USB/XInput. Se modifica la interfaz
+JavaScript navigator.getGamepads en las paginas donde se ejecuta.
+Algunos juegos pueden validar Gamepad nativo, bloquear extensiones,
+utilizar exclusivamente teclado o ejecutar frames restringidos.
+NO se garantiza que KOF2022 funcione sin una prueba en tu PC.
+
+Si el juego ya estaba abierto ANTES de instalar la extension,
+recarga la pagina una vez. Los ajustes son automaticos despues.
+
+VERIFICACION
+------------
+Abre hardwaretester.com/gamepad y espera los mandos.
+Abre el icono FUTUREO Gamepad Bridge y comprueba que aparezcan
+FUTUREO_VJOY1 a FUTUREO_VJOY8 segun los que creaste.
+En consola de navegador:
+    [...navigator.getGamepads()].filter(Boolean)
+       .map(p=>({id:p.id,mapping:p.mapping,buttons:p.buttons.length,
+                 axes:p.axes.length}))
+
+FUENTE
+------
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/browser_extension_v110

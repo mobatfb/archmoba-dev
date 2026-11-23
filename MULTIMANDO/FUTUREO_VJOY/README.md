@@ -1,3 +1,47 @@
+## FUTUREO VJOY v0.8.3 + Extension AUTOMATICA v1.1.0 (SIN CLAVE)
+
+**[Paquete completo EXE + extension Chrome/Edge (ZIP)](instalador_windows/FUTUREO_VJOY_NAVEGADOR_AUTO_PACK_v0_8_3.zip)**
+
+**[Solo extension automatica (ZIP)](instalador_windows/FUTUREO_VJOY_EXTENSION_AUTO_CHROME_EDGE_v1_1_0.zip)**
+
+**[Solo FUTUREO v0.8.3 portable (EXE)](instalador_windows/FUTUREO_VJOY_BROWSER_AUTO_v0_8_3_WIN64.exe)**
+
+Esta version **elimina completamente las claves, el boton CLAVE WEB,
+la vinculacion manual y la autorizacion por dominio**. Tras instalar
+la extension UNA sola vez, abrir FUTUREO v0.8.3, iniciar los mandos y
+abrir el juego, la conexion ocurre **automaticamente**.
+
+La extension Manifest V3 usa el permiso correcto
+`http://127.0.0.1/*` para conectar con el servicio local
+`127.0.0.1:38471`, sin acceso a una red externa.
+Conserva la vista Gamepad API `standard` para hasta ocho mandos,
+16 botones originales, 4 direcciones D-Pad y dos ejes analogicos
+del stick izquierdo. Los datos solo se consultan del FUTUREO local.
+
+**Pasos de instalacion:**
+1. Cierra FUTUREO anterior y desactiva/desinstala la extension v1.0.
+2. En Chrome `chrome://extensions` o Edge `edge://extensions`,
+   activa **Modo desarrollador** y usa **Cargar descomprimida**.
+3. Selecciona la carpeta `EXTENSION_DESCOMPRIMIDA` extraida del ZIP
+   (contiene el archivo `manifest.json`).
+4. Abre el EXE v0.8.3 y crea los mandos en la pestaña INICIAR.
+5. Abre o recarga la pagina del juego: **no hay mas pasos**.
+
+**Limites y privacidad:** la extension ofrece una interfaz
+JavaScript Gamepad API, no cambia el reconocimiento HID nativo
+de Windows/Chrome y no se garantiza KOF2022 sin prueba real.
+Se ejecuta automaticamente en paginas HTTP/HTTPS, por lo que
+esas paginas pueden leer las pulsaciones de los mandos cuando
+FUTUREO esta abierto. Si no quieres eso, desactiva la extension
+en tu navegador. Sin clave, los procesos locales del mismo
+equipo tambien pueden leer el estado en `127.0.0.1:38471`.
+Se rechazan Host incorrectos y Origin de paginas web y no se
+habilita CORS.
+
+[Codigo EXE v0.8.3](browser_bridge_v083/) |
+[Codigo extension v1.1.0](browser_extension_v110/) |
+[Pruebas](browser_extension_tests_v110/).
+
 ## FUTUREO VJOY v0.8.2 + Extension Chrome/Edge v1.0.0
 
 **[Descargar paquete TODO EN UNO (EXE + extension + manual)](instalador_windows/FUTUREO_VJOY_NAVEGADOR_PACK_v0_8_2.zip)**

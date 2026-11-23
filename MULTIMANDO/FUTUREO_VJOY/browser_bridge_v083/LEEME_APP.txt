@@ -1,0 +1,59 @@
+FUTUREO VJOY v0.8.3 - BRIDGE AUTOMATICO SIN CLAVE
+==================================================
+Esta es la nueva version portable para utilizar con la extension
+FUTUREO Gamepad Bridge v1.1.0, sin contrasenas ni activaciones
+manuales por pagina.
+
+QUÉ CONSERVA
+-------------
+- La interfaz mini plegable INICIAR / PROBAR / MONITOR.
+- 16 botones digitales, analogo izquierdo X/Y y D-Pad 8 vias.
+- Hasta 8 dispositivos FUTUREO_VJOY1 .. FUTUREO_VJOY8.
+- HIDMaestro 2.3.0 UMDF2 y nombres OEM reversibles.
+- No modifica TESTSIGNING ni elimina controladores anteriores.
+
+QUÉ CAMBIA
+-----------
+- Elimina por completo el boton CLAVE WEB.
+- El servicio local en 127.0.0.1:38471 se inicia automaticamente.
+- No genera ni exige tokens, claves, cuentas ni configuracion.
+- El estado solo lectura se actualiza con SubmitState.
+- La extension de Chrome/Edge se conecta en cuanto abres el EXE.
+- El servicio rechaza peticiones con Host no local y origen
+  de sitio web; no habilita CORS.
+- El servicio NO acepta comandos de movimiento/control.
+
+PASOS
+------
+1. Cierra v0.8.2 y otras versiones anteriores.
+2. Ejecuta FUTUREO_VJOY_BROWSER_AUTO_v0_8_3_WIN64.exe.
+3. En INICIAR, crea los mandos (1..8).
+4. Si aun no lo hiciste, instala una sola vez la extension
+   descomprimida FUTUREO Gamepad Bridge v1.1.0.
+5. Abre la pagina del juego; la extension trabaja sola.
+6. Prueba con la pagina hardwaretester.com/gamepad.
+7. En MONITOR puedes seguir los estados enviados.
+
+ATENCIÓN
+---------
+El ejecutable es portable pero requiere autorizacion UAC
+cuando se instale el driver. Se puede volver a v0.8.1 o v0.8.2.
+Este puente no cambia el controlador HID ni emula XInput.
+La extension facilita Gamepad API en juegos web, pero la
+compatibilidad especifica de KOF2022 aun debe confirmarse.
+
+Como no hay clave, otras aplicaciones de este mismo equipo
+podrian leer la interfaz local 127.0.0.1:38471. Los sitios
+web ordinarios no reciben permiso CORS para leer directamente
+esa direccion; la extension entrega los estados en la pagina.
+Desactiva la extension si no quieres exponer esos estados.
+
+LICENCIAS
+----------
+HIDMaestro v2.3.0, licencia MIT.
+https://github.com/hifihedgehog/HIDMaestro
+Distribucion ZIP incluye avisos y licencia de terceros.
+
+FUENTE
+------
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/browser_bridge_v083
