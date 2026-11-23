@@ -1,0 +1,41 @@
+FUTUREO VJOY v0.8.4: INTEGRACION MULTIMANDO
+===============================================
+EXE Windows x64 autocontenido con el mismo motor HIDMaestro 2.3.0
+que FUTUREO v0.8.3. Conserva todas las funciones:
+- 1..8 mandos FUTUREO_VJOY1..8;
+- 16 botones, stick izquierdo X/Y, D-Pad 8 vias;
+- GUI mini: INICIAR, PROBAR, MONITOR con paneles plegables;
+- Extension Chrome/Edge automatica sin claves, puerto 38471;
+- Nombres OEM reversibles y consentimiento UAC del driver.
+
+NUEVO: ANFITRION PYTHON
+----------------------
+Escucha el puente HTTP de entrada en 127.0.0.1:38472.
+POST /input recibe 16 botones, analogico izquierdo y D-Pad por slot.
+POST /capacity crea o retira solo los dispositivos FUTUREO de
+numeracion mayor al nuevo limite de 1..8. Los mandos P1..Pn que
+se mantienen no se desconectan ni se renumeran.
+GET /health muestra los mandos creados.
+
+El PY MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py es el arbitro de
+identidades, lista de espera y turnos. FUTUREO solo transmite HID.
+
+INSTALAR
+--------
+1. Cierra todas las versiones anteriores de FUTUREO.
+2. Ejecuta FUTUREO_VJOY_PORTABLE_HOST_v0_8_4_WIN64.exe.
+3. Crea por lo menos un mando en INICIAR.
+4. Ejecuta el PY de anfitrion nuevo, abre sala y configura jugadores.
+5. En Python puedes cambiar capacidad 1..8 con APLICAR EN VIVO.
+
+El puente solo esta disponible en el propio equipo. No tiene
+clave ni acceso remoto; una aplicacion local no confiable podria
+enviar entradas si imita la cabecera requerida. No expongas el puerto
+38472 a Internet. Nunca se modifica TESTSIGNING.
+
+AUTOPRUEBAS SIN DRIVER
+---------------------
+--self-test: driver embebido y descriptor HID.
+--ui-smoke: interfaz compacta.
+--bridge-self-test: extension Browser Bridge 38471.
+--host-self-test: nuevo puente 38472, entradas y capacidad.

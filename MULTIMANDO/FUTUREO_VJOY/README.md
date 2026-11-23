@@ -1,3 +1,27 @@
+## FUTUREO VJOY v0.8.4 + Anfitrion MULTIMANDO v2.0
+
+[Descargar FUTUREO v0.8.4 (EXE)](instalador_windows/FUTUREO_VJOY_PORTABLE_HOST_v0_8_4_WIN64.exe)
+| [Descargar anfitrion Python](instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py)
+| [DESCARGAR TODO EN UN ZIP](instalador_windows/FUTUREO_VJOY_ANFITRION_PACK_v0_8_4.zip)
+
+**Novedad:** motor FUTUREO HIDMaestro puede recibir estados de un
+anfitrion Python en 127.0.0.1:38472, ademas del Browser Bridge
+automatico v1.1 de Chrome/Edge en 127.0.0.1:38471.
+El PY controla jugadores y cola; el EXE crea y actualiza los mandos.
+**Capacidad dinamica:** con la sala ABIERTA cambia de 1 a 8
+jugadores desde Python sin reiniciar el WebSocket, sin publicar otra
+vez la URL y sin detener los mandos P1..Pn conservados.
+Al reducir, sus ocupantes sobrantes vuelven a la cola conservando
+su credito de segundos; los que esperaban tienen prioridad FIFO.
+
+Conserva 16 botones, D-Pad, stick izquierdo, paneles plegables y
+nombres FUTUREO_VJOY1..8. El driver necesita UAC al instalarse,
+pero el anfitrion no requiere pyvjoystick ni controlador vJoy.
+
+[Codigo Windows v0.8.4](host_bridge_v084/) |
+[Codigo Python v2.0](../ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py) |
+[Manual del anfitrion](../ANFITRION/README_FUTUREO_V2.md).
+
 ## FUTUREO VJOY v0.8.3 + Extension AUTOMATICA v1.1.0 (SIN CLAVE)
 
 **[Paquete completo EXE + extension Chrome/Edge (ZIP)](instalador_windows/FUTUREO_VJOY_NAVEGADOR_AUTO_PACK_v0_8_3.zip)**

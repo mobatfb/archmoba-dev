@@ -1,3 +1,19 @@
+## Nuevo anfitrion FUTUREO v2.0.0 (1..8 jugadores sin cerrar sala)
+
+[Descargar PY adaptado a FUTUREO](MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py)
+
+[Manual de instalacion y capacidad EN VIVO](README_FUTUREO_V2.md)
+
+El anfitrion usa el puente local de FUTUREO VJOY v0.8.4 (puerto 38472).
+Eliminamos la dependencia pyvjoystick/vJoy clasico del ejecutable nuevo.
+Se mantienen turnos, WebSocket, Cloudflare, mando fisico CONTROLADO, cola
+FIFO y temporizadores. **Cambiar de 1 a 8 jugadores:** selecciona la nueva
+cantidad con la sala abierta y pulsa **APLICAR EN VIVO**. Los primeros
+puestos siguen activos, los mandos extra se crean o retiran y los jugadores
+desplazados pasan a la cola conservando su tiempo restante.
+
+[Paquete EXE FUTUREO + PY anfitrion + extension](../FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_ANFITRION_PACK_v0_8_4.zip).
+
 # MULTIMANDO — ANFITRIONES POR TIPO DE CONTROL
 
 Esta carpeta contiene **dos variantes independientes** del anfitrion. Se han guardado las versiones originales, sin cambios en la logica de sus archivos Python.

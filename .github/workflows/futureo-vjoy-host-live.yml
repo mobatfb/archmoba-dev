@@ -1,0 +1,309 @@
+name: FUTUREO VJOY v0.8.4 - Anfitrion Python FUTUREO + capacidad en vivo
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/host_bridge_v084/**"
+      - "MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py"
+      - "MULTIMANDO/ANFITRION/README_FUTUREO_V2.md"
+      - "MULTIMANDO/FUTUREO_VJOY/browser_extension_v110/**"
+      - "MULTIMANDO/FUTUREO_VJOY/browser_extension_tests_v110/**"
+      - ".github/workflows/futureo-vjoy-host-live.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  empaquetar_portable:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Probar anfitrion Python y cambios de capacidad sin hardware
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hostpy='MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py'
+          python -m py_compile $hostpy
+          if($LASTEXITCODE -ne 0){throw 'El anfitrion tiene un error de sintaxis'}
+          python $hostpy --selftest
+          if($LASTEXITCODE -ne 0){throw 'Cola FIFO y redimensionado de anfitrion fallaron'}
+          $source=Get-Content -LiteralPath $hostpy -Raw
+          foreach($part in @('VirtualFutureoPads(count)','def resize_capacity','def change_capacity',
+                              'selftest_live_capacity()','turn_credit','APLICAR EN VIVO',
+                              'capacity_done','POST','/capacity')){
+            if(-not $source.Contains($part)){
+              throw "No existe capacidad en vivo: $part"
+            }
+          }
+          Write-Host 'OK: anfitrion 2.0 / FUTUREO, 1..8 con sala activa, cola y turnos seguros'
+
+
+      - name: Probar extension Chrome Edge Manifest V3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ext='MULTIMANDO/FUTUREO_VJOY/browser_extension_v110'
+          foreach($file in @('background.js','page-shim.js','content.js','popup.js')){
+            node --check (Join-Path $ext $file)
+            if($LASTEXITCODE -ne 0){throw "Error JS: $file"}
+          }
+          node 'MULTIMANDO/FUTUREO_VJOY/browser_extension_tests_v110/automatic.test.cjs'
+          if($LASTEXITCODE -ne 0){throw 'Fallo prueba shim Gamepad API'}
+          $m=Get-Content -LiteralPath (Join-Path $ext 'manifest.json') -Raw | ConvertFrom-Json
+          if($m.manifest_version -ne 3 -or $m.content_scripts.Count -ne 2){
+            throw 'Manifest V3 invalido'
+          }
+          if($m.host_permissions -notcontains 'http://127.0.0.1/*'){
+            throw 'Host permission debe ser 127.0.0.1 sin puerto'
+          }
+          if($null -ne $m.permissions -and $m.permissions.Count -gt 0){
+            throw 'Sin tabs ni storage; la extension no requiere configuracion'
+          }
+          foreach($file in @('background.js','content.js','popup.js')){
+            $js=Get-Content -Raw -LiteralPath (Join-Path $ext $file)
+            if($js -match 'bridgeToken|allowedSites|FUTUREO_ENABLED|CLAVE WEB'){
+              throw "Se conservaron pasos manuales en $file"
+            }
+          }
+          Write-Host 'Extension validada con Node y Manifest V3.'
+
+
+      - name: Descargar HIDMaestro v2.3.0 y verificar SHA256 oficial
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'hidmaestro-portable'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          gh release download v2.3.0 -R hifihedgehog/HIDMaestro -p 'HIDMaestro-v2.3.0.zip' -D $root
+          if($LASTEXITCODE -ne 0){ throw 'No se pudo obtener distribucion oficial HIDMaestro' }
+          $zip = Join-Path $root 'HIDMaestro-v2.3.0.zip'
+          $expected = 'FDDB61B76D076AA2CF508A46C1E30E23AA75B4AE622D52B15E7259959FD12295'
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToUpperInvariant() -ne $expected){
+            throw 'Hash del paquete HIDMaestro NO coincide con release 2.3.0'
+          }
+          $extract = Join-Path $root 'extracted'
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem -LiteralPath $extract -File -Recurse -Filter 'HIDMaestro.Core.dll' |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if(-not $dll -or $dll.Length -lt 1000000){throw 'HIDMaestro SDK ausente'}
+          $source='MULTIMANDO/FUTUREO_VJOY/host_bridge_v084'
+          Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $source 'HIDMaestro.Core.dll')
+          $license=Get-ChildItem -LiteralPath $extract -File -Recurse | Where-Object {
+            $_.Name -in @('LICENSE','LICENSE.txt')
+          } | Select-Object -First 1
+          $notice=Get-ChildItem -LiteralPath $extract -File -Recurse -Filter 'THIRD-PARTY-NOTICES.txt' |
+            Select-Object -First 1
+          if(-not $license -or -not $notice){throw 'Avisos legales HIDMaestro ausentes'}
+          Copy-Item $license.FullName -Destination (Join-Path $source 'LICENCIA_HIDMAESTRO.txt')
+          Copy-Item $notice.FullName -Destination (Join-Path $source 'THIRD-PARTY-NOTICES.txt')
+          Write-Host "SDK verificado, longitud $($dll.Length) bytes."
+
+      - name: Verificar funcionalidad D-Pad, analogico, 16 botones, GUI y monitor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder='MULTIMANDO/FUTUREO_VJOY/host_bridge_v084'
+          $source=Get-Content -LiteralPath (Join-Path $folder 'FutureoForm.cs') -Raw
+          $widget=Get-Content -LiteralPath (Join-Path $folder 'PadWidgets.cs') -Raw
+          $entry=Get-Content -LiteralPath (Join-Path $folder 'Program.cs') -Raw
+          $bridge=Get-Content -LiteralPath (Join-Path $folder 'BrowserBridge.cs') -Raw
+          $input=Get-Content -LiteralPath (Join-Path $folder 'HostInputBridge.cs') -Raw
+          foreach($part in @('POST /capacity','POST /input','IPAddress.Loopback',
+                              'X-Futureo-Client','HostPadInput','ApplyCapacity','ApplyInput')){
+            if(-not $input.Contains($part)){throw "Falta interfaz de anfitrion: $part"}
+          }
+          foreach($part in @('ResizePadsInPlace','DrainHostInput','PublishHostSlots',
+                              'hostInput.ApplyCapacity','hostInput.ApplyInput')){
+            if(-not $source.Contains($part)){throw "No se puede controlar FUTUREO: $part"}
+          }
+
+          foreach($part in @('IPAddress.Loopback','GET /state','Cache-Control: no-store',
+                               'invalid host','web origins blocked')){
+            if(-not $bridge.Contains($part)){throw "Falta proteccion local: $part"}
+          }
+          if($bridge.Contains('GoodToken') -or $bridge.Contains('TokenHeader') -or
+             $source.Contains('CLAVE WEB')){
+            throw 'La conexion tiene clave cuando debe ser automatica'
+          }
+          foreach($part in @('browserBridge.UpdateJson','browserBridge.Start()','WEB AUTOMATICO')){
+            if(-not $source.Contains($part)){throw "Falta integracion automatica: $part"}
+          }
+          if($source -notmatch 'FUTUREO_VJOY\{slot\}'){
+            throw 'El nombre de mandos debe usar guion bajo'
+          }
+          foreach($part in @('.AddButtons(16)','.AddStick("Left", bits: 16)','.AddHat(8)')){
+            if(-not $source.Contains($part)){throw "Descriptor no incluye $part"}
+          }
+          if(-not $entry.Contains('.AddHat(8)')){
+            throw 'Autoprueba no incluye D-Pad'
+          }
+          if($source -notmatch 'HMOemNameOverride\.Set' -or $source -notmatch 'HMOemNameOverride\.Clear'){
+            throw 'Falta respaldo/limpieza de nombres OEM'
+          }
+          if($source -notmatch 'TRANSMISIONES' -or $source -notmatch 'monitorEvents' -or
+             $source -notmatch 'SECCION 1 - INICIAR' -or $source -notmatch 'PROBAR' -or
+             $source -notmatch 'MONITOR' -or $source -notmatch 'IDENTIFICAR SELECCIONADO'){
+            throw 'No estan las tres secciones y su monitor'
+          }
+          if($widget -notmatch 'public static readonly PadButtonSpec\[\] All' -or
+             $widget -notmatch 'new\(15, "EXTRA"' -or $widget -notmatch 'HMHat\.NorthEast'){
+            throw 'No hay 16 botones de prueba y cruceta de 8 direcciones'
+          }
+          foreach($key in @('miniButton','WireFoldButtons','ApplyFoldLayouts','FitColumns',
+                              'foldStartList','foldStartLog','foldTestMotion','foldTestButtons',
+                              'foldMonitorVisual','foldMonitorLog','new Size(930, 650)',
+                              'MinimumSize = new Size(715, 510)')){
+            if(-not $source.Contains($key)){ throw "No se implemento opcion plegable: $key" }
+          }
+          if(-not $entry.Contains('RunUiSmoke()')){
+            throw 'Falta smoke test de disposicion WinForms'
+          }
+          if(-not $entry.Contains('Verb = "runas"')){throw 'Falta consentimiento UAC'}
+          Write-Host 'OK: 16 botones, analogico izquierdo, hat 8 vias, tres secciones y test de monitor'
+
+      - name: Publicar ejecutable AUTOCONTENIDO en un archivo
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proj='MULTIMANDO/FUTUREO_VJOY/host_bridge_v084/FUTUREO_VJOY_PORTABLE.csproj'
+          $out = Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish'
+          dotnet publish $proj -c Release -r win-x64 --self-contained true -o $out -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          if($LASTEXITCODE -ne 0){throw 'Fallo compilacion del EXE unico'}
+          $exe=Join-Path $out 'FUTUREO_VJOY_PORTABLE.exe'
+          if(-not (Test-Path $exe)){throw 'El EXE portable no fue generado'}
+          $len=(Get-Item $exe).Length
+          if($len -lt 10000000){throw "EXE anormalmente pequeno: $len"}
+          $others=@(Get-ChildItem -LiteralPath $out -File | Where-Object {$_.Name -ne 'FUTUREO_VJOY_PORTABLE.exe'})
+          if($others.Count -gt 0){
+            Write-Host ('Otros archivos en publish: '+($others.Name -join ', '))
+            throw 'El resultado no es un solo archivo portable'
+          }
+          Write-Host "EXE autoconenido compilado: $len bytes"
+
+      - name: Ejecutar AUTOPRUEBA del EXE aislado sin tocar drivers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $isolated=Join-Path $env:RUNNER_TEMP 'futureo-solo-exe'
+          New-Item -Path $isolated -ItemType Directory -Force | Out-Null
+          $exe=Join-Path $isolated 'FUTUREO_VJOY_PORTABLE.exe'
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish/FUTUREO_VJOY_PORTABLE.exe') -Destination $exe
+          $report=Join-Path $env:RUNNER_TEMP 'futureo-exe-autoprueba.txt'
+          # WinExe es subsistema GUI: PowerShell '& exe' no espera
+          # necesariamente al cierre ni llena LASTEXITCODE.
+          # Start-Process -Wait -PassThru SI espera y devuelve ExitCode.
+          $testProcess=Start-Process -FilePath $exe -ArgumentList @('--self-test',$report) -Wait -PassThru
+          if(-not (Test-Path $report)){throw 'Autoprueba no creo diagnostico'}
+          $content=Get-Content -LiteralPath $report -Raw
+          Write-Host $content
+          if($testProcess.ExitCode -ne 0){
+            throw "Autoprueba fracaso (codigo $($testProcess.ExitCode))"
+          }
+          if($content -notmatch 'UMDF2 x64 embedded: True' -or $content -notmatch 'OEM API: True' -or
+             $content -notmatch 'HID hat present: True' -or $content -notmatch 'Buttons: 16'){
+            throw 'No esta integrado el payload HIDMaestro en EXE unico'
+          }
+          Write-Host 'Autoprueba: motor HID + API OEM cargan desde EXE aislado.'
+          $uiReport=Join-Path $env:RUNNER_TEMP 'futureo-ui-v081.txt'
+          $gui=Start-Process -FilePath $exe -ArgumentList @('--ui-smoke',$uiReport) -Wait -PassThru
+          if(-not (Test-Path $uiReport)){ throw 'Smoke test GUI no creo resultado' }
+          $uiResult=Get-Content -LiteralPath $uiReport -Raw
+          Write-Host $uiResult
+          if($gui.ExitCode -ne 0 -or $uiResult -notmatch 'UI smoke: OK'){
+            throw "Error de interfaz plegable WinForms (codigo $($gui.ExitCode))"
+          }
+          Write-Host 'Smoke test: secciones, pliegue, vista mini y 16 botones OK.'
+          $bridgeReport=Join-Path $env:RUNNER_TEMP 'futureo-bridge-v082.txt'
+          $bridgeProc=Start-Process -FilePath $exe -ArgumentList @('--bridge-self-test',$bridgeReport) -Wait -PassThru
+          if(-not (Test-Path $bridgeReport)){throw 'Puente no genero prueba'}
+          $bridgeText=Get-Content -LiteralPath $bridgeReport -Raw
+          Write-Host $bridgeText
+          if($bridgeProc.ExitCode -ne 0 -or $bridgeText -notmatch 'BRIDGE smoke OK'){
+            throw "No funciona el puente local automatico (codigo $($bridgeProc.ExitCode))"
+          }
+          if($bridgeText -notmatch 'automatic localhost JSON' -or
+             $bridgeText -notmatch 'DNS rebinding blocked'){
+            throw 'Puente sin clave: no paso controles de origen/Host'
+          }
+          Write-Host 'Puente automatico: localhost, sin token, rechaza Origin web y Host incorrecto.'
+          $inputReport=Join-Path $env:RUNNER_TEMP 'futureo-host-v084.txt'
+          $inputProc=Start-Process -FilePath $exe -ArgumentList @('--host-self-test',$inputReport) -Wait -PassThru
+          if(-not (Test-Path $inputReport)){throw 'El puente de anfitrion no genero informe'}
+          $inputText=Get-Content -LiteralPath $inputReport -Raw
+          Write-Host $inputText
+          if($inputProc.ExitCode -ne 0 -or $inputText -notmatch 'HOST INPUT smoke OK' -or
+             $inputText -notmatch 'resize capacity 3->8'){
+            throw "Fallo el puente de anfitrion (codigo $($inputProc.ExitCode))"
+          }
+          Write-Host 'HOST: entrada independiente por mando y cambios de capacidad 1..8 validados.'
+
+
+
+      - name: Publicar anfitrion PY, EXE FUTUREO y paquete completo
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root='MULTIMANDO/FUTUREO_VJOY'
+          $target=Join-Path $root 'instalador_windows'
+          $source=Join-Path $root 'host_bridge_v084'
+          $ext=Join-Path $root 'browser_extension_v110'
+          $exeSource=Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish/FUTUREO_VJOY_PORTABLE.exe'
+          $hostPath='MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py'
+          $hostDoc='MULTIMANDO/ANFITRION/README_FUTUREO_V2.md'
+          $exeName='FUTUREO_VJOY_PORTABLE_HOST_v0_8_4_WIN64.exe'
+          $exe=Join-Path $target $exeName
+          Copy-Item -LiteralPath $exeSource -Destination $exe -Force
+
+          $pythonName='MULTIMANDO_FUTUREO_Anfitrion_v2_0_0.py'
+          $pythonRelease=Join-Path $target $pythonName
+          Copy-Item -LiteralPath $hostPath -Destination $pythonRelease -Force
+
+          $bundleName='FUTUREO_VJOY_ANFITRION_PACK_v0_8_4.zip'
+          $bundle=Join-Path $target $bundleName
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-host-v084-bundle'
+          $extStage=Join-Path $stage 'EXTENSION_DESCOMPRIMIDA'
+          New-Item -Path $extStage -ItemType Directory -Force | Out-Null
+          Copy-Item -LiteralPath $exeSource -Destination (Join-Path $stage $exeName)
+          Copy-Item -LiteralPath $hostPath -Destination (Join-Path $stage $pythonName)
+          Copy-Item -LiteralPath $hostDoc -Destination (Join-Path $stage 'LEEME_ANFITRION.txt')
+          Copy-Item -LiteralPath (Join-Path $source 'LEEME_APP.txt') -Destination $stage
+          foreach($f in @('LICENCIA_HIDMAESTRO.txt','THIRD-PARTY-NOTICES.txt')){
+            Copy-Item -LiteralPath (Join-Path $source $f) -Destination $stage
+          }
+          foreach($f in @('manifest.json','background.js','page-shim.js',
+                          'content.js','popup.html','popup.css','popup.js','LEEME_EXTENSION.txt')){
+            Copy-Item -LiteralPath (Join-Path $ext $f) -Destination $extStage
+          }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $bundle -CompressionLevel Optimal -Force
+
+          foreach($file in @($exe,$pythonRelease,$bundle)){
+            $size=(Get-Item $file).Length
+            if($size -lt 20000 -or $size -gt 95000000){
+              throw "Archivo fuera de rango: $file ($size bytes)"
+            }
+            $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+            Set-Content -LiteralPath ($file+'.sha256') -Encoding ascii -Value ($hash+'  '+(Split-Path $file -Leaf))
+            Write-Host "$file | size $size | SHA256 $hash"
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          foreach($file in @($exe,$pythonRelease,$bundle)){
+            git add -f -- $file
+            git add -- ($file+'.sha256')
+          }
+          git diff --cached --quiet
+          if($LASTEXITCODE -eq 0){throw 'No se generaron archivos'}
+          git commit -m 'FUTUREO v0.8.4: publicar EXE y PY anfitrion con capacidad en vivo'
+          if($LASTEXITCODE -ne 0){throw 'Fallo commit de distribucion'}
+          git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){throw 'Fallo publicacion de paquetes'}
+          Write-Host 'ANFITRION, FUTUREO Y ZIP PUBLICADOS'
