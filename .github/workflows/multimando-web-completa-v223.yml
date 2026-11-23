@@ -1,0 +1,105 @@
+name: MULTIMANDO WEB COMPLETA v2.2.3 - ZIP
+on:
+  push:
+    paths:
+      - '.github/workflows/multimando-web-completa-v223.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  paquete-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar PHP y stream web
+        shell: bash
+        run: |
+          php -l MULTIMANDO/MANDOWEB/index.php
+          php -l MULTIMANDO/MANDOWEB/palanca.php
+          php -l MULTIMANDO/MANDOWEB/control.php
+          php -l MULTIMANDO/MANDOWEB/sala.php
+          php -l MULTIMANDO/MANDOWEB/config.php
+          node --check MULTIMANDO/MANDOWEB/assets/futureo-stream.js
+          node MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v22.js
+      - name: Crear ZIP web completo - sin sobrescribir cifrado original
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          repo = Path("MULTIMANDO")
+          web = repo / "MANDOWEB"
+          destino = repo / "FUTUREO_VJOY" / "instalador_windows" / "MULTIMANDO_WEB_COMPLETA_STREAM_v2_2_3.zip"
+          publicos = [
+              ".htaccess",
+              "index.php",
+              "palanca.php",
+              "control.php",
+              "sala.php",
+              "config.php",
+              "assets/palanca.css",
+              "assets/futureo-stream.js",
+              "private/.htaccess",
+          ]
+          manual = """MULTIMANDO WEB COMPLETA + FUTUREO STREAM v2.2.3
+          =================================================
+
+          EXTRAE EL CONTENIDO DE ESTE ZIP DIRECTAMENTE EN /multimando/.
+          Los archivos index.php, palanca.php, control.php, sala.php y
+          config.php quedan en la RAIZ de /multimando/ (sin carpeta WEB).
+
+          MUY IMPORTANTE: Este paquete incluye TODA la web PUBLICA pero
+          no puede incluir la clave privada que solo tu hosting posee.
+
+          NO TOCA NI REEMPLAZA estos dos archivos:
+            /multimando/private/FRASE_CIFRADO.php
+            /multimando/private/palanca.enc
+
+          Ambos deben existir y formar la PAREJA ORIGINAL que funcionaba.
+          Si un ZIP anterior reemplazo palanca.enc, recupera la pareja
+          desde una copia previa del hosting; mezclar claves NO sirve.
+
+          Para comprobar el mando, visita:
+            https://tiendavibechic.com/multimando/control.php
+          Si sale 404, comprueba la carpeta real de publicacion.
+          Si sale 503, comprueba la pareja cifrada del hosting.
+          Si devuelve JS, ya carga control.php; no compartas su contenido.
+
+          Esta version mantiene el stream publico que se ve incluso
+          sin pulsar CONECTAR, y conserva las rutas del mando.
+          Recomendado anfitrion Python FUTUREO v2.2.1 y motor de
+          captura futureo_stream_v22.py.
+
+          En GitHub se conservaron ambas versiones anteriores.
+          """
+          manual = "\n".join(line.strip() for line in manual.splitlines()) + "\n"
+          for f in publicos:
+              assert (web/f).is_file(), "Falta archivo necesario: " + f
+          with ZipFile(destino, "w", ZIP_DEFLATED, compresslevel=9) as z:
+              for f in publicos:
+                  z.write(web/f, arcname=f)
+              z.writestr("LEEME_INSTALACION.txt", manual)
+          with ZipFile(destino) as z:
+              nombres = set(z.namelist())
+              assert z.testzip() is None
+              assert set(publicos).issubset(nombres)
+              assert not any("FRASE_CIFRADO" in x or x.endswith("palanca.enc") or "decoded" in x for x in nombres)
+          print("ZIP WEB COMPLETA:", destino, destino.stat().st_size, "bytes")
+          print("ARCHIVOS:", ", ".join(publicos))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MULTIMANDO_WEB_COMPLETA_STREAM_v2_2_3
+          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_COMPLETA_STREAM_v2_2_3.zip
+          retention-days: 30
+      - name: Publicar ZIP en GitHub
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_COMPLETA_STREAM_v2_2_3.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "build(multimando): web completa v2.2.3 sin secretos"
+            git pull --rebase origin main
+            git push
+          fi
