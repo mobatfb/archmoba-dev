@@ -1,3 +1,28 @@
+## FUTUREO STREAM v2.2 - Imagen publica con MENOS RETRASO (NUEVO)
+
+**[Descargar anfitrion + WEB en ZIP v2.2](instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_0_COMPLETO.zip)** |
+[Anfitrion Python v2.2](../ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_0.py) |
+[Motor de captura v2.2](../ANFITRION/futureo_stream_v22.py) |
+[Manual completo](../ANFITRION/README_STREAM_V2_2.md).
+
+La imagen se captura UNA VEZ y llega en PUSH a todos los visitantes de
+MULTIMANDO Web, incluso sin pulsar CONECTAR y sin estar en cola.
+El mismo Quick Tunnel de Cloudflare transporta mandos (/) y la
+imagen publica (/stream). No hay consultas JPEG repetitivas por cliente.
+
+**Mejoras v2.2:** fotograma mas reciente (sin colas de imagenes),
+descartes de capturas antiguas tanto en servidor como en navegador,
+canvas de baja latencia y telemetria de FPS/captura.
+Preset equilibrado 480x270 a 10 FPS; modo rapido 320x180 a 15 FPS;
+control de JPEG y FPS de 1 a 20. Sin modificar driver FUTUREO v0.8.4,
+asignacion P1-P8, turnos o cola de jugadores.
+**La reduccion del retraso real debe comprobarse en Windows + movil;
+no se garantiza una cifra antes de medirla.**
+
+La web v2.2 debe copiarse al hosting junto con la version nueva del PY.
+El archivo secreto de descifrado PHP existente se conserva en el hosting
+y nunca se publica en el repositorio ni en ZIP.
+
 ## FUTUREO VJOY v0.8.4 + Anfitrion MULTIMANDO v2.0
 
 [Descargar FUTUREO v0.8.4 (EXE)](instalador_windows/FUTUREO_VJOY_PORTABLE_HOST_v0_8_4_WIN64.exe)
