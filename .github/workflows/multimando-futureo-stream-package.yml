@@ -1,14 +1,15 @@
-name: MULTIMANDO FUTUREO Stream v2.2 (tests y ZIP)
+name: MULTIMANDO FUTUREO Stream v2.2.1 (mando web + stream)
 on:
   push:
     paths:
-      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_0.py'
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_1.py'
+      - 'MULTIMANDO/ANFITRION/tests/test_websocket_compat_v221.py'
       - 'MULTIMANDO/ANFITRION/futureo_stream_v22.py'
       - 'MULTIMANDO/MANDOWEB/**'
       - '.github/workflows/multimando-futureo-stream-package.yml'
   workflow_dispatch:
 concurrency:
-  group: multimando-stream-v22-build
+  group: multimando-stream-v221-build
   cancel-in-progress: true
 permissions:
   contents: write
@@ -24,9 +25,12 @@ jobs:
       - name: Pruebas host y sintaxis
         shell: bash
         run: |
-          python -m py_compile MULTIMANDO/ANFITRION/futureo_stream_v22.py MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_0.py
-          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_0.py --selftest
+          python -m py_compile MULTIMANDO/ANFITRION/futureo_stream_v22.py MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_1.py
+          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_1.py --selftest
+          python -m pip install 'websockets>=15,<18'
+          python MULTIMANDO/ANFITRION/tests/test_websocket_compat_v221.py
           node --check MULTIMANDO/MANDOWEB/assets/futureo-stream.js
+          node --check MULTIMANDO/MANDOWEB/assets/control-health.js
           node MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v22.js
           php -l MULTIMANDO/MANDOWEB/palanca.php
           php -l MULTIMANDO/MANDOWEB/sala.php
@@ -37,9 +41,9 @@ jobs:
           python - <<'PY'
           import os, zipfile, pathlib
           root = pathlib.Path('MULTIMANDO')
-          output = root/'FUTUREO_VJOY'/'instalador_windows'/'MULTIMANDO_FUTUREO_STREAM_v2_2_0_COMPLETO.zip'
+          output = root/'FUTUREO_VJOY'/'instalador_windows'/'MULTIMANDO_FUTUREO_STREAM_v2_2_1_COMPLETO.zip'
           with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-              for name in ('MULTIMANDO_FUTUREO_Anfitrion_v2_2_0.py','futureo_stream_v22.py'):
+              for name in ('MULTIMANDO_FUTUREO_Anfitrion_v2_2_1.py','futureo_stream_v22.py'):
                   z.write(root/'ANFITRION'/name, arcname='ANFITRION/'+name)
               for file in sorted((root/'MANDOWEB').rglob('*')):
                   if not file.is_file() or file.name == '.gitignore':
@@ -47,22 +51,22 @@ jobs:
                   if file.name == 'FRASE_CIFRADO.php' or file.name == 'control_decoded.js':
                       continue
                   z.write(file, 'WEB/'+str(file.relative_to(root/'MANDOWEB')).replace(os.sep,'/'))
-              z.write(root/'ANFITRION'/'README_STREAM_V2_2.md', arcname='LEEME_INSTALACION.txt')
+              z.write(root/'ANFITRION'/'README_STREAM_V2_2_1.md', arcname='LEEME_INSTALACION.txt')
           print(f'ZIP creado: {output} ({output.stat().st_size} bytes)')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: MULTIMANDO_FUTUREO_STREAM_v2_2_0_COMPLETO
-          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_0_COMPLETO.zip
+          name: MULTIMANDO_FUTUREO_STREAM_v2_2_1_COMPLETO
+          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_1_COMPLETO.zip
           retention-days: 30
       - name: Publicar ZIP en repositorio
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_0_COMPLETO.zip
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_1_COMPLETO.zip
           if ! git diff --cached --quiet; then
-            git commit -m "build(multimando): paquete completo STREAM v2.2"
+            git commit -m "build(multimando): reparacion mando web + STREAM v2.2.1"
             git pull --rebase origin main
             git push
           fi
