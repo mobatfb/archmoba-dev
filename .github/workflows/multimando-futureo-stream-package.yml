@@ -1,0 +1,63 @@
+name: MULTIMANDO FUTUREO Stream v2.1 (pruebas y ZIP)
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_1_0.py'
+      - 'MULTIMANDO/ANFITRION/futureo_stream.py'
+      - 'MULTIMANDO/MANDOWEB/**'
+      - '.github/workflows/multimando-futureo-stream-package.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pruebas host y sintaxis
+        shell: bash
+        run: |
+          python -m py_compile MULTIMANDO/ANFITRION/futureo_stream.py MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_1_0.py
+          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_1_0.py --selftest
+          node --check MULTIMANDO/MANDOWEB/assets/futureo-stream.js
+          php -l MULTIMANDO/MANDOWEB/palanca.php
+          php -l MULTIMANDO/MANDOWEB/sala.php
+          php -l MULTIMANDO/MANDOWEB/control.php
+      - name: Construir ZIP completo para hosting y Windows
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, zipfile, pathlib
+          root = pathlib.Path('MULTIMANDO')
+          output = root/'FUTUREO_VJOY'/'instalador_windows'/'MULTIMANDO_FUTUREO_STREAM_v2_1_0_COMPLETO.zip'
+          with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              for name in ('MULTIMANDO_FUTUREO_Anfitrion_v2_1_0.py','futureo_stream.py'):
+                  z.write(root/'ANFITRION'/name, arcname='ANFITRION/'+name)
+              for file in sorted((root/'MANDOWEB').rglob('*')):
+                  if not file.is_file() or file.name.startswith('.'):
+                      continue
+                  if file.name == 'FRASE_CIFRADO.php' or file.name == 'control_decoded.js':
+                      continue
+                  z.write(file, 'WEB/'+str(file.relative_to(root/'MANDOWEB')).replace(os.sep,'/'))
+              z.write(root/'ANFITRION'/'README_STREAM_V2_1.md', arcname='LEEME_INSTALACION.txt')
+          print(f'ZIP creado: {output} ({output.stat().st_size} bytes)')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MULTIMANDO_FUTUREO_STREAM_v2_1_0_COMPLETO
+          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_1_0_COMPLETO.zip
+          retention-days: 30
+      - name: Publicar ZIP en repositorio
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_1_0_COMPLETO.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "build(multimando): paquete completo STREAM v2.1"
+            git push
+          fi
