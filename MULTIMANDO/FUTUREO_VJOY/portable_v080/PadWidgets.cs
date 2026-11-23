@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
@@ -99,6 +100,7 @@ internal sealed record PadButtonSpec(int Index, string Label, HMButton Code, Col
 internal sealed class PadFaceButton : Control
 {
     public PadButtonSpec Spec { get; }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Active { get; set; }
     public bool Large { get; }
     public event Action<int, bool>? Changed;
@@ -182,6 +184,7 @@ internal sealed class VirtualStick : Control
 {
     private bool dragging;
     private float x = 0.5f, y = 0.5f;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Interactive { get; set; } = true;
     public float X => x;
     public float Y => y;
@@ -296,6 +299,7 @@ internal sealed class VirtualDpad : Control
 {
     private bool dragging;
     private HMHat direction = HMHat.None;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Interactive { get; set; } = true;
     public HMHat Direction => direction;
     public event Action<HMHat>? Changed;
