@@ -596,11 +596,11 @@ if (is_readable($cssFile)) {
 .futureo-live .futureo-stream-badge{background:#a81b37;color:white}
 .futureo-stream-media{position:relative;display:grid;place-items:center;overflow:hidden;
  background:#030a13;aspect-ratio:16/9;min-height:0}
-.futureo-stream-media img{display:block;object-fit:contain;width:100%;height:100%;max-height:100%}
-.futureo-stream-media img[hidden]{display:none}
+.futureo-stream-media canvas{display:block;object-fit:contain;width:100%;height:100%;max-height:100%}
+.futureo-stream-media canvas[hidden]{display:none}
 .futureo-stream-empty{position:absolute;inset:0;display:grid;place-items:center;
  font-size:clamp(13px,2.2vw,21px);color:#799ec4;letter-spacing:.04em;text-align:center;padding:14px;pointer-events:none}
-.futureo-stream-media img:not([hidden]) + .futureo-stream-empty{display:none}
+.futureo-stream-media canvas:not([hidden]) + .futureo-stream-empty{display:none}
 .futureo-stream-empty{display:flex;flex-direction:column;gap:7px}
 .futureo-stream-empty span:first-child{font-size:36px}
 .futureo-stream-expanded{position:fixed!important;inset:3vh 3vw;z-index:1000;max-height:94vh!important;box-shadow:0 0 0 100vmax #000c,0 0 35px #36bbdf80}
@@ -637,7 +637,7 @@ if (is_readable($cssFile)) {
 }
 </style>
 <script src="control.php?v=6.2.0" defer></script>
-<script src="assets/futureo-stream.js?v=2.1.0" defer></script>
+<script src="assets/futureo-stream.js?v=2.2.0" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -674,7 +674,7 @@ if (is_readable($cssFile)) {
   <section id="futureoStream" class="futureo-stream-panel" aria-label="Transmision publica del juego" aria-live="off">
     <div class="futureo-stream-head"><strong>● PANTALLA DEL JUEGO</strong><span id="futureoStreamBadge" class="futureo-stream-badge">SIN TRANSMISION</span></div>
     <div class="futureo-stream-media">
-      <img id="futureoStreamImage" alt="Imagen en directo de la ventana del juego" hidden decoding="async">
+      <canvas id="futureoStreamImage" role="img" aria-label="Imagen en directo de la ventana del juego" hidden></canvas>
       <div class="futureo-stream-empty"><span>▣</span><span>Esperando imagen del anfitrión</span></div>
     </div>
     <div class="futureo-stream-foot">
