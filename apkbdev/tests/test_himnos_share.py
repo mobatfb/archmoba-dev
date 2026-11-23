@@ -37,8 +37,8 @@ class HimnosShareTests(unittest.TestCase):
 
     def test_nueva_version(self):
         config = (ROOT / "app" / "build.gradle").read_text(encoding="utf-8")
-        self.assertIn("versionCode 14", config)
-        self.assertIn("versionName '1.3.8'", config)
+        self.assertIn("versionCode 15", config)
+        self.assertIn("versionName '1.3.9'", config)
 
 
 if __name__ == "__main__":

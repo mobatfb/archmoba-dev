@@ -20,7 +20,7 @@ final class LegalNoticeDialog {
     private static final String BODY =
             "Aplicación gratuita e independiente, desarrollada para facilitar el acceso a himnos utilizados durante ceremonias, formaciones y eventos protocolarios.\n\n"
             + "Los derechos correspondientes a las composiciones, interpretaciones y grabaciones musicales pertenecen a sus respectivos titulares.\n\n"
-            + "Esta aplicación no representa ni implica respaldo oficial de la Policía Nacional del Ecuador. Cualquier consulta o reclamación relacionada con los contenidos podrá remitirse al correo de contacto del desarrollador para su revisión y atención.";
+            + "Esta aplicación no representa ni implica respaldo oficial de la Policía Nacional del Ecuador.";
 
     private LegalNoticeDialog() { }
 

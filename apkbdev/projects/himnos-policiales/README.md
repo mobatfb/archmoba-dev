@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.8
+# Himnos Policiales para Android — v1.3.9
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -64,4 +64,7 @@ Aplicación gratuita e independiente, desarrollada para facilitar el acceso a hi
 
 Los derechos correspondientes a las composiciones, interpretaciones y grabaciones musicales pertenecen a sus respectivos titulares.
 
-Esta aplicación no representa ni implica respaldo oficial de la Policía Nacional del Ecuador. Cualquier consulta o reclamación relacionada con los contenidos podrá remitirse al correo de contacto del desarrollador para su revisión y atención.
+Esta aplicación no representa ni implica respaldo oficial de la Policía Nacional del Ecuador.
+
+## Aviso legal v1.3.9
+Se eliminó la oración relativa al correo de contacto del desarrollador, manteniendo el resto del aviso.
