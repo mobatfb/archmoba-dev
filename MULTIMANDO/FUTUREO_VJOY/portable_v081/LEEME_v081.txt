@@ -1,0 +1,93 @@
+FUTUREO VJOY v0.8.1 - PORTABLE / INTERFAZ MINI Y PLEGABLE
+===============================================================
+Windows 10/11 x64. App autonoma; el controlador HIDMaestro requiere
+UAC para su primera instalacion en Windows.
+
+QUE CAMBIO DESDE v0.8.0
+-----------------------
+- Ventana inicial reducida de 1250 x 880 a 930 x 650.
+- Tamano minimo de ventana reducido a 715 x 510 (sujeto a DPI de Windows).
+- Botones de accion, fuentes, etiquetas y tiras de seleccion mas compactos.
+- Joystick izquierdo y D-Pad reducidos visualmente.
+- En la seccion PROBAR, grupos con botones compactos, manteniendo 16.
+- El MONITOR mantiene 16 indicadores e historial, mas compactos.
+- Boton VISTA AMPLIADA / VISTA MINI que cambia el tamano de ventana.
+- Grupos PLEGABLES con barras que permiten dar todo el espacio al panel
+  que se necesita: ocultar y volver a mostrar sin cerrar los mandos.
+- Se mantienen los historiales de pulsaciones entre PROBAR y MONITOR.
+- No se modifica la identidad, el protocolo ni los datos del mando.
+- Conserva los archivos y ejecutables anteriores como respaldo.
+
+SECCIONES
+---------
+1. INICIAR
+   - CREAR MANDOS (1 a 8), DETENER TODOS, ABRIR JOY.CPL
+   - PLEGAR LISTA: oculta el inventario de dispositivos y amplia el log.
+   - PLEGAR LOG: oculta el log y amplia la lista de dispositivos.
+
+2. PROBAR
+   - Tira de mandos FUTUREO_VJOY1 .. FUTUREO_VJOY8 activos.
+   - Movimiento por analogo izquierdo o cruceta independiente.
+   - Modos ANALOGICO, CRUCETA y MIXTO.
+   - 16 botones clicables; MANTENER BOTONES y SOLTAR TODO.
+   - PLEGAR MOV.: oculta el analogico/cruceta y amplia los 16 botones.
+   - PLEGAR BOT.: oculta los 16 botones y amplia el analogico/cruceta.
+   - Los controles ocultados liberan su estado activo por seguridad.
+
+3. MONITOR
+   - La misma tira de mandos.
+   - Estados LED de los 16 botones y posiciones X/Y + D-Pad.
+   - Historial cronologico (250 eventos recientes por mando) y contador.
+   - AUTO PRUEBA que envia una secuencia de senales al mando elegido.
+   - PLEGAR VISTA: oculta los indicadores y amplia historial.
+   - PLEGAR HIST.: oculta historial y amplia indicadores.
+   - El registro conserva eventos producidos previamente en PROBAR.
+
+LOS MANDOS NO CAMBIAN
+---------------------
+- Hasta 8 mandos virtuales FUTUREO_VJOY1 .. FUTUREO_VJOY8.
+- 16 botones digitales por mando.
+- Un joystick analogico izquierdo X/Y de 16 bits.
+- D-Pad (Hat Switch) de 8 direcciones, incluidas las diagonales.
+- VID F7A0; PIDs 2201 a 2208; motor HIDMaestro 2.3.0 UMDF2.
+- Nombres OEM reversibles al cerrar la aplicacion.
+- No modifica TESTSIGNING y no elimina controladores anteriores.
+
+INSTRUCCIONES
+-------------
+1. Cierra FUTUREO anterior y juegos; no ejecutes dos versiones simultaneas.
+2. Ejecuta FUTUREO_VJOY_PORTABLE_v0_8_1_WIN64.exe.
+3. Autoriza UAC si Windows solicita instalar el driver.
+4. En INICIAR, elige la cantidad de mandos y crea los dispositivos.
+5. Prueba los controles en PROBAR usando el mouse.
+6. Minimiza el espacio visual con PLEGAR MOV. o PLEGAR BOT.
+7. En MONITOR puedes plegar la vista o el historial.
+8. Usa VISTA AMPLIADA si necesitas mas espacio.
+9. Mantén abierta la app mientras uses los mandos virtuales.
+
+AVISO SOBRE NAVEGADORES
+----------------------
+Esta actualizacion es de INTERFAZ, no es una nueva emulacion Xbox.
+No garantiza que Chrome, Edge o KOF2022 detecten el mando.
+Para diagnosticar, abre Gamepad Tester con la pagina activa,
+envia una pulsacion y comprueba navigator.getGamepads().
+El MONITOR de FUTUREO muestra los estados ENVIADOS por la app;
+no es una lectura independiente recibida por el navegador.
+
+SEGURIDAD Y PRUEBAS
+-------------------
+Compilacion en GitHub Actions Windows x64 como EXE unico autocontenido.
+Dos autopruebas: SDK/descriptor y disposicion GUI de 3 secciones,
+pliegue/despliegue, vista mini/ampliada, 16 botones e indicadores.
+Las autopruebas NO instalan ningun controlador Windows.
+
+La primera instalacion del controlador firmada localmente modifica
+Windows y debe probarse en un PC de laboratorio.
+No necesita instalar .NET por separado.
+HIDMaestro (c) hifihedgehog, licencia MIT:
+https://github.com/hifihedgehog/HIDMaestro
+ZIP de esta version incluye licencia y avisos de terceros.
+
+FUENTES
+-------
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/portable_v081

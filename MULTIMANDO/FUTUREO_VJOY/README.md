@@ -1,3 +1,31 @@
+## FUTUREO VJOY v0.8.1 - Interfaz MINI y paneles plegables
+
+**[EXE portable v0.8.1](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_8_1_WIN64.exe)**
+| **[ZIP con manual y licencias](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_8_1_WIN64.zip)**
+
+Novedad: ventana inicial de 930 x 650, ajustable hasta 715 x 510;
+fuentes y botones reducidos, mandos y cruceta en tamano compacto y
+boton **VISTA AMPLIADA / VISTA MINI**. Cada una de las 3 secciones
+(INICIAR, PROBAR y MONITOR) permite plegar/desplegar sus dos grupos
+principales, dedicando todo el espacio al grupo activo:
+
+- **INICIAR:** plegar la lista de mandos o el registro.
+- **PROBAR:** plegar los controles de movimiento o los 16 botones.
+- **MONITOR:** plegar la vista de señales o el historial de eventos.
+
+Mantiene **16 botones, analogico izquierdo X/Y, D-Pad 8 direcciones,
+hasta 8 mandos FUTUREO_VJOY1..8 y el motor HIDMaestro UMDF2**. El
+controlador y los nombres HID no cambian respecto a v0.8.0. No se
+desinstala ningun dispositivo ni se modifica TESTSIGNING.
+Incluye autoprueba de WinForms para verificar plegado de grupos.
+
+**Nota:** esta es una mejora visual. La compatibilidad con
+KOF2022/Chrome **aun no esta confirmada**; el navegador podria
+requerir otro perfil o mapeo del mando. Las versiones previas
+permanecen publicadas como respaldo.
+
+[Codigo v0.8.1 y manual](portable_v081/).
+
 ## FUTUREO VJOY v0.8.0 - Portable con INICIAR, PROBAR y MONITOR
 
 **[Descargar EXE portable v0.8.0](instalador_windows/FUTUREO_VJOY_PORTABLE_v0_8_0_WIN64.exe)**
