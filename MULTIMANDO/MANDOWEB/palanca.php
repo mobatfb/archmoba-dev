@@ -579,7 +579,7 @@ if (is_readable($cssFile)) {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#071222">
 <meta name="description" content="MULTIMANDO, control remoto web de una sola pantalla. La administración de jugadores y turnos está exclusivamente en Python.">
-<title>MULTIMANDO | Control remoto + Stream v2.2.1</title>
+<title>MULTIMANDO | Control remoto</title>
 <!-- CSS included directly to avoid 404, MIME, rewrites, or broken /assets/ paths. -->
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>"><?= $embeddedStyle ?></style>
 <style nonce="<?= htmlspecialchars($styleNonce, ENT_QUOTES, 'UTF-8') ?>">
@@ -638,7 +638,6 @@ if (is_readable($cssFile)) {
 </style>
 <script src="control.php?v=6.2.0" defer></script>
 <script src="assets/futureo-stream.js?v=2.2.0" defer></script>
-<script src="assets/control-health.js?v=2.2.1" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -664,7 +663,6 @@ if (is_readable($cssFile)) {
       <small>Desactiva AUTO para escribir la URL de tu sala. Con AUTO marcado se consulta siempre la API.</small>
     </div>
     <p class="error-text" id="connectionError" role="alert" hidden></p>
-    <p class="error-text" id="controllerDiagnostic" role="alert" hidden></p>
   </section>
 
   <section class="status-hud" aria-label="Estado de tu control">
