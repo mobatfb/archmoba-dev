@@ -1,0 +1,105 @@
+FUTUREO VJOY v0.8.0 - PORTABLE / INICIAR, PROBAR, MONITOR
+===========================================================
+EQUIPO DE LABORATORIO / WINDOWS 10 y 11 x64
+
+NUEVA VERSION - NO SOBRESCRIBE v0.7.0
+-------------------------------------
+Esta version se distribuye como ejecutable .exe autonomo y en ZIP.
+El ejecutable incluye .NET 10 x64 y el SDK HIDMaestro 2.3.0.
+El driver necesita privilegios UAC y modificar Windows. La
+aplicacion es portable, NO el controlador.
+
+FUNCIONES:
+1. INICIAR: elegir de 1 a 8 mandos y crear en un solo flujo.
+2. PROBAR: seleccion de mando mediante tira horizontal;
+   joystick analogico izquierdo controlado con el mouse;
+   cruceta D-Pad de 8 direcciones con diagonales;
+   botones 1..16 clicables (A, B, X, Y, L, R, SELECT,
+   START, L3, R3, HOME, TOUCH, SHARE, P1, P2, EXTRA);
+   modo ANALOGICO, CRUCETA o MIXTO;
+   mantener botones en modo alternancia y SOLTAR TODO;
+   envio de entradas reales al dispositivo virtual.
+3. MONITOR: tira de mandos activos, botones luminosos,
+   posiciones del joystick izquierdo y D-Pad, contador de
+   transmisiones, log cronologico por mando (250 eventos).
+   Boton AUTO PRUEBA envia 3 ciclos de A + D-Pad Norte +
+   movimiento analogico para ver los estados en vivo.
+
+MANDOS:
+  FUTUREO_VJOY1  VID F7A0 PID 2201
+  FUTUREO_VJOY2  VID F7A0 PID 2202
+  FUTUREO_VJOY3  VID F7A0 PID 2203
+  FUTUREO_VJOY4  VID F7A0 PID 2204
+  FUTUREO_VJOY5  VID F7A0 PID 2205
+  FUTUREO_VJOY6  VID F7A0 PID 2206
+  FUTUREO_VJOY7  VID F7A0 PID 2207
+  FUTUREO_VJOY8  VID F7A0 PID 2208
+
+Cada mando independiente: 16 botones digitales, analogico
+izquierdo X/Y de 16 bits, D-Pad HID Hat de 8 posiciones.
+El analogico y el D-Pad son entradas DISTINTAS (no se
+simulan uno a otro). Son parte del descriptor HID presentado
+a Windows y no solo elementos decorativos de la interfaz.
+
+USO:
+1. Si ejecutaste el limpiador, reinicia Windows.
+2. Cierra las versiones anteriores FUTUREO, juegos y joy.cpl.
+3. Descarga y ejecuta FUTUREO_VJOY_PORTABLE_v0_8_0_WIN64.exe.
+4. Acepta UAC e indica la cantidad de mandos (por defecto 4).
+5. Pulsa INSTALAR Y CREAR MANDOS, revisa el aviso y autoriza
+   la instalacion de un controlador UMDF2 firmado localmente.
+6. Abre la seccion PROBAR y elige un mando de la tira.
+7. Mueve el analogico con el mouse arrastrando el circulo,
+   la cruceta con el mouse, y mantén pulsados los botones.
+   Usa "MANTENER BOTONES" para alternar pulsado/liberado
+   con clic, sin mantener el mouse presionado.
+8. Ve a MONITOR. Pulsa AUTO PRUEBA y observa los LEDs,
+   los ejes, el D-Pad y el registro de eventos.
+9. Tambien puedes entrar en joy.cpl o un tester de Gamepad API.
+   Cierra y vuelve a abrir esos programas tras crear mandos.
+10. Al cerrar FUTUREO, los mandos se retiran y se restauran
+    los nombres OEM respaldados por el SDK. El driver queda
+    instalado hasta desinstalarlo separadamente.
+
+IMPORTANTE SOBRE EL MONITOR:
+El monitor muestra los ESTADOS Y TRANSMISIONES QUE ENVIA ESTA
+APLICACION al driver virtual (datos de SubmitState).
+NO es una segunda lectura del dispositivo mediante APIs de
+Windows y NO certifica que un juego recibio las pulsaciones.
+El auto-test visual no instala controladores en GitHub Actions.
+
+IMPORTANTE SOBRE KOF2022 Y NAVEGADORES:
+Agregar D-Pad real y analogico izquierdo no hace que el
+navegador asigne automaticamente mapping='standard'. Chrome
+y otros navegadores pueden devolver mapping='' para mandos
+HID genericos. No garantizamos reconocimiento por KOF2022;
+utiliza el boton "PROBAR NAVEGADOR" para diagnosticar con
+Gamepad Tester. Algunos juegos web solo aceptan mapeos Xbox
+o necesitan recibir primero una pulsacion con la pagina activa.
+Si al usar el mando virtual con el mouse cambia el foco del
+navegador, esto tambien puede impedir que el juego responda.
+No implementa emulacion XInput ni teclado global.
+
+SEGURIDAD Y COMPATIBILIDAD:
+- No modifica el BCD, Secure Boot, ni TESTSIGNING.
+- No elimina controladores fisicos ni de terceros.
+- No configura un servicio residente o inicio automatico.
+- Usar solo en un PC autorizado de laboratorio.
+- HIDMaestro en x64 firma su paquete UMDF2 localmente.
+  Windows ARM64 o Modo S pueden no permitir instalarlo.
+- Se conserva toda la v0.7.0, tanto su codigo como su ZIP.
+- El motor es independiente del controlador VHF FutJoy.
+- Para evitar conflictos, no iniciar v0.7.0 y v0.8.0 a la vez.
+
+DEPENDENCIA EXTERNA:
+HIDMaestro v2.3.0 de hifihedgehog, licenciado bajo MIT:
+https://github.com/hifihedgehog/HIDMaestro
+El ZIP incluye licencia HIDMaestro y avisos de terceros.
+
+CODIGO:
+https://github.com/mobatfb/archmoba-dev/tree/main/MULTIMANDO/FUTUREO_VJOY/portable_v080
+
+PRUEBA AUTOMATICA:
+Github Actions compila, comprueba que el EXE unico contiene el
+motor HIDMaestro y genera un descriptor con hat+16 botones+X/Y.
+La instalacion y funcionamiento en TU PC requieren prueba real.

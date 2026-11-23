@@ -1,0 +1,173 @@
+name: FUTUREO VJOY v0.8.0 - 3 secciones HID DPad y monitor
+on:
+  push:
+    paths:
+      - "MULTIMANDO/FUTUREO_VJOY/portable_v080/**"
+      - ".github/workflows/futureo-vjoy-v080.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  empaquetar_portable:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Descargar HIDMaestro v2.3.0 y verificar SHA256 oficial
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'hidmaestro-portable'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          gh release download v2.3.0 -R hifihedgehog/HIDMaestro -p 'HIDMaestro-v2.3.0.zip' -D $root
+          if($LASTEXITCODE -ne 0){ throw 'No se pudo obtener distribucion oficial HIDMaestro' }
+          $zip = Join-Path $root 'HIDMaestro-v2.3.0.zip'
+          $expected = 'FDDB61B76D076AA2CF508A46C1E30E23AA75B4AE622D52B15E7259959FD12295'
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToUpperInvariant() -ne $expected){
+            throw 'Hash del paquete HIDMaestro NO coincide con release 2.3.0'
+          }
+          $extract = Join-Path $root 'extracted'
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem -LiteralPath $extract -File -Recurse -Filter 'HIDMaestro.Core.dll' |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if(-not $dll -or $dll.Length -lt 1000000){throw 'HIDMaestro SDK ausente'}
+          $source='MULTIMANDO/FUTUREO_VJOY/portable_v080'
+          Copy-Item -LiteralPath $dll.FullName -Destination (Join-Path $source 'HIDMaestro.Core.dll')
+          $license=Get-ChildItem -LiteralPath $extract -File -Recurse | Where-Object {
+            $_.Name -in @('LICENSE','LICENSE.txt')
+          } | Select-Object -First 1
+          $notice=Get-ChildItem -LiteralPath $extract -File -Recurse -Filter 'THIRD-PARTY-NOTICES.txt' |
+            Select-Object -First 1
+          if(-not $license -or -not $notice){throw 'Avisos legales HIDMaestro ausentes'}
+          Copy-Item $license.FullName -Destination (Join-Path $source 'LICENCIA_HIDMAESTRO.txt')
+          Copy-Item $notice.FullName -Destination (Join-Path $source 'THIRD-PARTY-NOTICES.txt')
+          Write-Host "SDK verificado, longitud $($dll.Length) bytes."
+
+      - name: Verificar funcionalidad D-Pad, analogico, 16 botones, GUI y monitor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder='MULTIMANDO/FUTUREO_VJOY/portable_v080'
+          $source=Get-Content -LiteralPath (Join-Path $folder 'FutureoForm.cs') -Raw
+          $widget=Get-Content -LiteralPath (Join-Path $folder 'PadWidgets.cs') -Raw
+          $entry=Get-Content -LiteralPath (Join-Path $folder 'Program.cs') -Raw
+          if($source -notmatch 'FUTUREO_VJOY\{slot\}'){
+            throw 'El nombre de mandos debe usar guion bajo'
+          }
+          foreach($part in @('.AddButtons(16)','.AddStick("Left", bits: 16)','.AddHat(8)')){
+            if(-not $source.Contains($part)){throw "Descriptor no incluye $part"}
+          }
+          if(-not $entry.Contains('.AddHat(8)')){
+            throw 'Autoprueba no incluye D-Pad'
+          }
+          if($source -notmatch 'HMOemNameOverride\.Set' -or $source -notmatch 'HMOemNameOverride\.Clear'){
+            throw 'Falta respaldo/limpieza de nombres OEM'
+          }
+          if($source -notmatch 'TRANSMISIONES' -or $source -notmatch 'monitorEvents' -or
+             $source -notmatch 'SECCION 1 - INICIAR' -or $source -notmatch 'PROBAR' -or
+             $source -notmatch 'MONITOR' -or $source -notmatch 'IDENTIFICAR SELECCIONADO'){
+            throw 'No estan las tres secciones y su monitor'
+          }
+          if($widget -notmatch 'public static readonly PadButtonSpec\[\] All' -or
+             $widget -notmatch 'new\(15, "EXTRA"' -or $widget -notmatch 'HMHat\.NorthEast'){
+            throw 'No hay 16 botones de prueba y cruceta de 8 direcciones'
+          }
+          if(-not $entry.Contains('Verb = "runas"')){throw 'Falta consentimiento UAC'}
+          Write-Host 'OK: 16 botones, analogico izquierdo, hat 8 vias, tres secciones y test de monitor'
+
+      - name: Publicar ejecutable AUTOCONTENIDO en un archivo
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proj='MULTIMANDO/FUTUREO_VJOY/portable_v080/FUTUREO_VJOY_PORTABLE.csproj'
+          $out = Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish'
+          dotnet publish $proj -c Release -r win-x64 --self-contained true -o $out -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          if($LASTEXITCODE -ne 0){throw 'Fallo compilacion del EXE unico'}
+          $exe=Join-Path $out 'FUTUREO_VJOY_PORTABLE.exe'
+          if(-not (Test-Path $exe)){throw 'El EXE portable no fue generado'}
+          $len=(Get-Item $exe).Length
+          if($len -lt 10000000){throw "EXE anormalmente pequeno: $len"}
+          $others=@(Get-ChildItem -LiteralPath $out -File | Where-Object {$_.Name -ne 'FUTUREO_VJOY_PORTABLE.exe'})
+          if($others.Count -gt 0){
+            Write-Host ('Otros archivos en publish: '+($others.Name -join ', '))
+            throw 'El resultado no es un solo archivo portable'
+          }
+          Write-Host "EXE autoconenido compilado: $len bytes"
+
+      - name: Ejecutar AUTOPRUEBA del EXE aislado sin tocar drivers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $isolated=Join-Path $env:RUNNER_TEMP 'futureo-solo-exe'
+          New-Item -Path $isolated -ItemType Directory -Force | Out-Null
+          $exe=Join-Path $isolated 'FUTUREO_VJOY_PORTABLE.exe'
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish/FUTUREO_VJOY_PORTABLE.exe') -Destination $exe
+          $report=Join-Path $env:RUNNER_TEMP 'futureo-exe-autoprueba.txt'
+          # WinExe es subsistema GUI: PowerShell '& exe' no espera
+          # necesariamente al cierre ni llena LASTEXITCODE.
+          # Start-Process -Wait -PassThru SI espera y devuelve ExitCode.
+          $testProcess=Start-Process -FilePath $exe -ArgumentList @('--self-test',$report) -Wait -PassThru
+          if(-not (Test-Path $report)){throw 'Autoprueba no creo diagnostico'}
+          $content=Get-Content -LiteralPath $report -Raw
+          Write-Host $content
+          if($testProcess.ExitCode -ne 0){
+            throw "Autoprueba fracaso (codigo $($testProcess.ExitCode))"
+          }
+          if($content -notmatch 'UMDF2 x64 embedded: True' -or $content -notmatch 'OEM API: True' -or
+             $content -notmatch 'HID hat present: True' -or $content -notmatch 'Buttons: 16'){
+            throw 'No esta integrado el payload HIDMaestro en EXE unico'
+          }
+          Write-Host 'Autoprueba: motor HID + API OEM cargan desde EXE aislado.'
+
+      - name: Crear ZIP, hashes y publicar el mismo EXE directo
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base='MULTIMANDO/FUTUREO_VJOY'
+          $folder=Join-Path $base 'portable_v080'
+          $target=Join-Path $base 'instalador_windows'
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-portable-stage'
+          New-Item -Path $stage -ItemType Directory -Force | Out-Null
+          $srcExe=Join-Path $env:RUNNER_TEMP 'futureo-singlefile-publish/FUTUREO_VJOY_PORTABLE.exe'
+          Copy-Item -LiteralPath $srcExe -Destination $stage
+          foreach($file in @('LEEME_v080.txt','LICENCIA_HIDMAESTRO.txt','THIRD-PARTY-NOTICES.txt')){
+            Copy-Item -LiteralPath (Join-Path $folder $file) -Destination $stage
+          }
+          $name='FUTUREO_VJOY_PORTABLE_v0_8_0_WIN64.zip'
+          $zip=Join-Path $target $name
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          $zsize=(Get-Item $zip).Length
+          if($zsize -lt 2000000 -or $zsize -gt 95000000){throw "ZIP fuera de rango permitido ($zsize)"}
+          $zipHash=(Get-FileHash $zip -Algorithm SHA256).Hash
+          Set-Content -LiteralPath ($zip+'.sha256') -Value ($zipHash+'  '+$name) -Encoding ascii
+          $exeLen=(Get-Item $srcExe).Length
+          $exeDirect=Join-Path $target 'FUTUREO_VJOY_PORTABLE_v0_8_0_WIN64.exe'
+          $publishExe = $exeLen -lt 95000000
+          if($publishExe){
+            Copy-Item -LiteralPath $srcExe -Destination $exeDirect
+            $exeHash=(Get-FileHash $exeDirect -Algorithm SHA256).Hash
+            Set-Content -LiteralPath ($exeDirect+'.sha256') -Value ($exeHash+'  '+(Split-Path $exeDirect -Leaf)) -Encoding ascii
+          }else{
+            Write-Warning 'EXE excede limite de GitHub, solo se publica dentro del ZIP'
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f -- $zip
+          git add -- ($zip+'.sha256')
+          if($publishExe){
+            git add -f -- $exeDirect
+            git add -- ($exeDirect+'.sha256')
+          }
+          git diff --cached --quiet
+          if($LASTEXITCODE -eq 0){throw 'No se creo ZIP nuevo'}
+          git commit -m 'FUTUREO VJOY v0.8.0: publicar EXE con DPad, analogico, 16 botones y monitor'
+          if($LASTEXITCODE -ne 0){throw 'No se pudo registrar paquete'}
+          git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){throw 'No se pudo publicar paquete'}
+          Write-Host "ZIP $name size $zsize SHA256 $zipHash"
