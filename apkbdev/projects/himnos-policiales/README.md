@@ -1,4 +1,4 @@
-# Himnos Policiales para Android — v1.3.7
+# Himnos Policiales para Android — v1.3.8
 
 Proyecto Android nativo, independiente de TVAPP. Compilado con APKBDEV y `MediaPlayer`.
 
@@ -49,3 +49,19 @@ Los cuatro recursos WEBP aprobados y los audios se verifican mediante SHA-256 du
 - No se incrusta una APK antigua como recurso porque eso enviaría otra versión; y una APK no puede contener una copia binaria idéntica de sí misma. Se comparte la misma APK realmente instalada, incluida su firma.
 - El funcionamiento depende de que la aplicación de destino admita adjuntos APK; Bluetooth/Quick Share y otros mecanismos compatibles podrán recibirla.
 - Sigue siendo una APK **debug**, por lo que para actualizaciones confiables es recomendable distribuir una build de producción con firma estable.
+
+## Aviso legal flotante (v1.3.8)
+- Botón **«Aviso legal»** en la esquina inferior izquierda con fondo azul y borde dorado.
+- Abre un diálogo modal, con texto desplazable, título **HIMNOS POLICIALES — AVISO LEGAL** y botón **CERRAR**.
+- Contenido local, sin Internet y sin interrumpir los himnos mientras la aplicación continúa en primer plano.
+- No se altera el botón superior «Compartir con un amigo» ni la publicidad de la esquina inferior derecha.
+
+**Texto completo:**
+
+**HIMNOS POLICIALES — AVISO LEGAL**
+
+Aplicación gratuita e independiente, desarrollada para facilitar el acceso a himnos utilizados durante ceremonias, formaciones y eventos protocolarios.
+
+Los derechos correspondientes a las composiciones, interpretaciones y grabaciones musicales pertenecen a sus respectivos titulares.
+
+Esta aplicación no representa ni implica respaldo oficial de la Policía Nacional del Ecuador. Cualquier consulta o reclamación relacionada con los contenidos podrá remitirse al correo de contacto del desarrollador para su revisión y atención.

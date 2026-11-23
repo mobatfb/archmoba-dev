@@ -43,6 +43,7 @@ public final class MainActivity extends Activity {
     private PlayerArtwork view;
     private PromoBanner promotion;
     private TextView shareButton;
+    private TextView legalButton;
 
     @Override public void onCreate(Bundle bundle) {
         super.onCreate(bundle);
@@ -85,6 +86,33 @@ public final class MainActivity extends Activity {
         sharePosition.topMargin = dp(8);
         layers.addView(shareButton, sharePosition);
         shareButton.setOnClickListener(clicked -> ApkSharer.share(this, shareButton));
+
+        // Botón legal abajo a la izquierda; el anuncio continúa a la derecha.
+        legalButton = new TextView(this);
+        legalButton.setText("Aviso legal");
+        legalButton.setContentDescription("Abrir aviso legal de Himnos Policiales");
+        legalButton.setTextColor(Color.WHITE);
+        legalButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+        legalButton.setGravity(Gravity.CENTER);
+        legalButton.setTypeface(android.graphics.Typeface.create(
+                "sans-serif-medium", android.graphics.Typeface.BOLD));
+        legalButton.setPadding(dp(13), dp(8), dp(13), dp(8));
+        legalButton.setMinHeight(dp(48));
+        GradientDrawable legalBackground = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xF0145187, 0xF004254D});
+        legalBackground.setCornerRadius(dp(13));
+        legalBackground.setStroke(dp(1), 0xFFE0BA5C);
+        legalButton.setBackground(legalBackground);
+        legalButton.setElevation(dp(4));
+        FrameLayout.LayoutParams legalPosition = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.START);
+        legalPosition.leftMargin = dp(10);
+        legalPosition.bottomMargin = dp(8);
+        layers.addView(legalButton, legalPosition);
+        legalButton.setOnClickListener(clicked -> LegalNoticeDialog.show(this));
         setContentView(layers);
     }
 
