@@ -1,3 +1,18 @@
+## FUTUREO STREAM v2.2.1 - MANDO WEB REPARADO
+
+**[Descargar ZIP completo v2.2.1 (Python + web)](instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_1_COMPLETO.zip)** |
+[Anfitrion v2.2.1](../ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_2_1.py) |
+[Manual de reparacion](../ANFITRION/README_STREAM_V2_2_1.md).
+
+**Correccion de compatibilidad:** v2.2.1 permite que el mando web se
+conecte por rutas WebSocket antiguas (incluyendo rutas con query),
+conservando verificacion de hello, cola y mandos P1-P8.
+La ruta /stream continua siendo publica y solo lectura para TODOS
+los espectadores sin necesitar conectarse como jugador.
+La web incluye diagnostico si control.php no logra descifrar la
+palanca por falta de la frase privada en el hosting.
+NO publicar private/FRASE_CIFRADO.php en GitHub.
+
 ## FUTUREO STREAM v2.2 - Imagen publica con MENOS RETRASO (NUEVO)
 
 **[Descargar anfitrion + WEB en ZIP v2.2](instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_0_COMPLETO.zip)** |
