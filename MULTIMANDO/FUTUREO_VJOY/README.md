@@ -1,3 +1,18 @@
+## IMPORTANTE - Reparacion web v2.2.2 SIN SOBRESCRIBIR CIFRADO
+
+**[PARCHE WEB v2.2.2 SEGURO](instalador_windows/MULTIMANDO_WEB_v2_2_2_PARChe_SIN_PRIVADOS.zip)** |
+**[ZIP COMPLETO v2.2.2 SEGURO](instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_2_SEGURO.zip)** |
+[Manual para recuperar el mando](../ANFITRION/README_STREAM_V2_2_2.md).
+
+NO USAR los ZIP anteriores v2.1/v2.2/v2.2.1 para actualizar
+un hosting que ya tiene claves privadas: los paquetes antiguos incluian
+`WEB/private/palanca.enc` y podian reemplazar la palanca cifrada
+que correspondia a la clave privada del sitio.
+Los paquetes v2.2.2 NO incluyen `WEB/private/` ni `WEB/control.php`.
+Si CONECTAR dejo de funcionar y la imagen si aparece, hay que
+restaurar la pareja original de archivos cifrados desde respaldo
+del hosting. El repositorio no contiene la clave secreta de tu sitio.
+
 ## FUTUREO STREAM v2.2.1 - MANDO WEB REPARADO
 
 **[Descargar ZIP completo v2.2.1 (Python + web)](instalador_windows/MULTIMANDO_FUTUREO_STREAM_v2_2_1_COMPLETO.zip)** |
