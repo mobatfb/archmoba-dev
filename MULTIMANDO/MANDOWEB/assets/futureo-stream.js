@@ -99,7 +99,8 @@
     if (previewUrl) URL.revokeObjectURL(previewUrl);
   }, {once: true});
   if (settings) settings.addEventListener("click", () => {
-    root.classList.toggle("futureo-stream-expanded");
+    const expanded = root.classList.toggle("futureo-stream-expanded");
+    settings.textContent = expanded ? "REDUCIR" : "AMPLIAR";
   });
   connect();
 })();
