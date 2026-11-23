@@ -43,7 +43,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
+from futureo_stream import FrameHub, ScreenBroadcaster, list_sources, stream_selftest
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 DEFAULT_PORT = 8766  # No interfiere con el puerto 8765 de KOFMULTI.
 DEFAULT_SECONDS = 600
@@ -74,7 +75,7 @@ WIRE_CODES = {
     "t": "start", "s": "select",
 }
 # Dependencias de usuario; el controlador de kernel vJoy se instala aparte.
-PYTHON_DEPS = (("websockets", "websockets"), ("pygame", "pygame"))
+PYTHON_DEPS = (("websockets", "websockets"), ("pygame", "pygame"), ("mss", "mss"), ("PIL", "Pillow"))
 WINGET_CLOUDFLARED = "Cloudflare.cloudflared"
 CLOUDFLARED_RELEASE = "https://github.com/cloudflare/cloudflared/releases/latest/download/"
 
@@ -1762,6 +1763,7 @@ class MultimandoServer:
         self._last_state: dict[int, tuple[tuple[int, int, int], float]] = {}
         self._last_roster_at = 0.0
         self._last_device_heartbeat_error = 0.0
+        self.stream_hub = FrameHub()
 
     def start(self) -> None:
         try:
@@ -1828,6 +1830,15 @@ class MultimandoServer:
                 self._last_roster_at = now
 
     def _handle(self, websocket: Any) -> None:
+        # Canal publico, unidireccional: no requiere nombre, hello, turno ni cola.
+        # Usa el MISMO tunel Cloudflare que / (puerto de la sala).
+        path = getattr(getattr(websocket, "request", None), "path", "/")
+        if path == "/stream":
+            self.stream_hub.spectator(websocket, self.stop_event)
+            return
+        if path not in ("/", ""):
+            websocket.close(code=1008, reason="Ruta no permitida")
+            return
         guest = None
         try:
             raw = websocket.recv(timeout=12)
@@ -2085,6 +2096,9 @@ class MultimandoServer:
             return False
 
     def stop(self) -> None:
+        self.stream_hub.set_active(False)
+        with self.stream_hub.cv:
+            self.stream_hub.cv.notify_all()
         self.stop_event.set()
         if self.server:
             try: self.server.shutdown()
@@ -2111,14 +2125,17 @@ class MultimandoGUI:
         self.tk, self.ttk, self.messagebox = tk, ttk, messagebox
         self.root = tk.Tk()
         self.root.title("MULTIMANDO | ANFITRION v" + VERSION)
-        self.root.geometry("1120x760")
-        self.root.minsize(850, 590)
+        self.root.geometry("1190x900")
+        self.root.minsize(850, 680)
         self.root.configure(bg="#0b1424")
         self.events: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=250)
         self.api_jobs: queue.Queue[str | None] = queue.Queue()
         self.api_thread = threading.Thread(target=self._api_loop, daemon=True, name="MULTIMANDO-API")
         self.api_thread.start()
         self.server: MultimandoServer | None = None
+        self.streamer: ScreenBroadcaster | None = None
+        self.stream_sources: dict[str, tuple[str, int]] = {}
+        self._stream_photo = None
         self.tunnel: subprocess.Popen | None = None
         self.public_address = ""
         self.api_published = ""
@@ -2220,6 +2237,7 @@ class MultimandoGUI:
         ttk.Label(right_actions, textvariable=self.counter_var).pack(side="left")
         ttk.Button(right_actions, text="COPIAR ENLACE", command=self._copy).pack(side="right", padx=3)
         ttk.Button(right_actions, text="REENVIAR API", command=self._resend).pack(side="right", padx=3)
+        self._build_stream_panel(body)
 
         panel = ttk.Frame(body)
         panel.pack(fill="both", expand=True, pady=(4, 7))
@@ -2265,6 +2283,94 @@ class MultimandoGUI:
         self._log("Requiere FUTUREO VJOY v0.8.4 abierto e iniciado y Python websockets/pygame.")
         self._log("Selecciona 1-8 jugadores y pulsa APLICAR EN VIVO incluso con sala abierta.")
         self._log("CONFIGURAR FUTUREO: REMOTO o CONTROLADO + mando fisico por puesto.")
+
+    def _build_stream_panel(self, parent: Any) -> None:
+        tk, ttk = self.tk, self.ttk
+        frame = ttk.LabelFrame(parent, text="TRANSMISION PUBLICA - visible sin conectarse y tambien en cola")
+        frame.pack(fill="x", pady=(5, 6))
+        left = ttk.Frame(frame)
+        left.pack(side="left", fill="both", expand=True, padx=8, pady=6)
+        self.stream_source_var = tk.StringVar(value="Selecciona una fuente")
+        self.stream_size_var = tk.StringVar(value="480x270")
+        self.stream_fps_var = tk.StringVar(value="5")
+        self.stream_quality_var = tk.StringVar(value="55")
+        self.stream_status_var = tk.StringVar(value="Sin transmitir; espectadores reciben imagen automaticamente.")
+        source_row = ttk.Frame(left)
+        source_row.pack(fill="x", pady=2)
+        ttk.Label(source_row, text="Ventana o pantalla:").pack(side="left", padx=(0, 5))
+        self.stream_source_select = ttk.Combobox(
+            source_row, textvariable=self.stream_source_var, width=49, state="readonly")
+        self.stream_source_select.pack(side="left", fill="x", expand=True)
+        ttk.Button(source_row, text="BUSCAR", command=self._stream_refresh_sources).pack(side="left", padx=5)
+        options = ttk.Frame(left)
+        options.pack(fill="x", pady=4)
+        for label, var, choices in (
+            ("Tamano", self.stream_size_var, ("320x180", "480x270", "640x360")),
+            ("FPS", self.stream_fps_var, ("1", "2", "5", "10", "15")),
+            ("Calidad JPEG", self.stream_quality_var, ("30", "40", "55", "70", "80"))):
+            ttk.Label(options, text=label + ":").pack(side="left", padx=(5, 4))
+            ttk.Combobox(options, textvariable=var, values=choices,
+                         state="readonly", width=9 if label == "Tamano" else 4).pack(side="left")
+        buttons = ttk.Frame(left)
+        buttons.pack(fill="x", pady=3)
+        ttk.Button(buttons, text="INICIAR TRANSMISION", command=self._stream_start).pack(side="left", padx=4)
+        ttk.Button(buttons, text="DETENER", command=self._stream_stop).pack(side="left", padx=4)
+        ttk.Label(buttons, textvariable=self.stream_status_var, style="Muted.TLabel").pack(side="left", padx=8)
+        self.stream_preview_label = tk.Label(
+            frame, text="VISTA PREVIA\\nSin imagen", width=31, height=7,
+            bg="#122745", fg="#d1ecff", relief="groove")
+        self.stream_preview_label.pack(side="right", padx=8, pady=6)
+        try:
+            self._stream_refresh_sources()
+        except Exception as exc:
+            self.stream_status_var.set("Error al enumerar fuentes: " + str(exc)[:90])
+
+    def _stream_refresh_sources(self) -> None:
+        sources = list_sources()
+        self.stream_sources = {}
+        labels = []
+        for label, kind, value in sources:
+            name = label
+            suffix = 2
+            while name in self.stream_sources:
+                name = f"{label} ({suffix})"
+                suffix += 1
+            self.stream_sources[name] = (kind, value)
+            labels.append(name)
+        self.stream_source_select.configure(values=labels)
+        if self.stream_source_var.get() not in self.stream_sources:
+            self.stream_source_var.set(labels[0] if labels else "No hay ventanas visibles")
+
+    def _stream_start(self) -> None:
+        if self.server is None:
+            self.messagebox.showwarning("TRANSMISION", "Primero pulsa ABRIR SALA.")
+            return
+        source = self.stream_sources.get(self.stream_source_var.get())
+        if not source:
+            self.messagebox.showwarning("TRANSMISION", "Selecciona una ventana o pantalla.")
+            return
+        try:
+            width, height = map(int, self.stream_size_var.get().split("x"))
+            fps, quality = int(self.stream_fps_var.get()), int(self.stream_quality_var.get())
+            if self.streamer and self.streamer.running:
+                self.messagebox.showinfo("TRANSMISION", "Deten la transmision antes de cambiar.")
+                return
+            self.streamer = ScreenBroadcaster(
+                self.server.stream_hub,
+                preview=lambda jpeg: self.notify("stream_preview", jpeg),
+                notice=lambda message: self.notify("stream_notice", message))
+            self.streamer.start(source[0], source[1], (width, height), fps, quality)
+            self.stream_status_var.set(f"EN VIVO | {width}x{height} | {fps} FPS | JPEG {quality}")
+            self._log("Transmision publica iniciada; espectadores anonimos y en cola incluidos")
+        except Exception as exc:
+            self.messagebox.showerror("No se pudo capturar", str(exc))
+
+    def _stream_stop(self) -> None:
+        if self.streamer:
+            self.streamer.stop()
+        self.stream_status_var.set("Transmision detenida")
+        self.stream_preview_label.configure(image="", text="VISTA PREVIA\\nSin imagen")
+        self._stream_photo = None
 
     def _log(self, message: str) -> None:
         self.log.configure(state="normal")
@@ -2859,6 +2965,19 @@ class MultimandoGUI:
                 self._log(str(payload))
             elif kind == "roster":
                 self._roster(payload)
+            elif kind == "stream_notice":
+                self.stream_status_var.set(str(payload))
+                self._log(str(payload))
+            elif kind == "stream_preview":
+                try:
+                    from PIL import Image, ImageTk
+                    import io
+                    im = Image.open(io.BytesIO(payload))
+                    im.thumbnail((240, 135), Image.Resampling.BILINEAR)
+                    self._stream_photo = ImageTk.PhotoImage(im, master=self.root)
+                    self.stream_preview_label.configure(image=self._stream_photo, text="")
+                except Exception:
+                    pass
             elif kind == "api":
                 self.api_var.set(str(payload))
             elif kind == 'identify_complete':
@@ -2923,6 +3042,7 @@ class MultimandoGUI:
             self.root.after(120, self._drain)
 
     def _stop_server(self) -> None:
+        self._stream_stop()
         if self._capacity_busy:
             self._log("El cambio de capacidad sigue en curso. Espera su finalizacion.")
             return
@@ -3240,6 +3360,7 @@ def selftest() -> None:
         raise AssertionError('Se aceptaron nombres de 11 caracteres')
     room_names.close()
     selftest_live_capacity()
+    stream_selftest()
     print("OK: MULTIMANDO FUTUREO 1-8, 3s cuenta atras, 10s activacion, FIFO y cambios de capacidad")
 
 
