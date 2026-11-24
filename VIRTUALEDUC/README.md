@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.21
+# VIRTUALEDUC v0.1.22
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -94,6 +94,9 @@ El botón Cambiar contraseña abre el formulario dentro del flotante Mi perfil, 
 
 ## Actualización a v0.1.21
 Mis certificados se ubica debajo de Mi progreso en Aprendizaje para estudiantes y debajo de Mis cursos en Capacitaciones para docentes. Aplicar sobre v0.1.20; no requiere SQL.
+
+## Actualización a v0.1.22
+El menú de administradores y subadministradores ordena Inicio, Capacitaciones y Administración; Configuración permanece disponible únicamente para administradores, seguida de Mi cuenta. Se conservan los menús de docentes y estudiantes y los permisos de todos los roles. Aplicar sobre v0.1.21; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
