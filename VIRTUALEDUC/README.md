@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.20
+# VIRTUALEDUC v0.1.21
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -91,6 +91,9 @@ La tabla de Usuarios ahora muestra la foto o las iniciales de cada cuenta. Para 
 
 ## Actualización a v0.1.20
 El botón Cambiar contraseña abre el formulario dentro del flotante Mi perfil, con opción Volver al perfil y las mismas validaciones de seguridad en PHP. El formulario se comparte con Mi cuenta. Se mantienen las miniaturas de 60 × 60 píxeles en JPEG al 50% de calidad, con acceso limitado al listado autorizado de cada gestor; la foto completa solo se entrega al propietario. Parche acumulativo sobre v0.1.18 o v0.1.19, sin SQL. Si falla la validación de contraseña, el aviso se muestra en Mi cuenta. El menú Mi cuenta de docentes y estudiantes incorpora Mis certificados, con un módulo PHP independiente y estado vacío hasta implementar la emisión.
+
+## Actualización a v0.1.21
+Mis certificados se ubica debajo de Mi progreso en Aprendizaje para estudiantes y debajo de Mis cursos en Capacitaciones para docentes. Aplicar sobre v0.1.20; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
