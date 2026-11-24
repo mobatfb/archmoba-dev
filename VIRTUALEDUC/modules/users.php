@@ -30,6 +30,7 @@ $visible=count(array_filter($users,$matches));
   <div class="ve-section-head ve-users-head"><h1>Usuarios</h1><?php creation_dialog($u,'user'); ?></div>
   <div class="ve-user-summary" tabindex="0" aria-label="Resumen de usuarios visibles">
     <?php foreach($roles as $r):?><span><?=h($labels[$r])?>: <strong><?=$counts[$r]??0?></strong></span><?php endforeach;?>
+    <?php if($u['role']==='admin' && ($unassigned=count(array_filter($users,fn($x)=>!valid_user_role((string)$x['role']))))):?><span>Sin rol: <strong><?=$unassigned?></strong></span><?php endif;?>
     <span>Total: <strong><?=count($users)?></strong></span>
   </div>
   <form class="ve-users-filters" method="get" action="index.php" role="search" aria-label="Buscar usuarios">
@@ -40,8 +41,9 @@ $visible=count(array_filter($users,$matches));
     <noscript><button type="submit">Buscar</button></noscript>
   </form>
   <p class="muted ve-users-results" role="status" aria-live="polite">Mostrando <strong data-ve-user-count><?=$visible?></strong> de <?=count($users)?> usuarios</p>
-  <div class="ve-table" tabindex="0" aria-label="Tabla de usuarios"><table><thead><tr><th>Usuario</th><th>Nombres</th><th>Apellidos</th><th>Correo</th><th>Rol</th><th>Acción</th></tr></thead><tbody><?php foreach($users as $x):?><tr data-ve-user-role="<?=h($x['role'])?>" <?=$matches($x)?'':'hidden'?>><td><?=h($x['username'])?></td><td><?=h($x['first_names'])?></td><td><?=h($x['last_names'])?></td><td><?=h($x['email'])?></td><td><span class="tag"><?=h(role_label($x['role']))?></span></td><td><button type="button" class="ve-quiet" data-ve-edit-user="<?=h($x['id'])?>" data-ve-open="edit-user-dialog" aria-haspopup="dialog" aria-controls="edit-user-dialog">Editar</button></td></tr><?php endforeach;?></tbody></table></div>
+  <div class="ve-table" tabindex="0" aria-label="Tabla de usuarios"><table><thead><tr><th>Usuario</th><th>Nombres</th><th>Apellidos</th><th>Correo</th><th>Rol</th><th>Acción</th></tr></thead><tbody><?php foreach($users as $x):?><tr data-ve-user-role="<?=h($x['role'])?>" <?=$matches($x)?'':'hidden'?>><td><?=h($x['username'])?></td><td><?=h($x['first_names'])?></td><td><?=h($x['last_names'])?></td><td><?=h($x['email'])?></td><td><span class="tag"><?=h(role_label($x['role']))?></span></td><td><?php if($u['role']==='admin' && !valid_user_role((string)$x['role'])):?><button type="button" data-ve-repair-user="<?=h($x['id'])?>" data-ve-open="repair-user-role-dialog">Asignar rol</button><?php else:?><button type="button" class="ve-quiet" data-ve-edit-user="<?=h($x['id'])?>" data-ve-open="edit-user-dialog" aria-haspopup="dialog" aria-controls="edit-user-dialog">Editar</button><?php endif;?></td></tr><?php endforeach;?></tbody></table></div>
   <p class="muted" data-ve-users-empty <?=$visible?'hidden':''?>><?=$users?'No se encontraron usuarios con los filtros seleccionados.':'No hay usuarios registrados.'?></p>
   <?php require __DIR__.'/user_edit.php'; ?>
+  <?php if($u['role']==='admin') require __DIR__.'/user_role_repair.php'; ?>
 </section>
 <script src="modules/users.js?v=<?=h(VE_VERSION)?>" defer></script>
