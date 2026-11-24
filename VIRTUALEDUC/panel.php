@@ -11,6 +11,7 @@ function navigation_sections(array $u): array {
         $sections['Capacitaciones']=['courses'=>$u['role']==='teacher'?'Mis cursos':'Todos los cursos'];
         if (is_manager($u)) $sections['Capacitaciones']['enrollments']='Matrículas';
     }
+    if ($u['role']==='admin') $sections['Configuración']=['institution'=>'Configuración institucional'];
     $sections['Mi cuenta']=['account'=>'Perfil y contraseña'];
     return $sections;
 }
@@ -22,26 +23,7 @@ function allowed_pages(array $u): array {
 }
 
 function render_navigation(array $u,string $page): void {
-    $icons=['Inicio'=>'⌂','Administración'=>'♙','Capacitaciones'=>'▤','Aprendizaje'=>'▤','Mi cuenta'=>'⚙'];
-    ?>
-    <aside class="ve-sidebar">
-      <details class="ve-menu" open>
-        <summary class="ve-menu-title">Menú de navegación</summary>
-        <div class="ve-person"><strong><?=h($u['name'])?></strong><small><?=h(role_label($u['role']))?></small></div>
-        <nav aria-label="Navegación principal">
-        <?php foreach(navigation_sections($u) as $section=>$items): ?>
-          <details class="ve-group" <?=array_key_exists($page,$items)?'open':''?>>
-            <summary><span aria-hidden="true"><?=h($icons[$section] ?? '•')?></span><?=h($section)?></summary>
-            <?php foreach($items as $key=>$label): ?>
-              <a href="?page=<?=h($key)?>" <?=$page===$key?'class="ve-active" aria-current="page"':''?>><?=h($label)?></a>
-            <?php endforeach;?>
-          </details>
-        <?php endforeach;?>
-        </nav>
-        <form class="ve-signout" method="post"><?php action('logout');?><button>Salir de la cuenta</button></form>
-      </details>
-    </aside>
-    <?php
+    require __DIR__.'/partials/sidebar.php';
 }
 
 function panel_styles(): void { ?>
@@ -57,7 +39,7 @@ function panel_styles(): void { ?>
 <?php }
 
 function render_panel(array $u,string $page,array $courses,array $users): void {
-    $modules=['home'=>'home.php','users'=>'users.php','courses'=>'courses.php','enrollments'=>'enrollments.php','progress'=>'progress.php','account'=>'account.php'];
+    $modules=['home'=>'home.php','users'=>'users.php','courses'=>'courses.php','enrollments'=>'enrollments.php','progress'=>'progress.php','account'=>'account.php','institution'=>'institution_settings.php'];
     if (!isset($modules[$page]) || !in_array($page,allowed_pages($u),true)) { http_response_code(403); exit('Sección no autorizada.'); }
     require __DIR__.'/modules/'.$modules[$page];
 }
