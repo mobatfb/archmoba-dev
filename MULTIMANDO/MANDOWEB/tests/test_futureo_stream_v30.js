@@ -67,6 +67,7 @@ function pack(kind, seq, base, count, payload, width = 320, height = 180) {
   b.set([70, 83, 51, 48], 0);
   const view = new DataView(out);
   view.setUint8(4, kind);
+  view.setUint8(5, 2); // SMART STREAM
   view.setUint16(6, width, false);
   view.setUint16(8, height, false);
   view.setUint32(10, seq, false);
