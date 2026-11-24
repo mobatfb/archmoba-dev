@@ -3744,7 +3744,7 @@ def selftest() -> None:
     selftest_live_capacity()
     # Reset desde GUI conserva jugador, turno y orden de la cola.
     reset_room = Room(DummyPads(2), clock=lambda: now[0])
-    reset_guest = reset_room.register("Diagnostico")
+    reset_guest = reset_room.register("Diag")
     reset_room._advance(now[0] + COUNTDOWN_SECONDS)
     reset_room.input(reset_guest.uid, "de", True)
     assert "de" in reset_room.device.held[1]
