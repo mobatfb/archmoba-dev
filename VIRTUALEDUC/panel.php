@@ -5,10 +5,13 @@ if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 
 function navigation_sections(array $u): array {
     $sections=['Inicio'=>['home'=>'Panel principal']];
-    if (is_manager($u)) $sections['Administración']=['users'=>'Usuarios','create_user'=>'Crear usuario'];
+    if (is_manager($u)) {
+        $sections['Administración']=['users'=>'Todos los usuarios'];
+        foreach(creatable_roles($u) as $role) $sections['Administración']['users_'.$role]=['admin'=>'Administradores','subadmin'=>'Subadministradores','teacher'=>'Docentes','student'=>'Estudiantes'][$role];
+    }
     if ($u['role']==='student') $sections['Aprendizaje']=['courses'=>'Mis capacitaciones','progress'=>'Mi progreso'];
     else {
-        $sections['Capacitaciones']=['courses'=>$u['role']==='teacher'?'Mis cursos':'Todos los cursos','create_course'=>'Crear capacitación'];
+        $sections['Capacitaciones']=['courses'=>$u['role']==='teacher'?'Mis cursos':'Todos los cursos'];
         if (is_manager($u)) $sections['Capacitaciones']['enrollments']='Matrículas';
     }
     $sections['Mi cuenta']=['account'=>'Perfil y contraseña'];
@@ -63,17 +66,16 @@ function render_panel(array $u,string $page,array $courses,array $users): void {
       <div class="ve-stat">Cursos publicados<strong><?=count(array_filter($courses,fn($c)=>(int)$c['published']===1))?></strong></div>
       <?php if(is_manager($u)):?><div class="ve-stat">Usuarios visibles<strong><?=count($users)?></strong></div><?php endif;?></div>
       <section><h2>Accesos rápidos</h2><div class="grid"><?php foreach(navigation_sections($u) as $items):foreach($items as $key=>$label):if($key!=='home'):?><a class="btn" href="?page=<?=h($key)?>"><?=h($label)?></a><?php endif;endforeach;endforeach;?></div></section>
-    <?php } elseif ($page==='users') { ?>
-      <section><h1>Usuarios registrados</h1><p class="muted"><?=count($users)?> usuarios disponibles según tu rol.</p><p><a class="btn" href="?page=create_user">+ Crear usuario</a></p><div class="ve-table"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th></tr></thead><tbody><?php foreach($users as $x):?><tr><td><?=h($x['name'])?></td><td><?=h($x['email'])?></td><td><span class="tag"><?=h(role_label($x['role']))?></span></td></tr><?php endforeach;?></tbody></table></div><?php if(!$users):?><p class="muted">No hay usuarios registrados.</p><?php endif;?></section>
-    <?php } elseif ($page==='create_user') { ?>
-      <section class="ve-form"><h1>Crear usuario</h1><form method="post"><?php action('user');?><label>Nombre<input name="name" required maxlength="150"></label><label>Correo<input type="email" name="email" required maxlength="190"></label><label>Contraseña (mínimo 12 caracteres)<input type="password" name="password" required minlength="12" autocomplete="new-password"></label><label>Rol<select name="role" required><?php foreach(creatable_roles($u) as $role):?><option value="<?=h($role)?>" <?=$role==='student'?'selected':''?>><?=h(role_label($role))?></option><?php endforeach;?></select></label><button>Crear usuario</button></form></section>
-    <?php } elseif ($page==='create_course') { ?>
-      <section class="ve-form"><h1>Crear capacitación</h1><form method="post"><?php action('course');?><label>Título<input name="title" required maxlength="180"></label><label>Descripción<textarea name="description" required></textarea></label><?php if(is_manager($u)):?><label>Responsable<select name="teacher_id" required><?php foreach(available_teachers($u) as $x):?><option value="<?=h($x['id'])?>"><?=h($x['name'])?></option><?php endforeach;?></select></label><?php endif;?><button>Crear curso</button></form></section>
+    <?php } elseif ($page==='users'||str_starts_with($page,'users_')) { 
+      $role=$page==='users'?'':substr($page,6); $visible=$role?array_values(array_filter($users,fn($x)=>$x['role']===$role)):$users; ?>
+      <section><div class="ve-section-head"><h1><?=$role?h(['admin'=>'Administradores','subadmin'=>'Subadministradores','teacher'=>'Docentes','student'=>'Estudiantes'][$role]):'Usuarios registrados'?></h1><?php if($role) creation_dialog($u,'user',$role); ?></div>
+      <?php if(!$role):?><div class="grid"><?php foreach(creatable_roles($u) as $r):?><article class="ve-role-card"><a href="?page=users_<?=h($r)?>"><?=h(role_label($r))?> · <?=count(array_filter($users,fn($x)=>$x['role']===$r))?></a><?php creation_dialog($u,'user',$r);?></article><?php endforeach;?></div><?php endif;?>
+      <p class="muted"><?=count($visible)?> usuarios disponibles.</p><div class="ve-table"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th></tr></thead><tbody><?php foreach($visible as $x):?><tr><td><?=h($x['name'])?></td><td><?=h($x['email'])?></td><td><span class="tag"><?=h(role_label($x['role']))?></span></td></tr><?php endforeach;?></tbody></table></div><?php if(!$visible):?><p class="muted">No hay usuarios registrados.</p><?php endif;?></section>
     <?php } elseif ($page==='courses') { ?>
-      <h1><?=$u['role']==='student'?'Mis capacitaciones':'Cursos disponibles'?></h1><?php if($u['role']!=='student'):?><p><a class="btn" href="?page=create_course">+ Crear capacitación</a></p><?php endif;?>
+      <div class="ve-section-head"><h1><?=$u['role']==='student'?'Mis capacitaciones':'Cursos disponibles'?></h1><?php if($u['role']!=='student') creation_dialog($u,'course'); ?></div>
       <div class="grid"><?php foreach($courses as $x):?><article><span class="tag"><?=$x['published']?'Publicado':'Borrador'?></span><h3 class="ve-card-title" style="margin-top:12px"><?=h($x['title'])?></h3><p class="ve-course-text"><?=h($x['description'])?></p><a class="btn" href="?course=<?=h($x['id'])?>">Abrir curso</a></article><?php endforeach;?></div><?php if(!$courses):?><p class="muted">Todavía no hay cursos disponibles.</p><?php endif;?>
     <?php } elseif ($page==='enrollments') { ?>
-      <section><h1>Matrículas</h1><p>Selecciona un curso para matricular estudiantes.</p><div class="ve-table"><table><thead><tr><th>Curso</th><th>Estudiantes matriculados</th><th>Acción</th></tr></thead><tbody><?php foreach($courses as $x):?><tr><td><?=h($x['title'])?></td><td><?=count_rows('SELECT COUNT(*) FROM ve_enrollments WHERE course_id=?',[$x['id']])?></td><td><a class="btn" href="?course=<?=h($x['id'])?>">Gestionar</a></td></tr><?php endforeach;?></tbody></table></div><?php if(!$courses):?><p class="muted">Crea un curso para comenzar.</p><?php endif;?></section>
+      <section><div class="ve-section-head"><h1>Matrículas</h1><?php creation_dialog($u,'enroll'); ?></div><p>Selecciona un curso para matricular estudiantes.</p><div class="ve-table"><table><thead><tr><th>ID</th><th>Curso</th><th>Estudiantes matriculados</th><th>Acción</th></tr></thead><tbody><?php foreach($courses as $x):?><tr><td><?=h($x['id'])?></td><td><?=h($x['title'])?></td><td><?=count_rows('SELECT COUNT(*) FROM ve_enrollments WHERE course_id=?',[$x['id']])?></td><td><a class="btn" href="?course=<?=h($x['id'])?>">Gestionar</a></td></tr><?php endforeach;?></tbody></table></div><?php if(!$courses):?><p class="muted">Crea un curso para comenzar.</p><?php endif;?></section>
     <?php } elseif ($page==='progress') { ?>
       <h1>Mi progreso académico</h1><div class="grid"><?php foreach($courses as $x):$total=count_rows('SELECT COUNT(*) FROM ve_lessons WHERE course_id=?',[$x['id']]);$completed=count_rows('SELECT COUNT(*) FROM ve_progress p JOIN ve_lessons l ON l.id=p.lesson_id WHERE l.course_id=? AND p.student_id=?',[$x['id'],$u['id']]);?><article><h2 class="ve-card-title"><?=h($x['title'])?></h2><p><?=$completed?> de <?=$total?> lecciones completadas</p><progress value="<?=$completed?>" max="<?=max(1,$total)?>"></progress><p><a class="btn" href="?course=<?=h($x['id'])?>">Continuar curso</a></p></article><?php endforeach;?></div><?php if(!$courses):?><p class="muted">Aún no tienes cursos publicados y matriculados.</p><?php endif;?>
     <?php } elseif ($page==='account') { ?>
