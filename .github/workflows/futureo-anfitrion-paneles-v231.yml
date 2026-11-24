@@ -5,7 +5,7 @@ on:
       - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_3_1.py'
       - 'MULTIMANDO/ANFITRION/futureo_stream_v22.py'
       - 'MULTIMANDO/ANFITRION/tests/test_gui_panels_v231.py'
-      - 'MULTIMANDO/ANFITRION/README_PANELES_V2_3_0.md'
+      - 'MULTIMANDO/ANFITRION/README_PANELES_V2_3_1.md'
       - 'MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_3_1.py'
       - '.github/workflows/futureo-anfitrion-paneles-v231.yml'
   workflow_dispatch:
@@ -52,7 +52,7 @@ jobs:
           with ZipFile(out, 'w', ZIP_DEFLATED, compresslevel=9) as z:
               for name in files:
                   z.write(source / name, name)
-              z.write(source / 'README_PANELES_V2_3_0.md', 'LEEME_PRIMERO.md')
+              z.write(source / 'README_PANELES_V2_3_1.md', 'LEEME_PRIMERO.md')
           with ZipFile(out) as z:
               assert z.testzip() is None
               assert set(files).issubset(set(z.namelist()))
