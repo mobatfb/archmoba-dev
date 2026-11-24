@@ -1,3 +1,21 @@
+## RECUPERACION DEL CONTROL: V0.8.5 / PY V2.4.1 EN REVISION
+
+**IMPORTANTE:** se reporto un comportamiento anormal en los mandos tras
+instalar la correccion anti-deriva v0.8.5 y anfitrion v2.4.1.
+La causa todavia NO esta confirmada. Suspendemos su recomendacion
+hasta verificar el HID real y recuperamos las versiones anteriores.
+
+- [FUTUREO VJOY v0.8.4 original](instalador_windows/FUTUREO_VJOY_PORTABLE_HOST_v0_8_4_WIN64.exe).
+- [Anfitrion v2.4.0 FULL/DELTA/SMART](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_4_0_3_STREAMS.zip).
+- [Anfitrion v2.3.1 FULL JPEG anterior](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_3_1_PANELES.zip).
+- [Procedimiento de reversion y diagnostico](../ANFITRION/README_ROLLBACK_ANTI_DERIVA.md).
+
+No ejecutes v0.8.4 y v0.8.5 al mismo tiempo. La web no requiere cambios
+para esta recuperacion. Pruebas automatizadas de versiones anteriores no
+equivalen a validacion del comportamiento de joy.cpl en Windows con drivers.
+
+---
+
 ## CORRECCION DE DERIVA DERECHA - FUTUREO VJOY v0.8.5 + PY v2.4.1
 
 **[DESCARGAR ZIP COMPLETO ANTIBLOQUEO](instalador_windows/FUTUREO_MULTIMANDO_ANTI_DERIVA_v2_4_1.zip)** (incluye EXE Windows, Python, motores FULL/DELTA/SMART y manual) |
