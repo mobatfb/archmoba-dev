@@ -190,8 +190,9 @@ class SmartFrameHub(FrameHub):
             if kind == K_FULL:
                 self.base_seq = seq
             base_seq = self.base_seq
+            flags = STREAM_MODES.index(self.meta.get("mode", "full"))
             h3 = HEADER_V3.pack(
-                MAGIC_V3, kind, 0, width, height, seq, base_seq,
+                MAGIC_V3, kind, flags, width, height, seq, base_seq,
                 stamp, min(65535, max(0, int(processing_ms))), fps, count)
             v3 = h3 + body
             if len(v3) > MAX_V3_PACKET:
