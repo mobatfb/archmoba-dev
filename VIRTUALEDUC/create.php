@@ -1,0 +1,158 @@
+<?php
+declare(strict_types=1);
+if (!defined('VE_VERSION')) { http_response_code(404); exit; }
+
+// Shared creation rules for individual forms, CSV templates and imports.
+function creation_spec(?array $u, string $kind, string $role = '', int $course = 0): array {
+    if (!$u) throw new DomainException('Inicia sesión.');
+    if (($kind!=='user' && $role!=='') || (in_array($kind,['user','course'],true) && $course!==0)) throw new DomainException('Contexto inválido.');
+    if ($kind === 'user' && is_manager($u) && in_array($role,creatable_roles($u),true)) {
+        return ['title'=>'Crear '.role_label($role),'headers'=>['nombre','correo','contrasena'],'return'=>'page=users_'.$role,'limit'=>100];
+    }
+    if ($kind === 'course' && in_array($u['role'],['admin','subadmin','teacher'],true)) {
+        return ['title'=>'Crear capacitación','headers'=>is_manager($u)?['titulo','descripcion','correo_responsable']:['titulo','descripcion'],'return'=>'page=courses','limit'=>500];
+    }
+    if ($kind === 'lesson' && $course>0 && $u['role']!=='student' && course_for($course,$u)) {
+        return ['title'=>'Crear lección','headers'=>['titulo','contenido'],'return'=>'course='.$course,'limit'=>500];
+    }
+    if ($kind === 'enroll' && is_manager($u) && ($course===0 || course_for($course,$u))) {
+        return ['title'=>'Crear matrícula','headers'=>$course?['correo_estudiante']:['id_curso','correo_estudiante'],'return'=>$course?'course='.$course:'page=enrollments','limit'=>500];
+    }
+    throw new DomainException('No tienes permiso para crear estos registros.');
+}
+function creation_context(array $data): array {
+    $kind=$data['kind']??''; $role=$data['target_role']??'';
+    $course=filter_var($data['course_id']??0,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]);
+    if (!is_string($kind)||!is_string($role)||$course===false) throw new DomainException('Contexto inválido.');
+    return [$kind,$role,$course];
+}
+function creation_template(?array $u): never {
+    [$kind,$role,$course]=creation_context($_GET);
+    $spec=creation_spec($u,$kind,$role,$course);
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="plantilla_'.$kind.($role?'_'.$role:'').'.csv"');
+    echo "\xEF\xBB\xBF";
+    $out=fopen('php://output','wb');
+    fputcsv($out,$spec['headers'],';','"',''); fclose($out); exit;
+}
+function csv_rows(array $headers,int $limit): array {
+    $file=$_FILES['csv']??null;
+    if (!is_array($file)||($file['error']??null)!==UPLOAD_ERR_OK||!is_uploaded_file($file['tmp_name']??'')||($file['size']??0)>2097152) throw new DomainException('Selecciona un CSV válido de máximo 2 MB.');
+    $f=fopen($file['tmp_name'],'rb'); if (!$f) throw new DomainException('No se pudo leer el archivo.');
+    try {
+        $head=fgetcsv($f,0,';','"','');
+        if (!$head) throw new DomainException('El CSV está vacío.');
+        $head[0]=preg_replace('/^\xEF\xBB\xBF/','',(string)$head[0]);
+        if (array_map('trim',$head)!==$headers) throw new DomainException('Encabezado incorrecto. Descarga la plantilla de este módulo.');
+        $rows=[]; $line=1;
+        while (($values=fgetcsv($f,0,';','"',''))!==false) {
+            $line++;
+            if ($values===[null] || !array_filter($values,fn($v)=>trim((string)$v)!=='')) continue;
+            if (count($values)!==count($headers)) throw new DomainException('Registro '.$line.': número de columnas incorrecto. Usa punto y coma.');
+            foreach($values as $v) if (!preg_match('//u',(string)$v)) throw new DomainException('Registro '.$line.': guarda el CSV en UTF-8.');
+            $rows[$line]=array_combine($headers,$values);
+            if(count($rows)>$limit) throw new DomainException('El máximo es '.$limit.' registros por archivo.');
+        }
+        if (!$rows) throw new DomainException('El CSV no contiene registros.');
+        return $rows;
+    } finally { fclose($f); }
+}
+function creation_value(array $r,string $key,int $max,bool $password=false): string {
+    $v=$r[$key]??'';
+    if (!is_string($v)||!preg_match('//u',$v)) throw new DomainException('Campo inválido: '.$key.'.');
+    if(!$password) $v=trim($v);
+    if($v===''||strlen($v)>$max) throw new DomainException('Campo obligatorio o demasiado largo: '.$key.'.');
+    return $v;
+}
+function creation_email(array $r,string $key): string {
+    $email=strtolower(creation_value($r,$key,190));
+    if(!filter_var($email,FILTER_VALIDATE_EMAIL)) throw new DomainException('Correo inválido: '.$key.'.');
+    return $email;
+}
+function creation_insert(array $u,string $kind,string $role,int $course,array $r): void {
+    if($kind==='user') {
+        $name=creation_value($r,'nombre',150); $email=creation_email($r,'correo'); $p=creation_value($r,'contrasena',72,true);
+        if(strlen($p)<12||str_contains($p,"\0")) throw new DomainException('La contraseña debe tener entre 12 y 72 bytes.');
+        if(one('SELECT id FROM ve_users WHERE email=?',[$email])) throw new DomainException('El correo ya está registrado.');
+        query('INSERT INTO ve_users(name,email,password_hash,role) VALUES(?,?,?,?)',[$name,$email,password_hash($p,PASSWORD_DEFAULT),$role]);
+    } elseif($kind==='course') {
+        $title=creation_value($r,'titulo',180); $description=creation_value($r,'descripcion',20000); $teacher=(int)$u['id'];
+        if(is_manager($u)) {
+            $email=creation_email($r,'correo_responsable'); $t=one('SELECT id FROM ve_users WHERE email=?',[$email]);
+            if(!$t||!in_array((int)$t['id'],array_map('intval',array_column(available_teachers($u),'id')),true)) throw new DomainException('Responsable no autorizado o inexistente.');
+            $teacher=(int)$t['id'];
+        }
+        if(one('SELECT id FROM ve_courses WHERE title=? AND teacher_id=?',[$title,$teacher])) throw new DomainException('Ya existe un curso con este título y responsable.');
+        query('INSERT INTO ve_courses(title,description,teacher_id) VALUES(?,?,?)',[$title,$description,$teacher]);
+    } elseif($kind==='lesson') {
+        $title=creation_value($r,'titulo',180); $content=creation_value($r,'contenido',60000);
+        if(one('SELECT id FROM ve_lessons WHERE course_id=? AND title=?',[$course,$title])) throw new DomainException('Ya existe una lección con este título.');
+        $order=count_rows('SELECT COALESCE(MAX(sort_order),0) FROM ve_lessons WHERE course_id=?',[$course])+1;
+        query('INSERT INTO ve_lessons(course_id,title,content,sort_order) VALUES(?,?,?,?)',[$course,$title,$content,$order]);
+    } elseif($kind==='enroll') {
+        if(!$course) $course=(int)filter_var($r['id_curso']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+        if(!$course||!course_for($course,$u)) throw new DomainException('Curso inexistente o no autorizado.');
+        $student=one("SELECT id FROM ve_users WHERE role='student' AND email=?",[creation_email($r,'correo_estudiante')]);
+        if(!$student) throw new DomainException('Estudiante inexistente.');
+        if(one('SELECT student_id FROM ve_enrollments WHERE course_id=? AND student_id=?',[$course,$student['id']])) throw new DomainException('El estudiante ya está matriculado.');
+        query('INSERT INTO ve_enrollments(course_id,student_id) VALUES(?,?)',[$course,$student['id']]);
+    }
+}
+function handle_creation(?array $u): never {
+    $back='';
+    try {
+        [$kind,$role,$course]=creation_context($_POST);
+        $spec=creation_spec($u,$kind,$role,$course); $back=$spec['return'];
+        $mode=$_POST['mode']??'';
+        if(!in_array($mode,['individual','bulk'],true)) throw new DomainException('Modo inválido.');
+        $rows=$mode==='bulk'?csv_rows($spec['headers'],$spec['limit']):[1=>$_POST];
+        $pdo=db(); $pdo->beginTransaction(); $errors=[];
+        try {
+            foreach($rows as $line=>$r) {
+                try { creation_insert($u,$kind,$role,$course,$r); }
+                catch(DomainException $e) { $errors[]='Registro '.$line.': '.$e->getMessage(); }
+                if(count($errors)>=10) break;
+            }
+            if($errors) throw new DomainException('No se guardó ningún registro. '.implode(' | ',$errors));
+            $pdo->commit(); flash(count($rows).' registro(s) creado(s) correctamente.');
+        } catch(Throwable $e) { if($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+    } catch(DomainException $e) { flash($e->getMessage(),'error'); }
+    catch(Throwable $e) { error_log('VIRTUALEDUC creation failed: '.get_class($e)); flash('No se guardaron registros. Revisa los datos y vuelve a intentar.','error'); }
+    go($back);
+}
+function creation_hidden(string $kind,string $role,int $course,string $mode): void {
+    action('create',$course?:null);
+    foreach(['kind'=>$kind,'target_role'=>$role,'mode'=>$mode] as $k=>$v) echo '<input type="hidden" name="'.h($k).'" value="'.h($v).'">';
+}
+function creation_dialog(array $u,string $kind,string $role='',int $course=0): void {
+    $s=creation_spec($u,$kind,$role,$course); $id='create-'.$kind.($role?'-'.$role:'').($course?'-'.$course:'');
+    $url='?'.http_build_query(['template'=>1,'kind'=>$kind,'target_role'=>$role,'course_id'=>$course]);
+    ?>
+    <button type="button" data-ve-open="<?=h($id)?>">+ Crear<?=$kind==='lesson'?' lección':($kind==='enroll'?' matrícula':'')?></button>
+    <dialog class="ve-dialog" id="<?=h($id)?>" aria-labelledby="<?=h($id)?>-title">
+      <div class="ve-dialog-head"><h2 id="<?=h($id)?>-title"><?=h($s['title'])?></h2><button type="button" class="ve-quiet" data-ve-close aria-label="Cerrar">×</button></div>
+      <div class="ve-tabs" role="tablist"><button type="button" role="tab" id="<?=h($id)?>-individual-tab" aria-controls="<?=h($id)?>-individual" aria-selected="true" data-ve-tab="individual">Individual</button><button type="button" role="tab" id="<?=h($id)?>-bulk-tab" aria-controls="<?=h($id)?>-bulk" aria-selected="false" data-ve-tab="bulk">Masivo (CSV)</button></div>
+      <div role="tabpanel" id="<?=h($id)?>-individual" aria-labelledby="<?=h($id)?>-individual-tab" data-ve-panel="individual"><form method="post"><?php creation_hidden($kind,$role,$course,'individual');?>
+      <?php if($kind==='user'):?><label>Nombre completo<input name="nombre" required maxlength="150"></label><label>Correo electrónico<input type="email" name="correo" required maxlength="190"></label><label>Contraseña (mínimo 12 caracteres)<input type="password" name="contrasena" required minlength="12" maxlength="72" autocomplete="new-password"></label>
+      <?php elseif($kind==='course'||$kind==='lesson'):?><label>Título<input name="titulo" required maxlength="180"></label><label><?=$kind==='course'?'Descripción':'Contenido'?><textarea name="<?=$kind==='course'?'descripcion':'contenido'?>" required></textarea></label><?php if($kind==='course'&&is_manager($u)):?><label>Responsable<select name="correo_responsable" required><option value="">Seleccionar</option><?php foreach(available_teachers($u) as $x):?><option value="<?=h($x['email'])?>"><?=h($x['name'])?> · <?=h($x['email'])?></option><?php endforeach;?></select></label><?php endif;?>
+      <?php elseif($kind==='enroll'): if(!$course):?><label>Curso<select name="id_curso" required><option value="">Seleccionar</option><?php foreach(all('SELECT id,title FROM ve_courses ORDER BY title') as $x):?><option value="<?=h($x['id'])?>">#<?=h($x['id'])?> · <?=h($x['title'])?></option><?php endforeach;?></select></label><?php endif;?><label>Estudiante<select name="correo_estudiante" required><option value="">Seleccionar</option><?php foreach(all("SELECT name,email FROM ve_users WHERE role='student' ORDER BY name") as $x):?><option value="<?=h($x['email'])?>"><?=h($x['name'])?> · <?=h($x['email'])?></option><?php endforeach;?></select></label><?php endif;?>
+      <div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Crear registro</button></div></form></div>
+      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla, completa los registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 12 caracteres y protege el archivo.':''?></p><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
+    </dialog>
+    <?php
+}
+function creation_styles(): void { ?>
+<style>
+.ve-dialog{width:min(600px,calc(100% - 28px));max-height:90vh;overflow:auto;border:1px solid #cfdae8;border-radius:16px;padding:24px;color:#17253b;box-shadow:0 24px 90px #10294d50}.ve-dialog::backdrop{background:#091b38a0}.ve-dialog-head,.ve-dialog-actions,.ve-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.ve-dialog-head h2,.ve-section-head h1{margin:0}.ve-tabs{display:flex;gap:8px;border-bottom:1px solid #dce5ef;margin:18px 0}.ve-tabs button{background:transparent;color:#526982;border-radius:8px 8px 0 0;border-bottom:3px solid transparent;flex:1}.ve-tabs button[aria-selected=true]{color:#1655a8;border-color:#1655a8;background:#edf4fe;font-weight:700}.ve-quiet{background:#eaf0f8;color:#10294d}.ve-quiet:hover{background:#d6e3f3}.ve-dialog-actions{justify-content:flex-end;margin-top:12px}.ve-columns{overflow-wrap:anywhere;background:#eef4fb;padding:12px;border-radius:8px}.ve-section-head{margin-bottom:18px}.ve-role-card{display:flex;align-items:center;justify-content:space-between;gap:10px}.ve-role-card a{font-weight:700;text-decoration:none;color:#1655a8}.ve-dialog [hidden]{display:none!important}
+
+/* Shared action contrast: explicit foreground, including all interaction states. */
+body button,body a.btn,body .btn{background:#1655a8;color:#fff!important;-webkit-text-fill-color:#fff!important;opacity:1;font-size:15px;font-weight:600;line-height:1.4;text-shadow:none;white-space:normal;border:1px solid transparent;min-height:40px}
+body button:hover,body button:active,body a.btn:hover,body a.btn:active,body .btn:hover{background:#103d7d;color:#fff!important;-webkit-text-fill-color:#fff!important}
+body button:focus-visible,body a.btn:focus-visible{outline:3px solid #e3a329;outline-offset:2px}
+body button.ve-quiet,body .ve-tabs button{background:#eaf0f8;color:#10294d!important;-webkit-text-fill-color:#10294d!important;border-color:#d1deee}
+body button.ve-quiet:hover,body .ve-tabs button:hover{background:#d6e3f3;color:#10294d!important;-webkit-text-fill-color:#10294d!important}
+body .ve-tabs button[aria-selected=true]{background:#1655a8;color:#fff!important;-webkit-text-fill-color:#fff!important;border-color:#1655a8}
+body button:disabled,body button[aria-disabled=true]{background:#e2e8f0;color:#475569!important;-webkit-text-fill-color:#475569!important;cursor:not-allowed}
+body input[type=file]::file-selector-button{background:#1655a8;color:#fff;-webkit-text-fill-color:#fff;font:inherit;font-weight:600;border:0;border-radius:6px;padding:8px 10px;margin-right:10px;cursor:pointer}
+.ve-role-card{flex-wrap:wrap}.ve-role-card button[data-ve-open]{flex:none}.ve-section-head button[data-ve-open]{flex-shrink:0}
+</style><?php }
