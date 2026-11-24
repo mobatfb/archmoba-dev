@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.21';
+const VE_VERSION = '0.1.22';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
