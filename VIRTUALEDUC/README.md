@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.5
+# VIRTUALEDUC v0.1.6
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -33,6 +33,9 @@ Copiar los archivos del parche sobre la instalación v0.1.3. No se requiere migr
 
 ## Actualización a v0.1.5
 Corrección visual de contraste en todos los botones, enlaces de acción y pestañas de los diálogos. Se mantienen los formularios individuales, CSV y permisos. No requiere SQL. Aplicar sobre v0.1.4 y recargar la página.
+
+## Actualización a v0.1.6
+Diseño responsive mejorado en móviles, tabletas y escritorio. Menú lateral plegado por defecto hasta 900 px, formularios y diálogos adaptados a pantallas pequeñas, botones táctiles y tablas con desplazamiento horizontal local. Se conservan la creación individual y masiva, los permisos y los colores de los botones. Copiar el parche sobre v0.1.5; no requiere SQL.
 
 ## Funciones iniciales
 Administrador: crea usuarios de los cuatro roles, cursos, lecciones, publica y matricula.
