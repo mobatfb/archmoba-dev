@@ -1,0 +1,121 @@
+name: FUTUREO STREAM v3 - FULL DELTA SMART (host + web)
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py'
+      - 'MULTIMANDO/ANFITRION/futureo_stream_v30.py'
+      - 'MULTIMANDO/ANFITRION/tests/test_stream_v30.py'
+      - 'MULTIMANDO/ANFITRION/tests/test_gui_panels_v240.py'
+      - 'MULTIMANDO/ANFITRION/README_STREAM_V3.md'
+      - 'MULTIMANDO/MANDOWEB/palanca.php'
+      - 'MULTIMANDO/MANDOWEB/assets/futureo-stream-v3.js'
+      - 'MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v30.js'
+      - 'MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py'
+      - '.github/workflows/futureo-three-streams-v240.yml'
+  workflow_dispatch:
+concurrency:
+  group: futureo-three-streams-v240
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Instalar Pillow para validar motor diferencial
+        run: python -m pip install Pillow
+      - name: Pruebas anfitrion y protocolo binario
+        shell: bash
+        run: |
+          python -m py_compile MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py
+          python -m py_compile MULTIMANDO/ANFITRION/futureo_stream_v22.py
+          python -m py_compile MULTIMANDO/ANFITRION/futureo_stream_v30.py
+          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py --selftest
+          python MULTIMANDO/ANFITRION/tests/test_stream_v30.py
+          cmp MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py
+      - name: Comprobar GUI Tkinter con Xvfb
+        shell: bash
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq xvfb xauth
+          fi
+          xvfb-run -a python MULTIMANDO/ANFITRION/tests/test_gui_panels_v240.py
+      - name: Pruebas navegador nuevo y compatibilidad visor viejo
+        shell: bash
+        run: |
+          node --check MULTIMANDO/MANDOWEB/assets/futureo-stream-v3.js
+          node --check MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v30.js
+          node MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v30.js
+          node MULTIMANDO/MANDOWEB/tests/test_futureo_stream_v22.js
+          node MULTIMANDO/MANDOWEB/tests/test_mando_recovery_v224.js
+      - name: Comprobar archivos PHP del sitio
+        shell: bash
+        run: |
+          for f in index.php palanca.php sala.php control.php config.php; do
+            php -l "MULTIMANDO/MANDOWEB/$f"
+          done
+      - name: Crear dos ZIPs instalables sin secretos
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          root = Path('MULTIMANDO')
+          host = root / 'ANFITRION'
+          web = root / 'MANDOWEB'
+          release = root / 'FUTUREO_VJOY' / 'instalador_windows'
+          hostzip = release / 'MULTIMANDO_FUTUREO_ANFITRION_v2_4_0_3_STREAMS.zip'
+          webzip = release / 'MULTIMANDO_WEB_3_STREAMS_v2_3_0.zip'
+          host_names = [
+              'MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py',
+              'futureo_stream_v22.py', 'futureo_stream_v30.py'
+          ]
+          web_names = [
+              '.htaccess', 'index.php', 'palanca.php', 'control.php', 'sala.php',
+              'config.php', 'assets/palanca.css', 'assets/futureo-stream.js',
+              'assets/futureo-stream-v3.js', 'assets/mando-recovery.js',
+              'assets/mando-rescate.js', 'private/.htaccess'
+          ]
+          with ZipFile(hostzip, 'w', ZIP_DEFLATED, compresslevel=9) as out:
+              for name in host_names:
+                  out.write(host / name, name)
+              out.write(host / 'README_STREAM_V3.md', 'LEEME_PRIMERO.md')
+          with ZipFile(webzip, 'w', ZIP_DEFLATED, compresslevel=9) as out:
+              for name in web_names:
+                  out.write(web / name, name)
+              out.write(host / 'README_STREAM_V3.md', 'LEEME_PRIMERO.md')
+          for path, expected in ((hostzip, set(host_names) | {'LEEME_PRIMERO.md'}),
+                                 (webzip, set(web_names) | {'LEEME_PRIMERO.md'})):
+              with ZipFile(path) as out:
+                  assert set(out.namelist()) == expected, path
+                  assert out.testzip() is None
+                  assert not any('FRASE_CIFRADO' in n or n.endswith('.enc')
+                                 for n in out.namelist())
+              print('ZIP verificado:', path, path.stat().st_size, 'bytes')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO_STREAM_v3_PYTHON_Y_WEB
+          path: |
+            MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_4_0_3_STREAMS.zip
+            MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_3_STREAMS_v2_3_0.zip
+          retention-days: 30
+      - name: Publicar los dos ZIPs en el repositorio
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_4_0_3_STREAMS.zip MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_WEB_3_STREAMS_v2_3_0.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "build(futureo): release stream v3 FULL DELTA SMART host + web"
+            git pull --rebase origin main
+            git push
+          fi
