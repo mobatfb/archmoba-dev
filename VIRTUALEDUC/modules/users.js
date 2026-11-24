@@ -11,7 +11,7 @@
     const records = Array.from(root.querySelectorAll('tr[data-ve-user-role]'), row => ({
         row,
         role: row.dataset.veUserRole,
-        text: normalize(Array.from(row.cells).slice(0, 4).map(cell => cell.textContent).join(' '))
+        text: normalize(Array.from(row.cells).slice(1, 5).map(cell => cell.textContent).join(' '))
     }));
     const apply = () => {
         const q = normalize(search.value);
@@ -44,7 +44,7 @@
         if (!row) return;
         editForm.elements.user_id.value = button.dataset.veEditUser;
         for (const [i, field] of ['usuario', 'nombres', 'apellidos', 'correo'].entries()) {
-            editForm.elements[field].value = row.cells[i].textContent;
+            editForm.elements[field].value = row.cells[i + 1].textContent;
         }
         const own = button.dataset.veEditUser === editor.dataset.veActorId;
         const roleField = editForm.elements.rol;
@@ -60,7 +60,7 @@
         const form = repair.querySelector('form');
         form.elements.user_id.value = button.dataset.veRepairUser;
         form.elements.repair_role.value = '';
-        repair.querySelector('[data-ve-repair-name]').textContent = button.closest('tr').cells[0].textContent;
+        repair.querySelector('[data-ve-repair-name]').textContent = button.closest('tr').cells[1].textContent;
     });
     apply();
 })();
