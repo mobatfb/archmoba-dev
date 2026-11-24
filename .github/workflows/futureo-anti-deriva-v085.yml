@@ -1,0 +1,152 @@
+name: FUTUREO anti-deriva v0.8.5 y anfitrion 2.4.1
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/FUTUREO_VJOY/host_bridge_v085/**'
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py'
+      - 'MULTIMANDO/ANFITRION/tests/test_gui_panels_v241.py'
+      - '.github/workflows/futureo-anti-deriva-v085.yml'
+  workflow_dispatch:
+concurrency:
+  group: futureo-anti-deriva-v085
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Probar Python, GUI, FIFO y FULL/DELTA/SMART
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install Pillow
+          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py --selftest
+          if($LASTEXITCODE -ne 0){throw 'Fallo test del anfitrion'}
+          python MULTIMANDO/ANFITRION/tests/test_stream_v30.py
+          if($LASTEXITCODE -ne 0){throw 'Fallo test de streaming'}
+          python MULTIMANDO/ANFITRION/tests/test_gui_panels_v241.py
+          if($LASTEXITCODE -ne 0){throw 'Fallo test GUI'}
+          $main='MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py'
+          $dist='MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py'
+          if((Get-FileHash $main -Algorithm SHA256).Hash -ne (Get-FileHash $dist -Algorithm SHA256).Hash){throw 'Python distribuido no coincide'}
+      - name: SDK oficial HIDMaestro 2.3.0 verificado
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'hidmaestro-v085'
+          New-Item -ItemType Directory -Path $root -Force | Out-Null
+          gh release download v2.3.0 -R hifihedgehog/HIDMaestro -p 'HIDMaestro-v2.3.0.zip' -D $root
+          if($LASTEXITCODE -ne 0){throw 'No se descargo SDK'}
+          $zip=Join-Path $root 'HIDMaestro-v2.3.0.zip'
+          $sha='FDDB61B76D076AA2CF508A46C1E30E23AA75B4AE622D52B15E7259959FD12295'
+          if((Get-FileHash $zip -Algorithm SHA256).Hash.ToUpperInvariant() -ne $sha){throw 'SHA256 SDK no coincide'}
+          $extract=Join-Path $root 'extraido'
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+          $dll=Get-ChildItem $extract -Recurse -Filter 'HIDMaestro.Core.dll' -File | Sort-Object Length -Descending | Select-Object -First 1
+          if(-not $dll -or $dll.Length -lt 1000000){throw 'SDK DLL invalida'}
+          $folder='MULTIMANDO/FUTUREO_VJOY/host_bridge_v085'
+          Copy-Item $dll.FullName (Join-Path $folder 'HIDMaestro.Core.dll')
+          foreach($name in @('LICENSE','LICENSE.txt','THIRD-PARTY-NOTICES.txt')){
+            $found=Get-ChildItem $extract -Recurse -File | Where-Object {$_.Name -eq $name} | Select-Object -First 1
+            if($found){Copy-Item $found.FullName (Join-Path $folder $name)}
+          }
+          if(-not (Test-Path (Join-Path $folder 'THIRD-PARTY-NOTICES.txt'))){throw 'Avisos SDK ausentes'}
+      - name: Compilar EXE portatil v0.8.5 y verificar reintento HID
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder='MULTIMANDO/FUTUREO_VJOY/host_bridge_v085'
+          $code=Get-Content (Join-Path $folder 'FutureoForm.cs') -Raw
+          foreach($required in @('RemoteLastSubmit','TotalMilliseconds >= 450','pad.RemoteLastSubmit = DateTime.MinValue','ANTI-DERIVA')){
+            if(-not $code.Contains($required)){throw "No se encontro: $required"}
+          }
+          $dest=Join-Path $env:RUNNER_TEMP 'futureo-v085'
+          dotnet publish (Join-Path $folder 'FUTUREO_VJOY_PORTABLE.csproj') -c Release -r win-x64 --self-contained true -o $dest -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+          if($LASTEXITCODE -ne 0){throw 'Compilacion .NET fallo'}
+          $exe=Join-Path $dest 'FUTUREO_VJOY_PORTABLE.exe'
+          if(-not (Test-Path $exe) -or (Get-Item $exe).Length -lt 10000000){throw 'EXE v0.8.5 invalido'}
+          $others=@(Get-ChildItem $dest -File | Where-Object {$_.Name -ne 'FUTUREO_VJOY_PORTABLE.exe'})
+          if($others.Count){throw 'EXE no es un solo archivo'}
+      - name: Autoprueba de exe y puentes locales sin drivers reales
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=Join-Path $env:RUNNER_TEMP 'futureo-v085/FUTUREO_VJOY_PORTABLE.exe'
+          foreach($test in @('--self-test','--bridge-self-test','--host-self-test','--ui-smoke')){
+            $out=Join-Path $env:RUNNER_TEMP ($test.Replace('-','')+'.txt')
+            $p=Start-Process -FilePath $exe -ArgumentList @($test,$out) -Wait -PassThru
+            if($p.ExitCode -ne 0 -or -not (Test-Path $out)){throw "Error autopueba $test"}
+            $message=Get-Content $out -Raw
+            if($message -match 'failed|ERROR:'){throw "Autoprueba $test fallo: $message"}
+            Write-Host "$test OK"
+          }
+      - name: Empaquetar y verificar version integrada
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dist='MULTIMANDO/FUTUREO_VJOY/instalador_windows'
+          $stage=Join-Path $env:RUNNER_TEMP 'futureo-v085-package'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $exeName='FUTUREO_VJOY_PORTABLE_HOST_v0_8_5_WIN64.exe'
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'futureo-v085/FUTUREO_VJOY_PORTABLE.exe') (Join-Path $stage $exeName)
+          Copy-Item (Join-Path $stage $exeName) (Join-Path $dist $exeName)
+          $src='MULTIMANDO/ANFITRION'
+          foreach($f in @('MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py','futureo_stream_v30.py','futureo_stream_v22.py')){
+            Copy-Item (Join-Path $src $f) (Join-Path $stage $f)
+          }
+          Copy-Item (Join-Path $src 'README_ANTI_DERIVA_V241.md') (Join-Path $stage 'LEEME_PRIMERO.md')
+          $library='MULTIMANDO/FUTUREO_VJOY/host_bridge_v085'
+          $notice=Join-Path $library 'THIRD-PARTY-NOTICES.txt'
+          Copy-Item $notice (Join-Path $stage 'THIRD-PARTY-NOTICES.txt')
+          if(Test-Path (Join-Path $library 'LICENSE.txt')){
+            Copy-Item (Join-Path $library 'LICENSE.txt') (Join-Path $stage 'LICENCIA_HIDMAESTRO.txt')
+          }elseif(Test-Path (Join-Path $library 'LICENSE')){
+            Copy-Item (Join-Path $library 'LICENSE') (Join-Path $stage 'LICENCIA_HIDMAESTRO.txt')
+          }
+          $zip=Join-Path $dist 'FUTUREO_MULTIMANDO_ANTI_DERIVA_v2_4_1.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          Add-Type -AssemblyName System.IO.Compression
+          $check=[System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip).Path)
+          try{
+            $names=@($check.Entries | ForEach-Object {$_.FullName})
+            foreach($f in @($exeName,'MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py','futureo_stream_v30.py','futureo_stream_v22.py','LEEME_PRIMERO.md')){
+              if($names -notcontains $f){throw "ZIP incompleto: $f"}
+            }
+            if($names -match 'FRASE_CIFRADO|\.enc$'){throw 'ZIP incluye secretos'}
+          }finally{$check.Dispose()}
+          Write-Host "ZIP completo: $((Get-Item $zip).Length) bytes"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO_ANTI_DERIVA_v2_4_1
+          path: |
+            MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_MULTIMANDO_ANTI_DERIVA_v2_4_1.zip
+            MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_VJOY_PORTABLE_HOST_v0_8_5_WIN64.exe
+          retention-days: 30
+      - name: Publicar ZIP y EXE en main
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir='MULTIMANDO/FUTUREO_VJOY/instalador_windows'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f -- (Join-Path $dir 'FUTUREO_MULTIMANDO_ANTI_DERIVA_v2_4_1.zip') (Join-Path $dir 'FUTUREO_VJOY_PORTABLE_HOST_v0_8_5_WIN64.exe')
+          git diff --cached --quiet
+          if($LASTEXITCODE -ne 0){
+            git commit -m 'build(futureo): HID anti-deriva v0.8.5 y anfitrion 2.4.1'
+            if($LASTEXITCODE -ne 0){throw 'Git commit fallo'}
+            git pull --rebase origin main
+            if($LASTEXITCODE -ne 0){throw 'Git pull fallo'}
+            git push origin HEAD:main
+            if($LASTEXITCODE -ne 0){throw 'Git push fallo'}
+          }
