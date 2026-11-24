@@ -20,8 +20,10 @@ $settings=institution_settings();
         <?php endforeach; ?>
       </nav>
       <div class="ve-sidebar-user">
-        <?php if(institution_logo_file($settings['logo_path'])):?><img src="?institution_logo=1" alt="" class="ve-user-avatar"><?php else:?><span class="ve-user-avatar" aria-hidden="true">VE</span><?php endif;?>
-        <div class="ve-user-ident"><strong title="<?=h($u['name'])?>"><?=h($u['name'])?></strong><small><?=h(role_label($u['role']))?></small></div>
+        <a href="?page=account" class="ve-profile-link" data-ve-profile-open aria-label="Abrir mi perfil" aria-haspopup="dialog" aria-controls="ve-profile-dialog">
+          <?php profile_avatar($u,'ve-user-avatar'); ?>
+          <div class="ve-user-ident"><strong title="<?=h($u['name'])?>"><?=h($u['name'])?></strong><small><?=h(role_label($u['role']))?></small></div>
+        </a>
         <form method="post"><?php action('logout');?><button type="submit" class="ve-exit">Salir</button></form>
       </div>
     </div>
