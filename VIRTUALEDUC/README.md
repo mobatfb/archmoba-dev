@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.6
+# VIRTUALEDUC v0.1.7
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -37,6 +37,19 @@ Corrección visual de contraste en todos los botones, enlaces de acción y pesta
 ## Actualización a v0.1.6
 Diseño responsive mejorado en móviles, tabletas y escritorio. Menú lateral plegado por defecto hasta 900 px, formularios y diálogos adaptados a pantallas pequeñas, botones táctiles y tablas con desplazamiento horizontal local. Se conservan la creación individual y masiva, los permisos y los colores de los botones. Copiar el parche sobre v0.1.5; no requiere SQL.
 
+## Actualización a v0.1.7
+Aplicar este parche acumulativo sobre v0.1.5 o v0.1.6. No requiere SQL. Administración contiene únicamente Usuarios: una tabla, un botón Crear y una línea de recuentos según el alcance del rol. El formulario individual permite seleccionar el rol; la nueva plantilla CSV es nombre;correo;contrasena;rol. Descargar la plantilla nueva. Los subadministradores solo pueden crear y consultar docentes y estudiantes. Se conservan todos los permisos, diálogos y datos existentes.
+
+## Arquitectura modular
+- index.php: punto de entrada.
+- app.php: configuración, sesión, seguridad, acceso a datos y roles.
+- core/request.php: procesamiento de solicitudes y autorización.
+- core/layout.php: estructura común de la página.
+- panel.php: menú y enrutamiento por lista de módulos autorizados.
+- modules/: un PHP por módulo visual (home, users, courses, course, enrollments, progress, account, login).
+- create.php y create.js: servicio compartido para creación individual y CSV.
+- responsive.css y responsive.js: adaptación a móviles y tabletas.
+
 ## Funciones iniciales
 Administrador: crea usuarios de los cuatro roles, cursos, lecciones, publica y matricula.
 Subadministrador: crea docentes y estudiantes y gestiona la operación académica.
@@ -46,4 +59,4 @@ Estudiante: consulta sus cursos publicados y registra el avance.
 ## Pendientes
 Evaluaciones, certificados, multimedia, edición y eliminación de registros, recuperación de contraseñas, informes, auditoría, límites de intentos de acceso robustos y pruebas de integración. No desplegar para usuarios reales sin validar seguridad y funcionamiento en el servidor de destino.
 
-La interfaz está en index.php y la lógica compartida en app.php.
+La interfaz se divide en core/layout.php y modules/. La lógica compartida está en app.php y create.php.
