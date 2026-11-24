@@ -808,7 +808,7 @@ internal sealed class FutureoForm : Form
         if (busy || pads.Count > 0) return;
         int total = (int)quantity.Value;
         if (MessageBox.Show(this,
-                $"FUTUREO VJOY PORTABLE v0.8.4\n\n"
+                $"FUTUREO VJOY PORTABLE v0.8.5\n\n"
                 + $"Instalar el controlador UMDF2 de HIDMaestro y crear {total} mandos.\n"
                 + "Cada mando tendra 16 botones, 1 joystick analogico izquierdo y D-Pad de 8 vias.\n\n"
                 + "Se instalaran componentes y un certificado local de terceros en Windows.\n"
@@ -968,7 +968,7 @@ internal sealed class FutureoForm : Form
         probarPage.Enabled = !busy && pads.Count > 0;
         RefreshTestButtons();
         UpdateMonitor();
-        footStatus.Text = $"FUTUREO v0.8.4  |  {pads.Count} mando(s) activo(s)  |  "
+        footStatus.Text = $"FUTUREO v0.8.5  |  {pads.Count} mando(s) activo(s)  |  "
             + (pads.ContainsKey(selectedSlot) ? $"Seleccionado: FUTUREO_VJOY{selectedSlot}" : "Sin seleccion")
             + "  |  Monitor de senales ENVIADAS";
     }
