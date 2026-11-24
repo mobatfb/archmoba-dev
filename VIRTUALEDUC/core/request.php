@@ -36,7 +36,9 @@ try {
                 $old=$_POST['old_password'] ?? ''; $new=$_POST['new_password'] ?? ''; $confirm=$_POST['confirm_password'] ?? '';
                 $row=one('SELECT password_hash FROM ve_users WHERE id=?',[$u['id']]);
                 if (!is_string($old) || !$row || !password_verify($old,$row['password_hash'])) throw new DomainException('La contraseña actual no es correcta.');
-                if (!is_string($new) || strlen($new)<12 || strlen($new)>72 || $new!==$confirm || $new===$old) throw new DomainException('Usa una contraseña nueva de 12 a 72 bytes y confirma que coincida.');
+                if (!is_string($new) || !valid_personal_password($new)) throw new DomainException('La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un signo; máximo 72 bytes.');
+                if ($new!==$confirm) throw new DomainException('Las contraseñas no coinciden.');
+                if ($new===$old) throw new DomainException('La nueva contraseña debe ser diferente de la actual.');
                 query('UPDATE ve_users SET password_hash=? WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),$u['id']]);
                 session_regenerate_id(true); flash('Contraseña actualizada.'); go('page=account');
             } elseif ($action==='logout') {
@@ -54,7 +56,7 @@ try {
                 }
                 flash('Cambios guardados.'); go('course='.$id);
             } else throw new DomainException('Acción inválida.');
-        } catch (DomainException $e) { flash($e->getMessage(),'error'); }
+        } catch (DomainException $e) { flash($e->getMessage(),'error'); if ($action==='password') go('page=account'); }
         go();
     }
     $courses=[]; $users=[]; $c=null; $lessons=[]; $done=[]; $page='home';
