@@ -13,6 +13,7 @@ function navigation_sections(array $u): array {
     }
     if ($u['role']==='admin') $sections['Configuración']=['institution'=>'Configuración institucional'];
     $sections['Mi cuenta']=['account'=>'Perfil y contraseña'];
+    if (in_array($u['role'],['student','teacher'],true)) $sections['Mi cuenta']['certificates']='Mis certificados';
     return $sections;
 }
 
@@ -39,7 +40,7 @@ function panel_styles(): void { ?>
 <?php }
 
 function render_panel(array $u,string $page,array $courses,array $users): void {
-    $modules=['home'=>'home.php','users'=>'users.php','courses'=>'courses.php','enrollments'=>'enrollments.php','progress'=>'progress.php','account'=>'account.php','institution'=>'institution_settings.php'];
+    $modules=['home'=>'home.php','users'=>'users.php','courses'=>'courses.php','enrollments'=>'enrollments.php','progress'=>'progress.php','account'=>'account.php','institution'=>'institution_settings.php','certificates'=>'certificates.php'];
     if (!isset($modules[$page]) || !in_array($page,allowed_pages($u),true)) { http_response_code(403); exit('Sección no autorizada.'); }
     require __DIR__.'/modules/'.$modules[$page];
 }
