@@ -4,6 +4,7 @@ if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 try {
     $installed = count_rows('SELECT COUNT(*) FROM ve_users WHERE role=?',['admin']) > 0;
     $u = current_user();
+    if (isset($_GET['institution_logo'])) { serve_institution_logo(); }
     if (isset($_GET['template'])) {
         try { creation_template($u); } catch (DomainException $e) { http_response_code(403); exit(h($e->getMessage())); }
     }
@@ -11,7 +12,12 @@ try {
         verify_csrf();
         $action = field('action',40);
         try {
-            if ($action==='create') { handle_creation($u); }
+            if ($action==='institution_save') {
+                require_role($u,'admin');
+                try { save_institution(); flash('Configuración institucional actualizada.'); }
+                catch (DomainException $e) { flash($e->getMessage(),'error'); }
+                go('page=institution');
+            } elseif ($action==='create') { handle_creation($u); }
             elseif ($action==='login') {
                 if (!$installed) throw new DomainException('Primero importa el archivo SQL del administrador en phpMyAdmin.');
                 $email=strtolower(field('email',190));
