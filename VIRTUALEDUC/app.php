@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.2';
+const VE_VERSION = '0.1.3';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -133,7 +133,7 @@ function id_field(string $key): int {
 }
 
 function new_user(string $role): void {
-    if (!in_array($role, ['admin','teacher','student'], true)) {
+    if (!in_array($role, ['admin','subadmin','teacher','student'], true)) {
         throw new DomainException('Rol inválido.');
     }
     $name = field('name', 150);
@@ -153,7 +153,7 @@ function new_user(string $role): void {
 }
 
 function course_for(int $id, array $u): ?array {
-    if ($u['role'] === 'admin') {
+    if (is_manager($u)) {
         return one('SELECT * FROM ve_courses WHERE id=?', [$id]);
     }
     if ($u['role'] === 'teacher') {
@@ -163,5 +163,19 @@ function course_for(int $id, array $u): ?array {
 }
 
 function role_label(string $role): string {
-    return ['admin'=>'Administrador','teacher'=>'Docente','student'=>'Estudiante'][$role] ?? 'Usuario';
+    return ['admin'=>'Administrador','subadmin'=>'Subadministrador','teacher'=>'Docente','student'=>'Estudiante'][$role] ?? 'Usuario';
+}
+
+function is_manager(?array $u): bool {
+    return $u !== null && in_array($u['role'], ['admin','subadmin'], true);
+}
+
+function creatable_roles(array $u): array {
+    return $u['role'] === 'admin' ? ['admin','subadmin','teacher','student'] : ($u['role'] === 'subadmin' ? ['teacher','student'] : []);
+}
+
+function available_teachers(array $u): array {
+    if ($u['role'] === 'admin') return all("SELECT id,name FROM ve_users WHERE role IN ('admin','subadmin','teacher') ORDER BY name");
+    if ($u['role'] === 'subadmin') return all("SELECT id,name FROM ve_users WHERE role='teacher' OR id=? ORDER BY name", [$u['id']]);
+    return [];
 }
