@@ -127,13 +127,27 @@ function repair_user_role(?array $u): void {
 function update_user_identity(?array $u): void {
     require_role($u,'admin','subadmin');
     $id=id_field('user_id');
-    $existing=one('SELECT '.user_identity_columns().' FROM users WHERE id=?',[$id]);
-    if(!$existing || !in_array($existing['role'],creatable_roles($u),true)) throw new DomainException('Usuario no autorizado o inexistente.');
-    [$username,$first,$last,$name,$email]=identity_fields($_POST,$existing);
+    $role=field('rol',30);
+    $pdo=db(); $pdo->beginTransaction();
     try {
-        query('UPDATE users SET username=?,first_names=?,last_names=?,name=?,email=? WHERE id=? AND role=?',[$username,$first,$last,$name,$email,$id,$existing['role']]);
-    } catch(PDOException $e) {
-        if($e->getCode()==='23000') throw new DomainException('El usuario o correo ya está registrado.');
+        // Recheck both accounts under locks to prevent concurrent privilege changes.
+        $locked=array_column(all('SELECT '.user_identity_columns().' FROM users WHERE id IN (?,?) ORDER BY id FOR UPDATE',[$u['id'],$id]),null,'id');
+        $actor=$locked[$u['id']]??null; $existing=$locked[$id]??null;
+        if (!$actor || !$existing || !is_manager($actor) || !in_array($existing['role'],creatable_roles($actor),true)) throw new DomainException('Usuario no autorizado o inexistente.');
+        if (!in_array($role,creatable_roles($actor),true)) throw new DomainException('Rol inválido o no autorizado.');
+        if ((int)$actor['id']===$id && $role!==$actor['role']) throw new DomainException('No puedes cambiar tu propio rol.');
+        [$username,$first,$last,$name,$email]=identity_fields($_POST,$existing);
+        query('UPDATE users SET username=?,first_names=?,last_names=?,name=?,email=?,role=? WHERE id=?',[$username,$first,$last,$name,$email,$role,$id]);
+        $saved=one('SELECT role FROM users WHERE id=?',[$id]);
+        if (!$saved || $saved['role']!==$role) throw new DomainException('No se pudo guardar el rol. Revisa la migración 0.1.16.');
+        $pdo->commit();
+    } catch(Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($e instanceof PDOException) {
+            if ($e->getCode()==='23000') throw new DomainException('El usuario o correo ya está registrado.');
+            error_log('VIRTUALEDUC user edit failed: '.get_class($e));
+            throw new DomainException('No se pudieron guardar los cambios. Revisa los datos e inténtalo nuevamente.');
+        }
         throw $e;
     }
 }
