@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.9
+# VIRTUALEDUC v0.1.10
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -45,6 +45,14 @@ Copiar el parche sobre v0.1.7. Administración > Usuarios incluye búsqueda inme
 
 ## Actualización a v0.1.9
 Resumen de Usuarios en el orden Estudiantes, Docentes, Subadministradores, Administradores y Total, con separadores visibles. El selector de roles usa el mismo orden y conserva los permisos existentes. Aplicar sobre v0.1.8; no requiere SQL.
+
+## Actualización a v0.1.10
+1. Hacer respaldo y ejecutar migrations/0.1.10.sql en phpMyAdmin.
+2. Copiar el parche sobre v0.1.9, conservando config.local.php y archivos previos.
+3. Como administrador abrir Configuración > Configuración institucional.
+4. Guardar nombre, subtítulo, teléfono, correo, periodo activo y logo opcional.
+
+El logo se guarda en uploads/institution/ con nombre aleatorio y extensión de imagen validada; MySQL solo almacena su ruta relativa. PHP necesita permiso de escritura en esa carpeta, fileinfo y límites de subida adecuados (2 MB por logo). El archivo .htaccess bloquea el acceso HTTP directo en Apache; para Nginx o servidores que ignoran .htaccess, bloquear acceso directo a /uploads/institution/ en la configuración del servidor. Las imágenes se sirven mediante index.php?institution_logo=1. No subir logos reales al repositorio. No se inventan datos de contacto ni periodo: se muestran los datos que el administrador configure. El menú conserva las funciones reales de VIRTUALEDUC; no se agregan módulos escolares sin implementar.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
