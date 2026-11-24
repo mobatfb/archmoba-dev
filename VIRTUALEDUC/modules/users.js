@@ -46,7 +46,11 @@
         for (const [i, field] of ['usuario', 'nombres', 'apellidos', 'correo'].entries()) {
             editForm.elements[field].value = row.cells[i].textContent;
         }
-        editor.querySelector('[data-ve-edit-role]').textContent = row.cells[4].textContent;
+        const own = button.dataset.veEditUser === editor.dataset.veActorId;
+        const roleField = editForm.elements.rol;
+        for (const option of roleField.options) option.disabled = own && option.value !== row.dataset.veUserRole;
+        roleField.value = row.dataset.veUserRole;
+        editor.querySelector('[data-ve-own-role]').hidden = !own;
         // create.js opens this specific dialog after the fields have been populated.
     });
     const repair = root.querySelector('#repair-user-role-dialog');
