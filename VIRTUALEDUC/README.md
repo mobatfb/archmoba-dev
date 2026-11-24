@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.14
+# VIRTUALEDUC v0.1.15
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -12,7 +12,7 @@ Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Compos
 2. Crear una base de datos y un usuario de base de datos con permisos sobre ella.
 3. Importar schema.sql mediante phpMyAdmin.
 4. Copiar config.example.php a config.local.php y completar DSN y credenciales. No publicar las credenciales en GitHub.
-5. Importar el SQL privado de creación del administrador entregado por separado, mediante phpMyAdmin. El repositorio público no contiene credenciales predeterminadas.
+5. Importar el SQL privado de creación del administrador entregado por separado, mediante phpMyAdmin, usando la tabla users (si el archivo antiguo indica ve_users, reemplazar ese nombre por users). El repositorio público no contiene credenciales predeterminadas.
 6. Abrir index.php e ingresar con el usuario admin o su correo interno admin@virtualeduc.local. Cambiar inmediatamente la contraseña inicial desde "Cambiar mi contraseña".
 7. Configurar el servidor para impedir acceso HTTP a archivos de configuración, SQL, archivos ocultos y documentación. Desactivar display_errors en producción. Mantener el SQL de creación fuera del directorio público.
 
@@ -72,6 +72,9 @@ La creación individual y masiva admite contraseñas iniciales de al menos 8 car
 
 ## Actualización a v0.1.14
 La acción Editar de la tabla de Usuarios abre un diálogo independiente de Crear, con identificación precargada, rol informativo, Guardar cambios y Cancelar. Se conserva la autorización del servidor, el buscador y el filtro por roles. El formulario reutilizable se ubica en modules/user_edit.php. Todos los avisos de éxito, error y configuración incluyen un botón de cierre sin recargar la página. Aplicar sobre v0.1.13; no requiere SQL.
+
+## Actualización a v0.1.15
+Hacer un respaldo de la base de datos y detener temporalmente el acceso al sistema. Sobre v0.1.14, ejecutar una sola vez migrations/0.1.15.sql en phpMyAdmin, en la base de datos existente, y luego copiar el parche. Las seis tablas se renombran sin el prefijo ve_, conservando registros, ID y relaciones. Si ya existe una tabla de destino con el mismo nombre, no ejecutar la migración hasta resolver el conflicto. No importar schema.sql sobre una instalación anterior para realizar esta actualización. Las migraciones anteriores conservan sus nombres históricos y no deben ejecutarse nuevamente. Para una instalación nueva, usar directamente schema.sql actualizado y adaptar el SQL privado del administrador para que utilice users en lugar de ve_users.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
