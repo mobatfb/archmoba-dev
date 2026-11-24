@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.0
+# VIRTUALEDUC v0.1.1
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -11,10 +11,15 @@ Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Compos
 1. Copiar la carpeta VIRTUALEDUC al hosting.
 2. Crear una base de datos y un usuario de base de datos con permisos sobre ella.
 3. Importar schema.sql mediante phpMyAdmin.
-4. Copiar config.example.php a config.local.php, completar DSN y credenciales, y generar un token aleatorio de instalación de al menos 32 caracteres (por ejemplo: php -r "echo bin2hex(random_bytes(32));").
-5. Abrir index.php y crear el primer administrador con el token y una contraseña de al menos 12 caracteres.
-6. Eliminar el token de config.local.php después de instalar. No publicar las credenciales ni el token en GitHub.
+4. Copiar config.example.php a config.local.php y completar DSN y credenciales. No publicar las credenciales en GitHub.
+5. Desde la terminal del servidor, en la carpeta VIRTUALEDUC, ejecutar: php install.php. Introducir nombre, correo y una contraseña de 12 a 72 bytes. No se requiere token de instalación.
+6. Abrir index.php e iniciar sesión con el administrador creado.
 7. Configurar el servidor para impedir acceso HTTP a archivos de configuración, SQL, archivos ocultos y documentación. Desactivar display_errors en producción.
+
+Si no tienes terminal en el hosting, ejecuta php install.php --sql en tu computadora con PHP instalado. Copia el INSERT generado y ejecútalo en la pestaña SQL de phpMyAdmin, dentro de virtualeduc. La contraseña se almacena mediante hash. Conserva privado el SQL generado.
+
+## Actualización desde v0.1.0
+Descomprimir el parche sobre la carpeta existente. No se requiere migración SQL. Eliminar la entrada antigua del token de config.local.php (ya no se utiliza). Si ya existe un administrador, puede ingresar con sus credenciales sin cambios. No se reemplaza config.local.php ni se eliminan datos.
 
 ## Funciones iniciales
 Administrador: crea usuarios, cursos, lecciones, publica y matricula.
