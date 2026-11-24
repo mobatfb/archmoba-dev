@@ -102,6 +102,7 @@
     const view = new DataView(raw);
     if (bytes.length >= 32 && matchMagic(bytes, MAGIC_NEW)) {
       const kind = view.getUint8(4);
+      const streamMode = view.getUint8(5);
       const width = view.getUint16(6, false);
       const height = view.getUint16(8, false);
       const seq = view.getUint32(10, false);
@@ -110,10 +111,11 @@
                     view.getUint32(22, false);
       const fps = view.getUint16(28, false);
       const count = view.getUint16(30, false);
-      if (kind > HOLD || !width || !height || width > 640 || height > 360 ||
+      if (kind > HOLD || streamMode > 2 || !width || !height || width > 640 || height > 360 ||
           count > 7000 || fps > 60) return null;
       const common = { kind, width, height, seq, baseSeq: base, stamp,
-                       fps, count, raw, offset: 32, v3: true };
+                       fps, count, raw, offset: 32, v3: true,
+                       codec: ["FULL", "DELTA", "SMART"][streamMode] };
       if (kind === FULL) {
         if (base !== seq || raw.byteLength < 36) return null;
         const paletteCount = view.getUint16(32, false);
@@ -349,6 +351,7 @@
     if (token !== generation || stopped || document.hidden) return;
     const frame = parseFrame(raw);
     if (!frame || frame.seq <= lastSeq) return;
+    if (frame.codec) mode = frame.codec;
     const apparent = frame.stamp ? Date.now() - frame.stamp : null;
     if (apparent !== null && Number.isFinite(apparent)) {
       recentAges.push(apparent);
