@@ -5,6 +5,12 @@ try {
     $installed = count_rows('SELECT COUNT(*) FROM users WHERE role=?',['admin']) > 0;
     $u = current_user();
     if (isset($_GET['institution_logo'])) { serve_institution_logo(); }
+    if ($u && !valid_user_role((string)$u['role'])) {
+        unset($_SESSION['user_id']);
+        session_regenerate_id(true);
+        flash('Tu cuenta no tiene un rol válido. Solicita al administrador que lo asigne.','error');
+        go();
+    }
     if (isset($_GET['template'])) {
         try { creation_template($u); } catch (DomainException $e) { http_response_code(403); exit(h($e->getMessage())); }
     }
@@ -17,6 +23,11 @@ try {
                 try { save_institution(); flash('Configuración institucional actualizada.'); }
                 catch (DomainException $e) { flash($e->getMessage(),'error'); }
                 go('page=institution');
+            } elseif ($action==='repair_user_role') {
+                require_role($u,'admin');
+                try { repair_user_role($u); flash('Rol asignado correctamente.'); }
+                catch (DomainException $e) { flash($e->getMessage(),'error'); }
+                go('page=users');
             } elseif ($action==='user_identity') {
                 try { update_user_identity($u); flash('Datos del usuario actualizados.'); }
                 catch (DomainException $e) { flash($e->getMessage(),'error'); }
@@ -26,9 +37,14 @@ try {
                 if (!$installed) throw new DomainException('Primero importa el archivo SQL del administrador en phpMyAdmin.');
                 $identifier=field('email',190);
                 $p=$_POST['password'] ?? '';
-                $row=one('SELECT id,password_hash FROM users WHERE '.username_sql().'=?',[$identifier]);
+                $row=one('SELECT id,password_hash,role FROM users WHERE '.username_sql().'=?',[$identifier]);
                 if(!$row && str_contains($identifier,'@')) $row=one('SELECT id,password_hash FROM users WHERE email=?',[$identifier]);
                 if (!$row || !is_string($p) || !password_verify($p,$row['password_hash'])) { usleep(500000); throw new DomainException('Credenciales incorrectas.'); }
+                if (!valid_user_role((string)$row['role'])) {
+                    unset($_SESSION['user_id']);
+                    session_regenerate_id(true);
+                    throw new DomainException('Tu cuenta no tiene un rol válido. Solicita al administrador que lo asigne.');
+                }
                 session_regenerate_id(true);
                 $_SESSION['user_id']=$row['id']; unset($_SESSION['csrf']);
             } elseif ($action==='password') {
