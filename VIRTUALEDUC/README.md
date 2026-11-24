@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.2
+# VIRTUALEDUC v0.1.3
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -19,8 +19,18 @@ Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Compos
 ## Actualización desde v0.1.0 o v0.1.1
 Descomprimir los archivos de VIRTUALEDUC del parche sobre la carpeta existente. No se requiere migración del esquema. El token ya no se utiliza. El instalador anterior queda deshabilitado. Si no existe un administrador, importar el SQL privado en phpMyAdmin después de importar schema.sql. Si ya existe un administrador, el SQL inicial no altera su cuenta. No se reemplaza config.local.php ni se eliminan datos.
 
+## Actualización a v0.1.3
+1. Hacer un respaldo de la base de datos.
+2. Importar migrations/0.1.3.sql en phpMyAdmin sobre la base existente.
+3. Copiar los archivos del parche sobre VIRTUALEDUC. No reemplazar config.local.php.
+4. Iniciar sesión como administrador y crear subadministradores desde Administración > Crear usuario.
+
+Menú lateral expandible por secciones, navegación adaptada al rol y diseño adaptable.
+El subadministrador crea docentes y estudiantes, gestiona cursos y matrículas, pero no crea administradores ni subadministradores. Puede asignar un docente o a sí mismo como responsable de un curso. El docente gestiona solamente sus cursos; el estudiante accede a sus cursos publicados y su progreso.
+
 ## Funciones iniciales
-Administrador: crea usuarios, cursos, lecciones, publica y matricula.
+Administrador: crea usuarios de los cuatro roles, cursos, lecciones, publica y matricula.
+Subadministrador: crea docentes y estudiantes y gestiona la operación académica.
 Docente: administra sus propios cursos y lecciones.
 Estudiante: consulta sus cursos publicados y registra el avance.
 
