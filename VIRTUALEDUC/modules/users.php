@@ -3,7 +3,7 @@ declare(strict_types=1);
 if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 require_role($u,'admin','subadmin');
 $labels=['admin'=>'Administradores','subadmin'=>'Subadministradores','teacher'=>'Docentes','student'=>'Estudiantes'];
-$roles=creatable_roles($u);
+$roles=array_values(array_intersect(['student','teacher','subadmin','admin'],creatable_roles($u)));
 $counts=array_count_values(array_column($users,'role'));
 $search=is_string($_GET['q']??null)?trim($_GET['q']):'';
 if (strlen($search)>300 || !preg_match('//u',$search)) $search='';
@@ -22,14 +22,15 @@ $visible=count(array_filter($users,$matches));
 .ve-users-filters input,.ve-users-filters select{margin:5px 0 0;min-height:42px}
 .ve-users-clear{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:8px 14px;border:1px solid #c5d1df;border-radius:8px;background:#fff;color:#10294d;text-decoration:none;font-weight:600}
 .ve-users-clear:hover{background:#eaf0f8;color:#10294d}.ve-users-clear:focus-visible{outline:2px solid #1655a8;outline-offset:2px}
+.ve-users .ve-user-summary{gap:0;white-space:nowrap}.ve-users .ve-user-summary>span{flex:none;padding:0 12px;border-right:1px solid #cbd5e1}.ve-users .ve-user-summary>span:first-child{padding-left:0}.ve-users .ve-user-summary>span:last-child{border-right:0;padding-right:0;font-weight:600}
 .ve-users-results{font-size:13px;margin:8px 0 12px}.ve-users [hidden]{display:none!important}
 @media(max-width:480px){.ve-users-filters{gap:10px}.ve-users-search{flex:1 1 100%}.ve-users-role{flex:1 1 140px}.ve-users-clear{min-height:44px}}
 </style>
 <section class="ve-users" data-ve-users>
   <div class="ve-section-head ve-users-head"><h1>Usuarios</h1><?php creation_dialog($u,'user'); ?></div>
   <div class="ve-user-summary" tabindex="0" aria-label="Resumen de usuarios visibles">
-    <span>Total: <strong><?=count($users)?></strong></span>
     <?php foreach($roles as $r):?><span><?=h($labels[$r])?>: <strong><?=$counts[$r]??0?></strong></span><?php endforeach;?>
+    <span>Total: <strong><?=count($users)?></strong></span>
   </div>
   <form class="ve-users-filters" method="get" action="index.php" role="search" aria-label="Buscar usuarios">
     <input type="hidden" name="page" value="users">
