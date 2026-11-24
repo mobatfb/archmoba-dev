@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.15
+# VIRTUALEDUC v0.1.16
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -75,6 +75,9 @@ La acción Editar de la tabla de Usuarios abre un diálogo independiente de Crea
 
 ## Actualización a v0.1.15
 Hacer un respaldo de la base de datos y detener temporalmente el acceso al sistema. Sobre v0.1.14, ejecutar una sola vez migrations/0.1.15.sql en phpMyAdmin, en la base de datos existente, y luego copiar el parche. Las seis tablas se renombran sin el prefijo ve_, conservando registros, ID y relaciones. Si ya existe una tabla de destino con el mismo nombre, no ejecutar la migración hasta resolver el conflicto. No importar schema.sql sobre una instalación anterior para realizar esta actualización. Las migraciones anteriores conservan sus nombres históricos y no deben ejecutarse nuevamente. Para una instalación nueva, usar directamente schema.sql actualizado y adaptar el SQL privado del administrador para que utilice users en lugar de ve_users.
+
+## Actualización a v0.1.16
+Respaldar la base de datos e importar migrations/0.1.16.sql sobre v0.1.15; copiar el parche directamente en la carpeta del sistema. La migración corrige el catálogo de roles y conserva los cuatro roles válidos. Las cuentas con un rol inválido quedan Sin rol asignado (unassigned, sin acceso). Como administrador, abrir Administración > Usuarios y usar Asignar rol en la cuenta afectada. No se conceden privilegios automáticamente. Se verifica que el rol de las nuevas cuentas se guarde correctamente antes de confirmar la creación. Los subadministradores conservan sus permisos anteriores.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
