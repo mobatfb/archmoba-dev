@@ -1,3 +1,26 @@
+## FUTUREO STREAM v3 - FULL + DELTA + SMART (NUEVO)
+
+**Se deben actualizar DOS componentes** para disponer de las tres tecnologias:
+
+- **[DESCARGAR ANFITRION PYTHON v2.4.0](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_4_0_3_STREAMS.zip)** - 3 archivos Python (host, motor v3 y motor v2.2 de compatibilidad).
+- **[DESCARGAR MULTIMANDO WEB v2.3.0](instalador_windows/MULTIMANDO_WEB_3_STREAMS_v2_3_0.zip)** - PHP y JavaScript visor FS30/FJ22, sin claves secretas.
+- [Manual, arquitectura y protocolo](../ANFITRION/README_STREAM_V3.md).
+
+En la pestana TRANSMISION del anfitrion: seleccionar
+FUTUREO FULL STREAM, FUTUREO DELTA STREAM o FUTUREO SMART STREAM.
+El modo SMART emplea hasta 256 colores de paleta compartida,
+RGB exacto para colores no incluidos, JPEG de region y FULL JPEG.
+Mantiene los presets RAPIDO (320x180, 15FPS, JPEG40) y
+EQUILIBRADO (480x270, 15FPS, JPEG50).
+
+El canal publico sigue siendo wss://TUNEL.trycloudflare.com/stream
+en el mismo tunel de la sala; los visitantes pueden ver sin pulsar
+CONECTAR. Los visores anteriores siguen recibiendo JPEG completo.
+
+**Pruebas:** Python, Tkinter, PHP, Node.js, reconstruccion web
+y navegadores legacy validados en GitHub Actions. La validacion
+final de FPS, latencia y CPU requiere pruebas en Windows.
+
 ## ANFITRION FUTUREO v2.3.1 - NUEVO MODO EQUILIBRADO
 
 **[Descargar ZIP v2.3.1 (Python + motor de captura)](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_3_1_PANELES.zip)** |
