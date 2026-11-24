@@ -1,0 +1,75 @@
+name: FUTUREO anfitrión compacto 600x600 v2.4.2
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_2.py'
+      - 'MULTIMANDO/ANFITRION/tests/test_gui_compact_v242.py'
+      - '.github/workflows/futureo-compact-v242.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: futureo-compact-v242
+  cancel-in-progress: true
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar Pillow y pantalla virtual
+        run: |
+          python -m pip install Pillow
+          if ! command -v xvfb-run >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y xvfb xauth
+          fi
+      - name: Verificar los cinco paneles a 600x600 y los modos de streaming
+        run: |
+          python -m py_compile MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_2.py
+          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_2.py --selftest
+          python MULTIMANDO/ANFITRION/tests/test_stream_v30.py
+          xvfb-run -a python MULTIMANDO/ANFITRION/tests/test_gui_compact_v242.py
+      - name: Verificar motor original sin cambios y crear ZIP
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          import ast
+          root = Path('MULTIMANDO')
+          src = root / 'ANFITRION'
+          old = ast.parse((src / 'MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py').read_text(encoding='utf-8'))
+          new = ast.parse((src / 'MULTIMANDO_FUTUREO_Anfitrion_v2_4_2.py').read_text(encoding='utf-8'))
+          def core(tree):
+              return [ast.dump(n, include_attributes=False) for n in tree.body
+                  if not (isinstance(n, ast.ClassDef) and n.name=='MultimandoGUI')
+                  and not (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id=='VERSION' for t in n.targets))]
+          assert core(old) == core(new), 'El motor ajeno a la GUI fue modificado'
+          names=['MULTIMANDO_FUTUREO_Anfitrion_v2_4_2.py','futureo_stream_v22.py','futureo_stream_v30.py']
+          dest=root/'FUTUREO_VJOY'/'instalador_windows'/'MULTIMANDO_FUTUREO_ANFITRION_v2_4_2_COMPACTA_600x600.zip'
+          dest.parent.mkdir(parents=True,exist_ok=True)
+          with ZipFile(dest,'w',ZIP_DEFLATED,compresslevel=9) as z:
+              for name in names:
+                  z.write(src/name,name)
+              z.write(src/'README_COMPACT_V242.md','LEEME_PRIMERO.md')
+          with ZipFile(dest) as z:
+              assert z.testzip() is None
+              assert set(z.namelist())==set(names+['LEEME_PRIMERO.md'])
+          print('ZIP verificado:', dest, dest.stat().st_size, 'bytes')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO_ANFITRION_COMPACTA_600x600
+          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_4_2_COMPACTA_600x600.zip
+      - name: Publicar ZIP del anfitrión compacto
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_4_2_COMPACTA_600x600.zip
+          if ! git diff --cached --quiet; then
+            git commit -m 'release(futureo): anfitrión compacto v2.4.2 600x600'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
