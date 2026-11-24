@@ -26,6 +26,21 @@ function creation_context(array $data): array {
     if (!is_string($kind)||!is_string($role)||$course===false) throw new DomainException('Contexto inválido.');
     return [$kind,$role,$course];
 }
+function creation_example(string $kind, array $headers): array {
+    $values = [
+        'nombre'=>'Estudiante de ejemplo',
+        'correo'=>'estudiante@ejemplo.invalid',
+        'contrasena'=>'Reemplazar-123!',
+        'rol'=>'estudiante',
+        'titulo'=>$kind==='lesson'?'Introducción al tema':'Curso de ejemplo',
+        'descripcion'=>'Descripción de la capacitación',
+        'correo_responsable'=>'docente@ejemplo.invalid',
+        'contenido'=>'Contenido de la lección de ejemplo',
+        'id_curso'=>'1',
+        'correo_estudiante'=>'estudiante@ejemplo.invalid',
+    ];
+    return array_map(static fn(string $key): string => $values[$key], $headers);
+}
 function creation_template(?array $u): never {
     [$kind,$role,$course]=creation_context($_GET);
     $spec=creation_spec($u,$kind,$role,$course);
@@ -33,7 +48,9 @@ function creation_template(?array $u): never {
     header('Content-Disposition: attachment; filename="plantilla_'.$kind.($role?'_'.$role:'').'.csv"');
     echo "\xEF\xBB\xBF";
     $out=fopen('php://output','wb');
-    fputcsv($out,$spec['headers'],';','"',''); fclose($out); exit;
+    fputcsv($out,$spec['headers'],';','"','');
+    fputcsv($out,creation_example($kind,$spec['headers']),';','"','');
+    fclose($out); exit;
 }
 function csv_rows(array $headers,int $limit): array {
     $file=$_FILES['csv']??null;
@@ -140,7 +157,7 @@ function creation_dialog(array $u,string $kind,string $role='',int $course=0): v
       <?php elseif($kind==='course'||$kind==='lesson'):?><label>Título<input name="titulo" required maxlength="180"></label><label><?=$kind==='course'?'Descripción':'Contenido'?><textarea name="<?=$kind==='course'?'descripcion':'contenido'?>" required></textarea></label><?php if($kind==='course'&&is_manager($u)):?><label>Responsable<select name="correo_responsable" required><option value="">Seleccionar</option><?php foreach(available_teachers($u) as $x):?><option value="<?=h($x['email'])?>"><?=h($x['name'])?> · <?=h($x['email'])?></option><?php endforeach;?></select></label><?php endif;?>
       <?php elseif($kind==='enroll'): if(!$course):?><label>Curso<select name="id_curso" required><option value="">Seleccionar</option><?php foreach(all('SELECT id,title FROM ve_courses ORDER BY title') as $x):?><option value="<?=h($x['id'])?>">#<?=h($x['id'])?> · <?=h($x['title'])?></option><?php endforeach;?></select></label><?php endif;?><label>Estudiante<select name="correo_estudiante" required><option value="">Seleccionar</option><?php foreach(all("SELECT name,email FROM ve_users WHERE role='student' ORDER BY name") as $x):?><option value="<?=h($x['email'])?>"><?=h($x['name'])?> · <?=h($x['email'])?></option><?php endforeach;?></select></label><?php endif;?>
       <div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Crear registro</button></div></form></div>
-      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla, completa los registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 12 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
+      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla con una fila de ejemplo. Reemplaza o elimina esa fila, completa tus registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 12 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
     </dialog>
     <?php
 }
