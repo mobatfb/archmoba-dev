@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.11';
+const VE_VERSION = '0.1.12';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -104,7 +104,7 @@ function flash(string $message, string $kind = 'success'): void {
 
 function current_user(): ?array {
     $id = (int)($_SESSION['user_id'] ?? 0);
-    return $id ? one('SELECT id,name,email,role FROM ve_users WHERE id=?', [$id]) : null;
+    return $id ? one('SELECT '.user_identity_columns().' FROM ve_users WHERE id=?', [$id]) : null;
 }
 
 function require_role(?array $u, string ...$roles): void {
@@ -132,24 +132,21 @@ function id_field(string $key): int {
     return $id;
 }
 
-function new_user(string $role): void {
-    if (!in_array($role, ['admin','subadmin','teacher','student'], true)) {
-        throw new DomainException('Rol inválido.');
-    }
-    $name = field('name', 150);
-    $email = strtolower(field('email', 190));
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        throw new DomainException('Correo electrónico inválido.');
-    }
-    $password = $_POST['password'] ?? '';
-    if (!is_string($password) || strlen($password) < 12 || strlen($password) > 72) {
-        throw new DomainException('La contraseña debe tener entre 12 y 72 bytes.');
-    }
-    if (one('SELECT id FROM ve_users WHERE email=?', [$email])) {
-        throw new DomainException('El correo ya está registrado.');
-    }
-    query('INSERT INTO ve_users(name,email,password_hash,role) VALUES(?,?,?,?)',
-        [$name,$email,password_hash($password, PASSWORD_DEFAULT),$role]);
+// The fallback also supports the original private admin SQL on a fresh installation.
+function username_sql(): string {
+    return "COALESCE(username,CASE WHEN email='admin@virtualeduc.local' AND role='admin' THEN 'admin' ELSE email END)";
+}
+
+function user_identity_columns(): string {
+    return "id,name,email,role,".username_sql()." AS username,COALESCE(NULLIF(first_names,''),name) AS first_names,last_names";
+}
+
+function find_by_username(string $username): ?array {
+    return one('SELECT '.user_identity_columns().' FROM ve_users WHERE '.username_sql().'=?', [$username]);
+}
+
+function valid_username(string $username): bool {
+    return preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/D',$username)===1;
 }
 
 function course_for(int $id, array $u): ?array {
@@ -175,7 +172,7 @@ function creatable_roles(array $u): array {
 }
 
 function available_teachers(array $u): array {
-    if ($u['role'] === 'admin') return all("SELECT id,name,email FROM ve_users WHERE role IN ('admin','subadmin','teacher') ORDER BY name");
-    if ($u['role'] === 'subadmin') return all("SELECT id,name,email FROM ve_users WHERE role='teacher' OR id=? ORDER BY name", [$u['id']]);
+    if ($u['role'] === 'admin') return all("SELECT ".user_identity_columns()." FROM ve_users WHERE role IN ('admin','subadmin','teacher') ORDER BY name");
+    if ($u['role'] === 'subadmin') return all("SELECT ".user_identity_columns()." FROM ve_users WHERE role='teacher' OR id=? ORDER BY name", [$u['id']]);
     return [];
 }
