@@ -162,7 +162,7 @@ internal sealed class HostInputBridge : IDisposable
             catch { slots = Array.Empty<int>(); }
             var message = JsonSerializer.Serialize(new
             {
-                engine = "FUTUREO_VJOY", version = "0.8.4",
+                engine = "FUTUREO_VJOY", version = "0.8.5",
                 hostInput = true, slots
             });
             await ReplyAsync(stream, 200, message, timeout.Token);
