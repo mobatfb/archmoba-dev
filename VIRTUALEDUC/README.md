@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.11
+# VIRTUALEDUC v0.1.12
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -56,6 +56,16 @@ El logo se guarda en uploads/institution/ con nombre aleatorio y extensión de i
 
 ## Actualización a v0.1.11
 Las plantillas CSV de usuarios, capacitaciones, lecciones y matrículas incluyen una fila de ejemplo adaptada a sus columnas. Reemplazar o eliminar la fila de ejemplo antes de importar. Aplicar sobre v0.1.10; no requiere SQL.
+
+## Actualización a v0.1.12
+Hacer un respaldo e importar migrations/0.1.12.sql una sola vez sobre v0.1.11 antes de copiar el parche. Se conservan los ID, cuentas, contraseñas y relaciones. El administrador inicial conserva admin; las cuentas antiguas conservan su correo como usuario y su nombre completo en Nombres hasta que se edite su identificación. La creación individual requiere usuario, nombres, apellidos, correo, contraseña y rol. El usuario admite letras, números, puntos, guiones y guion bajo; se guarda como texto. Se puede iniciar sesión por usuario o por correo. Los administradores y subadministradores pueden editar los datos de identidad de los usuarios que tienen autorizados.
+
+Nuevas plantillas CSV (UTF-8, separador punto y coma):
+- Usuarios: usuario;nombres;apellidos;correo;contrasena;rol
+- Capacitaciones: titulo;descripcion;usuario_responsable (el docente solo puede usar su propio usuario).
+- Matrículas generales: id_curso;usuario_estudiante. Desde un curso: usuario_estudiante.
+- Lecciones: titulo;contenido (sin cambios).
+Descargar las nuevas plantillas y reemplazar las filas de ejemplo. Si se usan identificadores numéricos con ceros iniciales en Excel, dar formato de texto a la columna antes de escribirlos. No publicar CSV con contraseñas.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
