@@ -10,7 +10,7 @@ function creation_spec(?array $u, string $kind, string $role = '', int $course =
         return ['title'=>'Crear usuario','headers'=>['usuario','nombres','apellidos','correo','contrasena','rol'],'return'=>'page=users','limit'=>100];
     }
     if ($kind === 'course' && in_array($u['role'],['admin','subadmin','teacher'],true)) {
-        return ['title'=>'Crear capacitación','headers'=>['titulo','descripcion','usuario_responsable'],'return'=>'page=courses','limit'=>500];
+        return ['title'=>'Crear curso','headers'=>['titulo','descripcion','usuario_responsable'],'return'=>'page=courses','limit'=>500];
     }
     if ($kind === 'lesson' && $course>0 && $u['role']!=='student' && course_for($course,$u)) {
         return ['title'=>'Crear lección','headers'=>['titulo','contenido'],'return'=>'course='.$course,'limit'=>500];
@@ -35,7 +35,7 @@ function creation_example(string $kind, array $headers): array {
         'contrasena'=>'Reemplazar-123!',
         'rol'=>'estudiante',
         'titulo'=>$kind==='lesson'?'Introducción al tema':'Curso de ejemplo',
-        'descripcion'=>'Descripción de la capacitación',
+        'descripcion'=>'Descripción del curso',
         'usuario_responsable'=>'docente.ejemplo',
         'contenido'=>'Contenido de la lección de ejemplo',
         'id_curso'=>'1',
