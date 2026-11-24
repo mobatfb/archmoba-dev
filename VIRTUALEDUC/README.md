@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.17
+# VIRTUALEDUC v0.1.18
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -81,6 +81,9 @@ Respaldar la base de datos e importar migrations/0.1.16.sql sobre v0.1.15; copia
 
 ## Actualización a v0.1.17
 Perfil personal inspirado en el SGA: clic en el usuario del panel lateral para abrir un flotante, subir o eliminar la foto y consultar la cuenta. El módulo Mi cuenta conserva el cambio de contraseña. Todos los roles válidos pueden administrar únicamente su foto. Se aceptan JPG, PNG, GIF y WebP (hasta 5 MB, 12 megapíxeles) y se convierten a PNG de 120 × 120 con recorte centrado. Se muestran iniciales cuando no existe foto. La imagen se guarda por ID interno del usuario, en una carpeta privada .virtualeduc_private fuera de la raíz web, separada por instalación, sin guardar archivos ni rutas en MySQL. La descarga exige la sesión del propietario. PHP necesita GD y permisos para crear/escribir la carpeta privada; opcionalmente EXIF y mbstring. Si el hosting impide escribir fuera de la raíz web, no se subirá la foto: solicitar los permisos necesarios, nunca mover las imágenes a un directorio público. Los límites upload_max_filesize y post_max_size deben permitir la subida. Aplicar sobre v0.1.16; no requiere SQL. Incluir la carpeta privada en los respaldos del hosting.
+
+## Actualización a v0.1.18
+Parche acumulativo sobre v0.1.16: incluye el perfil con foto de v0.1.17 y permite modificar el rol desde Editar usuario. El administrador puede cambiar los roles de otras cuentas; el subadministrador puede editar y asignar únicamente Docente y Estudiante. No se permite cambiar el propio rol. Los cambios de rol conservan la identificación interna, la contraseña y las relaciones existentes y se aplican a partir de la siguiente solicitud. No requiere SQL si ya se aplicó migrations/0.1.16.sql.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
