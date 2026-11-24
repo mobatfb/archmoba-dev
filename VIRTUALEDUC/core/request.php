@@ -11,6 +11,7 @@ try {
         flash('Tu cuenta no tiene un rol válido. Solicita al administrador que lo asigne.','error');
         go();
     }
+    if (isset($_GET['profile_photo'])) { serve_profile_photo($u); }
     if (isset($_GET['template'])) {
         try { creation_template($u); } catch (DomainException $e) { http_response_code(403); exit(h($e->getMessage())); }
     }
@@ -18,7 +19,12 @@ try {
         verify_csrf();
         $action = field('action',40);
         try {
-            if ($action==='institution_save') {
+            if ($action==='profile_photo') {
+                require_role($u,'admin','subadmin','teacher','student');
+                try { save_profile_photo($u); flash(($_POST['photo_action']??'')==='remove'?'Foto eliminada.':'Foto de perfil actualizada.'); }
+                catch (DomainException $e) { flash($e->getMessage(),'error'); }
+                go('page=account');
+            } elseif ($action==='institution_save') {
                 require_role($u,'admin');
                 try { save_institution(); flash('Configuración institucional actualizada.'); }
                 catch (DomainException $e) { flash($e->getMessage(),'error'); }
