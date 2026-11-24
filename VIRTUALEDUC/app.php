@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.3';
+const VE_VERSION = '0.1.5';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -175,7 +175,7 @@ function creatable_roles(array $u): array {
 }
 
 function available_teachers(array $u): array {
-    if ($u['role'] === 'admin') return all("SELECT id,name FROM ve_users WHERE role IN ('admin','subadmin','teacher') ORDER BY name");
-    if ($u['role'] === 'subadmin') return all("SELECT id,name FROM ve_users WHERE role='teacher' OR id=? ORDER BY name", [$u['id']]);
+    if ($u['role'] === 'admin') return all("SELECT id,name,email FROM ve_users WHERE role IN ('admin','subadmin','teacher') ORDER BY name");
+    if ($u['role'] === 'subadmin') return all("SELECT id,name,email FROM ve_users WHERE role='teacher' OR id=? ORDER BY name", [$u['id']]);
     return [];
 }
