@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.15';
+const VE_VERSION = '0.1.16';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -159,8 +159,12 @@ function course_for(int $id, array $u): ?array {
     return one('SELECT c.* FROM courses c JOIN enrollments e ON e.course_id=c.id WHERE c.id=? AND e.student_id=? AND c.published=1', [$id,$u['id']]);
 }
 
+function valid_user_role(string $role): bool {
+    return in_array($role, ['admin','subadmin','teacher','student'], true);
+}
+
 function role_label(string $role): string {
-    return ['admin'=>'Administrador','subadmin'=>'Subadministrador','teacher'=>'Docente','student'=>'Estudiante'][$role] ?? 'Usuario';
+    return ['admin'=>'Administrador','subadmin'=>'Subadministrador','teacher'=>'Docente','student'=>'Estudiante'][$role] ?? 'Sin rol asignado';
 }
 
 function is_manager(?array $u): bool {
