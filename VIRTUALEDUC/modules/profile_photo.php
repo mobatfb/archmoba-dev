@@ -8,7 +8,7 @@ require_role($u,'admin','subadmin','teacher','student');
   <div><strong><?=h($u['name'])?></strong><small>Usuario: <?=h($u['username'])?></small><small>Correo: <?=h($u['email'])?></small><small>Rol: <?=h(role_label($u['role']))?></small></div>
 </div>
 <h3>Foto de perfil</h3>
-<p class="muted">Imagen privada, PNG de 120 × 120 píxeles. Solo visible con tu sesión iniciada.</p>
+<p class="muted">Imagen privada, PNG de 120 × 120 píxeles. La imagen completa es privada; solo los gestores autorizados pueden ver su miniatura en Usuarios.</p>
 <form method="post" enctype="multipart/form-data" class="ve-profile-upload">
   <?php action('profile_photo'); ?><input type="hidden" name="photo_action" value="save">
   <label>Seleccionar imagen (JPG, PNG, GIF o WebP, hasta 5 MB)<input type="file" name="photo" accept="image/jpeg,image/png,image/gif,image/webp" required></label>
