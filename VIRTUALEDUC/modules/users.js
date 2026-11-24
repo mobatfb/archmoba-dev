@@ -49,5 +49,14 @@
         editor.querySelector('[data-ve-edit-role]').textContent = row.cells[4].textContent;
         // create.js opens this specific dialog after the fields have been populated.
     });
+    const repair = root.querySelector('#repair-user-role-dialog');
+    if (repair) root.addEventListener('click', event => {
+        const button = event.target.closest('button[data-ve-repair-user]');
+        if (!button) return;
+        const form = repair.querySelector('form');
+        form.elements.user_id.value = button.dataset.veRepairUser;
+        form.elements.repair_role.value = '';
+        repair.querySelector('[data-ve-repair-name]').textContent = button.closest('tr').cells[0].textContent;
+    });
     apply();
 })();
