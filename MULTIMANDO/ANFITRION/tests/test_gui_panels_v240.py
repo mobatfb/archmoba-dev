@@ -50,7 +50,7 @@ try:
     gui.root.update_idletasks()
 
     # Tecnologias FULL/DELTA/SMART, sin afectar el selector de calidad.
-    assert gui.stream_mode_select.cget("state") == "readonly"
+    assert gui.stream_mode_select.instate(["readonly"])
     assert tuple(gui.stream_mode_select.cget("values")) == (
         "FUTUREO FULL STREAM", "FUTUREO DELTA STREAM", "FUTUREO SMART STREAM")
     assert gui.stream_mode_var.get() == "FUTUREO FULL STREAM"
