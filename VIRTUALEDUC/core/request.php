@@ -2,7 +2,7 @@
 declare(strict_types=1);
 if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 try {
-    $installed = count_rows('SELECT COUNT(*) FROM ve_users WHERE role=?',['admin']) > 0;
+    $installed = count_rows('SELECT COUNT(*) FROM users WHERE role=?',['admin']) > 0;
     $u = current_user();
     if (isset($_GET['institution_logo'])) { serve_institution_logo(); }
     if (isset($_GET['template'])) {
@@ -26,20 +26,20 @@ try {
                 if (!$installed) throw new DomainException('Primero importa el archivo SQL del administrador en phpMyAdmin.');
                 $identifier=field('email',190);
                 $p=$_POST['password'] ?? '';
-                $row=one('SELECT id,password_hash FROM ve_users WHERE '.username_sql().'=?',[$identifier]);
-                if(!$row && str_contains($identifier,'@')) $row=one('SELECT id,password_hash FROM ve_users WHERE email=?',[$identifier]);
+                $row=one('SELECT id,password_hash FROM users WHERE '.username_sql().'=?',[$identifier]);
+                if(!$row && str_contains($identifier,'@')) $row=one('SELECT id,password_hash FROM users WHERE email=?',[$identifier]);
                 if (!$row || !is_string($p) || !password_verify($p,$row['password_hash'])) { usleep(500000); throw new DomainException('Credenciales incorrectas.'); }
                 session_regenerate_id(true);
                 $_SESSION['user_id']=$row['id']; unset($_SESSION['csrf']);
             } elseif ($action==='password') {
                 require_role($u,'admin','subadmin','teacher','student');
                 $old=$_POST['old_password'] ?? ''; $new=$_POST['new_password'] ?? ''; $confirm=$_POST['confirm_password'] ?? '';
-                $row=one('SELECT password_hash FROM ve_users WHERE id=?',[$u['id']]);
+                $row=one('SELECT password_hash FROM users WHERE id=?',[$u['id']]);
                 if (!is_string($old) || !$row || !password_verify($old,$row['password_hash'])) throw new DomainException('La contraseña actual no es correcta.');
                 if (!is_string($new) || !valid_personal_password($new)) throw new DomainException('La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un signo; máximo 72 bytes.');
                 if ($new!==$confirm) throw new DomainException('Las contraseñas no coinciden.');
                 if ($new===$old) throw new DomainException('La nueva contraseña debe ser diferente de la actual.');
-                query('UPDATE ve_users SET password_hash=? WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),$u['id']]);
+                query('UPDATE users SET password_hash=? WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),$u['id']]);
                 session_regenerate_id(true); flash('Contraseña actualizada.'); go('page=account');
             } elseif ($action==='logout') {
                 $_SESSION=[]; session_destroy(); go();
@@ -48,11 +48,11 @@ try {
                 if (!$u || !($c=course_for($id,$u))) { http_response_code(403); exit('Acceso denegado'); }
                 if ($action==='complete') {
                     require_role($u,'student'); $lesson=id_field('lesson_id');
-                    if (!one('SELECT id FROM ve_lessons WHERE id=? AND course_id=?',[$lesson,$id])) throw new DomainException('Lección inválida.');
-                    query('INSERT INTO ve_progress(lesson_id,student_id) VALUES(?,?) ON DUPLICATE KEY UPDATE completed_at=completed_at',[$lesson,$u['id']]);
+                    if (!one('SELECT id FROM lessons WHERE id=? AND course_id=?',[$lesson,$id])) throw new DomainException('Lección inválida.');
+                    query('INSERT INTO progress(lesson_id,student_id) VALUES(?,?) ON DUPLICATE KEY UPDATE completed_at=completed_at',[$lesson,$u['id']]);
                 } elseif ($action==='publish') {
                     require_role($u,'admin','subadmin','teacher');
-                    query('UPDATE ve_courses SET published=1-published WHERE id=?',[$id]);
+                    query('UPDATE courses SET published=1-published WHERE id=?',[$id]);
                 }
                 flash('Cambios guardados.'); go('course='.$id);
             } else throw new DomainException('Acción inválida.');
@@ -61,9 +61,9 @@ try {
     }
     $courses=[]; $users=[]; $c=null; $lessons=[]; $done=[]; $page='home';
     if ($u) {
-        if (is_manager($u)) { $courses=all('SELECT * FROM ve_courses ORDER BY id DESC'); $users=$u['role']==='admin'?all('SELECT '.user_identity_columns().' FROM ve_users ORDER BY name'):all("SELECT ".user_identity_columns()." FROM ve_users WHERE role IN ('teacher','student') ORDER BY name"); }
-        elseif ($u['role']==='teacher') $courses=all('SELECT * FROM ve_courses WHERE teacher_id=? ORDER BY id DESC',[$u['id']]);
-        else $courses=all('SELECT c.* FROM ve_courses c JOIN ve_enrollments e ON e.course_id=c.id WHERE e.student_id=? AND c.published=1 ORDER BY c.id DESC',[$u['id']]);
+        if (is_manager($u)) { $courses=all('SELECT * FROM courses ORDER BY id DESC'); $users=$u['role']==='admin'?all('SELECT '.user_identity_columns().' FROM users ORDER BY name'):all("SELECT ".user_identity_columns()." FROM users WHERE role IN ('teacher','student') ORDER BY name"); }
+        elseif ($u['role']==='teacher') $courses=all('SELECT * FROM courses WHERE teacher_id=? ORDER BY id DESC',[$u['id']]);
+        else $courses=all('SELECT c.* FROM courses c JOIN enrollments e ON e.course_id=c.id WHERE e.student_id=? AND c.published=1 ORDER BY c.id DESC',[$u['id']]);
         require_role($u,'admin','subadmin','teacher','student');
         $page=is_string($_GET['page'] ?? null)?$_GET['page']:'home';
         if ($page==='create_user'||in_array($page,['users_admin','users_subadmin','users_teacher','users_student'],true)) $page='users';
@@ -73,8 +73,8 @@ try {
         if (isset($_GET['course'])) {
             $c=course_for((int)$_GET['course'],$u);
             if (!$c) {http_response_code(404); exit('Curso no disponible.');}
-            $lessons=all('SELECT * FROM ve_lessons WHERE course_id=? ORDER BY sort_order,id',[$c['id']]);
-            if ($u['role']==='student') $done=array_column(all('SELECT lesson_id FROM ve_progress WHERE student_id=?',[$u['id']]),'lesson_id');
+            $lessons=all('SELECT * FROM lessons WHERE course_id=? ORDER BY sort_order,id',[$c['id']]);
+            if ($u['role']==='student') $done=array_column(all('SELECT lesson_id FROM progress WHERE student_id=?',[$u['id']]),'lesson_id');
         }
     }
 } catch (Throwable $e) { error_log($e->getMessage()); http_response_code(503); exit('VIRTUALEDUC: verifica config.local.php y la instalación de schema.sql.'); }
