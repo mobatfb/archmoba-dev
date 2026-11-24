@@ -1,3 +1,22 @@
+## CORRECCION DE DERIVA DERECHA - FUTUREO VJOY v0.8.5 + PY v2.4.1
+
+**[DESCARGAR ZIP COMPLETO ANTIBLOQUEO](instalador_windows/FUTUREO_MULTIMANDO_ANTI_DERIVA_v2_4_1.zip)** (incluye EXE Windows, Python, motores FULL/DELTA/SMART y manual) |
+[EXE FUTUREO v0.8.5](instalador_windows/FUTUREO_VJOY_PORTABLE_HOST_v0_8_5_WIN64.exe) |
+[PY v2.4.1](instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py) |
+[Manual y comprobacion joy.cpl](../ANFITRION/README_ANTI_DERIVA_V241.md).
+
+Mejora el envio del estado HID para evitar cruceta o stick retenidos:
+el motor reenvia el estado cada 450 ms, y reintenta si falla
+SubmitState. La GUI del anfitrion agrega **LIBERAR MANDOS REMOTOS**
+en JUGADORES Y COLA, conservando puesto, FIFO y tiempo.
+No modifica MULTIMANDO Web ni los modos FULL/DELTA/SMART.
+
+**Instalar ambos:** cerrar programas FUTUREO/Python anteriores;
+extraer ZIP; abrir FUTUREO v0.8.5, activar los mandos y luego
+ejecutar anfitrion v2.4.1. Revisar propiedades del mando en joy.cpl.
+Windows HID fisico debe probarse en el equipo de destino.
+[Pruebas Windows completadas](https://github.com/mobatfb/archmoba-dev/actions/runs/45329928939).
+
 ## FUTUREO STREAM v3 - FULL + DELTA + SMART (NUEVO)
 
 **Se deben actualizar DOS componentes** para disponer de las tres tecnologias:
