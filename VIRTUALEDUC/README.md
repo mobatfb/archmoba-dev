@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.3
+# VIRTUALEDUC v0.1.5
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -27,6 +27,12 @@ Descomprimir los archivos de VIRTUALEDUC del parche sobre la carpeta existente. 
 
 Menú lateral expandible por secciones, navegación adaptada al rol y diseño adaptable.
 El subadministrador crea docentes y estudiantes, gestiona cursos y matrículas, pero no crea administradores ni subadministradores. Puede asignar un docente o a sí mismo como responsable de un curso. El docente gestiona solamente sus cursos; el estudiante accede a sus cursos publicados y su progreso.
+
+## Actualización a v0.1.4
+Copiar los archivos del parche sobre la instalación v0.1.3. No se requiere migración SQL nueva. Los cuatro roles tienen listados independientes según permisos. En usuarios, cursos, lecciones y matrículas, el botón Crear abre un diálogo Individual / Masivo (CSV). Descargar la plantilla de cada diálogo, completar las filas en UTF-8 con delimitador punto y coma y subirla. El máximo es de 100 usuarios o 500 registros de otros tipos por archivo, con tamaño máximo 2 MB (también sujeto a la configuración PHP). Las contraseñas deben tener de 12 a 72 bytes; conservar los CSV de usuarios en un lugar privado. La importación es transaccional: si existe un error no se guarda ningún registro. Los cursos de docentes se asignan automáticamente al docente autenticado; los responsables y estudiantes se identifican por correo, y las matrículas globales por ID de curso. No se reemplazan credenciales ni datos existentes.
+
+## Actualización a v0.1.5
+Corrección visual de contraste en todos los botones, enlaces de acción y pestañas de los diálogos. Se mantienen los formularios individuales, CSV y permisos. No requiere SQL. Aplicar sobre v0.1.4 y recargar la página.
 
 ## Funciones iniciales
 Administrador: crea usuarios de los cuatro roles, cursos, lecciones, publica y matricula.
