@@ -1,0 +1,84 @@
+name: FUTUREO integrado v2.4.4 - preferencias y archivo unico
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_4.py'
+      - 'MULTIMANDO/ANFITRION/tests/test_preferences_v244.py'
+      - '.github/workflows/futureo-preferencias-v244.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: futureo-preferencias-v244
+  cancel-in-progress: true
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar dependencias de prueba
+        run: |
+          python -m pip install Pillow
+          if ! command -v xvfb-run >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y xvfb xauth
+          fi
+      - name: Verificar que los motores de control y streaming no cambien
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          base = Path("MULTIMANDO/ANFITRION")
+          old = ast.parse((base/"MULTIMANDO_FUTUREO_Anfitrion_v2_4_3.py").read_text(encoding="utf-8"))
+          source = (base/"MULTIMANDO_FUTUREO_Anfitrion_v2_4_4.py").read_text(encoding="utf-8")
+          new = ast.parse(source)
+          defs = lambda tree: {n.name: n for n in tree.body if isinstance(n,(ast.ClassDef,ast.FunctionDef))}
+          dump = lambda node: ast.dump(node,include_attributes=False)
+          for name,node in defs(old).items():
+              if name != "MultimandoGUI":
+                  assert dump(node) == dump(defs(new)[name]), name
+          old_gui, new_gui = (defs(t)["MultimandoGUI"] for t in (old,new))
+          methods = lambda cls: {n.name:n for n in cls.body if isinstance(n,ast.FunctionDef)}
+          allowed = {"_build","_build_stream_panel","_stream_refresh_sources","_stream_start",
+                     "_configure_joysticks","_close"}
+          for name,node in methods(old_gui).items():
+              if name not in allowed:
+                  assert dump(node)==dump(methods(new_gui)[name]), name
+          for n in ast.walk(new):
+              if isinstance(n,ast.ImportFrom):
+                  assert not (n.module or "").startswith("futureo_stream_")
+              elif isinstance(n,ast.Import):
+                  assert not any(a.name.startswith("futureo_stream_") for a in n.names)
+          print("OK: motores HID, WebSocket, FIFO y streaming preservados")
+          PY
+      - name: Probar archivo unico, interfaz y persistencia desde carpeta aislada
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          export FUTUREO_STANDALONE="$work"
+          cp MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_4.py "$work/"
+          mkdir "$work/tests"
+          cp MULTIMANDO/ANFITRION/tests/test_preferences_v244.py "$work/tests/"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root=Path("MULTIMANDO/ANFITRION/tests")
+          dest=Path(os.environ["FUTUREO_STANDALONE"])/"tests"
+          stream=(root/"test_stream_v30.py").read_text(encoding="utf-8")
+          for version in ("22","30"):
+              stream=stream.replace("from futureo_stream_v"+version+" import ","from MULTIMANDO_FUTUREO_Anfitrion_v2_4_4 import ")
+          (dest/"test_stream.py").write_text(stream,encoding="utf-8")
+          gui=(root/"test_gui_compact_v242.py").read_text(encoding="utf-8").replace("v2_4_2","v2_4_4").replace("v2.4.2","v2.4.4")
+          (dest/"test_gui.py").write_text(gui,encoding="utf-8")
+          PY
+          cd "$work"
+          test "$(find . -maxdepth 1 -name '*.py' | wc -l)" -eq 1
+          python -I -m py_compile MULTIMANDO_FUTUREO_Anfitrion_v2_4_4.py
+          python -I MULTIMANDO_FUTUREO_Anfitrion_v2_4_4.py --selftest
+          python -I tests/test_stream.py
+          xvfb-run -a python -I tests/test_gui.py
+          xvfb-run -a python -I tests/test_preferences_v244.py
