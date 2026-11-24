@@ -11,7 +11,7 @@
     const records = Array.from(root.querySelectorAll('tr[data-ve-user-role]'), row => ({
         row,
         role: row.dataset.veUserRole,
-        text: normalize(row.cells[0].textContent + ' ' + row.cells[1].textContent)
+        text: normalize(Array.from(row.cells).slice(0, 4).map(cell => cell.textContent).join(' '))
     }));
     const apply = () => {
         const q = normalize(search.value);
