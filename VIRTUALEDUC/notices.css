@@ -1,0 +1,8 @@
+/* Shared dismissible notices. */
+.notice.ve-dismissible{display:flex;align-items:flex-start;gap:12px;padding:12px 14px}
+.ve-notice-content{flex:1;min-width:0;overflow-wrap:anywhere;align-self:center;line-height:1.5}
+body .notice button.ve-notice-close{flex:0 0 auto;display:grid;place-items:center;width:40px;min-width:40px;height:40px;min-height:40px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#174c37!important;-webkit-text-fill-color:#174c37!important;font-size:24px;font-weight:600;line-height:1}
+body .notice.error button.ve-notice-close{color:#9b2020!important;-webkit-text-fill-color:#9b2020!important}
+body .notice button.ve-notice-close:hover,body .notice button.ve-notice-close:active{background:#0000000d;border-color:#00000020}
+body .notice button.ve-notice-close:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media(max-width:900px){body .notice button.ve-notice-close{width:44px;min-width:44px;height:44px;min-height:44px}}
