@@ -17,13 +17,17 @@ try {
                 try { save_institution(); flash('Configuración institucional actualizada.'); }
                 catch (DomainException $e) { flash($e->getMessage(),'error'); }
                 go('page=institution');
+            } elseif ($action==='user_identity') {
+                try { update_user_identity($u); flash('Datos del usuario actualizados.'); }
+                catch (DomainException $e) { flash($e->getMessage(),'error'); }
+                go('page=users');
             } elseif ($action==='create') { handle_creation($u); }
             elseif ($action==='login') {
                 if (!$installed) throw new DomainException('Primero importa el archivo SQL del administrador en phpMyAdmin.');
-                $email=strtolower(field('email',190));
-                if ($email==='admin') $email='admin@virtualeduc.local';
+                $identifier=field('email',190);
                 $p=$_POST['password'] ?? '';
-                $row=one('SELECT * FROM ve_users WHERE email=?',[$email]);
+                $row=one('SELECT id,password_hash FROM ve_users WHERE '.username_sql().'=?',[$identifier]);
+                if(!$row && str_contains($identifier,'@')) $row=one('SELECT id,password_hash FROM ve_users WHERE email=?',[$identifier]);
                 if (!$row || !is_string($p) || !password_verify($p,$row['password_hash'])) { usleep(500000); throw new DomainException('Credenciales incorrectas.'); }
                 session_regenerate_id(true);
                 $_SESSION['user_id']=$row['id']; unset($_SESSION['csrf']);
@@ -55,7 +59,7 @@ try {
     }
     $courses=[]; $users=[]; $c=null; $lessons=[]; $done=[]; $page='home';
     if ($u) {
-        if (is_manager($u)) { $courses=all('SELECT * FROM ve_courses ORDER BY id DESC'); $users=$u['role']==='admin'?all('SELECT id,name,email,role FROM ve_users ORDER BY name'):all("SELECT id,name,email,role FROM ve_users WHERE role IN ('teacher','student') ORDER BY name"); }
+        if (is_manager($u)) { $courses=all('SELECT * FROM ve_courses ORDER BY id DESC'); $users=$u['role']==='admin'?all('SELECT '.user_identity_columns().' FROM ve_users ORDER BY name'):all("SELECT ".user_identity_columns()." FROM ve_users WHERE role IN ('teacher','student') ORDER BY name"); }
         elseif ($u['role']==='teacher') $courses=all('SELECT * FROM ve_courses WHERE teacher_id=? ORDER BY id DESC',[$u['id']]);
         else $courses=all('SELECT c.* FROM ve_courses c JOIN ve_enrollments e ON e.course_id=c.id WHERE e.student_id=? AND c.published=1 ORDER BY c.id DESC',[$u['id']]);
         require_role($u,'admin','subadmin','teacher','student');
