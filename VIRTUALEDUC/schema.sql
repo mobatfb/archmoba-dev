@@ -1,4 +1,4 @@
--- VIRTUALEDUC 0.1.15 | MySQL / MariaDB
+-- VIRTUALEDUC 0.1.16 | MySQL / MariaDB
 -- Importar dentro de una base de datos previamente creada.
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     last_names VARCHAR(150) NOT NULL DEFAULT '',
     email VARCHAR(190) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin','subadmin','teacher','student') NOT NULL,
+    role ENUM('admin','subadmin','teacher','student','unassigned') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
