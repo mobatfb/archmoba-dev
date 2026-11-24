@@ -5,7 +5,7 @@ if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 function institution_settings(): array {
     $default=['institution_name'=>'VIRTUALEDUC','institution_subtitle'=>'Plataforma académica institucional','institutional_phone'=>'','institutional_email'=>'','active_period'=>'','logo_path'=>null,'configured'=>false];
     try {
-        $row=one('SELECT * FROM ve_institution_settings WHERE id=1');
+        $row=one('SELECT * FROM institution_settings WHERE id=1');
         if ($row) return array_merge($default,$row,['configured'=>true]);
     } catch (PDOException $e) {
         // The rest of the site remains available until the migration is imported.
@@ -68,11 +68,11 @@ function save_institution(): void {
     $pdo=db(); $old=null; $path=null;
     try {
         $pdo->beginTransaction();
-        $row=one('SELECT logo_path FROM ve_institution_settings WHERE id=1 FOR UPDATE');
+        $row=one('SELECT logo_path FROM institution_settings WHERE id=1 FOR UPDATE');
         if (!$row) throw new DomainException('Importa la migración institucional.');
         $old=$row['logo_path'];
         $path=$new??(isset($_POST['remove_logo'])?null:$old);
-        query('UPDATE ve_institution_settings SET institution_name=?,institution_subtitle=?,institutional_phone=?,institutional_email=?,active_period=?,logo_path=? WHERE id=1',[$name,$subtitle,$phone,$email,$period,$path]);
+        query('UPDATE institution_settings SET institution_name=?,institution_subtitle=?,institutional_phone=?,institutional_email=?,active_period=?,logo_path=? WHERE id=1',[$name,$subtitle,$phone,$email,$period,$path]);
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
