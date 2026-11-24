@@ -4,6 +4,7 @@ on:
     paths:
       - 'MULTIMANDO/FUTUREO_VJOY/host_bridge_v085/**'
       - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py'
+      - 'MULTIMANDO/FUTUREO_VJOY/instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_4_1.py'
       - 'MULTIMANDO/ANFITRION/tests/test_gui_panels_v241.py'
       - '.github/workflows/futureo-anti-deriva-v085.yml'
   workflow_dispatch:
