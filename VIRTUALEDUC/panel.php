@@ -5,13 +5,13 @@ if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 
 function navigation_sections(array $u): array {
     $sections=['Inicio'=>['home'=>'Panel principal']];
-    if (is_manager($u)) $sections['Administración']=['users'=>'Usuarios'];
     if ($u['role']==='student') $sections['Aprendizaje']=['courses'=>'Mis capacitaciones','progress'=>'Mi progreso','certificates'=>'Mis certificados'];
     else {
         $sections['Capacitaciones']=['courses'=>$u['role']==='teacher'?'Mis cursos':'Todos los cursos'];
         if ($u['role']==='teacher') $sections['Capacitaciones']['certificates']='Mis certificados';
         if (is_manager($u)) $sections['Capacitaciones']['enrollments']='Matrículas';
     }
+    if (is_manager($u)) $sections['Administración']=['users'=>'Usuarios'];
     if ($u['role']==='admin') $sections['Configuración']=['institution'=>'Configuración institucional'];
     $sections['Mi cuenta']=['account'=>'Perfil y contraseña'];
     return $sections;
