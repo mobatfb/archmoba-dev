@@ -133,8 +133,8 @@ const sandbox = {
   createImageBitmap: async blob => {
     await sleep(5);
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (bytes[4] === 1) {
-      return { width: bytes[5], height: bytes[6], close() {} };
+    if (bytes[2] === 1) {
+      return { width: bytes[3], height: bytes[4], close() {} };
     }
     return { width: 320, height: 180, close() {} };
   },
