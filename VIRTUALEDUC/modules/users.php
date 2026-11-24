@@ -14,9 +14,6 @@ $matches=static function(array $x) use($search,$selected,$fold):bool {
     return ($selected===''||$x['role']===$selected)&&($search===''||preg_match('/'.preg_quote($fold($search),'/').'/iu',$fold($x['username'].' '.$x['first_names'].' '.$x['last_names'].' '.$x['email']))===1);
 };
 $visible=count(array_filter($users,$matches));
-$editId=filter_var($_GET['edit']??0,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
-$editing=null;
-if($editId) foreach($users as $x) if((int)$x['id']===$editId && in_array($x['role'],$roles,true)) { $editing=$x; break; }
 ?>
 <style>
 .ve-users-filters{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:8px}
@@ -35,9 +32,6 @@ if($editId) foreach($users as $x) if((int)$x['id']===$editId && in_array($x['rol
     <?php foreach($roles as $r):?><span><?=h($labels[$r])?>: <strong><?=$counts[$r]??0?></strong></span><?php endforeach;?>
     <span>Total: <strong><?=count($users)?></strong></span>
   </div>
-  <?php if($editing):?>
-  <section class="ve-form"><h2>Editar identificación</h2><form method="post"><?php action('user_identity');?><input type="hidden" name="user_id" value="<?=h($editing['id'])?>"><label>Usuario<input name="usuario" required maxlength="190" value="<?=h($editing['username'])?>"></label><label>Nombres<input name="nombres" required maxlength="150" value="<?=h($editing['first_names'])?>"></label><label>Apellidos<input name="apellidos" required maxlength="150" value="<?=h($editing['last_names'])?>"></label><label>Correo<input name="correo" type="email" required maxlength="190" value="<?=h($editing['email'])?>"></label><button>Guardar cambios</button> <a class="ve-users-clear" href="?page=users">Cancelar</a></form></section>
-  <?php endif;?>
   <form class="ve-users-filters" method="get" action="index.php" role="search" aria-label="Buscar usuarios">
     <input type="hidden" name="page" value="users">
     <label class="ve-users-search">Buscar usuario<input type="search" name="q" value="<?=h($search)?>" placeholder="Usuario, nombres, apellidos o correo..." maxlength="150" autocomplete="off"></label>
@@ -46,7 +40,8 @@ if($editId) foreach($users as $x) if((int)$x['id']===$editId && in_array($x['rol
     <noscript><button type="submit">Buscar</button></noscript>
   </form>
   <p class="muted ve-users-results" role="status" aria-live="polite">Mostrando <strong data-ve-user-count><?=$visible?></strong> de <?=count($users)?> usuarios</p>
-  <div class="ve-table" tabindex="0" aria-label="Tabla de usuarios"><table><thead><tr><th>Usuario</th><th>Nombres</th><th>Apellidos</th><th>Correo</th><th>Rol</th><th>Acción</th></tr></thead><tbody><?php foreach($users as $x):?><tr data-ve-user-role="<?=h($x['role'])?>" <?=$matches($x)?'':'hidden'?>><td><?=h($x['username'])?></td><td><?=h($x['first_names'])?></td><td><?=h($x['last_names'])?></td><td><?=h($x['email'])?></td><td><span class="tag"><?=h(role_label($x['role']))?></span></td><td><a href="?page=users&amp;edit=<?=h($x['id'])?>">Editar</a></td></tr><?php endforeach;?></tbody></table></div>
+  <div class="ve-table" tabindex="0" aria-label="Tabla de usuarios"><table><thead><tr><th>Usuario</th><th>Nombres</th><th>Apellidos</th><th>Correo</th><th>Rol</th><th>Acción</th></tr></thead><tbody><?php foreach($users as $x):?><tr data-ve-user-role="<?=h($x['role'])?>" <?=$matches($x)?'':'hidden'?>><td><?=h($x['username'])?></td><td><?=h($x['first_names'])?></td><td><?=h($x['last_names'])?></td><td><?=h($x['email'])?></td><td><span class="tag"><?=h(role_label($x['role']))?></span></td><td><button type="button" class="ve-quiet" data-ve-edit-user="<?=h($x['id'])?>" data-ve-open="edit-user-dialog" aria-haspopup="dialog" aria-controls="edit-user-dialog">Editar</button></td></tr><?php endforeach;?></tbody></table></div>
   <p class="muted" data-ve-users-empty <?=$visible?'hidden':''?>><?=$users?'No se encontraron usuarios con los filtros seleccionados.':'No hay usuarios registrados.'?></p>
+  <?php require __DIR__.'/user_edit.php'; ?>
 </section>
 <script src="modules/users.js?v=<?=h(VE_VERSION)?>" defer></script>
