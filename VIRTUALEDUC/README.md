@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.10
+# VIRTUALEDUC v0.1.11
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -53,6 +53,9 @@ Resumen de Usuarios en el orden Estudiantes, Docentes, Subadministradores, Admin
 4. Guardar nombre, subtítulo, teléfono, correo, periodo activo y logo opcional.
 
 El logo se guarda en uploads/institution/ con nombre aleatorio y extensión de imagen validada; MySQL solo almacena su ruta relativa. PHP necesita permiso de escritura en esa carpeta, fileinfo y límites de subida adecuados (2 MB por logo). El archivo .htaccess bloquea el acceso HTTP directo en Apache; para Nginx o servidores que ignoran .htaccess, bloquear acceso directo a /uploads/institution/ en la configuración del servidor. Las imágenes se sirven mediante index.php?institution_logo=1. No subir logos reales al repositorio. No se inventan datos de contacto ni periodo: se muestran los datos que el administrador configure. El menú conserva las funciones reales de VIRTUALEDUC; no se agregan módulos escolares sin implementar.
+
+## Actualización a v0.1.11
+Las plantillas CSV de usuarios, capacitaciones, lecciones y matrículas incluyen una fila de ejemplo adaptada a sus columnas. Reemplazar o eliminar la fila de ejemplo antes de importar. Aplicar sobre v0.1.10; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
