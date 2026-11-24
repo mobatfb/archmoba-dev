@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.12';
+const VE_VERSION = '0.1.13';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -175,4 +175,14 @@ function available_teachers(array $u): array {
     if ($u['role'] === 'admin') return all("SELECT ".user_identity_columns()." FROM ve_users WHERE role IN ('admin','subadmin','teacher') ORDER BY name");
     if ($u['role'] === 'subadmin') return all("SELECT ".user_identity_columns()." FROM ve_users WHERE role='teacher' OR id=? ORDER BY name", [$u['id']]);
     return [];
+}
+
+// Passwords chosen by the account owner must meet the complexity policy.
+function valid_personal_password(string $password): bool {
+    return strlen($password)<=72 && !str_contains($password,"\0")
+        && preg_match_all('/./us',$password)>=8
+        && preg_match('/\p{Lu}/u',$password)===1
+        && preg_match('/\p{Ll}/u',$password)===1
+        && preg_match('/[0-9]/',$password)===1
+        && preg_match('/[\p{P}\p{S}]/u',$password)===1;
 }
