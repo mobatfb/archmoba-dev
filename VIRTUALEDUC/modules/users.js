@@ -35,5 +35,19 @@
         apply();
         search.focus();
     });
+    const editor = root.querySelector('#edit-user-dialog');
+    const editForm = editor.querySelector('form');
+    root.addEventListener('click', event => {
+        const button = event.target.closest('button[data-ve-edit-user]');
+        if (!button) return;
+        const row = button.closest('tr[data-ve-user-role]');
+        if (!row) return;
+        editForm.elements.user_id.value = button.dataset.veEditUser;
+        for (const [i, field] of ['usuario', 'nombres', 'apellidos', 'correo'].entries()) {
+            editForm.elements[field].value = row.cells[i].textContent;
+        }
+        editor.querySelector('[data-ve-edit-role]').textContent = row.cells[4].textContent;
+        // create.js opens this specific dialog after the fields have been populated.
+    });
     apply();
 })();
