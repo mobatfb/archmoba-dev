@@ -1,0 +1,81 @@
+name: FUTUREO rollback seguro - v0.8.4 + anfitriones v2.4.0 y v2.3.1
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/README_ROLLBACK_ANTI_DERIVA.md'
+      - '.github/workflows/futureo-rollback-safe.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: futureo-rollback-safe
+  cancel-in-progress: true
+jobs:
+  recovery-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verificar versiones originales y pruebas del anfitrion
+        shell: bash
+        run: |
+          python -m pip install Pillow
+          python -m py_compile MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py
+          python -m py_compile MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_3_1.py
+          python MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py --selftest
+          python MULTIMANDO/ANFITRION/tests/test_stream_v30.py
+      - name: Crear ZIP seguro, sin modificaciones a versiones anteriores
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
+          import hashlib
+          root=Path('MULTIMANDO')
+          wd=root/'FUTUREO_VJOY'/'instalador_windows'
+          py=root/'ANFITRION'
+          exe_name='FUTUREO_VJOY_PORTABLE_HOST_v0_8_4_WIN64.exe'
+          exe=wd/exe_name
+          assert exe.is_file() and exe.stat().st_size>10_000_000
+          expected=(wd/(exe_name+'.sha256')).read_text(encoding='utf-8').split()[0].lower()
+          actual=hashlib.sha256(exe.read_bytes()).hexdigest()
+          assert expected==actual, 'EXE v0.8.4 no corresponde a la version original verificada'
+          py_files=['MULTIMANDO_FUTUREO_Anfitrion_v2_4_0.py',
+                    'MULTIMANDO_FUTUREO_Anfitrion_v2_3_1.py',
+                    'futureo_stream_v30.py','futureo_stream_v22.py']
+          for name in py_files:
+              assert (py/name).is_file(), name
+          for name in py_files[:2]:
+              assert (wd/name).read_bytes()==(py/name).read_bytes(), 'Dos copias diferentes: '+name
+          zip_path=wd/'FUTUREO_MULTIMANDO_ROLLBACK_ESTABLE_v0_8_4.zip'
+          with ZipFile(zip_path,'w') as bundle:
+              bundle.write(exe, exe_name, compress_type=ZIP_STORED)
+              for name in py_files:
+                  bundle.write(py/name,name,compress_type=ZIP_DEFLATED,compresslevel=9)
+              bundle.write(py/'README_ROLLBACK_ANTI_DERIVA.md','LEEME_PRIMERO.md',
+                           compress_type=ZIP_DEFLATED)
+          with ZipFile(zip_path) as bundle:
+              assert bundle.testzip() is None
+              names=set(bundle.namelist())
+              assert names==set(py_files+[exe_name,'LEEME_PRIMERO.md'])
+              assert not any('FRASE_CIFRADO' in n or n.endswith('.enc') for n in names)
+          print('ROLLBACK ZIP',zip_path,zip_path.stat().st_size,'bytes')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUTUREO_ROLLBACK_SEGURO
+          path: MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_MULTIMANDO_ROLLBACK_ESTABLE_v0_8_4.zip
+          retention-days: 30
+      - name: Publicar ZIP de recuperacion en GitHub
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f MULTIMANDO/FUTUREO_VJOY/instalador_windows/FUTUREO_MULTIMANDO_ROLLBACK_ESTABLE_v0_8_4.zip
+          if ! git diff --cached --quiet; then
+            git commit -m 'release(futureo): rollback v084 + anfitrion v240 y v231 sin cambios'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
