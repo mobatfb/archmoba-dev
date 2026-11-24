@@ -1,0 +1,8 @@
+.ve-sidebar-user .ve-profile-link{display:flex;align-items:center;gap:8px;flex:1;min-width:0;color:#fff;text-decoration:none;border-radius:8px;padding:3px}
+.ve-sidebar-user .ve-profile-link:hover{background:#24476e}.ve-profile-link:focus-visible{outline:2px solid #e3a329;outline-offset:2px}
+.ve-sidebar-user .ve-user-avatar{width:36px;height:36px;object-fit:cover;font-size:13px}.ve-profile-link .ve-user-ident{min-width:0}
+.ve-profile-identity{display:flex;align-items:center;gap:16px;margin:16px 0 20px;padding:14px;background:#eef4fb;border-radius:12px;overflow-wrap:anywhere}
+.ve-profile-large{display:grid;place-items:center;flex:none;width:100px;height:100px;border-radius:50%;background:#d6e4f6;color:#10294d;object-fit:cover;font-size:32px;font-weight:700}
+.ve-profile-identity>div{min-width:0}.ve-profile-identity strong,.ve-profile-identity small{display:block}.ve-profile-identity small{margin-top:5px;color:#526982}
+.ve-profile-upload input[type=file]{max-width:100%;min-width:0}.ve-profile-remove{margin-top:12px}.ve-profile-remove button{max-width:100%}
+@media(max-width:480px){.ve-profile-identity{gap:12px;padding:12px}.ve-profile-large{width:72px;height:72px;font-size:24px}.ve-profile-upload button,.ve-profile-remove button{width:100%}}
