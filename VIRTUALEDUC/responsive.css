@@ -1,0 +1,68 @@
+/* VIRTUALEDUC 0.1.6 - adaptive layout and touch targets. */
+html{max-width:100%;-webkit-text-size-adjust:100%}
+body{min-width:0;overflow-wrap:anywhere}
+header>*{min-width:0}
+header>span{max-width:100%;overflow-wrap:anywhere}
+main,section,article,.grid>* ,.ve-stat,.ve-role-card{min-width:0}
+img,video,iframe{max-width:100%}
+input,select,textarea,progress{max-width:100%;min-width:0}
+.ve-table{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.ve-table table{min-width:500px}
+.ve-dialog{box-sizing:border-box;min-width:0;max-width:calc(100% - 24px);max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);margin:auto;overscroll-behavior:contain}
+.ve-dialog h2,.ve-columns,.ve-columns code{min-width:0;overflow-wrap:anywhere}
+.ve-dialog-head h2{flex:1}
+.ve-dialog-head button{flex:none}
+.ve-dialog input[type=file]{width:100%;max-width:100%;min-width:0}
+.ve-tabs button{min-width:0}
+.ve-role-card>a{min-width:0}
+.ve-menu-title{list-style:none;display:flex;align-items:center;gap:10px}
+.ve-menu-title::-webkit-details-marker{display:none}
+.ve-menu-title::after{content:'+';font-size:20px;margin-left:auto}
+.ve-menu[open]>.ve-menu-title::after{content:'\2212'}
+.ve-menu-title:focus-visible,.ve-group summary:focus-visible,.ve-group a:focus-visible{outline:2px solid #e3a329;outline-offset:2px}
+@media(max-width:900px){
+  .ve-shell{display:block;min-height:0}
+  .ve-sidebar{padding:8px 14px}
+  .ve-menu{position:static;margin:0}
+  .ve-menu-title{font-size:15px;min-height:44px;color:#fff;padding:8px 10px}
+  .ve-menu-title::before{content:'\2630';font-size:20px;line-height:1}
+  .ve-menu nav{max-height:55vh;overflow-y:auto;overscroll-behavior:contain}
+  .ve-group summary,.ve-group a{min-height:44px;padding-top:12px;padding-bottom:12px}
+  .ve-person{margin:0 0 8px}
+  .ve-shell main{padding:20px 16px}
+  header{padding:14px 16px;gap:8px 12px}
+  header a{font-size:21px;letter-spacing:1px}
+  body button,body a.btn,body .btn{min-height:44px}
+  input,select,textarea{font-size:16px;min-height:44px}
+  .ve-dialog{padding:18px}
+}
+@media(max-width:480px){
+  header>a{flex:1 1 100%}
+  header>span{flex:1 1 0;font-size:13px}
+  header>form{flex:0 0 auto}
+  main,.ve-shell main{padding:14px 12px}
+  section,article{padding:15px;margin-bottom:14px}
+  .hero{padding:22px 16px}
+  h1{font-size:24px;line-height:1.2}
+  h2{font-size:20px;line-height:1.3}
+  .grid{grid-template-columns:minmax(0,1fr);gap:12px}
+  .ve-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .ve-stat{padding:12px;font-size:13px}
+  .ve-stat strong{font-size:25px}
+  .ve-section-head{align-items:stretch;gap:10px}
+  .ve-section-head>h1,.ve-section-head>button[data-ve-open],.ve-role-card>button[data-ve-open]{width:100%}
+  .ve-role-card{align-items:stretch}
+  .ve-role-card>a{width:100%}
+  .ve-dialog{width:calc(100% - 16px);max-width:calc(100% - 16px);max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);padding:14px;border-radius:12px}
+  .ve-dialog-head{flex-wrap:nowrap;gap:8px}
+  .ve-dialog-head h2{font-size:19px}
+  .ve-dialog-head button{min-width:44px}
+  .ve-tabs{margin:12px 0;gap:6px}
+  body .ve-tabs button{font-size:14px;padding:10px 6px}
+  .ve-dialog-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+  .ve-dialog-actions>button,.ve-dialog a.btn,.auth form>button{width:100%;text-align:center}
+  .ve-table th,.ve-table td{padding:10px 8px}
+  .auth{margin:16px auto}
+  footer{padding:16px 12px}
+}
+@media(max-width:350px){.ve-stats{grid-template-columns:minmax(0,1fr)}}
