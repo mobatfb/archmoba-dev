@@ -46,23 +46,61 @@ function profile_initials(array $u): string {
     }
     return $out===''?'U':(function_exists('mb_strtoupper')?mb_strtoupper($out,'UTF-8'):strtoupper($out));
 }
+
 function profile_avatar(array $u,string $class): void {
     if (profile_has_photo($u)) { ?><img class="<?=h($class)?>" src="?profile_photo=1" alt="Foto de perfil"><?php }
     else { ?><span class="<?=h($class)?>" aria-label="Iniciales del usuario"><?=h(profile_initials($u))?></span><?php }
+}
+function profile_preview_avatar(array $u,string $class): void {
+    if (function_exists('imagejpeg') && profile_has_photo($u)) { ?><img class="<?=h($class)?>" src="<?=h('?profile_photo=1&thumb_id='.(string)$u['id'])?>" alt="Foto de <?=h($u['name']??$u['username']??'usuario')?>" loading="lazy" decoding="async" width="42" height="42"><?php }
+    else { ?><span class="<?=h($class)?>" aria-label="Iniciales del usuario"><?=h(profile_initials($u))?></span><?php }
+}
+function profile_photo_target(array $actor, mixed $id): ?array {
+    if ($id===null) return $actor;
+    if (!is_string($id) || !preg_match('/\A[1-9][0-9]{0,19}\z/D',$id) || !is_manager($actor)) return null;
+    if ($actor['role']==='admin') return one('SELECT id,role FROM users WHERE id=?',[$id]);
+    return one("SELECT id,role FROM users WHERE id=? AND role IN ('teacher','student')",[$id]);
+}
+function profile_output_preview(string $raw): bool {
+    if (!function_exists('imagejpeg') || !function_exists('imagecreatefromstring')) return false;
+    $image=@imagecreatefromstring($raw);
+    if (!$image) return false;
+    $out=imagecreatetruecolor(60,60);
+    if (!$out) { imagedestroy($image); return false; }
+    try {
+        imagealphablending($out,true);
+        imagefill($out,0,0,imagecolorallocate($out,255,255,255));
+        if (!imagecopyresampled($out,$image,0,0,0,0,60,60,imagesx($image),imagesy($image))) return false;
+        ob_start();
+        try { $ok=imagejpeg($out,null,50); $data=(string)ob_get_contents(); }
+        finally { ob_end_clean(); }
+        if (!$ok || $data==='') return false;
+        header('Content-Type: image/jpeg');
+        header('Content-Length: '.strlen($data));
+        echo $data;
+        return true;
+    } finally { imagedestroy($out); imagedestroy($image); }
 }
 function serve_profile_photo(?array $u): never {
     require_role($u,'admin','subadmin','teacher','student');
     if (($_SERVER['REQUEST_METHOD']??'GET')!=='GET') { header('Allow: GET'); http_response_code(405); exit; }
     if (in_array($_SERVER['HTTP_SEC_FETCH_SITE']??'',['cross-site','same-site'],true)) { http_response_code(403); exit; }
-    $path=profile_path($u);
-    if (!$path || !profile_has_photo($u) || !($fp=@fopen($path,'rb'))) { http_response_code(404); exit; }
+    $thumb=$_GET['thumb_id']??null;
+    $target=profile_photo_target($u,$thumb);
+    $path=$target?profile_path($target):null;
+    if (!$target || !$path || !profile_has_photo($target) || !($fp=@fopen($path,'rb'))) { http_response_code(404); exit; }
     $stat=fstat($fp);
     if (!$stat || $stat['size']<1 || $stat['size']>100000) { fclose($fp); http_response_code(404); exit; }
     session_write_close();
-    header('Content-Type: image/png');
-    header('Content-Disposition: inline; filename="perfil.png"');
     header('Cache-Control: private, no-store, max-age=0');
     header('Cross-Origin-Resource-Policy: same-origin');
+    if ($thumb!==null) {
+        $raw=stream_get_contents($fp,100001); fclose($fp);
+        if (!is_string($raw) || strlen($raw)>100000 || !profile_output_preview($raw)) http_response_code(404);
+        exit;
+    }
+    header('Content-Type: image/png');
+    header('Content-Disposition: inline; filename="perfil.png"');
     header('Content-Length: '.$stat['size']);
     fpassthru($fp); fclose($fp); exit;
 }
