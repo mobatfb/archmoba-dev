@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.12
+# VIRTUALEDUC v0.1.13
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -66,6 +66,9 @@ Nuevas plantillas CSV (UTF-8, separador punto y coma):
 - Matrículas generales: id_curso;usuario_estudiante. Desde un curso: usuario_estudiante.
 - Lecciones: titulo;contenido (sin cambios).
 Descargar las nuevas plantillas y reemplazar las filas de ejemplo. Si se usan identificadores numéricos con ceros iniciales en Excel, dar formato de texto a la columna antes de escribirlos. No publicar CSV con contraseñas.
+
+## Actualización a v0.1.13
+La creación individual y masiva admite contraseñas iniciales de al menos 8 caracteres (incluidos 8 dígitos) y máximo 72 bytes. Al cambiar su propia contraseña, el usuario debe elegir una nueva de al menos 8 caracteres, con mayúscula, minúscula, número y signo especial. Se valida en PHP y se mantiene el hash de contraseña. Se recomienda utilizar contraseñas iniciales únicas y cambiarlas cuanto antes. Aplicar sobre v0.1.12; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
