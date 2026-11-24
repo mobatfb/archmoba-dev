@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.23
+# VIRTUALEDUC v0.1.24
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -100,6 +100,9 @@ El menú de administradores y subadministradores ordena Inicio, Capacitaciones y
 
 ## Actualización a v0.1.23
 La sección Capacitaciones pasa a llamarse Cursos en el menú, el panel principal y los módulos de cursos; Mis capacitaciones pasa a Mis cursos y el diálogo de creación se denomina Crear curso. Se conservan las rutas, permisos y orden del menú. No requiere SQL.
+
+## Actualización a v0.1.24
+El menú lateral incorpora iconos SVG locales en todas las secciones, enlaces y en Salir, para los cuatro roles. No utiliza fuentes de iconos ni servicios externos. Se conservan los permisos, las rutas y la navegación adaptable. Aplicar sobre v0.1.23; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
