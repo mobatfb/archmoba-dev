@@ -99,7 +99,7 @@ function identity_fields(array $r, ?array $existing=null): array {
     $email=creation_email($r,'correo');
     $other=find_by_username($username);
     if($other && (!$existing || (int)$other['id']!==(int)$existing['id'])) throw new DomainException('El usuario ya está registrado.');
-    $other=one('SELECT id FROM ve_users WHERE email=?',[$email]);
+    $other=one('SELECT id FROM users WHERE email=?',[$email]);
     if($other && (!$existing || (int)$other['id']!==(int)$existing['id'])) throw new DomainException('El correo ya está registrado.');
     return [$username,$first,$last,$name,$email];
 }
@@ -107,11 +107,11 @@ function identity_fields(array $r, ?array $existing=null): array {
 function update_user_identity(?array $u): void {
     require_role($u,'admin','subadmin');
     $id=id_field('user_id');
-    $existing=one('SELECT '.user_identity_columns().' FROM ve_users WHERE id=?',[$id]);
+    $existing=one('SELECT '.user_identity_columns().' FROM users WHERE id=?',[$id]);
     if(!$existing || !in_array($existing['role'],creatable_roles($u),true)) throw new DomainException('Usuario no autorizado o inexistente.');
     [$username,$first,$last,$name,$email]=identity_fields($_POST,$existing);
     try {
-        query('UPDATE ve_users SET username=?,first_names=?,last_names=?,name=?,email=? WHERE id=? AND role=?',[$username,$first,$last,$name,$email,$id,$existing['role']]);
+        query('UPDATE users SET username=?,first_names=?,last_names=?,name=?,email=? WHERE id=? AND role=?',[$username,$first,$last,$name,$email,$id,$existing['role']]);
     } catch(PDOException $e) {
         if($e->getCode()==='23000') throw new DomainException('El usuario o correo ya está registrado.');
         throw $e;
@@ -125,27 +125,27 @@ function creation_insert(array $u,string $kind,string $role,int $course,array $r
         if(!in_array($role,creatable_roles($u),true)) throw new DomainException('Rol inválido o no autorizado.');
         [$username,$first,$last,$name,$email]=identity_fields($r); $p=creation_value($r,'contrasena',72,true);
         if(preg_match_all('/./us',$p)<8||str_contains($p,"\0")) throw new DomainException('La contraseña debe tener al menos 8 caracteres y un máximo de 72 bytes.');
-        query('INSERT INTO ve_users(username,first_names,last_names,name,email,password_hash,role) VALUES(?,?,?,?,?,?,?)',[$username,$first,$last,$name,$email,password_hash($p,PASSWORD_DEFAULT),$role]);
+        query('INSERT INTO users(username,first_names,last_names,name,email,password_hash,role) VALUES(?,?,?,?,?,?,?)',[$username,$first,$last,$name,$email,password_hash($p,PASSWORD_DEFAULT),$role]);
     } elseif($kind==='course') {
         $title=creation_value($r,'titulo',180); $description=creation_value($r,'descripcion',20000); $teacher=(int)$u['id'];
         $t=find_by_username(creation_value($r,'usuario_responsable',190));
         $allowed=is_manager($u)?array_map('intval',array_column(available_teachers($u),'id')):[(int)$u['id']];
         if(!$t||!in_array((int)$t['id'],$allowed,true)) throw new DomainException('Usuario responsable no autorizado o inexistente.');
         $teacher=(int)$t['id'];
-        if(one('SELECT id FROM ve_courses WHERE title=? AND teacher_id=?',[$title,$teacher])) throw new DomainException('Ya existe un curso con este título y responsable.');
-        query('INSERT INTO ve_courses(title,description,teacher_id) VALUES(?,?,?)',[$title,$description,$teacher]);
+        if(one('SELECT id FROM courses WHERE title=? AND teacher_id=?',[$title,$teacher])) throw new DomainException('Ya existe un curso con este título y responsable.');
+        query('INSERT INTO courses(title,description,teacher_id) VALUES(?,?,?)',[$title,$description,$teacher]);
     } elseif($kind==='lesson') {
         $title=creation_value($r,'titulo',180); $content=creation_value($r,'contenido',60000);
-        if(one('SELECT id FROM ve_lessons WHERE course_id=? AND title=?',[$course,$title])) throw new DomainException('Ya existe una lección con este título.');
-        $order=count_rows('SELECT COALESCE(MAX(sort_order),0) FROM ve_lessons WHERE course_id=?',[$course])+1;
-        query('INSERT INTO ve_lessons(course_id,title,content,sort_order) VALUES(?,?,?,?)',[$course,$title,$content,$order]);
+        if(one('SELECT id FROM lessons WHERE course_id=? AND title=?',[$course,$title])) throw new DomainException('Ya existe una lección con este título.');
+        $order=count_rows('SELECT COALESCE(MAX(sort_order),0) FROM lessons WHERE course_id=?',[$course])+1;
+        query('INSERT INTO lessons(course_id,title,content,sort_order) VALUES(?,?,?,?)',[$course,$title,$content,$order]);
     } elseif($kind==='enroll') {
         if(!$course) $course=(int)filter_var($r['id_curso']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
         if(!$course||!course_for($course,$u)) throw new DomainException('Curso inexistente o no autorizado.');
         $student=find_by_username(creation_value($r,'usuario_estudiante',190));
         if(!$student||$student['role']!=='student') throw new DomainException('Estudiante inexistente.');
-        if(one('SELECT student_id FROM ve_enrollments WHERE course_id=? AND student_id=?',[$course,$student['id']])) throw new DomainException('El estudiante ya está matriculado.');
-        query('INSERT INTO ve_enrollments(course_id,student_id) VALUES(?,?)',[$course,$student['id']]);
+        if(one('SELECT student_id FROM enrollments WHERE course_id=? AND student_id=?',[$course,$student['id']])) throw new DomainException('El estudiante ya está matriculado.');
+        query('INSERT INTO enrollments(course_id,student_id) VALUES(?,?)',[$course,$student['id']]);
     }
 }
 function handle_creation(?array $u): never {
@@ -185,7 +185,7 @@ function creation_dialog(array $u,string $kind,string $role='',int $course=0): v
       <div role="tabpanel" id="<?=h($id)?>-individual" aria-labelledby="<?=h($id)?>-individual-tab" data-ve-panel="individual"><form method="post"><?php creation_hidden($kind,$role,$course,'individual');?>
       <?php if($kind==='user'):?><label>Usuario<input name="usuario" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,79}" autocomplete="off"></label><label>Nombres<input name="nombres" required maxlength="150"></label><label>Apellidos<input name="apellidos" required maxlength="150"></label><label>Correo electrónico<input type="email" name="correo" required maxlength="190"></label><label>Contraseña (mínimo 8 caracteres)<input type="password" name="contrasena" required minlength="8" maxlength="72" autocomplete="new-password"></label><label>Rol<select name="rol" required><option value="">Seleccionar rol</option><?php foreach(creatable_roles($u) as $r):?><option value="<?=h($r)?>"><?=h(role_label($r))?></option><?php endforeach;?></select></label>
       <?php elseif($kind==='course'||$kind==='lesson'):?><label>Título<input name="titulo" required maxlength="180"></label><label><?=$kind==='course'?'Descripción':'Contenido'?><textarea name="<?=$kind==='course'?'descripcion':'contenido'?>" required></textarea></label><?php if($kind==='course'):?><label>Usuario responsable<input name="usuario_responsable" required maxlength="190" autocomplete="off" <?php if(is_manager($u)):?>list="<?=h($id)?>-responsables"<?php else:?>value="<?=h($u['username'])?>" readonly<?php endif;?>></label><?php if(is_manager($u)):?><datalist id="<?=h($id)?>-responsables"><?php foreach(available_teachers($u) as $x):?><option value="<?=h($x['username'])?>" label="<?=h($x['name'])?>"></option><?php endforeach;?></datalist><?php endif;?><?php endif;?>
-      <?php elseif($kind==='enroll'): if(!$course):?><label>Curso<select name="id_curso" required><option value="">Seleccionar</option><?php foreach(all('SELECT id,title FROM ve_courses ORDER BY title') as $x):?><option value="<?=h($x['id'])?>">#<?=h($x['id'])?> · <?=h($x['title'])?></option><?php endforeach;?></select></label><?php endif;?><label>Usuario del estudiante<input name="usuario_estudiante" required maxlength="190" autocomplete="off" list="<?=h($id)?>-estudiantes"></label><datalist id="<?=h($id)?>-estudiantes"><?php foreach(all("SELECT ".user_identity_columns()." FROM ve_users WHERE role='student' ORDER BY name") as $x):?><option value="<?=h($x['username'])?>" label="<?=h($x['name'])?>"></option><?php endforeach;?></datalist><?php endif;?>
+      <?php elseif($kind==='enroll'): if(!$course):?><label>Curso<select name="id_curso" required><option value="">Seleccionar</option><?php foreach(all('SELECT id,title FROM courses ORDER BY title') as $x):?><option value="<?=h($x['id'])?>">#<?=h($x['id'])?> · <?=h($x['title'])?></option><?php endforeach;?></select></label><?php endif;?><label>Usuario del estudiante<input name="usuario_estudiante" required maxlength="190" autocomplete="off" list="<?=h($id)?>-estudiantes"></label><datalist id="<?=h($id)?>-estudiantes"><?php foreach(all("SELECT ".user_identity_columns()." FROM users WHERE role='student' ORDER BY name") as $x):?><option value="<?=h($x['username'])?>" label="<?=h($x['name'])?>"></option><?php endforeach;?></datalist><?php endif;?>
       <div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Crear registro</button></div></form></div>
       <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla con una fila de ejemplo. Reemplaza o elimina esa fila, completa tus registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 8 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='course'):?><p class="muted">Usa el usuario exacto del responsable. Los docentes solo pueden asignarse a sí mismos.</p><?php endif;?><?php if($kind==='enroll'):?><p class="muted">Usa el usuario exacto del estudiante registrado.</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
     </dialog>
