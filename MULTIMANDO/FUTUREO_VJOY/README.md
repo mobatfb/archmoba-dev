@@ -1,3 +1,18 @@
+## ANFITRION FUTUREO v2.3.1 - NUEVO MODO EQUILIBRADO
+
+**[Descargar ZIP v2.3.1 (Python + motor de captura)](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_3_1_PANELES.zip)** |
+[Python v2.3.1](instalador_windows/MULTIMANDO_FUTUREO_Anfitrion_v2_3_1.py) |
+[Guia de instalacion](../ANFITRION/README_PANELES_V2_3_1.md).
+
+En **TRANSMISION**, el nuevo boton **MODO EQUILIBRADO** esta justo al
+lado de **MODO RAPIDO**:
+- MODO RAPIDO: 320x180, 15 FPS, JPEG 40.
+- MODO EQUILIBRADO: **480x270, 15 FPS, JPEG 50**.
+
+No se modifican la web, los mandos, la cola, Cloudflare ni el motor de
+stream. Si la transmision esta activa, primero DETENER para cambiar
+el perfil y despues INICIAR TRANSMISION.
+
 ## NUEVO - ANFITRION FUTUREO v2.3.0 ORGANIZADO POR PANELES
 
 **[DESCARGAR ZIP v2.3.0 - PY + MOTOR STREAM](instalador_windows/MULTIMANDO_FUTUREO_ANFITRION_v2_3_0_PANELES.zip)** |
