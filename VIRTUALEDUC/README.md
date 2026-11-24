@@ -71,7 +71,7 @@ Descargar las nuevas plantillas y reemplazar las filas de ejemplo. Si se usan id
 La creación individual y masiva admite contraseñas iniciales de al menos 8 caracteres (incluidos 8 dígitos) y máximo 72 bytes. Al cambiar su propia contraseña, el usuario debe elegir una nueva de al menos 8 caracteres, con mayúscula, minúscula, número y signo especial. Se valida en PHP y se mantiene el hash de contraseña. Se recomienda utilizar contraseñas iniciales únicas y cambiarlas cuanto antes. Aplicar sobre v0.1.12; no requiere SQL.
 
 ## Actualización a v0.1.14
-La acción Editar de la tabla de Usuarios abre un diálogo independiente de Crear, con identificación precargada, rol informativo, Guardar cambios y Cancelar. Se conserva la autorización del servidor, el buscador y el filtro por roles. El formulario reutilizable se ubica en modules/user_edit.php. Aplicar sobre v0.1.13; no requiere SQL.
+La acción Editar de la tabla de Usuarios abre un diálogo independiente de Crear, con identificación precargada, rol informativo, Guardar cambios y Cancelar. Se conserva la autorización del servidor, el buscador y el filtro por roles. El formulario reutilizable se ubica en modules/user_edit.php. Todos los avisos de éxito, error y configuración incluyen un botón de cierre sin recargar la página. Aplicar sobre v0.1.13; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
