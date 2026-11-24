@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.7
+# VIRTUALEDUC v0.1.8
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -39,6 +39,9 @@ Diseño responsive mejorado en móviles, tabletas y escritorio. Menú lateral pl
 
 ## Actualización a v0.1.7
 Aplicar este parche acumulativo sobre v0.1.5 o v0.1.6. No requiere SQL. Administración contiene únicamente Usuarios: una tabla, un botón Crear y una línea de recuentos según el alcance del rol. El formulario individual permite seleccionar el rol; la nueva plantilla CSV es nombre;correo;contrasena;rol. Descargar la plantilla nueva. Los subadministradores solo pueden crear y consultar docentes y estudiantes. Se conservan todos los permisos, diálogos y datos existentes.
+
+## Actualización a v0.1.8
+Copiar el parche sobre v0.1.7. Administración > Usuarios incluye búsqueda inmediata por nombre o correo, filtro por rol, contador de coincidencias y opción Limpiar. Los filtros se combinan y solo muestran usuarios que el perfil autenticado está autorizado a consultar. Sin JavaScript, el formulario permite aplicar los filtros mediante PHP. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
