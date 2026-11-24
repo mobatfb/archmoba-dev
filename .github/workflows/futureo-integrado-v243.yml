@@ -1,0 +1,92 @@
+name: FUTUREO anfitrion integrado v2.4.3 - un solo Python
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_3.py'
+      - '.github/workflows/futureo-integrado-v243.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: futureo-integrado-v243
+  cancel-in-progress: true
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Instalar Pillow y pantalla virtual
+        run: |
+          python -m pip install Pillow
+          if ! command -v xvfb-run >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y xvfb xauth
+          fi
+      - name: Verificar integracion real y preservar funciones originales
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          root = Path('MULTIMANDO/ANFITRION')
+          old = ast.parse((root/'MULTIMANDO_FUTUREO_Anfitrion_v2_4_2.py').read_text(encoding='utf-8'))
+          newpath = root/'MULTIMANDO_FUTUREO_Anfitrion_v2_4_3.py'
+          source = newpath.read_text(encoding='utf-8')
+          new = ast.parse(source)
+          dump=lambda node: ast.dump(node, include_attributes=False)
+          definitions=lambda tree: {node.name:node for node in tree.body if isinstance(node,(ast.ClassDef,ast.FunctionDef))}
+          integrated=definitions(new)
+          for name,node in definitions(old).items():
+              if name!='selftest':
+                  assert dump(node)==dump(integrated[name]), 'Cambio inesperado en anfitrion: '+name
+          class LegacyNames(ast.NodeTransformer):
+              def visit_ClassDef(self,node):
+                  node.name={'FrameHub':'LegacyFrameHub','ScreenBroadcaster':'LegacyScreenBroadcaster'}.get(node.name,node.name)
+                  return self.generic_visit(node)
+              def visit_Name(self,node):
+                  node.id={'FrameHub':'LegacyFrameHub','ScreenBroadcaster':'LegacyScreenBroadcaster'}.get(node.id,node.id)
+                  return node
+          for original in ('futureo_stream_v22.py','futureo_stream_v30.py'):
+              tree=ast.parse((root/original).read_text(encoding='utf-8'))
+              tree=LegacyNames().visit(tree)
+              for name,node in definitions(tree).items():
+                  assert dump(node)==dump(integrated[name]), 'Cambio inesperado en motor de streaming: '+name
+          for node in ast.walk(new):
+              if isinstance(node,ast.ImportFrom):
+                  assert not (node.module or '').startswith('futureo_stream_')
+              elif isinstance(node,ast.Import):
+                  assert not any(a.name.startswith('futureo_stream_') for a in node.names)
+          assert source.count('# INICIO - ') == source.count('# FIN - ')
+          assert 'VERSION = "2.4.3"' in source
+          print('OK: anfitrion v2.4.2, GUI y ambos motores preservados; sin imports locales')
+          PY
+      - name: Ejecutar archivo unico aislado y pruebas FULL DELTA SMART
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          export FUTUREO_STANDALONE="$work"
+          cp MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_3.py "$work/"
+          mkdir "$work/tests"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root=Path('MULTIMANDO/ANFITRION/tests')
+          dest=Path(os.environ['FUTUREO_STANDALONE'])/'tests'
+          stream=(root/'test_stream_v30.py').read_text(encoding='utf-8')
+          stream=stream.replace('from futureo_stream_v22 import ', 'from MULTIMANDO_FUTUREO_Anfitrion_v2_4_3 import ')
+          stream=stream.replace('from futureo_stream_v30 import ', 'from MULTIMANDO_FUTUREO_Anfitrion_v2_4_3 import ')
+          (dest/'test_stream.py').write_text(stream,encoding='utf-8')
+          gui=(root/'test_gui_compact_v242.py').read_text(encoding='utf-8')
+          gui=gui.replace('v2_4_2','v2_4_3').replace('v2.4.2','v2.4.3')
+          (dest/'test_gui.py').write_text(gui,encoding='utf-8')
+          PY
+          cd "$work"
+          test "$(find . -maxdepth 1 -name '*.py' | wc -l)" -eq 1
+          python -I -m py_compile MULTIMANDO_FUTUREO_Anfitrion_v2_4_3.py
+          python -I MULTIMANDO_FUTUREO_Anfitrion_v2_4_3.py --selftest
+          python -I tests/test_stream.py
+          xvfb-run -a python -I tests/test_gui.py
+          echo "OK: todas las pruebas desde una carpeta sin futureo_stream_v22.py ni futureo_stream_v30.py"
