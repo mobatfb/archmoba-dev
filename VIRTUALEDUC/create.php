@@ -104,6 +104,26 @@ function identity_fields(array $r, ?array $existing=null): array {
     return [$username,$first,$last,$name,$email];
 }
 
+function repair_user_role(?array $u): void {
+    require_role($u,'admin');
+    $id=id_field('user_id');
+    $role=field('repair_role',30);
+    if (!valid_user_role($role)) throw new DomainException('Selecciona un rol válido.');
+    $pdo=db(); $pdo->beginTransaction();
+    try {
+        $row=one('SELECT role FROM users WHERE id=? FOR UPDATE',[$id]);
+        if (!$row || valid_user_role((string)$row['role'])) throw new DomainException('La cuenta ya tiene un rol válido o no existe.');
+        query('UPDATE users SET role=? WHERE id=?',[$role,$id]);
+        $saved=one('SELECT role FROM users WHERE id=?',[$id]);
+        if (!$saved || $saved['role']!==$role) throw new DomainException('No se pudo guardar el rol. Ejecuta migrations/0.1.16.sql.');
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($e instanceof PDOException) { error_log('VIRTUALEDUC role repair failed: '.get_class($e)); throw new DomainException('No se pudo guardar el rol. Revisa la migración 0.1.16.'); }
+        throw $e;
+    }
+}
+
 function update_user_identity(?array $u): void {
     require_role($u,'admin','subadmin');
     $id=id_field('user_id');
@@ -126,6 +146,8 @@ function creation_insert(array $u,string $kind,string $role,int $course,array $r
         [$username,$first,$last,$name,$email]=identity_fields($r); $p=creation_value($r,'contrasena',72,true);
         if(preg_match_all('/./us',$p)<8||str_contains($p,"\0")) throw new DomainException('La contraseña debe tener al menos 8 caracteres y un máximo de 72 bytes.');
         query('INSERT INTO users(username,first_names,last_names,name,email,password_hash,role) VALUES(?,?,?,?,?,?,?)',[$username,$first,$last,$name,$email,password_hash($p,PASSWORD_DEFAULT),$role]);
+        $saved=one('SELECT role FROM users WHERE id=?',[(int)db()->lastInsertId()]);
+        if (!$saved || $saved['role']!==$role) throw new DomainException('No se pudo guardar el rol. Ejecuta migrations/0.1.16.sql.');
     } elseif($kind==='course') {
         $title=creation_value($r,'titulo',180); $description=creation_value($r,'descripcion',20000); $teacher=(int)$u['id'];
         $t=find_by_username(creation_value($r,'usuario_responsable',190));
