@@ -105,7 +105,7 @@ try {
     $courses=[]; $users=[]; $c=null; $lessons=[]; $done=[]; $page='home';
     if ($u) {
         if (is_manager($u)) { $courses=all('SELECT * FROM courses ORDER BY id DESC'); $users=$u['role']==='admin'?all('SELECT '.user_identity_columns().' FROM users ORDER BY name'):all("SELECT ".user_identity_columns()." FROM users WHERE role IN ('teacher','student') ORDER BY name"); }
-        elseif ($u['role']==='teacher') $courses=all('SELECT * FROM courses WHERE teacher_id=? ORDER BY id DESC',[$u['id']]);
+        elseif ($u['role']==='teacher') $courses=all('SELECT * FROM courses WHERE teacher_id=? OR EXISTS (SELECT 1 FROM course_responsibles cr WHERE cr.course_id=courses.id AND cr.user_id=?) ORDER BY id DESC',[$u['id'],$u['id']]);
         else $courses=all('SELECT c.* FROM courses c JOIN enrollments e ON e.course_id=c.id WHERE e.student_id=? AND c.published=1 ORDER BY c.id DESC',[$u['id']]);
         require_role($u,'admin','subadmin','teacher','student');
         $page=is_string($_GET['page'] ?? null)?$_GET['page']:'home';
