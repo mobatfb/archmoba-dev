@@ -26,3 +26,33 @@
 .ve-institution-sidebar .ve-group a .ve-nav-icon{color:#bfd8f3}
 .ve-institution-sidebar .ve-group a.ve-active .ve-nav-icon,.ve-institution-sidebar .ve-group a:hover .ve-nav-icon{color:#fff}
 .ve-sidebar-user button.ve-exit{display:inline-flex;align-items:center;gap:4px}
+
+/* Mobile navigation follows the SGA drawer pattern; the desktop sidebar is unchanged. */
+.ve-mobile-topbar,.ve-menu-scrim,.ve-sidebar-mobile-head{display:none}
+@media(max-width:900px){
+  .ve-nav-ready .ve-mobile-topbar{display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-start;gap:9px;position:sticky;top:0;z-index:1050;min-height:60px;padding:8px 12px;background:#10294d;color:#fff;box-shadow:0 2px 12px #08234424}
+  .ve-mobile-topbar .ve-mobile-menu-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;min-height:44px;padding:8px 10px;border:1px solid #ffffff55;background:#ffffff12;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap}
+  .ve-mobile-topbar .ve-brand{flex:1 1 0;gap:7px;padding:0;min-width:0;margin:0}
+  .ve-mobile-topbar .ve-brand-logo{width:31px;height:31px;border-radius:7px}
+  .ve-mobile-topbar .ve-brand-copy{min-width:0;overflow:hidden}
+  .ve-mobile-topbar .ve-brand-copy strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ve-mobile-topbar .ve-brand-copy small{display:none}
+  .ve-mobile-period{flex:0 1 auto;max-width:91px;padding:6px 7px;background:#ffffff19;border-radius:7px;font-size:10px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ve-nav-ready .ve-institution-sidebar{position:fixed;inset:0 auto 0 0;z-index:1200;display:grid;grid-template-rows:auto auto minmax(0,1fr);width:min(325px,88vw);max-width:100%;height:100vh;height:100dvh;padding:12px 12px max(12px,env(safe-area-inset-bottom));gap:12px;transform:translateX(-110%);visibility:hidden;transition:transform .22s ease,visibility .22s ease;box-shadow:6px 0 30px #0003}
+  .ve-nav-ready.ve-nav-open .ve-institution-sidebar{transform:translateX(0);visibility:visible;transition:transform .22s ease}
+  .ve-nav-ready .ve-sidebar-mobile-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 4px;color:#dbefff;font-size:13px}
+  .ve-sidebar-mobile-head button{display:flex;align-items:center;gap:8px;min-height:44px;padding:7px 11px;border:1px solid #ffffff45;background:#ffffff12;border-radius:9px;color:#fff;font-size:12px;font-weight:700}
+  .ve-sidebar-mobile-head button span{font-size:22px;line-height:1}
+  .ve-nav-ready .ve-institution-sidebar .ve-brand{padding:0 4px}
+  .ve-nav-ready .ve-institution-sidebar .ve-menu{display:flex;flex-direction:column;position:relative;height:100%;min-height:0}
+  .ve-nav-ready .ve-institution-sidebar .ve-menu-title{display:none}
+  .ve-nav-ready .ve-institution-sidebar .ve-menu-content{position:absolute;inset:0 0 18px;overflow:hidden;padding-top:0}
+  .ve-nav-ready .ve-institution-sidebar .ve-scroll-nav{flex:1 1 auto;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
+  .ve-nav-ready .ve-institution-sidebar .ve-group a{min-height:44px}
+  .ve-nav-ready .ve-sidebar-user{margin-top:10px;padding-bottom:0}
+  .ve-nav-ready .ve-menu-scrim{display:block;position:fixed;inset:0;z-index:1150;width:100%;height:100vh;height:100dvh;border:0;border-radius:0;padding:0;background:rgba(5,14,29,.55);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,visibility .22s ease}
+  .ve-nav-ready.ve-nav-open .ve-menu-scrim{opacity:1;visibility:visible;pointer-events:auto}
+  html.ve-nav-open,html.ve-nav-open body{overflow:hidden}
+}
+@media(max-width:350px){.ve-mobile-period{display:none}}
+@media(prefers-reduced-motion:reduce){.ve-nav-ready .ve-institution-sidebar,.ve-nav-ready .ve-menu-scrim{transition:none}}
