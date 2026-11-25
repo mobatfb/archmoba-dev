@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.33
+# VIRTUALEDUC v0.1.34
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -134,6 +134,9 @@ En pantallas de hasta 900 píxeles, el panel derecho del curso se abre desde el 
 
 ## Actualización a v0.1.33
 La navegación móvil principal adopta el diseño lateral de SGA: barra superior compacta con botón Menú, identidad institucional y período; menú flotante desde la izquierda, cerrado por defecto, con fondo oscurecido, cierre por X, toque exterior, Escape o selección de enlace y desplazamiento interno. Se mantiene el límite responsive de 900 px y el panel derecho del curso de v0.1.32 independiente. En escritorio no se modifica la navegación; sin JavaScript queda disponible el menú anterior. No requiere SQL.
+
+## Actualización a v0.1.34
+Las fotos de perfil y miniaturas de cursos utilizan URLs versionadas y caché privada del navegador durante cinco minutos; el logo institucional se conserva hasta 24 horas. Al reemplazar una imagen, su URL cambia automáticamente. Una vez vencida la caché, ETag permite responder 304 sin reenviar la imagen ni volver a generar la miniatura. Los avatares y portadas se identifican por sesión y todas las peticiones al servidor conservan las verificaciones de acceso. Una copia privada ya descargada puede permanecer disponible en el navegador hasta que venza su caché; los nuevos inicios de sesión generan otras URLs. Las páginas HTML, búsquedas, errores y enlaces antiguos conservan no-store. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
