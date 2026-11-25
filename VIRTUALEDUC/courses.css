@@ -75,3 +75,25 @@
 .ve-course-hero-has-status .ve-course-hero-copy h1{padding-right:116px}
 .ve-course-admin-menu .ve-course-visibility{margin:4px 0 0;padding-top:4px;border-top:1px solid #dce5ef}
 @media(max-width:620px){.ve-course-hero-has-status .ve-course-hero-copy h1{padding-right:0}.ve-course-hero-status{top:10px;right:10px}}
+
+/* Mobile course panel: native modal drawer, independent from the main navigation. */
+.ve-course-drawer-toggle,.ve-course-drawer:not([open]){display:none}
+.ve-course-drawer{position:fixed;inset:0 0 0 auto;margin:0;width:min(360px,calc(100% - 32px));max-width:none;height:100vh;height:100dvh;max-height:none;padding:0;border:0;border-radius:16px 0 0 16px;background:#f1f5f9;color:#17253b;box-shadow:-8px 0 32px #10294d35;overflow:hidden}
+.ve-course-drawer[open]{display:flex;flex-direction:column;animation:ve-drawer-in .22s ease-out}
+.ve-course-drawer::backdrop{background:rgba(10,30,57,.52)}
+.ve-course-drawer-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #dce5ef;background:#fff}
+.ve-course-drawer-head h2{font-size:17px;line-height:1.3;margin:0}
+.ve-course-drawer-head button{display:grid;place-items:center;flex:none;width:44px;height:44px;padding:0;background:#e7effb;color:#10294d;border-radius:9px}
+.ve-course-drawer-head button:hover{background:#d4e3f6}
+.ve-course-drawer-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:16px 12px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+.ve-course-drawer .ve-course-aside{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.ve-course-drawer-toggle:focus-visible,.ve-course-drawer-head button:focus-visible{outline:3px solid #1655a8;outline-offset:2px}
+@media(max-width:900px){
+  .ve-course-breadcrumb{gap:8px 12px}
+  .ve-course-drawer-toggle:not([hidden]){display:inline-flex;align-items:center;gap:7px;min-height:44px;margin-left:auto;padding:10px 12px;font-size:13px;white-space:nowrap}
+  .ve-course-breadcrumb>span{flex-basis:100%;order:2}
+  .ve-course-layout.ve-course-drawer-ready>.ve-course-aside{display:none}
+  html.ve-course-drawer-open{overflow:hidden}
+}
+@keyframes ve-drawer-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){.ve-course-drawer[open]{animation:none}}
