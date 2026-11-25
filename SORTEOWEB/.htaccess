@@ -1,6 +1,5 @@
-# Apache 2.4 / cPanel - entry point at project root
-Options -Indexes
 DirectoryIndex index.php
-<FilesMatch "^(config\.php|db_mysql\.php|app\.php|README\.md|INICIAR_WINDOWS\.bat|.*\.sql|.*\.json|migrate_json\.php|\.git.*)$">
+Options -Indexes
+<FilesMatch "(?i)^(app\.php|panel\.php|config(?:\.local)?\.php|.*\.(sql|md|log|ini|bak|zip)|\..*)$">
     Require all denied
 </FilesMatch>

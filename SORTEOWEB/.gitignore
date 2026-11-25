@@ -1,0 +1,4 @@
+/config.local.php
+/crear_admin.sql
+/.env
+*.zip

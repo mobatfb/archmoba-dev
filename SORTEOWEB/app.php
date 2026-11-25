@@ -1,139 +1,59 @@
 <?php
 declare(strict_types=1);
-const STORE = __DIR__ . '/storage';
-const STATES = ['borrador' => 'Borrador', 'activo' => 'Activo', 'finalizado' => 'Finalizado'];
-const TYPES = ['producto' => 'Producto', 'dinero' => 'Dinero'];
-const PAYMENTS = ['pendiente' => 'Pendiente', 'pagado' => 'Pagado'];
-class InputError extends RuntimeException {}
-function h(mixed $v): string { return htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
-function field(string $k, string $default = ''): string { return is_string($_POST[$k] ?? null) ? trim($_POST[$k]) : $default; }
-function q(string $k, string $default = ''): string { return is_string($_GET[$k] ?? null) ? $_GET[$k] : $default; }
-function now(): string { return date('c'); }
-function uid(): string { return bin2hex(random_bytes(12)); }
-function empty_data(): array { return ['raffles'=>[], 'participants'=>[]]; }
-function store_init(): void {
-    foreach ([STORE, STORE.'/uploads'] as $dir) if (!is_dir($dir) && !mkdir($dir, 0770, true) && !is_dir($dir)) throw new RuntimeException('No se pudo crear el almacenamiento local.');
-}
-require_once __DIR__.'/db_mysql.php';
-function raffle(array $data, string $id): array {
-    if (!isset($data['raffles'][$id])) throw new InputError('El sorteo no existe.');
-    return $data['raffles'][$id];
-}
-function people(array $data, string $id): array { return array_values(array_filter($data['participants'], static fn($p)=>$p['raffle_id']===$id)); }
-function stats(array $data, array $r): array {
-    $ps = people($data, $r['id']); $paid = count(array_filter($ps, static fn($p)=>$p['payment']==='pagado'));
-    return ['count'=>count($ps), 'paid'=>$paid, 'pending'=>count($ps)-$paid, 'income'=>$paid*$r['price_cents'], 'pending_income'=>(count($ps)-$paid)*$r['price_cents']];
-}
-function money(int $cents): string { return '$'.number_format($cents/100, 2, '.', ','); }
-function ticket(int $n, int $total): string { return str_pad((string)$n, max(3, strlen((string)$total)), '0', STR_PAD_LEFT); }
-function date_label(string $s): string { return date('d/m/Y H:i', strtotime($s)); }
-function link_to(string $page='sorteos', array $params=[]): string { return 'index.php?'.http_build_query(['page'=>$page]+$params); }
-function redirect_to(string $page, array $params=[]): never { header('Location: '.link_to($page,$params), true,303); exit; }
-function flash(string $type, string $message): void { $_SESSION['flash']=['type'=>$type, 'message'=>$message]; }
-function required_text(string $key, string $label, int $max): string {
-    $s=field($key); if ($s==='' || strlen($s)>$max) throw new InputError("$label es obligatorio (máximo $max bytes)."); return $s;
-}
-function optional_text(string $key, string $label, int $max): string {
-    $s=field($key); if (strlen($s)>$max) throw new InputError("$label excede el máximo permitido."); return $s;
-}
-function positive_int(string $value, int $max, string $label): int {
-    if (!preg_match('/^[0-9]{1,9}$/D',$value) || (int)$value<1 || (int)$value>$max) throw new InputError("$label debe estar entre 1 y $max."); return (int)$value;
-}
-function parse_price(string $s): int {
-    $s=str_replace(',', '.', $s);
-    if (!preg_match('/^\d{1,6}(?:\.\d{1,2})?$/D',$s)) throw new InputError('Valor del boleto inválido (máximo 999999,99; hasta dos decimales).');
-    $parts=explode('.', $s); return (int)$parts[0]*100+(int)str_pad($parts[1]??'', 2, '0');
-}
-function upload_photo(string $key): ?string {
-    $f=$_FILES[$key]??null;
-    if ($f===null || ($f['error']??null)===UPLOAD_ERR_NO_FILE) return null;
-    if (!is_array($f) || ($f['error']??null)!==UPLOAD_ERR_OK || !is_string($f['tmp_name']??null)) throw new InputError('No se pudo cargar una foto. Revisa el límite de carga de PHP.');
-    if (($f['size']??0)<1 || $f['size']>5*1024*1024 || !is_uploaded_file($f['tmp_name'])) throw new InputError('Cada foto debe pesar hasta 5 MB.');
-    $mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);
-    $ext=['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'][$mime]??null;
-    $size=@getimagesize($f['tmp_name']);
-    if (!$ext || !$size || $size[0]<1 || $size[1]<1 || $size[0]>10000 || $size[1]>10000 || ($size['mime']??'')!==$mime) throw new InputError('Solo se aceptan fotos JPG, PNG o WEBP válidas, de hasta 10000 px por lado.');
-    $name=uid().'.'.$ext;
-    if (!move_uploaded_file($f['tmp_name'], STORE.'/uploads/'.$name)) throw new RuntimeException('No se pudo guardar la foto.');
-    return $name;
-}
-function remove_photo(?string $name): void { if ($name && preg_match('/^[a-f0-9]{24}\.(jpg|png|webp)$/D',$name)) @unlink(STORE.'/uploads/'.$name); }
-function handle_image(): never {
-    $name=q('image'); if (!preg_match('/^[a-f0-9]{24}\.(jpg|png|webp)$/D',$name,$m)) { http_response_code(404); exit; }
-    $path=STORE.'/uploads/'.$name; if (!is_file($path)) { http_response_code(404); exit; }
-    header('Content-Type: '.['jpg'=>'image/jpeg','png'=>'image/png','webp'=>'image/webp'][$m[1]]);
-    header('X-Content-Type-Options: nosniff'); header('Cache-Control: private, max-age=86400'); header('Content-Length: '.filesize($path)); readfile($path); exit;
-}
-function demo_data(array &$d): void {
-    if ($d['raffles'] || $d['participants']) throw new InputError('Solo puedes cargar ejemplos cuando el sistema está vacío.');
-    $examples=[['Sorteo de una consola','Consola de videojuegos para el ganador. Sorteo de demostración.','producto',100,250,'activo'], ['Premio en efectivo','Premio en efectivo de demostración.','dinero',500,100,'borrador'], ['Sorteo de audífonos','Sorteo de prueba finalizado.','producto',50,150,'finalizado']];
-    foreach ($examples as $i=>$x) {
-        $id=uid(); $d['raffles'][$id]=['id'=>$id,'title'=>$x[0],'description'=>$x[1],'type'=>$x[2],'total'=>$x[3],'price_cents'=>$x[4],'status'=>$x[5],'photos'=>[null,null,null],'created_at'=>now(),'updated_at'=>now(),'finalized_at'=>$x[5]==='finalizado'?now():null];
-        if ($i===1) continue;
-        foreach ([['Ana Ejemplo',7,'pagado'],['Carlos Ejemplo',15,'pagado'],['Lucía Ejemplo',22,'pendiente']] as $j=>$p) {
-            if ($i===2 && $j===2) continue;
-            $pid=uid(); $d['participants'][$pid]=['id'=>$pid,'raffle_id'=>$id,'name'=>$p[0],'email'=>'','phone'=>'','number'=>$p[1],'payment'=>$p[2],'created_at'=>now(),'updated_at'=>now()];
-        }
+if (!defined('SW_APP')) { http_response_code(404); exit; }
+const SW_VERSION = '1.0.0';
+date_default_timezone_set('America/Guayaquil');
+$https = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') || ($_SERVER['SERVER_PORT'] ?? '') === '443';
+$local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1','::1'], true) && in_array(strtolower(parse_url('http://'.($_SERVER['HTTP_HOST']??''),PHP_URL_HOST)??''),['localhost','127.0.0.1','[::1]'],true);
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'");
+header('Cache-Control: no-store');
+ini_set('session.use_strict_mode','1');
+ini_set('session.use_only_cookies','1');
+session_name('sorteoweb_session');
+session_set_cookie_params(['lifetime'=>0,'path'=>rtrim(dirname($_SERVER['SCRIPT_NAME']??'/'),'/\\').'/','secure'=>$https,'httponly'=>true,'samesite'=>'Strict']);
+session_start();
+function h(mixed $v): string { return htmlspecialchars((string)$v, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
+function db(): PDO {
+    static $pdo;
+    if (!$pdo) {
+        $c=require (is_file(__DIR__.'/config.local.php')?__DIR__.'/config.local.php':__DIR__.'/config.php');
+        $pdo=new PDO('mysql:host='.$c['host'].';port='.$c['port'].';dbname='.$c['database'].';charset=utf8mb4',$c['user'],$c['password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
     }
+    return $pdo;
 }
-function process_post(): never {
-    if (!hash_equals($_SESSION['csrf'], field('csrf'))) { http_response_code(403); exit('Solicitud inválida. Recarga la página.'); }
-    $action=field('action'); $rid=field('raffle_id'); $pid=field('participant_id');
-    $page=in_array($action,['save_participant','delete_participant'],true)?'participantes':'sorteos';
-    $params=$page==='participantes' && $rid!==''?['id'=>$rid]:[];
-    $newPhotos=[]; $oldPhotos=[];
-    try {
-        db(function(array &$d) use ($action,$rid,$pid,&$newPhotos,&$oldPhotos) {
-            switch($action) {
-                case 'demo': demo_data($d); break;
-                case 'save_raffle':
-                    $old=$rid!==''?raffle($d,$rid):null;
-                    if ($old && $old['status']==='finalizado') throw new InputError('Un sorteo finalizado no puede modificarse.');
-                    $title=required_text('title','Título',180); $description=required_text('description','Descripción',5000);
-                    $type=field('type'); if (!isset(TYPES[$type])) throw new InputError('Tipo de sorteo inválido.');
-                    $total=positive_int(field('total'),1000000,'Número de boletos'); $price=parse_price(field('price'));
-                    $status=field('status','borrador'); if (!in_array($status,['borrador','activo'],true)) throw new InputError('Estado inválido.');
-                    if ($old && $old['status']==='activo' && $status!=='activo') throw new InputError('Un sorteo activo no puede volver a borrador.');
-                    if ($old && count(people($d,$rid))>0 && ($total!==$old['total'] || $price!==$old['price_cents'] || $type!==$old['type'])) throw new InputError('Con participantes registrados no puedes modificar el número, valor de boletos ni el tipo.');
-                    $photos=$old['photos']??[null,null,null];
-                    for ($i=0;$i<3;$i++) {
-                        $photo=upload_photo('photo_'.$i);
-                        if ($photo!==null) { $newPhotos[]=$photo; if ($photos[$i]) $oldPhotos[]=$photos[$i]; $photos[$i]=$photo; }
-                        elseif (field('remove_'.$i)==='1' && $photos[$i]) { $oldPhotos[]=$photos[$i]; $photos[$i]=null; }
-                    }
-                    $id=$old['id']??uid();
-                    $d['raffles'][$id]=['id'=>$id,'title'=>$title,'description'=>$description,'type'=>$type,'total'=>$total,'price_cents'=>$price,'status'=>$status,'photos'=>$photos,'created_at'=>$old['created_at']??now(),'updated_at'=>now(),'finalized_at'=>null];
-                    break;
-                case 'activate_raffle':
-                    $r=raffle($d,$rid); if ($r['status']!=='borrador') throw new InputError('Solo se pueden activar borradores.');
-                    $d['raffles'][$rid]['status']='activo'; $d['raffles'][$rid]['updated_at']=now(); break;
-                case 'finish_raffle':
-                    $r=raffle($d,$rid); if ($r['status']!=='activo') throw new InputError('Solo se pueden finalizar sorteos activos.');
-                    $d['raffles'][$rid]['status']='finalizado'; $d['raffles'][$rid]['updated_at']=now(); $d['raffles'][$rid]['finalized_at']=now(); break;
-                case 'delete_raffle':
-                    $r=raffle($d,$rid); if ($r['status']!=='borrador' || people($d,$rid)) throw new InputError('Solo puedes eliminar borradores sin participantes.');
-                    $oldPhotos=array_merge($oldPhotos,array_filter($r['photos'])); unset($d['raffles'][$rid]); break;
-                case 'save_participant':
-                    $r=raffle($d,$rid); if ($r['status']!=='activo') throw new InputError('Solo puedes registrar o editar participantes en sorteos activos.');
-                    $old=$pid!==''?($d['participants'][$pid]??null):null;
-                    if ($pid!=='' && (!$old || $old['raffle_id']!==$rid)) throw new InputError('Participante no encontrado.');
-                    $name=required_text('name','Nombre',180); $email=optional_text('email','Correo',254); $phone=optional_text('phone','Teléfono',50);
-                    if ($email!=='' && !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new InputError('Correo electrónico inválido.');
-                    $number=positive_int(field('number'),$r['total'],'Número de boleto'); $payment=field('payment','pendiente');
-                    if (!isset(PAYMENTS[$payment])) throw new InputError('Estado de pago inválido.');
-                    foreach (people($d,$rid) as $p) if ($p['number']===$number && $p['id']!==$pid) throw new InputError('Este número ya está registrado en el sorteo.');
-                    $id=$old['id']??uid(); $d['participants'][$id]=['id'=>$id,'raffle_id'=>$rid,'name'=>$name,'email'=>$email,'phone'=>$phone,'number'=>$number,'payment'=>$payment,'created_at'=>$old['created_at']??now(),'updated_at'=>now()]; break;
-                case 'delete_participant':
-                    $r=raffle($d,$rid); $p=$d['participants'][$pid]??null;
-                    if ($r['status']!=='activo' || !$p || $p['raffle_id']!==$rid) throw new InputError('No se puede eliminar esta participación.');
-                    if ($p['payment']==='pagado') throw new InputError('No se puede eliminar un boleto pagado. Cambia el estado de pago solo si corresponde a una corrección real.');
-                    unset($d['participants'][$pid]); break;
-                default: throw new InputError('Acción no reconocida.');
-            }
-        },true);
-        foreach ($oldPhotos as $name) remove_photo($name);
-        flash('success', match($action) {'demo'=>'Datos de ejemplo cargados.', 'save_raffle'=>$rid?'Sorteo actualizado.':'Sorteo creado correctamente.', 'activate_raffle'=>'Sorteo activado.', 'finish_raffle'=>'Sorteo finalizado. Sus registros quedaron bloqueados.', 'delete_raffle'=>'Borrador eliminado.', 'save_participant'=>$pid?'Participación actualizada.':'Participante registrado.', 'delete_participant'=>'Participación eliminada.', default=>'Cambios guardados.'});
-    } catch (InputError $e) { foreach ($newPhotos as $name) remove_photo($name); flash('error',$e->getMessage()); }
-      catch (Throwable $e) { foreach ($newPhotos as $name) remove_photo($name); error_log((string)$e); flash('error','No se pudo completar la operación. Revisa el registro de PHP.'); }
-    redirect_to($page,$params);
+function query(string $sql,array $params=[]): PDOStatement { $s=db()->prepare($sql);$s->execute($params);return $s; }
+function one(string $sql,array $params=[]): ?array { return query($sql,$params)->fetch()?:null; }
+function all(string $sql,array $params=[]): array { return query($sql,$params)->fetchAll(); }
+function tx(callable $f): mixed { $d=db();$d->beginTransaction();try{$v=$f();$d->commit();return $v;}catch(Throwable $e){if($d->inTransaction())$d->rollBack();throw $e;} }
+function go(string $page='sorteos',array $params=[]): never { header('Location: index.php?'.http_build_query(['page'=>$page]+$params),true,303);exit; }
+function token(): string { return $_SESSION['csrf']??=bin2hex(random_bytes(32)); }
+function csrf(): string { return '<input type="hidden" name="csrf" value="'.h(token()).'">'; }
+function verify_csrf(): void { $v=$_POST['csrf']??null;if(!is_string($v)||!hash_equals(token(),$v)){http_response_code(403);exit('Solicitud inválida. Recarga la página.');} }
+function flash(string $message,string $kind='success'): void { $_SESSION['flash']=[$message,$kind]; }
+function field(string $key,int $max,bool $required=true): string { $v=$_POST[$key]??'';if(!is_string($v))throw new DomainException('Campo inválido.');$v=trim($v);if(($required&&$v==='')||strlen($v)>$max)throw new DomainException('Revisa los campos y sus longitudes.');return $v; }
+function integer(string $key,int $min,int $max): int { $v=filter_var($_POST[$key]??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>$min,'max_range'=>$max]]);if($v===false)throw new DomainException('Número inválido: '.$key);return $v; }
+function price_cents(string $v): int { if(!preg_match('/^(?:0|[1-9][0-9]{0,6})(?:[.,][0-9]{1,2})?$/D',$v))throw new DomainException('Ingresa un valor monetario válido.');$p=explode('.',str_replace(',','.',$v));$n=(int)$p[0]*100+(int)str_pad($p[1]??'',2,'0');if($n<1||$n>100000000)throw new DomainException('El valor debe estar entre $0,01 y $1.000.000,00.');return $n; }
+function money(int|string|null $c): string { return '$'.number_format(((int)$c)/100,2,',','.'); }
+function money_input(int|string $c): string { return number_format(((int)$c)/100,2,'.',''); }
+function state_name(string $s): string { return ['borrador'=>'Borrador','activo'=>'Activo','finalizado'=>'Finalizado','pendiente'=>'Pendiente','pagado'=>'Pagado'][$s]??$s; }
+function chip(string $s): string { return '<span class="status '.h($s).'">'.h(state_name($s)).'</span>'; }
+function logout_session(): void { $_SESSION=[];session_regenerate_id(true); }
+function current_admin(): ?array { $id=(int)($_SESSION['admin_id']??0);if(!$id)return null;if(time()-(int)($_SESSION['last_seen']??0)>1800){logout_session();return null;}$a=one('SELECT id,username,must_change_password FROM sw_admins WHERE id=? AND active=1',[$id]);if(!$a){logout_session();return null;}$_SESSION['last_seen']=time();return $a; }
+function audit(array $u,string $action,?int $id,string $detail=''): void { query('INSERT INTO sw_audit(admin_id,action,raffle_id,detail) VALUES(?,?,?,?)',[$u['id'],$action,$id,$detail]); }
+function consume_login_attempt(string $username): bool {
+    $ip=$_SERVER['REMOTE_ADDR']??'unknown';$limits=[hash('sha256','ip:'.$ip)=>25,hash('sha256','pair:'.$ip.':'.strtolower($username))=>5];ksort($limits);$now=time();
+    return tx(function()use($limits,$now){$allowed=true;foreach($limits as $key=>$max){query('INSERT INTO sw_login_limits(bucket,window_start,attempts) VALUES(?,?,0) ON DUPLICATE KEY UPDATE bucket=bucket',[$key,$now]);$r=one('SELECT window_start,attempts FROM sw_login_limits WHERE bucket=? FOR UPDATE',[$key]);$expired=$now-(int)$r['window_start']>=900;$n=$expired?0:(int)$r['attempts'];if($n>=$max)$allowed=false;else query('UPDATE sw_login_limits SET window_start=?,attempts=? WHERE bucket=?',[$expired?$now:$r['window_start'],$n+1,$key]);}return $allowed;});
 }
+function login(): void { $username=field('username',80);$password=$_POST['password']??'';if(!is_string($password)||$password===''||strlen($password)>256)throw new DomainException('Usuario o contraseña incorrectos.');if(!consume_login_attempt($username))throw new DomainException('Demasiados intentos. Intenta nuevamente en 15 minutos.');$a=one('SELECT * FROM sw_admins WHERE username=? AND active=1',[$username]);$hash=$a['password_hash']??'$2y$12$9P9t8Dqm36bXL0VCk.9tJ.qteChR3MW/lM.ovtO98yV5f2yihxILi';$valid=password_verify($password,$hash);if(!$a||!$valid)throw new DomainException('Usuario o contraseña incorrectos.');session_regenerate_id(true);$_SESSION=['admin_id'=>(int)$a['id'],'last_seen'=>time()];flash('Sesión iniciada.');go(); }
+function change_password(array $u): void { $old=$_POST['current_password']??'';$new=$_POST['new_password']??'';$repeat=$_POST['confirm_password']??'';if(!is_string($old)||!is_string($new)||!is_string($repeat)||strlen($old)>256)throw new DomainException('Contraseña inválida.');if($new!==$repeat||strlen($new)<12||strlen($new)>72||!preg_match('/[A-Z]/',$new)||!preg_match('/[a-z]/',$new)||!preg_match('/[0-9]/',$new)||!preg_match('/[^a-zA-Z0-9]/',$new))throw new DomainException('Usa 12 a 72 caracteres, mayúsculas, minúsculas, número y símbolo.');tx(function()use($u,$old,$new){$a=one('SELECT password_hash FROM sw_admins WHERE id=? FOR UPDATE',[$u['id']]);if(!$a||!password_verify($old,$a['password_hash']))throw new DomainException('La contraseña actual no coincide.');query('UPDATE sw_admins SET password_hash=?,must_change_password=0 WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),$u['id']]);audit($u,'password_change',null);});session_regenerate_id(true);flash('Contraseña actualizada.');go(); }
+function raffle_lock(int $id): array { $r=one('SELECT * FROM sw_raffles WHERE id=? FOR UPDATE',[$id]);if(!$r)throw new DomainException('Sorteo no encontrado.');return $r; }
+function load_photos(): array { $images=[];for($i=1;$i<=3;$i++){ $f=$_FILES['photo'.$i]??null;if(!$f||$f['error']===UPLOAD_ERR_NO_FILE)continue;if($f['error']!==UPLOAD_ERR_OK||!is_uploaded_file($f['tmp_name'])||$f['size']>2097152)throw new DomainException('Cada fotografía debe pesar máximo 2 MB.');$mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);$size=@getimagesize($f['tmp_name']);if(!in_array($mime,['image/jpeg','image/png','image/webp'],true)||!$size||$size[0]>8000||$size[1]>8000)throw new DomainException('Solo fotografías JPG, PNG o WebP válidas (máximo 8000 px por lado).');$bytes=file_get_contents($f['tmp_name']);if($bytes===false)throw new DomainException('No se pudo leer la fotografía.');$images[$i]=[$mime,$bytes];}return $images; }
+function save_raffle(array $u): void { $id=integer('raffle_id',0,PHP_INT_MAX);$title=field('title',180);$desc=field('description',10000,false);$type=field('type',10);if(!in_array($type,['producto','dinero'],true))throw new DomainException('Tipo de sorteo inválido.');$total=integer('ticket_count',1,1000000);$price=price_cents(field('price',15));$photos=load_photos();tx(function()use($u,$id,$title,$desc,$type,$total,$price,$photos){if($id){$r=raffle_lock($id);if($r['status']!=='borrador')throw new DomainException('Solo se editan sorteos en borrador.');query('UPDATE sw_raffles SET title=?,description=?,type=?,ticket_count=?,ticket_price_cents=? WHERE id=?',[$title,$desc,$type,$total,$price,$id]);}else{query('INSERT INTO sw_raffles(title,description,type,ticket_count,ticket_price_cents) VALUES(?,?,?,?,?)',[$title,$desc,$type,$total,$price]);$id=(int)db()->lastInsertId();}for($i=1;$i<=3;$i++){if(isset($_POST['remove_photo'.$i])&&!isset($photos[$i]))query('DELETE FROM sw_photos WHERE raffle_id=? AND slot=?',[$id,$i]);if(isset($photos[$i])){[$mime,$content]=$photos[$i];query('INSERT INTO sw_photos(raffle_id,slot,mime,content) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE mime=VALUES(mime),content=VALUES(content)',[$id,$i,$mime,$content]);}}audit($u,'raffle_save',$id);});flash('Sorteo guardado.');go(); }
+function raffle_transition(array $u,string $action): void { $id=integer('raffle_id',1,PHP_INT_MAX);tx(function()use($u,$action,$id){$r=raffle_lock($id);if($action==='activate'&&$r['status']==='borrador')query("UPDATE sw_raffles SET status='activo' WHERE id=?",[$id]);elseif($action==='finish'&&$r['status']==='activo')query("UPDATE sw_raffles SET status='finalizado',closed_at=NOW() WHERE id=?",[$id]);elseif($action==='delete_raffle'&&$r['status']==='borrador')query('DELETE FROM sw_raffles WHERE id=?',[$id]);else throw new DomainException('Cambio de estado no permitido.');audit($u,$action,$id);});flash('Sorteo actualizado.');go(); }
+function save_participant(array $u): void { $rid=integer('raffle_id',1,PHP_INT_MAX);$pid=integer('participant_id',0,PHP_INT_MAX);$number=integer('ticket_number',1,1000000);$name=field('name',180);$email=field('email',254,false);$phone=field('phone',40,false);$pay=field('payment_status',10);if(($email!==''&&!filter_var($email,FILTER_VALIDATE_EMAIL))||!in_array($pay,['pendiente','pagado'],true))throw new DomainException('Correo o estado de pago inválido.');tx(function()use($u,$rid,$pid,$number,$name,$email,$phone,$pay){$r=raffle_lock($rid);if($r['status']!=='activo')throw new DomainException('El sorteo debe estar activo.');if($number>(int)$r['ticket_count'])throw new DomainException('Número fuera del rango de boletos.');$p=$pid?one('SELECT * FROM sw_participants WHERE id=? AND raffle_id=? FOR UPDATE',[$pid,$rid]):null;if($pid&&!$p)throw new DomainException('Participante no encontrado.');if($p&&$p['payment_status']==='pagado'&&($pay!=='pagado'||$number!==(int)$p['ticket_number']))throw new DomainException('Un boleto pagado no puede cambiar de número ni volver a pendiente.');if(one('SELECT id FROM sw_participants WHERE raffle_id=? AND ticket_number=? AND id<>?',[$rid,$number,$pid]))throw new DomainException('Ese número ya está registrado.');if($p)query('UPDATE sw_participants SET ticket_number=?,name=?,email=?,phone=?,payment_status=? WHERE id=? AND raffle_id=?',[$number,$name,$email,$phone,$pay,$pid,$rid]);else{query('INSERT INTO sw_participants(raffle_id,ticket_number,name,email,phone,payment_status,price_cents) VALUES(?,?,?,?,?,?,?)',[$rid,$number,$name,$email,$phone,$pay,$r['ticket_price_cents']]);$pid=(int)db()->lastInsertId();}audit($u,'participant_save',$rid,'ID '.$pid.'; boleto '.$number.'; '.$pay);});flash('Participante guardado.');go('participantes',['id'=>$rid]); }
+function delete_participant(array $u): void { $rid=integer('raffle_id',1,PHP_INT_MAX);$pid=integer('participant_id',1,PHP_INT_MAX);tx(function()use($u,$rid,$pid){$r=raffle_lock($rid);$p=one('SELECT * FROM sw_participants WHERE id=? AND raffle_id=? FOR UPDATE',[$pid,$rid]);if($r['status']!=='activo'||!$p||$p['payment_status']!=='pendiente')throw new DomainException('Solo puedes liberar boletos pendientes de sorteos activos.');query('DELETE FROM sw_participants WHERE id=? AND raffle_id=?',[$pid,$rid]);audit($u,'participant_delete',$rid,'Boleto '.$p['ticket_number']);});flash('Boleto liberado.');go('participantes',['id'=>$rid]); }
+function raffle_list(?string $status=null): array { $sql="SELECT r.*,COALESCE(p.registered,0) registered,COALESCE(p.paid,0) paid,COALESCE(p.income,0) income,COALESCE(p.pending_income,0) pending_income,(SELECT MIN(slot) FROM sw_photos f WHERE f.raffle_id=r.id) first_photo FROM sw_raffles r LEFT JOIN (SELECT raffle_id,COUNT(*) registered,SUM(payment_status='pagado') paid,SUM(CASE WHEN payment_status='pagado' THEN price_cents ELSE 0 END) income,SUM(CASE WHEN payment_status='pendiente' THEN price_cents ELSE 0 END) pending_income FROM sw_participants GROUP BY raffle_id) p ON r.id=p.raffle_id";return all($sql.($status?' WHERE r.status=?':'').' ORDER BY r.id DESC',$status?[$status]:[]); }
+function serve_photo(): never { $id=filter_input(INPUT_GET,'photo',FILTER_VALIDATE_INT);$slot=filter_input(INPUT_GET,'slot',FILTER_VALIDATE_INT);if(!$id||!in_array($slot,[1,2,3],true)){http_response_code(404);exit;}$p=one('SELECT mime,content FROM sw_photos WHERE raffle_id=? AND slot=?',[$id,$slot]);if(!$p){http_response_code(404);exit;}session_write_close();header('Content-Type: '.$p['mime']);header('Content-Length: '.strlen($p['content']));echo $p['content'];exit; }
