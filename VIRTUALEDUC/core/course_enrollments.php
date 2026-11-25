@@ -39,7 +39,7 @@ function course_enroll_many(array $actor,int $courseId,mixed $raw): array {
 function course_candidate_page(int $courseId,string $search,int $page): array {
     $page=max(1,min(1000000,$page));
     $params=[$courseId];
-    $sql="SELECT id,name,".username_sql()." AS username FROM users WHERE role='student' AND NOT EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id=? AND e.student_id=users.id)";
+    $sql="SELECT id,name,first_names,last_names,".username_sql()." AS username FROM users WHERE role='student' AND NOT EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id=? AND e.student_id=users.id)";
     if ($search!=='') {
         $term='%'.strtr($search,['!'=>'!!','%'=>'!%','_'=>'!_']).'%';
         $sql.=" AND (name LIKE ? ESCAPE '!' OR ".username_sql()." LIKE ? ESCAPE '!')";
@@ -47,7 +47,7 @@ function course_candidate_page(int $courseId,string $search,int $page): array {
     }
     $rows=all($sql.' ORDER BY name,id LIMIT '.(COURSE_STUDENT_PAGE+1).' OFFSET '.(($page-1)*COURSE_STUDENT_PAGE),$params);
     $more=count($rows)>COURSE_STUDENT_PAGE;
-    return ['students'=>array_map(static fn(array $x):array=>['id'=>(string)$x['id'],'name'=>$x['name'],'username'=>$x['username']],array_slice($rows,0,COURSE_STUDENT_PAGE)),'page'=>$page,'more'=>$more];
+    return ['students'=>array_map(static fn(array $x):array=>['id'=>(string)$x['id'],'name'=>$x['name'],'username'=>$x['username']]+profile_preview_data($x,$courseId,'candidate'),array_slice($rows,0,COURSE_STUDENT_PAGE)),'page'=>$page,'more'=>$more];
 }
 function serve_course_candidates(?array $u): never {
     header('Content-Type: application/json; charset=utf-8');
