@@ -20,20 +20,33 @@ function institution_logo_file(?string $path): ?string {
     return is_file($file) && !is_link($file) ? $file : null;
 }
 
+function institution_logo_url(array $settings): string {
+    $file=institution_logo_file($settings['logo_path']);
+    return $file?image_cache_url('?institution_logo=1',image_cache_version($file,'institution-logo',null,false)):'?institution_logo=1';
+}
 function serve_institution_logo(): never {
     $settings=institution_settings();
     $file=institution_logo_file($settings['logo_path']);
     if (!$file) { http_response_code(404); exit; }
+    $fp=@fopen($file,'rb');
+    if (!$fp) { http_response_code(404); exit; }
+    $stat=fstat($fp);
+    if (!$stat || $stat['size']<1 || $stat['size']>2*1024*1024) { fclose($fp); http_response_code(404); exit; }
+    $version=image_cache_request_version(image_cache_version($file,'institution-logo',$stat,false));
+    session_write_close();
+    header('Cross-Origin-Resource-Policy: same-origin');
+    if (image_cache_not_modified($version,86400)) { fclose($fp); exit; }
+    image_cache_headers($version,86400);
     $types=['png'=>'image/png','jpg'=>'image/jpeg','webp'=>'image/webp'];
     header('Content-Type: '.$types[pathinfo($file,PATHINFO_EXTENSION)]);
-    header('Content-Length: '.filesize($file));
+    header('Content-Length: '.$stat['size']);
     header('Content-Disposition: inline');
-    readfile($file); exit;
+    fpassthru($fp); fclose($fp); exit;
 }
 
 function render_institution_brand(array $settings): void { ?>
     <a class="ve-brand" href="index.php">
-      <?php if (institution_logo_file($settings['logo_path'])): ?><img class="ve-brand-logo" src="?institution_logo=1" alt="Logo institucional"><?php else: ?><span class="ve-brand-logo ve-brand-mark" aria-hidden="true">VE</span><?php endif; ?>
+      <?php if (institution_logo_file($settings['logo_path'])): ?><img class="ve-brand-logo" src="<?=h(institution_logo_url($settings))?>" alt="Logo institucional"><?php else: ?><span class="ve-brand-logo ve-brand-mark" aria-hidden="true">VE</span><?php endif; ?>
       <span class="ve-brand-copy"><strong><?=h($settings['institution_name'])?></strong><?php if($settings['institution_subtitle']!==''):?><small><?=h($settings['institution_subtitle'])?></small><?php endif;?></span>
     </a>
 <?php }
