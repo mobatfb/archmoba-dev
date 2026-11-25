@@ -44,7 +44,11 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
     foreach($items as $i=>$item) if($item['id']===$id){$index=$i;break;}
     if ($action==='stream_start' && $index===null) {
         $rate=filter_var($_POST['sample_rate']??null,FILTER_VALIDATE_INT);
+        $track=filter_var($_POST['track']??1,FILTER_VALIDATE_INT);
+        $start=filter_var($_POST['start_ms']??0,FILTER_VALIDATE_INT);
         if ($rate===false||$rate<8000||$rate>192000) fail('Frecuencia de audio inválida.');
+        if ($track===false||$track<1||$track>4) fail('Pista inválida.');
+        if ($start===false||$start<0||$start>600000) fail('Posición inicial inválida.');
         if (count($items)>=500) fail('El proyecto alcanzó el límite de grabaciones.',409);
         $filename='voz_'.date('Ymd_His').'_'.$id.'.wav';
         $media=$dir.'/'.$filename;
@@ -54,7 +58,7 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
         fclose($fp);
         if (!$ok) { @unlink($media); fail('No se pudo escribir el audio.',500); }
         @chmod($media,0640);
-        $item=['id'=>$id,'file'=>$filename,'path'=>'assets/'.$filename,'mime'=>'audio/wav','sample_rate'=>$rate,'channels'=>1,'bits'=>16,'size'=>44,'created_at'=>date(DATE_ATOM),'duration_ms'=>0,'status'=>'recording'];
+        $item=['id'=>$id,'file'=>$filename,'path'=>'assets/'.$filename,'mime'=>'audio/wav','sample_rate'=>$rate,'channels'=>1,'bits'=>16,'size'=>44,'created_at'=>date(DATE_ATOM),'duration_ms'=>0,'status'=>'recording','track'=>(int)$track,'start_ms'=>(int)$start];
         $items[]=$item;$data['content']['recordings']=$items;$data['module']='audio';
         storeProject($path,$data);
         flock($lock,LOCK_UN);fclose($lock);reply(['ok'=>true,'recording'=>$item,'pcm_bytes'=>0],201);

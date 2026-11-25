@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.8 - authenticated voice recording storage.
+// FUTUREO STUDIO v0.1.9 - authenticated voice recording storage.
 date_default_timezone_set('America/Guayaquil');
 require_once __DIR__ . '/projects.php';
 header('X-Content-Type-Options: nosniff');
@@ -102,7 +102,9 @@ if ($method === 'POST' && $action === 'save') {
     if (!move_uploaded_file($tmp,$target)) fail('No se pudo guardar el audio en el hosting.',500);
     @chmod($target,0640);
     $duration = filter_var($_POST['duration_ms'] ?? 0,FILTER_VALIDATE_INT);
-    $item = ['id'=>$id,'file'=>$filename,'path'=>'assets/'.$filename,'mime'=>$format[1],'size'=>$size,'created_at'=>date(DATE_ATOM),'duration_ms'=>max(0,min(600000,(int)$duration))];
+    $track = filter_var($_POST['track'] ?? 1, FILTER_VALIDATE_INT);
+    $start = filter_var($_POST['start_ms'] ?? 0, FILTER_VALIDATE_INT);
+    $item = ['id'=>$id,'file'=>$filename,'path'=>'assets/'.$filename,'mime'=>$format[1],'size'=>$size,'created_at'=>date(DATE_ATOM),'duration_ms'=>max(0,min(600000,(int)$duration)),'track'=>($track !== false && $track >= 1 && $track <= 4 ? (int)$track : 1),'start_ms'=>max(0,min(600000,(int)$start))];
     $items[] = $item;
     $data['content']['recordings'] = $items;
     $data['updated_at'] = date(DATE_ATOM);

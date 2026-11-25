@@ -1,58 +1,184 @@
-/* FUTUREO STUDIO v0.1.8 - live waveform and durable PCM16 streaming */
+/* FUTUREO STUDIO v0.1.11 - per-track REC / MUTE / FX controls */
 (() => {
-    const root=document.querySelector('.voice-recorder');if(!root)return;
-    const $=id=>document.getElementById('voice-'+id);
-    const canvas=$('canvas'), ctx=canvas.getContext('2d'), audio=$('audio');
-    const record=$('record'), play=$('play'), stop=$('stop'), home=$('home'), clock=$('clock'), status=$('status'), saved=$('saved'), recovery=$('recovery'), download=$('download');
-    const endpoint='recordings.php?'+new URLSearchParams({project:root.dataset.project}).toString();
-    const AudioCtx=window.AudioContext||window.webkitAudioContext;
-    const supported=window.isSecureContext&&navigator.mediaDevices?.getUserMedia&&AudioCtx&&window.AudioWorkletNode&&window.crypto?.getRandomValues;
-    let clips=[], take=null, phase='loading', maxBytes=0, position=0, extent=30, playback=null, playToken=0, localUrl=null;
-    const duration=c=>Math.max(0,Number(c.duration_ms||0)/1000);
-    const total=()=>clips.reduce((s,c)=>s+duration(c),0);
-    const format=s=>{s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')+'.'+Math.floor((s%1)*10);};
-    const vertical=()=>document.body.dataset.orientation==='vertical';
-    function msg(s,state=''){status.textContent=s;status.dataset.state=state;}
+    const root = document.querySelector('.voice-recorder');
+    if (!root) return;
+    const $ = id => document.getElementById('voice-' + id);
+    const canvas = $('canvas'), ctx = canvas.getContext('2d'), audio = $('audio');
+    const record = $('record'), play = $('play'), stop = $('stop'), home = $('home'), clock = $('clock'), status = $('status'), saved = $('saved'), recovery = $('recovery'), download = $('download'), trackName = $('track-name');
+    const trackRows = Array.from(document.querySelectorAll('[data-track-row]'));
+    const endpoint = 'recordings.php?' + new URLSearchParams({project: root.dataset.project}).toString();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const supported = window.isSecureContext && navigator.mediaDevices?.getUserMedia && AudioCtx && window.AudioWorkletNode && window.crypto?.getRandomValues;
+    const palette = {1:{accent:'#33d5ff',fill:'#10323e',live:'#123c47',wave:'#32d7e8',liveWave:'#ff6785',name:'Pista 1'},2:{accent:'#c39cff',fill:'#241936',live:'#302140',wave:'#c8a7ff',liveWave:'#ff93d2',name:'Pista 2'},3:{accent:'#ffd166',fill:'#3a2d14',live:'#46361a',wave:'#ffd166',liveWave:'#ffe4a8',name:'Pista 3'},4:{accent:'#76e39a',fill:'#143021',live:'#193b29',wave:'#76e39a',liveWave:'#b6f4c8',name:'Pista 4'}};
+    let selectedTrack = 1, clips = [], take = null, phase = 'loading', maxBytes = 0, position = 0, extent = 30, playback = null, playToken = 0, localUrl = null;
+    const states = {1:{mute:false,fx:false},2:{mute:false,fx:false},3:{mute:false,fx:false},4:{mute:false,fx:false}};
+    const duration = c => Math.max(0, Number(c.duration_ms || 0) / 1000);
+    const startAt = c => Math.max(0, Number(c.start_ms || 0) / 1000);
+    const endAt = c => startAt(c) + duration(c);
+    const projectTotal = () => Math.max(0, ...clips.map(endAt), take ? take.start + take.captured / take.rate / 2 : 0);
+    const format = s => { s = Math.max(0, s); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0') + '.' + Math.floor((s % 1) * 10); };
+    const vertical = () => document.body.dataset.orientation === 'vertical';
+    function msg(s, state = '') { status.textContent = s; status.dataset.state = state; }
+    function sanitizeTrack(n){ n = Number(n) || 1; return n >= 1 && n <= 4 ? n : 1; }
+    function isMuted(track){ return !!states[sanitizeTrack(track)].mute; }
+    function isFx(track){ return !!states[sanitizeTrack(track)].fx; }
+    function activePlayableClips(){ return clips.filter(c => !isMuted(c.track)); }
+    function normalizeClips(items){
+        const legacyOffsets = {1:0,2:0,3:0,4:0};
+        return items.map(item => {
+            const track = sanitizeTrack(item.track || 1);
+            let start_ms = Number(item.start_ms);
+            if (!Number.isFinite(start_ms) || start_ms < 0) {
+                start_ms = Math.round(legacyOffsets[track] * 1000);
+                legacyOffsets[track] += duration(item);
+            }
+            return {...item, track, start_ms, peaks:Array.isArray(item.peaks) ? item.peaks : []};
+        });
+    }
+    function sortClips(){ clips.sort((a,b)=>(startAt(a)-startAt(b)) || ((a.track||1)-(b.track||1)) || ((a.created_at||'').localeCompare(b.created_at||''))); }
+    function syncTrackButtons(){
+        trackRows.forEach(row => {
+            const track = sanitizeTrack(row.dataset.trackRow);
+            const rec = row.querySelector('[data-action="rec"]');
+            const mute = row.querySelector('[data-action="mute"]');
+            const fx = row.querySelector('[data-action="fx"]');
+            const armed = track === selectedTrack;
+            row.classList.toggle('is-armed', armed);
+            row.classList.toggle('is-muted', states[track].mute);
+            row.classList.toggle('is-fx', states[track].fx);
+            rec.classList.toggle('is-armed', armed);
+            rec.setAttribute('aria-pressed', armed ? 'true' : 'false');
+            rec.disabled = !['idle','playing'].includes(phase);
+            mute.classList.toggle('is-on', states[track].mute);
+            mute.setAttribute('aria-pressed', states[track].mute ? 'true' : 'false');
+            fx.classList.toggle('is-on', states[track].fx);
+            fx.setAttribute('aria-pressed', states[track].fx ? 'true' : 'false');
+        });
+        let note = palette[selectedTrack].name;
+        if (states[selectedTrack].mute) note += ' · mute';
+        if (states[selectedTrack].fx) note += ' · fx';
+        trackName.textContent = note;
+    }
+    function ensureExtent(){ extent = Math.max(30, Math.ceil((projectTotal() + 5) / 10) * 10); }
     function update(){
-        const live=phase==='recording', idle=phase==='idle';
-        record.disabled=!supported||maxBytes<1024||!(idle||live);
-        record.classList.toggle('is-recording',live);record.title=record.getAttribute('aria-label')||'';
-        record.setAttribute('aria-label',live?'Detener grabación':'Grabar voz');record.title=live?'Detener grabación':'Grabar voz';
-        play.disabled=!(idle||phase==='playing')||total()<=0;play.textContent=phase==='playing'?'Ⅱ':'▶';play.setAttribute('aria-label',phase==='playing'?'Pausar':'Reproducir');
-        stop.disabled=!['recording','playing'].includes(phase);home.disabled=!idle&&phase!=='playing';
-        recovery.hidden=phase!=='recovery';clock.textContent=format(position);
-        saved.textContent=take?('Guardado '+format(take.ack/take.rate/2)+' / '+format(take.captured/take.rate/2)):(clips.length?clips.length+' toma(s) · '+format(total()):'Sin grabaciones');
-        canvas.setAttribute('aria-valuenow',position.toFixed(2));canvas.setAttribute('aria-valuemax',String(extent));canvas.setAttribute('aria-orientation',vertical()?'vertical':'horizontal');canvas.setAttribute('aria-valuetext',format(position));
+        const live = phase === 'recording', idle = phase === 'idle';
+        record.disabled = !supported || maxBytes < 1024 || !(idle || live);
+        record.classList.toggle('is-recording', live);
+        record.setAttribute('aria-label', live ? 'Detener grabación' : 'Grabar voz');
+        record.title = live ? 'Detener grabación' : 'Grabar voz';
+        play.disabled = phase !== 'playing' && (!idle || activePlayableClips().length <= 0);
+        play.textContent = phase === 'playing' ? 'Ⅱ' : '▶';
+        play.setAttribute('aria-label', phase === 'playing' ? 'Pausar' : 'Reproducir');
+        stop.disabled = !['recording','playing'].includes(phase);
+        home.disabled = !idle && phase !== 'playing';
+        recovery.hidden = phase !== 'recovery';
+        clock.textContent = format(position);
+        if (take) saved.textContent = palette[take.track].name + ' · Guardado ' + format(take.ack / take.rate / 2) + ' / ' + format(take.captured / take.rate / 2);
+        else saved.textContent = (clips.length ? clips.length + ' toma(s)' : 'Sin grabaciones') + ' · ' + format(projectTotal()) + ' · Armada ' + palette[selectedTrack].name;
+        canvas.setAttribute('aria-valuenow', position.toFixed(2));
+        canvas.setAttribute('aria-valuemax', String(extent));
+        canvas.setAttribute('aria-orientation', vertical() ? 'vertical' : 'horizontal');
+        canvas.setAttribute('aria-valuetext', format(position));
+        audio.muted = playback !== null && isMuted(playback.track);
+        syncTrackButtons();
         draw();
     }
-    async function response(r){let d;try{d=await r.json();}catch(_){throw Error('Respuesta no válida del hosting ('+r.status+').');}if(!r.ok||!d.ok)throw Error(d.error||'Error del servidor');return d;}
-    async function post(action,fields={},blob=null){const f=new FormData();f.append('action',action);f.append('project',root.dataset.project);f.append('csrf',root.dataset.csrf);for(const [k,v] of Object.entries(fields))f.append(k,String(v));if(blob)f.append('pcm',blob,'pcm.bin');return response(await fetch('recordings.php',{method:'POST',body:f,credentials:'same-origin',cache:'no-store'}));}
-    async function load(){try{const d=await response(await fetch(endpoint,{cache:'no-store',credentials:'same-origin'}));maxBytes=Number(d.max_bytes)||0;clips=d.recordings.map(c=>({...c,peaks:[]}));phase='idle';position=0;extent=Math.max(30,Math.ceil(total()/10)*10);msg(!supported?'Usa HTTPS y un navegador compatible con AudioWorklet para grabar.':maxBytes<1024?'El hosting no admite fragmentos de audio.':'Pulsa el botón rojo para grabar directamente en la pista.');update();for(const clip of clips){if(clip.mime!=='audio/wav')continue;fetch(endpoint+'&action=waveform&id='+encodeURIComponent(clip.id),{credentials:'same-origin',cache:'no-store'}).then(response).then(d=>{clip.peaks=d.peaks;draw();}).catch(()=>{});}}catch(e){phase='idle';msg(e.message,'error');update();}}
-    function geometry(){const r=canvas.getBoundingClientRect();const v=vertical();return {w:r.width,h:r.height,v,axis:v?r.height:r.width,margin:v?43:32,span:v?r.width-43:r.height-32};}
-    function draw(){const g=geometry();if(g.w<1||g.h<1||!ctx)return;const dpr=Math.min(2,window.devicePixelRatio||1),w=Math.round(g.w*dpr),h=Math.round(g.h*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,g.w,g.h);ctx.fillStyle='#0b1422';ctx.fillRect(0,0,g.w,g.h);const along=t=>g.v?g.h-t/extent*g.h:t/extent*g.w;const line=(a,b,c,d,col,width=1)=>{ctx.strokeStyle=col;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(a,b);ctx.lineTo(c,d);ctx.stroke();};
-        ctx.fillStyle='#101d2d';if(g.v)ctx.fillRect(0,0,g.margin,g.h);else ctx.fillRect(0,0,g.w,g.margin);const step=extent>180?30:extent>60?10:5;ctx.font='10px system-ui';ctx.fillStyle='#a9bbd2';
-        for(let t=0;t<=extent;t+=step){const p=along(t);if(g.v){line(g.margin,p,g.w,p,'#26364c');line(g.margin-7,p,g.margin,p,'#728aa4');ctx.textAlign='right';ctx.fillText(Math.floor(t/60)+':'+String(t%60).padStart(2,'0'),g.margin-9,Math.max(10,Math.min(g.h-3,p+3)));}else{line(p,g.margin,p,g.h,'#26364c');line(p,g.margin-8,p,g.margin,'#728aa4');ctx.textAlign=t===0?'left':t===extent?'right':'center';ctx.fillText(Math.floor(t/60)+':'+String(t%60).padStart(2,'0'),p,17);}}
-        const mid=g.margin+g.span/2; if(g.v)line(mid,0,mid,g.h,'#294258');else line(0,mid,g.w,mid,'#294258');let cursor=0;
-        function clipDraw(c,len,peaks,live){if(len<=0)return;const a=along(cursor),b=along(cursor+len),lo=Math.min(a,b),size=Math.max(1,Math.abs(b-a));ctx.fillStyle=live?'#123c47':'#10323e';ctx.strokeStyle=live?'#ff5676':'#258ca0';if(g.v){ctx.fillRect(g.margin+4,lo,g.span-8,size);ctx.strokeRect(g.margin+4,lo,g.span-8,size);}else{ctx.fillRect(lo,g.margin+4,size,g.span-8);ctx.strokeRect(lo,g.margin+4,size,g.span-8);}ctx.strokeStyle=live?'#ff6785':'#32d7e8';ctx.lineWidth=1.2;ctx.beginPath();const n=Math.min(Math.max(1,Math.floor(size)),peaks.length);for(let i=0;i<n;i++){const from=Math.floor(i*peaks.length/n),to=Math.max(from+1,Math.ceil((i+1)*peaks.length/n));let p=0;for(let j=from;j<to;j++)p=Math.max(p,peaks[j]||0);const x=along(cursor+(i+.5)/n*len),amp=Math.max(.7,p*Math.max(0,g.span*.42));if(g.v){ctx.moveTo(mid-amp,x);ctx.lineTo(mid+amp,x);}else{ctx.moveTo(x,mid-amp);ctx.lineTo(x,mid+amp);}}ctx.stroke();if(!peaks.length&&size>30){ctx.fillStyle='#99bccb';ctx.font='10px system-ui';ctx.textAlign='center';if(g.v)ctx.fillText('VOZ',mid,lo+14);else ctx.fillText('VOZ',lo+size/2,g.margin+18);}cursor+=len;}
-        for(const c of clips)clipDraw(c,duration(c),c.peaks||[],false);if(take)clipDraw(take,take.captured/take.rate/2,take.peaks,true);
-        const p=along(position);const col=take?'#ff5276':'#33e7ff';if(g.v){line(0,p,g.w,p,col,2);ctx.fillStyle=col;ctx.fillRect(g.margin-5,p-4,8,8);}else{line(p,0,p,g.h,col,2);ctx.fillStyle=col;ctx.fillRect(p-4,g.margin-5,8,8);}
+    async function response(r){ let d; try{ d = await r.json(); }catch(_){ throw Error('Respuesta no válida del hosting (' + r.status + ').'); } if(!r.ok || !d.ok) throw Error(d.error || 'Error del servidor'); return d; }
+    async function post(action, fields = {}, blob = null){ const f = new FormData(); f.append('action', action); f.append('project', root.dataset.project); f.append('csrf', root.dataset.csrf); for(const [k,v] of Object.entries(fields)) f.append(k, String(v)); if(blob) f.append('pcm', blob, 'pcm.bin'); return response(await fetch('recordings.php', {method:'POST', body:f, credentials:'same-origin', cache:'no-store'})); }
+    async function load(){
+        try{
+            const d = await response(await fetch(endpoint, {cache:'no-store', credentials:'same-origin'}));
+            maxBytes = Number(d.max_bytes) || 0;
+            clips = normalizeClips(d.recordings || []);
+            sortClips();
+            phase = 'idle'; position = 0; ensureExtent();
+            msg(!supported ? 'Usa HTTPS y un navegador compatible con AudioWorklet para grabar.' : maxBytes < 1024 ? 'El hosting no admite fragmentos de audio.' : 'Cada pista tiene REC, MUTE y FX. Usa REC para armar la pista de grabación.');
+            update();
+            for (const clip of clips){ if (clip.mime !== 'audio/wav') continue; fetch(endpoint + '&action=waveform&id=' + encodeURIComponent(clip.id), {credentials:'same-origin', cache:'no-store'}).then(response).then(d => { clip.peaks = d.peaks || []; draw(); }).catch(()=>{}); }
+        } catch(e){ phase='idle'; msg(e.message,'error'); update(); }
     }
-    function move(p){position=Math.max(0,Math.min(extent,p));update();}
-    function seek(e){if(!['idle','playing'].includes(phase))return;const r=canvas.getBoundingClientRect();const f=vertical()?1-(e.clientY-r.top)/r.height:(e.clientX-r.left)/r.width;const target=Math.max(0,Math.min(total(),f*extent));if(phase==='playing'){pause();position=target;startPlay();}else move(target);}
-    canvas.addEventListener('pointerdown',e=>{if(e.button!==0)return;canvas.setPointerCapture(e.pointerId);seek(e);});canvas.addEventListener('pointermove',e=>{if(canvas.hasPointerCapture(e.pointerId)&&phase==='idle')seek(e);});canvas.addEventListener('keydown',e=>{if(phase!=='idle')return;let p=position;if(['ArrowUp','ArrowRight'].includes(e.key))p++;else if(['ArrowDown','ArrowLeft'].includes(e.key))p--;else if(e.key==='Home')p=0;else if(e.key==='End')p=total();else return;e.preventDefault();move(Math.min(total(),p));});
-    new ResizeObserver(draw).observe(canvas);new MutationObserver(update).observe(document.body,{attributes:true,attributeFilter:['data-orientation']});
-    function release(t){if(t.node){try{t.node.disconnect();}catch(_){}t.node.port.onmessage=null;}if(t.source){try{t.source.disconnect();}catch(_){}}if(t.media)t.media.getTracks().forEach(x=>x.stop());if(t.context)t.context.close().catch(()=>{});}
-    function capture(t,buffer,peaks){if(t!==take||!['recording','stopping'].includes(phase))return;const available=Math.max(0,t.rate*2*600-t.captured);const bytes=buffer.byteLength>available?buffer.slice(0,available):buffer;if(bytes.byteLength){const offset=t.captured;t.captured+=bytes.byteLength;t.raw.push(bytes);t.peaks.push(...peaks);const block=Math.max(2,Math.min(1048576,maxBytes)&~1);for(let i=0;i<bytes.byteLength;i+=block)t.queue.push({offset:offset+i,buffer:bytes.slice(i,i+block)});position=total()+t.captured/t.rate/2;if(position>extent-1)extent=Math.max(extent,Math.ceil((position+5)/10)*10);update();pump(t);}if(t.captured>=t.rate*2*600&&phase==='recording')endTake();}
-    async function pump(t){if(t.pumping||t.error||t!==take)return;t.pumping=true;try{while(t.queue.length){const q=t.queue[0];const d=await post('stream_chunk',{recording_id:t.id,offset:q.offset},new Blob([q.buffer],{type:'application/octet-stream'}));if(Number(d.pcm_bytes)<q.offset+q.buffer.byteLength)throw Error('El servidor no confirmó el fragmento.');t.ack=Number(d.pcm_bytes);t.item=d.recording;t.queue.shift();update();}}catch(e){t.error=e.message;if(phase==='recording')endTake();}finally{t.pumping=false;if(t.ended)finalize(t);}}
-    function makeDownload(t){if(localUrl)URL.revokeObjectURL(localUrl);const h=new ArrayBuffer(44),v=new DataView(h);function str(off,s){for(let i=0;i<s.length;i++)v.setUint8(off+i,s.charCodeAt(i));}str(0,'RIFF');v.setUint32(4,36+t.captured,true);str(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,t.rate,true);v.setUint32(28,t.rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,'data');v.setUint32(40,t.captured,true);localUrl=URL.createObjectURL(new Blob([h,...t.raw],{type:'audio/wav'}));download.href=localUrl;download.download='voz_'+t.id+'.wav';}
-    function recover(t){phase='recovery';makeDownload(t);msg((t.error||'No se pudo confirmar el guardado.')+' · '+format(t.ack/t.rate/2)+' guardados. Reintenta o descarga el WAV.','error');update();}
-    async function finalize(t){if(t!==take||!t.ended||t.pumping||t.finalizing)return;if(t.error){recover(t);return;}if(t.queue.length){pump(t);return;}t.finalizing=true;phase='saving';update();try{const d=await post('stream_finish',{recording_id:t.id,offset:t.ack});clips.push({...d.recording,peaks:t.peaks});position=total();take=null;phase='idle';if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;msg('Grabación WAV guardada en assets del proyecto.','ok');update();}catch(e){t.error=e.message;recover(t);}finally{t.finalizing=false;}}
-    function endTake(){const t=take;if(!t||phase!=='recording')return;phase='stopping';msg('Guardando los últimos fragmentos...');update();t.node.port.postMessage('stop');t.stopTimeout=setTimeout(()=>{if(!t.ended){t.error=t.error||'No se confirmó el último bloque del micrófono.';t.ended=true;release(t);finalize(t);}},2000);}
-    async function begin(){if(phase!=='idle'||!supported)return;phase='starting';msg('Solicitando acceso al micrófono...');update();const t={id:Array.from(crypto.getRandomValues(new Uint8Array(12)),x=>x.toString(16).padStart(2,'0')).join(''),raw:[],queue:[],peaks:[],captured:0,ack:0,rate:48000,error:null,pumping:false,ended:false,finalizing:false};try{t.media=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1},video:false});t.context=new AudioCtx();await t.context.resume();t.rate=t.context.sampleRate;await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.8');t.source=t.context.createMediaStreamSource(t.media);t.node=new AudioWorkletNode(t.context,'futureo-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});const d=await post('stream_start',{recording_id:t.id,sample_rate:t.rate});t.item=d.recording;take=t;position=total();phase='recording';msg('Grabando · guardado automático cada 0,5 s');t.node.port.onmessage=e=>{if(e.data.type==='pcm')capture(t,e.data.buffer,e.data.peaks);else if(e.data.type==='stopped'){clearTimeout(t.stopTimeout);t.ended=true;release(t);finalize(t);}};t.media.getAudioTracks().forEach(tr=>tr.addEventListener('ended',()=>{if(t===take&&phase==='recording')endTake();}));t.source.connect(t.node);t.node.connect(t.context.destination);update();}catch(e){release(t);take=null;phase='idle';msg(e.name==='NotAllowedError'?'Autoriza el micrófono en el navegador.':e.message,'error');update();}}
-    function locate(p){let offset=0;for(const c of clips){const len=duration(c);if(p<offset+len&&len>0)return {c,offset};offset+=len;}return null;}
-    function pause(){playToken++;audio.pause();playback=null;phase='idle';update();}
-    async function startPlay(){if(phase!=='idle'||total()<=0)return;if(position>=total()-.001)position=0;const loc=locate(position);if(!loc)return;const token=++playToken;playback=loc;phase='playing';update();audio.src=endpoint+'&action=play&id='+encodeURIComponent(loc.c.id)+'&t='+Date.now();try{await new Promise((resolve,reject)=>{const clean=()=>{audio.removeEventListener('loadedmetadata',ok);audio.removeEventListener('error',bad);};const ok=()=>{clean();resolve();};const bad=()=>{clean();reject(Error('No se pudo abrir el audio.'));};if(audio.readyState>=1){resolve();return;}audio.addEventListener('loadedmetadata',ok,{once:true});audio.addEventListener('error',bad,{once:true});});if(token!==playToken)return;audio.currentTime=Math.max(0,position-loc.offset);await audio.play();if(token!==playToken)audio.pause();}catch(e){if(token===playToken){pause();msg(e.message,'error');}}}
-    audio.addEventListener('timeupdate',()=>{if(phase==='playing'&&playback)move(playback.offset+audio.currentTime);});audio.addEventListener('ended',()=>{if(phase!=='playing'||!playback)return;const next=playback.offset+duration(playback.c);pause();move(Math.min(total(),next));if(next<total()-.001)startPlay();});
-    record.addEventListener('click',()=>phase==='recording'?endTake():begin());stop.addEventListener('click',()=>{if(phase==='recording')endTake();else if(phase==='playing')pause();});play.addEventListener('click',()=>phase==='playing'?pause():startPlay());home.addEventListener('click',()=>{if(phase==='playing')pause();move(0);});$('retry').addEventListener('click',()=>{if(phase!=='recovery'||!take)return;take.error=null;phase='saving';msg('Reintentando guardado...');update();pump(take);});$('discard').addEventListener('click',()=>{if(phase!=='recovery'||!take||!confirm('¿Cerrar esta toma? Los fragmentos ya guardados se conservarán.'))return;if(take.item&&take.ack>0)clips.push({...take.item,duration_ms:take.ack/take.rate/2*1000,peaks:take.peaks.slice(0,Math.ceil(take.ack/take.rate/2*40))});take=null;phase='idle';position=total();if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;msg('Se conservaron los fragmentos confirmados por el servidor.');update();});
-    window.addEventListener('beforeunload',e=>{if(take||phase==='starting'){e.preventDefault();e.returnValue='';}});window.addEventListener('pagehide',()=>{if(take)release(take);});load();
+    function geometry(){ const r = canvas.getBoundingClientRect(), v = vertical(); const timeline = v ? 42 : 28; const count = 4; const trackArea = v ? Math.max(0, r.width - timeline) : Math.max(0, r.height - timeline); const lane = trackArea / count; return {w:r.width, h:r.height, v, timeline, count, lane, trackArea}; }
+    function along(g, t){ return g.v ? g.h - (t / extent) * g.h : (t / extent) * g.w; }
+    function laneRect(g, track){ if (g.v) { const x = g.timeline + (track - 1) * g.lane; return {x:x+2, y:0, w:Math.max(0, g.lane-4), h:g.h}; } const y = g.timeline + (track - 1) * g.lane; return {x:0, y:y+2, w:g.w, h:Math.max(0, g.lane-4)}; }
+    function drawWaveform(peaks, mapFn, half, center, color){ if (!peaks.length) return; ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.beginPath(); const n = peaks.length; for (let i=0;i<n;i++){ const pos = mapFn((i + .5) / n), amp = Math.max(.8, (peaks[i] || 0) * half); if (vertical()) { ctx.moveTo(center - amp, pos); ctx.lineTo(center + amp, pos); } else { ctx.moveTo(pos, center - amp); ctx.lineTo(pos, center + amp); } } ctx.stroke(); }
+    function draw(){
+        const g = geometry();
+        if (g.w < 1 || g.h < 1 || !ctx) return;
+        const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(g.w * dpr), h = Math.round(g.h * dpr);
+        if (canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
+        ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,g.w,g.h);
+        ctx.fillStyle = '#0b1422'; ctx.fillRect(0,0,g.w,g.h);
+        if (g.v) ctx.fillRect(0,0,g.timeline,g.h); else ctx.fillRect(0,0,g.w,g.timeline);
+        const step = extent > 180 ? 30 : extent > 60 ? 10 : 5;
+        ctx.font = '10px system-ui'; ctx.fillStyle = '#a9bbd2'; ctx.textBaseline = 'middle';
+        for (let t=0;t<=extent;t+=step){ const p = along(g,t); ctx.strokeStyle = '#26364c'; ctx.lineWidth = 1; ctx.beginPath(); if (g.v){ ctx.moveTo(g.timeline,p); ctx.lineTo(g.w,p); } else { ctx.moveTo(p,g.timeline); ctx.lineTo(p,g.h); } ctx.stroke(); ctx.strokeStyle = '#728aa4'; ctx.beginPath(); if (g.v){ ctx.moveTo(g.timeline-7,p); ctx.lineTo(g.timeline,p); } else { ctx.moveTo(p,g.timeline-8); ctx.lineTo(p,g.timeline); } ctx.stroke(); ctx.textAlign = g.v ? 'right' : (t===0 ? 'left' : t===extent ? 'right' : 'center'); ctx.fillText(Math.floor(t/60)+':' + String(t%60).padStart(2,'0'), g.v ? g.timeline-9 : p, g.v ? Math.max(10,Math.min(g.h-3,p)) : 15); }
+        for (let track=1; track<=4; track++){
+            const lane = laneRect(g, track), p = palette[track], armed = track === selectedTrack, muted = states[track].mute, fx = states[track].fx;
+            ctx.fillStyle = muted ? '#0a1018' : armed ? '#101b2a' : '#0d1726'; ctx.fillRect(lane.x, lane.y, lane.w, lane.h);
+            ctx.strokeStyle = armed ? p.accent : muted ? '#3c4651' : '#243344'; ctx.lineWidth = armed ? 1.4 : 1; ctx.strokeRect(lane.x+.5, lane.y+.5, lane.w-1, lane.h-1);
+            ctx.fillStyle = p.accent; ctx.font = '700 10px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+            // Track labels and controls live in the aligned DOM strip, not on the waveform.
+            const center = g.v ? lane.x + lane.w/2 : lane.y + lane.h/2;
+            ctx.strokeStyle = muted ? '#1d2630' : '#294258'; ctx.lineWidth = 1; ctx.beginPath(); if (g.v){ ctx.moveTo(center, 0); ctx.lineTo(center, g.h); } else { ctx.moveTo(0, center); ctx.lineTo(g.w, center); } ctx.stroke();
+            ctx.strokeStyle = '#26364c'; ctx.lineWidth = 1;
+            for(let t=0;t<=extent;t+=step){ const q=along(g,t); ctx.beginPath(); if(g.v){ctx.moveTo(lane.x,q);ctx.lineTo(lane.x+lane.w,q);}else{ctx.moveTo(q,lane.y);ctx.lineTo(q,lane.y+lane.h);}ctx.stroke(); }
+            const laneClips = clips.filter(c => sanitizeTrack(c.track) === track);
+            for (const clip of laneClips){
+                const s = startAt(clip), e = endAt(clip); if (e <= 0) continue;
+                const a = along(g, s), b = along(g, e), lo = Math.min(a,b), size = Math.max(1, Math.abs(b-a));
+                ctx.globalAlpha = muted ? .35 : 1;
+                ctx.fillStyle = fx ? '#2b2512' : p.fill; ctx.strokeStyle = muted ? '#5d6670' : p.accent;
+                if (g.v){ ctx.fillRect(lane.x+4, lo, lane.w-8, size); ctx.strokeRect(lane.x+4, lo, lane.w-8, size); } else { ctx.fillRect(lo, lane.y+4, size, lane.h-8); ctx.strokeRect(lo, lane.y+4, size, lane.h-8); }
+                drawWaveform(clip.peaks || [], frac => along(g, s + frac * duration(clip)), Math.max(8, (g.v ? lane.w-14 : lane.h-14) / 2), center, muted ? '#7f8b98' : (fx ? '#ffd166' : p.wave));
+                ctx.globalAlpha = 1;
+            }
+            if (take && take.track === track){
+                const s = take.start, d = take.captured / take.rate / 2, a = along(g, s), b = along(g, s + d), lo = Math.min(a,b), size = Math.max(1, Math.abs(b-a));
+                ctx.fillStyle = p.live; ctx.strokeStyle = '#ff5e7e';
+                if (g.v){ ctx.fillRect(lane.x+4, lo, lane.w-8, size); ctx.strokeRect(lane.x+4, lo, lane.w-8, size); } else { ctx.fillRect(lo, lane.y+4, size, lane.h-8); ctx.strokeRect(lo, lane.y+4, size, lane.h-8); }
+                drawWaveform(take.peaks || [], frac => along(g, s + frac * d), Math.max(8, (g.v ? lane.w-14 : lane.h-14) / 2), center, fx ? '#ffe4a8' : p.liveWave);
+            }
+        }
+        const cursor = along(g, position), col = take ? '#ff5276' : '#33e7ff';
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); if (g.v){ ctx.moveTo(0,cursor); ctx.lineTo(g.w,cursor); } else { ctx.moveTo(cursor,0); ctx.lineTo(cursor,g.h); } ctx.stroke();
+        ctx.fillStyle = col; if (g.v) ctx.fillRect(g.timeline-5,cursor-4,8,8); else ctx.fillRect(cursor-4,g.timeline-5,8,8);
+    }
+    function move(p){ position = Math.max(0, Math.min(extent, p)); update(); }
+    function seek(e){ if(!['idle','playing'].includes(phase)) return; const r = canvas.getBoundingClientRect(); const f = vertical() ? 1 - (e.clientY-r.top)/r.height : (e.clientX-r.left)/r.width; const target = Math.max(0, Math.min(projectTotal(), f * extent)); if(phase==='playing'){ pause(); position = target; startPlay(); } else move(target); }
+    canvas.addEventListener('pointerdown',e=>{ if(e.button!==0) return; canvas.setPointerCapture(e.pointerId); seek(e); });
+    canvas.addEventListener('pointermove',e=>{ if(canvas.hasPointerCapture(e.pointerId) && phase==='idle') seek(e); });
+    canvas.addEventListener('keydown',e=>{ if(phase!=='idle') return; let p = position; if(['ArrowUp','ArrowRight'].includes(e.key)) p++; else if(['ArrowDown','ArrowLeft'].includes(e.key)) p--; else if(e.key==='Home') p = 0; else if(e.key==='End') p = projectTotal(); else return; e.preventDefault(); move(Math.min(projectTotal(), p)); });
+    trackRows.forEach(row => row.addEventListener('click', e => {
+        const button = e.target.closest('.track-action');
+        if (!button) return;
+        const track = sanitizeTrack(button.dataset.track), action = button.dataset.action;
+        if (action === 'rec') { if (!['idle','playing'].includes(phase)) return; selectedTrack = track; }
+        else if (action === 'mute') states[track].mute = !states[track].mute;
+        else if (action === 'fx') { states[track].fx = !states[track].fx; msg('FX de '+palette[track].name+': control visual; procesamiento pendiente.'); }
+        update();
+    }));
+    new ResizeObserver(draw).observe(canvas); new MutationObserver(update).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
+    function release(t){ if(t.node){ try{ t.node.disconnect(); }catch(_){} t.node.port.onmessage = null; } if(t.source){ try{ t.source.disconnect(); }catch(_){} } if(t.media) t.media.getTracks().forEach(x => x.stop()); if(t.context) t.context.close().catch(()=>{}); }
+    function capture(t, buffer, peaks){ if(t !== take || !['recording','stopping'].includes(phase)) return; const available = Math.max(0, t.rate * 2 * 600 - t.captured); const bytes = buffer.byteLength > available ? buffer.slice(0, available) : buffer; if(bytes.byteLength){ const offset = t.captured; t.captured += bytes.byteLength; t.raw.push(bytes); t.peaks.push(...peaks); const block = Math.max(2, Math.min(1048576, maxBytes) & ~1); for(let i=0;i<bytes.byteLength;i+=block) t.queue.push({offset:offset+i, buffer:bytes.slice(i, i+block)}); position = t.start + t.captured / t.rate / 2; ensureExtent(); update(); pump(t); } if(t.captured >= t.rate * 2 * 600 && phase==='recording') endTake(); }
+    async function pump(t){ if(t.pumping || t.error || t !== take) return; t.pumping = true; try{ while(t.queue.length){ const q = t.queue[0]; const d = await post('stream_chunk', {recording_id:t.id, offset:q.offset}, new Blob([q.buffer], {type:'application/octet-stream'})); if(Number(d.pcm_bytes) < q.offset + q.buffer.byteLength) throw Error('El servidor no confirmó el fragmento.'); t.ack = Number(d.pcm_bytes); t.item = d.recording; t.queue.shift(); update(); } }catch(e){ t.error = e.message; if(phase==='recording') endTake(); } finally { t.pumping = false; if(t.ended) finalize(t); } }
+    function makeDownload(t){ if(localUrl) URL.revokeObjectURL(localUrl); const h = new ArrayBuffer(44), v = new DataView(h); const str = (off,s)=>{for(let i=0;i<s.length;i++)v.setUint8(off+i,s.charCodeAt(i));}; str(0,'RIFF'); v.setUint32(4,36+t.captured,true); str(8,'WAVEfmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,t.rate,true); v.setUint32(28,t.rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); str(36,'data'); v.setUint32(40,t.captured,true); localUrl = URL.createObjectURL(new Blob([h,...t.raw], {type:'audio/wav'})); download.href = localUrl; download.download = 'voz_' + t.id + '.wav'; }
+    function recover(t){ phase = 'recovery'; makeDownload(t); msg((t.error || 'No se pudo confirmar el guardado.') + ' · ' + format(t.ack/t.rate/2) + ' guardados en ' + palette[t.track].name + '.', 'error'); update(); }
+    async function finalize(t){ if(t!==take||!t.ended||t.pumping||t.finalizing) return; if(t.error){ recover(t); return; } if(t.queue.length){ pump(t); return; } t.finalizing = true; phase = 'saving'; update(); try{ const d = await post('stream_finish', {recording_id:t.id, offset:t.ack}); clips.push({...d.recording, peaks:t.peaks, track:sanitizeTrack(d.recording.track || t.track), start_ms:Number(d.recording.start_ms ?? Math.round(t.start*1000))}); sortClips(); position = endAt(clips[clips.length-1]); take = null; phase = 'idle'; if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Grabación WAV guardada en assets del proyecto, en ' + palette[selectedTrack].name + '.', 'ok'); update(); }catch(e){ t.error = e.message; recover(t); } finally { t.finalizing = false; } }
+    function endTake(){ const t = take; if(!t || phase!=='recording') return; phase = 'stopping'; msg('Guardando los últimos fragmentos...'); update(); t.node.port.postMessage('stop'); t.stopTimeout = setTimeout(()=>{ if(!t.ended){ t.error = t.error || 'No se confirmó el último bloque del micrófono.'; t.ended = true; release(t); finalize(t); } },2000); }
+    async function begin(){ if(phase!=='idle'||!supported) return; phase = 'starting'; msg('Solicitando acceso al micrófono...'); update(); const t = {id:Array.from(crypto.getRandomValues(new Uint8Array(12)),x=>x.toString(16).padStart(2,'0')).join(''), track:selectedTrack, start:position, raw:[], queue:[], peaks:[], captured:0, ack:0, rate:48000, error:null, pumping:false, ended:false, finalizing:false}; try{ t.media = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1},video:false}); t.context = new AudioCtx(); await t.context.resume(); t.rate = t.context.sampleRate; await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.8'); t.source = t.context.createMediaStreamSource(t.media); t.node = new AudioWorkletNode(t.context,'futureo-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]}); const d = await post('stream_start',{recording_id:t.id,sample_rate:t.rate,track:t.track,start_ms:Math.round(t.start*1000)}); t.item = d.recording; take = t; phase='recording'; msg('Grabando en ' + palette[t.track].name + ' · guardado automático cada 0,5 s'); t.node.port.onmessage = e => { if(e.data.type==='pcm') capture(t,e.data.buffer,e.data.peaks); else if(e.data.type==='stopped'){ clearTimeout(t.stopTimeout); t.ended=true; release(t); finalize(t); } }; t.media.getAudioTracks().forEach(tr=>tr.addEventListener('ended',()=>{ if(t===take&&phase==='recording') endTake(); })); t.source.connect(t.node); t.node.connect(t.context.destination); update(); } catch(e){ release(t); take=null; phase='idle'; msg(e.name==='NotAllowedError' ? 'Autoriza el micrófono en el navegador.' : e.message, 'error'); update(); } }
+    function sortForPlay(){ return [...clips].filter(c => !isMuted(c.track)).sort((a,b)=>(startAt(a)-startAt(b)) || ((a.track||1)-(b.track||1))); }
+    function findClipForPlayback(p){ const all = sortForPlay(); const preferred = all.filter(c => sanitizeTrack(c.track) === selectedTrack); const containingPreferred = preferred.find(c => p >= startAt(c) && p < endAt(c)); if(containingPreferred) return containingPreferred; const containingAny = all.find(c => p >= startAt(c) && p < endAt(c)); if(containingAny) return containingAny; const nextPreferred = preferred.find(c => startAt(c) >= p); if(nextPreferred) return nextPreferred; return all.find(c => startAt(c) >= p) || null; }
+    function pause(){ playToken++; audio.pause(); playback = null; phase = 'idle'; update(); }
+    async function startPlay(){ if(phase!=='idle' || activePlayableClips().length <= 0) return; if(position >= projectTotal() - .001) position = 0; const clip = findClipForPlayback(position); if(!clip) return; const token = ++playToken; playback = clip; phase = 'playing'; if(position < startAt(clip)) move(startAt(clip)); update(); audio.src = endpoint + '&action=play&id=' + encodeURIComponent(clip.id) + '&t=' + Date.now(); try{ await new Promise((resolve,reject)=>{ const clean = ()=>{ audio.removeEventListener('loadedmetadata',ok); audio.removeEventListener('error',bad); }; const ok=()=>{ clean(); resolve(); }; const bad=()=>{ clean(); reject(Error('No se pudo abrir el audio.')); }; if(audio.readyState>=1){ resolve(); return; } audio.addEventListener('loadedmetadata',ok,{once:true}); audio.addEventListener('error',bad,{once:true}); }); if(token !== playToken) return; audio.currentTime = Math.max(0, position - startAt(clip)); await audio.play(); if(token !== playToken) audio.pause(); }catch(e){ if(token === playToken){ pause(); msg(e.message,'error'); } } }
+    audio.addEventListener('timeupdate',()=>{ if(phase==='playing'&&playback) move(startAt(playback)+audio.currentTime); });
+    audio.addEventListener('ended',()=>{ if(phase!=='playing'||!playback) return; const nextPosition = endAt(playback); pause(); move(Math.min(projectTotal(), nextPosition)); if(nextPosition < projectTotal() - .001) startPlay(); });
+    record.addEventListener('click',()=>phase==='recording' ? endTake() : begin());
+    stop.addEventListener('click',()=>{ if(phase==='recording') endTake(); else if(phase==='playing') pause(); });
+    play.addEventListener('click',()=>phase==='playing' ? pause() : startPlay());
+    home.addEventListener('click',()=>{ if(phase==='playing') pause(); move(0); });
+    $('retry').addEventListener('click',()=>{ if(phase!=='recovery'||!take) return; take.error = null; phase = 'saving'; msg('Reintentando guardado...'); update(); pump(take); });
+    $('discard').addEventListener('click',()=>{ if(phase!=='recovery'||!take||!confirm('¿Cerrar esta toma? Los fragmentos ya guardados se conservarán.')) return; if(take.item&&take.ack>0) clips.push({...take.item, track:take.track, start_ms:Math.round(take.start*1000), duration_ms:take.ack/take.rate/2*1000, peaks:take.peaks.slice(0,Math.ceil(take.ack/take.rate/2*40))}); sortClips(); take = null; phase = 'idle'; position = projectTotal(); if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Se conservaron los fragmentos confirmados por el servidor.'); update(); });
+    window.addEventListener('beforeunload',e=>{ if(take||phase==='starting'){ e.preventDefault(); e.returnValue=''; } });
+    window.addEventListener('pagehide',()=>{ if(take) release(take); });
+    load();
 })();
