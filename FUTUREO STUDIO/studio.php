@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.0 - PHP 7.4+
+// FUTUREO STUDIO v0.1.2 - PHP 7.4+
 date_default_timezone_set('America/Guayaquil');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
@@ -90,9 +90,9 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 <?php elseif ($project !== null): ?>
 <div class="workspace-bar"><a href="<?= e($page) ?>">← Proyectos</a><span><?= e($project) ?></span></div><main class="workspace" aria-label="Espacio de trabajo vacío"></main>
 <?php else: ?>
-<main class="dashboard"><div class="intro"><div><p class="eyebrow"><?= $adminPage ? 'ADMINISTRACIÓN' : 'ESPACIO PÚBLICO' ?></p><h1>Proyectos</h1><p class="muted"><?= $adminPage ? 'Crea y abre tus proyectos locales.' : 'Explora los proyectos de FUTUREO STUDIO.' ?></p></div><span class="count"><?= count($list) ?> proyectos</span></div>
+<main class="dashboard"><?php if ($adminPage): ?><div class="intro"><div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Proyectos</h1><p class="muted">Crea y abre tus proyectos locales.</p></div><span class="count"><?= count($list) ?> proyectos</span></div><?php endif; ?>
 <?php if ($error): ?><p class="error" role="alert"><?= e($error) ?></p><?php endif; ?>
-<?php if (!$list): ?><section class="empty"><div class="empty-icon">▱</div><h2>Sin proyectos todavía</h2><p><?= $adminPage ? 'Pulsa Nuevo para comenzar.' : 'Aquí aparecerán los proyectos disponibles.' ?></p></section><?php else: ?><section class="grid" aria-label="Proyectos"><?php foreach ($list as $item): ?><a class="project" href="<?= e($page . '?project=' . rawurlencode($item['name'])) ?>"><span class="file-icon">F</span><div class="project-info"><strong><?= e($item['name']) ?></strong><small><?= e(date('d/m/Y H:i', $item['mtime'])) ?> · FPRJ</small></div><span class="arrow">↗</span></a><?php endforeach; ?></section><?php endif; ?>
+<?php if (!$list && $adminPage): ?><section class="empty"><div class="empty-icon">▱</div><h2>Sin proyectos todavía</h2><p>Pulsa Nuevo para comenzar.</p></section><?php elseif ($list): ?><section class="grid" aria-label="Proyectos"><?php foreach ($list as $item): ?><a class="project" href="<?= e($page . '?project=' . rawurlencode($item['name'])) ?>"><span class="file-icon">F</span><div class="project-info"><strong><?= e($item['name']) ?></strong><small><?= e(date('d/m/Y H:i', $item['mtime'])) ?> · FPRJ</small></div><span class="arrow">↗</span></a><?php endforeach; ?></section><?php endif; ?>
 </main>
 <?php if ($adminPage): ?><form class="new-form" method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="fab" name="action" value="new"><span>＋</span> Nuevo</button></form><?php endif; ?>
 <?php endif; ?>
