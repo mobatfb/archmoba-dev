@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.29
+# VIRTUALEDUC v0.1.30
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -122,6 +122,9 @@ El estado Publicado o Borrador se muestra en la esquina superior derecha de la p
 
 ## Actualización a v0.1.29
 El menú lateral conserva iconos SVG únicamente en las opciones hijas; los encabezados muestran texto y flecha de despliegue. Se conserva el avatar y el botón Salir queda con texto. No requiere SQL.
+
+## Actualización a v0.1.30
+El responsable del curso muestra su avatar junto al nombre. Se usa la miniatura JPEG de 60 × 60 píxeles al 50% de calidad, o las iniciales cuando no hay foto o soporte JPEG de GD. La ruta de miniatura del responsable verifica el acceso al curso y resuelve el usuario desde el propio curso; no permite consultar fotos arbitrarias ni descargar la imagen completa de otro usuario. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
