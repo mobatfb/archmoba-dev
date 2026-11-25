@@ -73,6 +73,7 @@
         }
     }
     menu.querySelector('[data-ve-open="course-enroll-dialog"]').addEventListener('click', () => {
+        dialog.querySelector('[data-ve-tab="individual"]').click();
         chosen.clear(); search.value=''; rows=[]; page=1; load();
     });
     search.addEventListener('input', () => {
@@ -83,9 +84,11 @@
     prev.addEventListener('click', () => load(page-1));
     next.addEventListener('click', () => load(page+1));
     dialog.addEventListener('close', () => {
+        const bulk = dialog.querySelector('[data-ve-enroll-csv]');
+        bulk.reset();
         clearTimeout(timer); if (controller) controller.abort(); ++revision; chosen.clear(); rows=[]; render();
     });
-    dialog.querySelector('form').addEventListener('submit', event => {
+    dialog.querySelector('[data-ve-enroll-manual]').addEventListener('submit', event => {
         if (!chosen.size) event.preventDefault();
         else { submit.disabled=true; submit.textContent='Matriculando...'; }
     });
