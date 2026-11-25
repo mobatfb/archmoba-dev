@@ -1,0 +1,15 @@
+# Configuracion privada del servidor
+/config/database.php
+/config/recuperacion.php
+.env
+.env.*
+!.env.example
+# Logs, respaldos y datos generados
+error_log
+*.log
+/backups/
+/uploads/
+/storage/
+*.sql.gz
+*.sql.bak
+*.bak

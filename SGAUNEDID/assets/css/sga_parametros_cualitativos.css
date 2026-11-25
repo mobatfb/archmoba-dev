@@ -1,0 +1,45 @@
+.sga-p-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sga-p-toolbar .actions{display:flex;gap:6px;flex-wrap:wrap}
+.sga-p-card{padding:16px;margin-bottom:15px}
+.sga-p-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.sga-p-head h2{margin:0 0 6px;color:#133a66;font-size:21px}
+.sga-p-head p{margin:0;color:#526780;font-size:13px}
+.sga-p-count{background:#edf4fb;color:#184c82;border-radius:9px;padding:8px 12px;font-weight:700;font-size:12px}
+.sga-p-scroll{overflow-x:auto;border:1px solid #dbe6f0;border-radius:10px;max-width:100%}
+.sga-p-table{border-collapse:separate;border-spacing:0;min-width:1050px;width:100%;font-size:12px}
+.sga-p-table th,.sga-p-table td{border-bottom:1px solid #e0e8f1;border-right:1px solid #e6edf5;padding:8px 7px;vertical-align:middle}
+.sga-p-table thead th{background:#e7eff8;color:#143a68;text-align:center;font-size:12px;min-width:112px}
+.sga-p-table thead th span{display:block;white-space:normal;line-height:1.35;margin-top:3px}
+.sga-p-table thead th small{display:block;color:#54708a;font-size:10px;font-weight:500;max-width:160px;line-height:1.35}
+.sga-p-sticky-num{position:sticky;left:0;z-index:3;width:49px;min-width:49px!important;text-align:center!important;background:#f5f9fc!important}
+.sga-p-sticky-name{position:sticky;left:49px;z-index:3;width:220px;min-width:220px!important;text-align:left!important;background:#fff!important;box-shadow:3px 0 5px rgba(0,0,0,.05)}
+.sga-p-table thead .sga-p-sticky-num,.sga-p-table thead .sga-p-sticky-name{z-index:5;background:#e2edf8!important}
+.sga-p-sticky-name strong{font-size:12px;color:#183b68;line-height:1.3;display:block}
+.sga-p-sticky-name small{font-size:10px;color:#677d92;display:block;margin-top:3px}
+.sga-p-table tbody tr:hover td{background:#f5f9ff}
+.sga-p-table td:has(.sga-p-select){text-align:center;padding:5px}
+.sga-p-select{min-width:65px;max-width:86px;height:38px;font-weight:800;color:#24415d;border:1px solid #c9d7e7;border-radius:7px;background:#fff;padding:4px 5px;cursor:pointer;margin:0!important}
+.sga-p-select.sga-p-alto{background:#d9f4d2;color:#205125;border-color:#91d588}
+.sga-p-select.sga-p-medio{background:#fff1bf;color:#72500b;border-color:#e6ca69}
+.sga-p-select.sga-p-bajo{background:#ffdedc;color:#9c2b30;border-color:#eaa09b}
+.sga-p-select.sga-p-saving{opacity:.55;cursor:wait}
+.sga-p-estado{min-width:86px!important}
+.sga-p-row-status{display:inline-block;white-space:nowrap;font-size:10px;color:#6a7b8a}
+.sga-p-pending{color:#bd7b1b}.sga-p-done{color:#19714b}.sga-p-error{color:#b32930;font-weight:700}
+.sga-p-lit{text-align:center;font-size:13px;font-weight:800;min-width:53px}
+.sga-p-config{margin:20px 0;padding:15px}
+.sga-p-config summary{cursor:pointer;color:#173d6d}
+.sga-p-config-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:14px}
+.sga-p-param-card{padding:11px;border:1px solid #dfebf5;border-radius:9px;background:#f8fafc;display:grid;gap:8px}
+.sga-p-param-card label,.sga-p-new label{font-size:12px;font-weight:600;color:#234b70;display:grid;gap:4px}
+.sga-p-param-card input,.sga-p-new input{margin:0!important}
+.sga-p-new{margin-top:16px;padding:14px;background:#eaf2fa;border-radius:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.sga-p-new label{flex:1 1 220px}.sga-p-new h3{flex:1 0 100%;margin:0;font-size:15px}
+@media(max-width:720px){.sga-p-head h2{font-size:17px}.sga-p-card{padding:10px}.sga-p-sticky-name{min-width:158px!important;width:158px!important}}
+.sga-p-informe-link{display:block;margin-top:5px;color:#145a9f;text-decoration:underline;font-size:10px;font-weight:700}
+
+/* V5: cabecera de dos niveles, ejes combinados y ambitos independientes. */
+.sga-p-table thead .sga-p-ejes .sga-p-eje{background:#d7e6f5;color:#143a68;font-weight:800;font-size:12px;line-height:1.35;white-space:normal;overflow-wrap:anywhere;padding:10px 8px;border-bottom:1px solid #bdcfe2;border-right:1px solid #bdcfe2}
+.sga-p-table thead .sga-p-ambitos th{background:#eef4fa;vertical-align:middle;white-space:normal;overflow-wrap:anywhere;padding:8px 7px}
+.sga-p-table thead .sga-p-ambitos th span{margin-top:0;line-height:1.35}
+.sga-p-table thead .sga-p-ejes th[rowspan="2"]{vertical-align:middle}

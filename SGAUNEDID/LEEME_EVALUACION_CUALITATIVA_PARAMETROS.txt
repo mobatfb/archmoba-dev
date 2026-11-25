@@ -1,0 +1,29 @@
+SGA UNEDID - PARCHE CORRECTIVO V3: EVALUACION CUALITATIVA POR AULA Y PERMISOS ADMINISTRATIVOS
+Base: SGA 23-11 y parche previo de evaluación por parámetros.
+Si V2 ya fue instalado y su SQL se ejecutó correctamente, NO repetir la migración. La V3 solo cambia código PHP, textos y pruebas. Se puede usar el ZIP incremental V2 A V3 para actualizar sin reemplazar los archivos restantes.
+
+INSTALACION (PHP y MariaDB 10.6; conservar las migraciones generales existentes)
+1. Realizar una copia completa de la aplicación y exportar la base de datos.
+2. Poner el SGA en mantenimiento. En phpMyAdmin, seleccionar la base de datos correcta.
+3. SOLO SI V2 NO ESTA INSTALADO: ejecutar sql/SQL_SGA_EVALUACION_CUALITATIVA_POR_AULA.sql. Incluye las tablas del parche anterior; no ejecutar su SQL antiguo. Si V2 ya está instalado correctamente, omitir este paso.
+   No continuar si aparece un error SQL. Las operaciones DDL no son reversibles por transacción.
+4. Subir y reemplazar los archivos del ZIP respetando sus rutas relativas a la raíz del SGA. No reemplazar la configuración de conexión. No publicar la carpeta sql ni el LEEME como recursos web.
+5. Salir de mantenimiento y recargar con Ctrl+F5.
+
+FLUJO
+- Aulas > Crear/Editar aula: marcar Evaluación cualitativa por parámetros. Es independiente de Resultados cualitativos (conversión de notas numéricas a letras).
+- Gestión académica > aula/paralelo (por ejemplo, aula.php?id=26): elegir UN docente y guardar. El ID de la URL corresponde al aula habilitada para un período; no es necesariamente el ID de catálogo de Aulas.
+- El administrador (rol interno superadmin) puede configurar ejes y ámbitos y registrar/modificar las valoraciones A+ a E- de todas las aulas por parámetros. El subadministrador tiene los mismos permisos exclusivamente en las jornadas autorizadas para el período de la oferta. El docente responsable puede calificar sus estudiantes en los tres trimestres; no se reasigna el responsable cuando califica un administrador. Los demás docentes no pueden modificar esas valoraciones. Se conserva el historial de auditoría con el usuario y rol operativo que realizó el cambio. Los períodos cerrados, aulas inactivas y registros históricos siguen siendo de solo lectura. El cambio de responsable conserva las notas existentes.
+- Calificaciones > Evaluación cualitativa del aula: T1, T2, T3, resumen, informe de aprendizaje PDF y Excel. Estudiante y representante pueden consultar sus valoraciones.
+- Aulas ordinarias: conservan las asignaturas y docentes habituales. No marcar la opción en ellas.
+
+MIGRACION Y PRECAUCIONES
+- No se borran notas, parámetros, matrículas ni asistencias. La marca antigua en Asignaturas deja de controlar la modalidad.
+- Los modelos anteriores ya inicializados se reconocen en los períodos abiertos. Si hay una única fuente con notas, se conserva como evaluación principal; si hay varias fuentes incompatibles, el administrador elige la principal y las demás quedan en el historial de solo lectura. No se fusionan valoraciones automáticamente.
+- Al activar la modalidad, se desactivan las ofertas ordinarias del aula en el período abierto vigente; sus datos se mantienen, pero no aparecen como evaluaciones activas. Al desactivar no se restauran asignaciones automáticamente. No se permite desactivar si existen valoraciones cualitativas del período.
+- Los períodos cerrados no se reabren ni se cambian a esta modalidad. Las aulas nuevas habilitadas en un período heredan la configuración del catálogo.
+- Se usa un registro interno de asignatura oculto para conservar compatibilidad con el modelo de ofertas, asistencia, reportes y matrícula. No se crea ni selecciona una materia desde la interfaz para esta evaluación.
+- La plantilla CSV para esta modalidad es plantillas/plantilla_aulas_parametros.csv. Los CSV de aulas con seis o siete columnas siguen admitidos. Ya no se admite la columna de parámetros en el CSV de asignaturas.
+
+VERIFICACION
+Validación local de sintaxis PHP, JavaScript y pruebas autocontenidas. La migración y el flujo completo con la base de datos real deben comprobarse en una copia de pruebas del hosting antes de producción.

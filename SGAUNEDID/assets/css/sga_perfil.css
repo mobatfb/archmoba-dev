@@ -1,0 +1,88 @@
+/* SGA UNEDID v1.6.33 - perfil personal compacto, foto privada. */
+.sidebar .sidebar-bottom.sidebar-bottom--perfil{
+  display:flex;align-items:center;gap:6px;padding:9px 3px 2px;min-height:0;
+}
+.sidebar .sga-perfil-miniboton{
+  min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:7px;
+  color:#fff;text-decoration:none;padding:4px 3px;border-radius:9px;
+  transition:background-color .15s ease;cursor:pointer;
+}
+.sidebar .sga-perfil-miniboton:hover{background:rgba(255,255,255,.1)}
+.sidebar .sga-perfil-miniboton:focus-visible{outline:2px solid #8bd9ff;outline-offset:2px}
+.sga-perfil-avatar{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#4177b8,#123b6c);color:#fff;
+  overflow:hidden;font-weight:800;user-select:none;letter-spacing:.03em;
+}
+.sga-perfil-avatar img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
+.sidebar .sga-perfil-avatar--mini{
+  width:32px;height:32px;border-radius:50%;font-size:11px;
+  border:1px solid rgba(255,255,255,.45);
+}
+.sidebar .sga-perfil-mini-datos{display:block;flex:1 1 auto;min-width:0}
+.sidebar .sga-perfil-mini-nombre{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;overflow-wrap:anywhere;font-size:10px;font-weight:700;
+  line-height:1.15;letter-spacing:0;color:#f0f6ff;
+}
+.sidebar .sga-perfil-mini-cedula{display:block;font-size:9.5px;line-height:1.2;
+  margin-top:3px;color:#c6d8ec;opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar .sidebar-bottom .sga-perfil-logout{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;min-height:29px;
+  padding:5px 8px;border-radius:8px;
+}
+.sga-perfil-dialog{
+  width:min(535px,calc(100vw - 24px));max-width:100%;max-height:min(90dvh,800px);
+  border:1px solid #d3ddec;border-radius:16px;padding:0;background:#fff;
+  box-shadow:0 24px 70px rgba(8,28,58,.35);color:#233a56;overflow:auto;
+}
+.sga-perfil-dialog::backdrop{background:rgba(5,19,39,.64);backdrop-filter:blur(2px)}
+.sga-perfil-cabecera{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:14px;padding:17px 20px 13px;border-bottom:1px solid #dce6f1}
+.sga-perfil-cabecera h2{margin:0;font-size:19px;font-weight:800;color:#123660}
+.sga-perfil-cabecera p{margin:5px 0 0;font-size:12px;line-height:1.4;color:#60728b}
+.sga-perfil-cerrar{border:1px solid #cbd9ea;background:#edf2f8;color:#294868;
+  width:34px;height:34px;flex:0 0 34px;font:bold 22px/1 Arial,sans-serif;
+  border-radius:9px;cursor:pointer}
+.sga-perfil-cerrar:hover{background:#dfeafb}
+.sga-perfil-contenido{padding:16px 20px 20px;display:grid;gap:14px}
+.sga-perfil-mensaje{padding:9px 12px;border:1px solid;border-radius:9px;font-size:12px;line-height:1.4}
+.sga-perfil-mensaje.success{background:#edf9f3;border-color:#a9ddbf;color:#196344}
+.sga-perfil-mensaje.error{background:#fff0f0;border-color:#eebec0;color:#84282e}
+.sga-perfil-identidad{display:flex;align-items:center;gap:15px;min-width:0}
+.sga-perfil-avatar--grande{width:78px;height:78px;border-radius:50%;font-size:25px;
+  box-shadow:0 0 0 3px #e9f0f9}
+.sga-perfil-persona{min-width:0;display:grid;gap:4px}
+.sga-perfil-persona strong{font-size:16px;line-height:1.25;overflow-wrap:anywhere}
+.sga-perfil-persona span{font-size:12px;line-height:1.4;overflow-wrap:anywhere;color:#526681}
+.sga-perfil-persona b{color:#304c70}
+.sga-perfil-seccion{border:1px solid #dce6f1;background:#f8fbff;border-radius:12px;padding:13px 14px}
+.sga-perfil-seccion-cabecera{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.sga-perfil-seccion-cabecera h3{margin:0;font-size:14px;color:#123660}
+.sga-perfil-seccion-cabecera span{font-size:11px;font-weight:700;color:#5c7697}
+.sga-perfil-seccion p{margin:8px 0 12px;font-size:12px;line-height:1.45;color:#63778d}
+.sga-perfil-subir-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.sga-perfil-subir-form label{min-width:0;flex:1 1 230px;display:grid;gap:6px;font-size:11px;color:#3a5575}
+.sga-perfil-subir-form input[type=file]{width:100%;min-width:0;background:#fff;
+  font-size:11px;padding:8px;border-radius:8px;min-height:39px}
+.sga-perfil-subir-form button{min-height:39px;flex:0 0 auto;white-space:nowrap}
+.sga-perfil-borrar-form{margin-top:12px;display:flex;justify-content:flex-start}
+.sga-perfil-borrar-form .btn{font-size:11px;min-height:33px;padding:7px 10px}
+.sga-perfil-estado{font-size:11px;color:#617894;display:block;margin-top:8px}
+.sga-perfil-pie{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.sga-perfil-pie .btn{min-height:37px;font-size:12px}
+.sga-perfil-dialog .btn:focus-visible,.sga-perfil-dialog button:focus-visible,
+.sga-perfil-dialog input:focus-visible{outline:3px solid #3988df;outline-offset:2px}
+@media(max-width:480px){
+  .sga-perfil-cabecera{padding:15px 14px 12px}
+  .sga-perfil-contenido{padding:14px;gap:13px}
+  .sga-perfil-avatar--grande{width:64px;height:64px;font-size:21px}
+  .sga-perfil-identidad{gap:12px}
+  .sga-perfil-persona strong{font-size:13px}
+  .sga-perfil-persona span{font-size:11px}
+  .sga-perfil-subir-form button{width:100%}
+  .sga-perfil-pie{justify-content:stretch}
+  .sga-perfil-pie .btn{flex:1 1 auto}
+}
+@media(prefers-reduced-motion:reduce){.sidebar .sga-perfil-miniboton{transition:none}}

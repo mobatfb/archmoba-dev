@@ -1,0 +1,44 @@
+-- SGA UNEDID | Modulo de Notificaciones Institucionales por Jornada
+-- Ejecutar UNA VEZ en phpMyAdmin, en la misma BD del SGA, ANTES de abrir el modulo.
+-- MariaDB 10.6+ | Compatible PHP 8.1+ | No modifica calificaciones ni usuarios.
+
+CREATE TABLE IF NOT EXISTS sga_notificaciones_jornadas (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  periodo_id INT UNSIGNED NOT NULL,
+  remitente_id INT UNSIGNED NOT NULL,
+  jornada_id INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = Todas las jornadas autorizadas al remitente',
+  asunto VARCHAR(150) NOT NULL,
+  mensaje TEXT NOT NULL,
+  creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sga_notif_remitente (remitente_id, creado_en),
+  KEY idx_sga_notif_periodo (periodo_id, creado_en),
+  CONSTRAINT fk_sga_notif_periodo FOREIGN KEY (periodo_id) REFERENCES periodos_academicos(id),
+  CONSTRAINT fk_sga_notif_remitente FOREIGN KEY (remitente_id) REFERENCES usuarios(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sga_notificaciones_jornadas_envios (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  notificacion_id BIGINT UNSIGNED NOT NULL,
+  destinatario_id INT UNSIGNED NOT NULL,
+  correo_destino VARCHAR(254) NOT NULL,
+  estado VARCHAR(20) NOT NULL DEFAULT 'pendiente',
+  intentos TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  ultimo_error VARCHAR(160) NULL,
+  enviado_en DATETIME NULL,
+  actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_sga_notif_destino (notificacion_id, destinatario_id),
+  KEY idx_sga_notif_cola (estado, intentos, actualizado_en),
+  CONSTRAINT fk_sga_notif_envio FOREIGN KEY (notificacion_id) REFERENCES sga_notificaciones_jornadas(id),
+  CONSTRAINT fk_sga_notif_destinatario FOREIGN KEY (destinatario_id) REFERENCES usuarios(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Actualizacion del modulo de notificaciones: historial y envios por grupo.
+-- MariaDB 10.6: IF NOT EXISTS permite ejecutar nuevamente el archivo sin duplicar columnas.
+ALTER TABLE sga_notificaciones_jornadas
+  ADD COLUMN IF NOT EXISTS modo_remitente VARCHAR(24) NOT NULL DEFAULT 'administracion' AFTER mensaje,
+  ADD COLUMN IF NOT EXISTS tipo_destino VARCHAR(45) NOT NULL DEFAULT 'individual' AFTER modo_remitente,
+  ADD COLUMN IF NOT EXISTS aula_periodo_id INT UNSIGNED NULL AFTER tipo_destino,
+  ADD COLUMN IF NOT EXISTS oferta_id INT UNSIGNED NULL AFTER aula_periodo_id,
+  ADD COLUMN IF NOT EXISTS grupo_etiqueta VARCHAR(500) NOT NULL DEFAULT 'Destinatarios individuales' AFTER oferta_id;
+
+SELECT 'Notificaciones por grupos y perfil docente: tablas disponibles.' AS resultado;

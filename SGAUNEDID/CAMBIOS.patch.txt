@@ -1,0 +1,29 @@
+--- a/lib/cuadro_anual_excel.php
++++ b/lib/cuadro_anual_excel.php
+@@ -287,18 +287,19 @@
+     return $xml;
+ }
+ /**
+- * Nota de base que requiere supletorio, segun las reglas academicas vigentes.
+- * Solo se consideran promedios de tres trimestres completos; no se inventan
+- * notas pendientes y se excluyen las materias aprobadas o reprobadas directas.
+- * El minimo del supletorio es configurable en el periodo academico.
++ * Valor informativo para el reporte independiente "Supletorio - Excel".
++ * Muestra los promedios ANUALES entre 0,00 y 6,99 inclusive, independientemente
++ * de la condicion de promocion o del minimo oficial para rendir supletorios.
++ * Solo muestra notas reales con los tres trimestres calificados; no transforma
++ * las reglas ni los permisos del modulo academico de supletorios.
+  */
+ function cuadroAnualNotaPendienteSupletorio(array $trimestres,array $config): ?float {
+     if(!isset($trimestres[1],$trimestres[2],$trimestres[3]))return null;
+     $resultado=calcularFinalAnual((float)$trimestres[1],(float)$trimestres[2],
+         (float)$trimestres[3],null,$config);
+-    if(($resultado['observacion']??'')!=='SUPLETORIO'
+-        || ($resultado['promedio_tres']??null)===null)return null;
+-    return round((float)$resultado['promedio_tres'],2);
++    if(($resultado['promedio_tres']??null)===null)return null;
++    $promedio=round((float)$resultado['promedio_tres'],2);
++    return $promedio>=0.0 && $promedio<7.0 ? $promedio : null;
+ }
+ 
+ /** Escribe una nota real o un literal conservando los colores del cuadro anual. */

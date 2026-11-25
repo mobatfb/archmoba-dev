@@ -1,0 +1,5 @@
+﻿cedula;apellidos;nombres;correo;clave;rol;jornadas
+0000000001;EJEMPLO;ADMIN;admin@example.invalid;;superadmin;
+0000000002;EJEMPLO;DOCENTE;docente@example.invalid;;docente;MATUTINA
+0000000003;EJEMPLO;ESTUDIANTE;estudiante@example.invalid;;estudiante;MATUTINA
+0000000004;EJEMPLO;REPRESENTANTE;representante@example.invalid;;representante;MATUTINA

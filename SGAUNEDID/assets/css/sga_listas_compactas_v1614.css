@@ -1,0 +1,77 @@
+/* SGA UNEDID V1.6.14 - tres modulos, una lista compacta consistente. */
+.sga-listas-leyenda {display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin:0 0 12px; color:#4e637e; font-size:12px}
+.sga-listas-leyenda .badge {font-size:10px}
+.sga-listas-compactas {
+  display:block; width:100%; max-width:100%; min-width:0;
+  border:1px solid #dce5f0; border-radius:12px;
+  background:#fff; overflow:hidden;
+}
+.sga-listas-compactas .sga-listas-fila {
+  display:flex; flex-wrap:wrap; align-items:center;
+  gap:10px 15px; padding:12px 15px;
+  border-bottom:1px solid #e8edf4;
+  background:#fff; min-width:0;
+}
+.sga-listas-compactas .sga-listas-fila:last-child {border-bottom:0}
+.sga-listas-compactas .sga-listas-fila:nth-child(even) {background:#fbfcfe}
+.sga-listas-compactas .sga-listas-fila:hover {background:#f3f8ff}
+.sga-listas-identidad {
+  flex:1 1 190px; min-width:145px; max-width:none;
+  display:flex; flex-direction:column; justify-content:center; gap:3px;
+}
+.sga-listas-titulo {
+  display:block; color:#17375d; font-size:14px; font-weight:800;
+  line-height:1.3; overflow-wrap:anywhere;
+}
+.sga-listas-subtitulo {
+  display:block; color:#687b91; font-size:11.5px;
+  font-weight:500; line-height:1.35; overflow-wrap:anywhere;
+}
+.sga-listas-metricas {
+  flex:1 1 160px; min-width:118px;
+  display:flex; flex-wrap:wrap; gap:5px 11px;
+  align-items:center; font-size:11.5px; color:#50657b;
+}
+.sga-listas-metrica {white-space:nowrap; line-height:1.35}
+.sga-listas-metrica strong {font-size:12.5px; color:#294969}
+.sga-listas-estado {flex:0 1 100px; min-width:75px; display:flex; align-items:center}
+.sga-listas-estado .badge {font-size:10px; white-space:nowrap}
+.sga-listas-acciones {
+  flex:0 1 auto; min-width:0;
+  display:flex; flex-wrap:wrap; gap:6px;
+  align-items:center; justify-content:flex-end;
+}
+.sga-listas-acciones form {display:inline-flex; margin:0; padding:0}
+.sga-listas-acciones .btn {line-height:1.25; min-height:32px; white-space:nowrap; text-align:center}
+.sga-listas-fila--academico .sga-listas-identidad {flex:1 1 165px}
+.sga-listas-fila--academico .sga-listas-metricas {flex:0 1 155px}
+.sga-listas-fila--academico .sga-listas-estado {flex:0 0 70px}
+.sga-listas-fila--academico .sga-listas-acciones {flex:0 1 auto}
+.sga-listas-fila--asistencia .sga-listas-identidad {flex-basis:205px}
+.sga-listas-fila--asistencia .sga-listas-acciones {flex:0 1 auto}
+.sga-listas-fila--comportamiento .sga-listas-identidad {flex-basis:225px}
+.sga-listas-fila--comportamiento .sga-listas-acciones {flex-basis:190px}
+/* Los controles de una fila que no entra se colocan en la siguiente linea
+   sin crear tarjetas individuales ni obligar al desplazamiento horizontal. */
+@media(max-width:1240px){
+  .sga-listas-fila--asistencia .sga-listas-acciones {flex:1 1 100%; justify-content:flex-start}
+}
+@media(max-width:970px){
+  .sga-listas-fila--academico .sga-listas-acciones {flex:1 1 100%; justify-content:flex-start}
+}
+@media(max-width:610px){
+  .sga-listas-compactas .sga-listas-fila {padding:12px; gap:8px}
+  .sga-listas-identidad {flex:1 1 100%}
+  .sga-listas-metricas {flex:1 1 160px}
+  .sga-listas-estado {flex:0 1 auto}
+  .sga-listas-acciones,
+  .sga-listas-fila--academico .sga-listas-acciones,
+  .sga-listas-fila--comportamiento .sga-listas-acciones,
+  .sga-listas-fila--asistencia .sga-listas-acciones {flex:1 1 100%; justify-content:flex-start}
+  .sga-listas-acciones .btn {white-space:normal}
+}
+@media(max-width:360px){
+  .sga-listas-acciones .btn {flex:1 1 auto}
+  .sga-listas-acciones form {flex:1 1 auto}
+  .sga-listas-acciones form .btn {width:100%}
+}

@@ -1,0 +1,49 @@
+SGA UNEDID - V6: ESCALA DE RESULTADOS CUALITATIVOS POR AULA
+Actualizacion incremental para SGA 23-11 con parches V3, V4 y V5 instalados.
+
+INSTALACION
+1. Respaldar archivos y base de datos del sistema.
+2. Subir los archivos del ZIP conservando su estructura de carpetas.
+3. No ejecutar migraciones SQL nuevas. V6 utiliza el campo existente
+   aulas.resultados_cualitativos y la estructura de las versiones previas.
+4. Recargar el navegador (Ctrl+F5) para actualizar el JavaScript.
+5. En Aulas > Editar aula, marcar Resultados cualitativos si corresponde.
+
+ESCALA (notas a dos decimales)
+9,50 - 10,00 A+
+8,50 - 9,49  A-
+7,50 - 8,49  B+
+6,50 - 7,49  B-
+5,50 - 6,49  C+
+4,50 - 5,49  C-
+3,50 - 4,49  D+
+2,50 - 3,49  D-
+1,50 - 2,49  E+
+1,00 - 1,49  E-
+Por compatibilidad, 0,00 - 0,99 registrados se visualizan E-; sin nota: pendiente.
+
+ALCANCE
+- Una sola escala PHP compartida con JavaScript.
+- Vista previa, guardado, importacion y recalculo de calificaciones trimestrales.
+- Consolidados por asignatura, aula y periodo; resultados anuales y supletorios.
+- PDF individual y descarga masiva ZIP: letra y rango de equivalencia.
+- Excel por materia y periodo: notas finales como texto (letras), componentes
+  numericos conservados; color de B- segun nota numerica, no segun letra.
+- Consultas de estudiantes y representantes (incluye anual/final en aulas marcadas).
+- No modifica formulas, permisos, notas numericas ni estados de aprobacion.
+- Las aulas sin la marca conservan las escalas previas, incluyendo comportamiento.
+- No modifica la evaluacion por parametros (V3-V5), que califica ambitos directamente.
+- Las notas ya registradas se convierten al consultar; no hace actualizaciones masivas
+  en la base de datos. Los nuevos guardados/recalculos actualizan el literal derivado.
+- B- incluye notas tanto por debajo como por encima del umbral ordinario de 7,00;
+  no se determina el estado academico por la letra.
+
+VERIFICACION LOCAL
+php tests/pruebas_resultados_cualitativos.php
+php tests/pruebas_integridad.php
+php tests/pruebas_excel.php
+php tests/pruebas_parametros_aula.php
+Se probaron los 1001 valores de 0,00 a 10,00 en PHP y JavaScript, las
+formulas numericas, cinco PDF de ejemplo y dos cuadros XLSX con datos ficticios.
+No se ha conectado a la base de datos real del hosting. Validar en el entorno de
+prueba la escritura en calificaciones_trimestre.cualitativo y los informes.

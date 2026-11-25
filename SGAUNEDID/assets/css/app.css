@@ -1,0 +1,735 @@
+:root{--navy:#0a2e61;--blue:#0d4f9d;--cyan:#17a9d6;--bg:#f3f6fa;--card:#fff;--text:#152033;--muted:#66758a;--line:#dce4ee;--good:#147a4d;--warn:#b56a00;--bad:#b73333}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}a{text-decoration:none;color:inherit}.app-shell{display:flex;min-height:100vh}.sidebar{width:260px;background:linear-gradient(180deg,#082b5c,#071d3b);color:#fff;padding:18px 14px;display:flex;flex-direction:column;gap:18px;position:sticky;top:0;height:100vh}.brand{display:flex;align-items:center;gap:11px;padding:4px 6px}.brand img{width:42px;height:42px;border-radius:10px;object-fit:cover;background:white}.brand span{display:flex;flex-direction:column}.brand strong{font-size:14px;line-height:1.2}.brand small{opacity:.72;line-height:1.2}.period-chip{background:#ffffff12;border:1px solid #ffffff20;padding:10px 12px;border-radius:12px}.period-chip span,.period-chip strong{display:block}.period-chip span{font-size:11px;text-transform:uppercase;opacity:.65}.period-chip strong{margin-top:3px}.sidebar nav{display:flex;flex-direction:column;gap:4px;overflow:auto}.sidebar nav a{padding:10px 12px;border-radius:9px;color:#e8f0fb;font-size:14px}.sidebar nav a:hover{background:#ffffff14}.nav-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;opacity:.48;padding:14px 12px 4px}.sidebar-bottom{margin-top:auto;border-top:1px solid #ffffff20;padding:14px 8px 0;display:flex;justify-content:space-between;align-items:center;gap:10px}.sidebar-bottom strong,.sidebar-bottom small{display:block}.sidebar-bottom small{opacity:.6;margin-top:2px}.logout{padding:7px 10px;border-radius:8px;background:#b73333}.content{flex:1;min-width:0;padding:28px}.content-top{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px}.content-top h1{margin:0;font-size:28px}.content-top p{margin:6px 0 0;color:var(--muted)}.grid{display:grid;gap:16px}.grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:18px}.metric span{display:block;color:var(--muted);font-size:13px}.metric strong{display:block;font-size:30px;margin-top:7px}.card h2,.card h3{margin-top:0}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:white}.table{border-collapse:collapse;width:100%;min-width:760px}.table th,.table td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;font-size:13px;vertical-align:middle}.table th{background:#eef4fb;color:#1c3d64;font-size:12px;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}.table tr:last-child td{border-bottom:0}.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:9px;padding:9px 13px;font-weight:650;cursor:pointer;font-size:13px}.btn-primary{background:var(--blue);color:#fff}.btn-secondary{background:#e7edf5;color:#24364e}.btn-success{background:var(--good);color:white}.btn-danger{background:var(--bad);color:white}.btn-sm{padding:6px 9px;font-size:12px}.actions{display:flex;gap:7px;flex-wrap:wrap}.toolbar{display:flex;gap:10px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px}.form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.form-grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.form-grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}label{font-size:12px;color:#45556a;font-weight:650;display:flex;flex-direction:column;gap:6px}input,select,textarea{width:100%;border:1px solid #cfd9e5;border-radius:8px;padding:9px 10px;background:white;color:var(--text);font:inherit}input:focus,select:focus,textarea:focus{outline:2px solid #0d4f9d25;border-color:var(--blue)}.form-actions{display:flex;align-items:end;gap:8px}.alert{border-radius:10px;padding:11px 13px;margin-bottom:16px;border:1px solid}.alert.success{background:#edf9f3;border-color:#b8e4cd;color:#176343}.alert.error{background:#fff0f0;border-color:#efc2c2;color:#8d2525}.alert.info{background:#edf5ff;border-color:#c5daf4;color:#285078}.badge{display:inline-block;border-radius:999px;padding:4px 8px;background:#e9eef5;color:#33445c;font-size:11px;font-weight:700}.badge.good{background:#e1f5ea;color:#12673e}.badge.warn{background:#fff1d9;color:#8d5600}.badge.bad{background:#fee7e7;color:#952b2b}.muted{color:var(--muted)}.empty{padding:34px;text-align:center;color:var(--muted)}.course-card{display:flex;flex-direction:column;gap:12px}.course-card .meta{color:var(--muted);font-size:13px}.course-card .title{font-size:18px;font-weight:800}.section-title{margin:28px 0 12px}.stat-row{display:flex;gap:8px;flex-wrap:wrap}.tag{padding:5px 8px;border-radius:7px;background:#eef3f8;font-size:12px}.mini-note{font-size:12px;color:var(--muted)}
+.matrix-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:white}.matrix{border-collapse:collapse;min-width:2600px;width:100%;font-size:11px}.matrix th,.matrix td{border:1px solid #bdd0e2;padding:5px;text-align:center}.matrix th{background:#dcecf8;color:#102d4f}.matrix .dark{background:#103c70;color:white}.matrix .cyan{background:#28a9d2;color:white}.matrix .student{text-align:left;min-width:220px}.matrix input{min-width:62px;padding:6px 4px;text-align:center}.lock-btn{border:0;background:transparent;cursor:pointer;font-size:16px}.lock-cell{font-size:18px}.savebar{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:14px 0}.final-table input{max-width:88px}.grade-low{color:#b73333;font-weight:800}.grade-good{color:#177046;font-weight:800}.cert-box{max-width:900px;margin:auto;background:white;border:1px solid var(--line);padding:30px}.notice{background:#fff8df;border:1px solid #ead48a;padding:12px;border-radius:10px;color:#705e20}
+@media(max-width:1050px){.grid.cols-4,.grid.cols-3{grid-template-columns:repeat(2,1fr)}.form-grid{grid-template-columns:repeat(2,1fr)}.sidebar{width:220px}.content{padding:20px}}
+@media(max-width:760px){.app-shell{display:block}.sidebar{position:relative;width:100%;height:auto}.sidebar nav{max-height:none}.content{padding:14px}.grid.cols-4,.grid.cols-3,.grid.cols-2,.form-grid,.form-grid.cols-3,.form-grid.cols-2{grid-template-columns:1fr}.content-top h1{font-size:23px}.sidebar-bottom{display:none}}
+.audit-json{white-space:pre-wrap;word-break:break-word;background:#0b1626;color:#dce8f5;border-radius:10px;padding:12px;min-height:70px;max-height:340px;overflow:auto;font:12px/1.5 Consolas,Monaco,monospace}
+/* Votaciones */
+.vote-admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.candidate-admin-card{display:flex;flex-direction:column;gap:12px}.candidate-admin-card>img{width:100%;height:260px;object-fit:contain;background:#f7f9fc;border:1px solid var(--line);border-radius:12px}.candidate-placeholder{height:220px;display:grid;place-items:center;border:1px dashed #b8c5d5;border-radius:12px;background:#f5f7fa;color:var(--muted);font-weight:700}.candidate-admin-card h3{margin:10px 0 6px}.result-votes{font-size:32px;font-weight:800;color:var(--navy);margin-top:10px}.result-votes small{font-size:12px;color:var(--muted);font-weight:600}.vote-hero{background:linear-gradient(135deg,#0a2e61,#0d4f9d);color:#fff;padding:22px;border-radius:16px;margin-bottom:18px}.vote-hero h2{margin:10px 0 6px}.vote-hero p{max-width:760px;color:#e8f1ff}.candidate-vote-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}.candidate-vote-card{display:block;background:#fff;border:2px solid var(--line);border-radius:16px;padding:12px;cursor:pointer;transition:.18s ease;color:var(--text)}.candidate-vote-card input{position:absolute;opacity:0;pointer-events:none}.candidate-vote-card img{width:100%;height:280px;object-fit:contain;background:#f7f9fc;border-radius:11px}.candidate-vote-card h3{margin:12px 0 6px;font-size:17px}.candidate-vote-card p{min-height:42px;color:var(--muted);font-size:13px}.candidate-select{display:inline-flex;padding:7px 10px;border-radius:999px;background:#edf3fa;color:#284b73;font-size:12px;font-weight:800}.candidate-vote-card:has(input:checked){border-color:var(--blue);box-shadow:0 0 0 3px rgba(13,79,157,.12);transform:translateY(-2px)}.candidate-vote-card:has(input:checked) .candidate-select{background:var(--blue);color:#fff}.vote-submit{text-align:center;padding:22px 0 4px}.vote-submit .btn{min-width:260px;padding:13px 18px;font-size:15px}.vote-thanks{max-width:620px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:36px;text-align:center}.vote-check{width:78px;height:78px;margin:0 auto 15px;border-radius:50%;display:grid;place-items:center;background:#e5f7ee;color:var(--good);font-size:42px;font-weight:800}.vote-thanks h2{margin:5px 0 8px}@media(max-width:760px){.candidate-vote-card img{height:230px}.candidate-vote-grid,.vote-admin-grid{grid-template-columns:1fr}}
+.winner-card{border-color:#9ecfb5;background:#fbfffd}
+
+/* Registro de notas: nota previa conservada durante transición de plantilla */
+.grade-history{display:block;margin-top:3px;font-size:9px;line-height:1.2;color:#98550b;font-weight:700}.matrix th{vertical-align:middle}.matrix th:nth-child(n+1){white-space:normal}
+
+/* Catalogos area-asignatura */
+.btn:disabled{opacity:.5;cursor:not-allowed}.table td{overflow-wrap:anywhere}.table a:not(.btn){color:var(--blue);text-decoration:underline;text-underline-offset:2px}
+
+/* Calificaciones 2026: asignaturas con acciones en columna izquierda */
+.course-card-actions-left{display:grid;grid-template-columns:minmax(120px,145px) minmax(0,1fr);align-items:start;gap:16px;min-height:185px}
+.course-card-buttons{display:flex;flex-direction:column;gap:7px;min-width:0}
+.course-card-buttons .btn{width:100%;justify-content:flex-start;padding:9px 10px;font-size:12px}
+.course-card-info{min-width:0;padding:4px 0;display:flex;flex-direction:column;gap:10px}
+.course-card-info .title{overflow-wrap:anywhere}
+.btn-behavior{background:#6b46a5;color:#fff}
+.btn-behavior:hover{background:#583b89}
+.subject-card-grid{align-items:stretch}
+/* Matriz: columnas de identificación congeladas y scroll horizontal al pie */
+.grade-matrix-wrap{max-height:calc(100dvh - 235px);min-height:240px;overflow:auto;scrollbar-gutter:stable;border-bottom-left-radius:0;border-bottom-right-radius:0;position:relative}
+.grade-matrix-wrap .matrix{width:max-content;min-width:2860px;table-layout:auto}
+.grade-matrix-wrap .matrix tbody tr{background:white}
+.grade-matrix-wrap .matrix tbody td{background:inherit}
+.grade-matrix-wrap .matrix tbody tr:nth-child(even){background:#f6f9fc}
+.grade-matrix-wrap .matrix tbody tr:hover{background:#eef6fe}
+.grade-matrix-wrap .matrix thead tr:first-child th.frozen-number,
+.grade-matrix-wrap .matrix tbody td.frozen-number{position:sticky;left:0;width:54px;min-width:54px;max-width:54px;z-index:7;box-shadow:1px 0 0 #bfd0e1}
+.grade-matrix-wrap .matrix thead tr:first-child th.frozen-student,
+.grade-matrix-wrap .matrix tbody td.frozen-student{position:sticky;left:54px;min-width:260px;width:260px;max-width:260px;z-index:7;box-shadow:3px 0 7px rgba(15,50,85,.12);text-align:left;white-space:normal}
+.grade-matrix-wrap .matrix thead tr:first-child th.frozen-number,
+.grade-matrix-wrap .matrix thead tr:first-child th.frozen-student{z-index:11;background:#103c70;color:white}
+.grade-matrix-wrap .matrix tbody td.frozen-number,
+.grade-matrix-wrap .matrix tbody td.frozen-student{background:#fff}
+.grade-matrix-wrap .matrix tbody tr:nth-child(even) td.frozen-number,
+.grade-matrix-wrap .matrix tbody tr:nth-child(even) td.frozen-student{background:#f6f9fc}
+.grade-matrix-wrap .matrix tbody tr:hover td.frozen-number,
+.grade-matrix-wrap .matrix tbody tr:hover td.frozen-student{background:#eef6fe}
+.grade-matrix-wrap .matrix thead th{position:sticky;top:0;z-index:5}
+.grade-matrix-wrap .matrix thead tr:nth-child(n+2) th{position:static}
+.grade-matrix-wrap .matrix input{width:72px;min-width:72px}
+.matrix-manage{display:flex;gap:6px;justify-content:center;align-items:center;white-space:nowrap}
+.matrix-manage form{margin:0}
+.matrix-bottom-scroll{position:sticky;bottom:0;z-index:25;height:20px;overflow-x:auto;overflow-y:hidden;border:1px solid #b5c5d9;border-top:0;background:#dce7f3;border-radius:0 0 9px 9px}
+.matrix-bottom-scroll > div{height:1px;pointer-events:none}
+.grade-savebar{position:sticky;bottom:20px;z-index:15;flex-wrap:wrap;background:#f3f6fa;padding:10px 0 14px;border-bottom:1px solid #dce4ee}
+.grade-pending{display:block;margin-top:5px;color:#8a580f;font-weight:750;font-size:10px}
+.grade-invalid{border-color:#b73333!important;background:#fff0f0!important}
+.alert{position:relative;padding-right:47px}
+.alert-close{position:absolute;right:10px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:inherit;font-size:24px;cursor:pointer;width:30px;height:30px;line-height:1}
+.alert-close:hover{background:#00000010;border-radius:8px}
+.behavior-table{min-width:650px}
+.behavior-table select{max-width:220px}
+[hidden]{display:none!important}
+@media(max-width:800px){.course-card-actions-left{grid-template-columns:minmax(115px,135px) minmax(0,1fr)}.grade-matrix-wrap{max-height:65vh}.grade-savebar{bottom:20px}}
+
+
+/* 2026-11-13: tarjetas de asignaturas, dos columnas estables y sin solapamientos. */
+.grid.cols-2.subject-card-grid {
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+}
+.subject-card-grid .course-card.course-card-actions-left {
+  display:grid;
+  grid-template-columns: minmax(132px,146px) minmax(0,1fr);
+  gap:16px;
+  align-items:start;
+  width:100%;
+  min-width:0;
+  height:auto;
+  min-height:0;
+  padding:16px;
+  overflow:hidden;
+}
+.subject-card-grid .course-card-buttons {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:7px;
+  width:100%;
+  min-width:0;
+}
+.subject-card-grid .course-card-buttons .btn {
+  display:flex;
+  width:100%;
+  min-width:0;
+  min-height:34px;
+  padding:8px 5px;
+  justify-content:center;
+  text-align:center;
+  line-height:1.25;
+  font-size:12px;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.subject-card-grid .course-card-info {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  width:100%;
+  gap:8px;
+  padding:2px 0;
+}
+.subject-card-grid .course-card-info .title {
+  max-width:100%;
+  margin:0;
+  color:var(--navy);
+  font-size:clamp(15px,1.25vw,18px);
+  line-height:1.27;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+.subject-card-grid .course-card-info .meta {line-height:1.4;overflow-wrap:anywhere}
+.subject-card-grid .course-card-info .stat-row {gap:6px}
+@media (max-width:1200px) {
+  .grid.cols-2.subject-card-grid {grid-template-columns:repeat(1,minmax(0,1fr))}
+  .subject-card-grid .course-card.course-card-actions-left {grid-template-columns:146px minmax(0,1fr)}
+}
+@media (max-width:480px) {
+  .subject-card-grid .course-card.course-card-actions-left {grid-template-columns:minmax(105px,120px) minmax(0,1fr);gap:10px;padding:12px}
+  .subject-card-grid .course-card-buttons .btn {font-size:11px;padding:8px 3px}
+  .subject-card-grid .course-card-info .title {font-size:15px}
+  .subject-card-grid .course-card-info .tag {font-size:10px}
+}
+
+/* Libro de calificaciones: altura de trabajo ajustada a la ventana. */
+.grade-workspace {
+  display:flex;
+  flex-direction:column;
+  height: min(600px,calc(100dvh - 205px));
+  min-height:200px;
+  min-width:0;
+  width:100%;
+  border:1px solid #bdd0e2;
+  border-radius:12px 12px 10px 10px;
+  overflow:hidden;
+  background:#fff;
+}
+.grade-workspace .grade-matrix-wrap {
+  flex:1 1 auto;
+  height:0;
+  min-height:0;
+  max-height:none;
+  width:100%;
+  min-width:0;
+  margin:0;
+  border:0;
+  border-radius:0;
+  scrollbar-gutter:stable;
+  /* Barra horizontal original del navegador: desplazamiento nativo
+     dentro del mismo contenedor, sin una barra sincronizada adicional. */
+  overflow-x:auto;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  position:relative;
+}
+.grade-workspace .grade-matrix-wrap .matrix {
+  border-collapse:separate;
+  border-spacing:0;
+  width:max-content;
+  min-width:2860px;
+}
+.grade-workspace .grade-matrix-wrap .matrix th,
+.grade-workspace .grade-matrix-wrap .matrix td {
+  border:0;
+  border-right:1px solid #bdd0e2;
+  border-bottom:1px solid #bdd0e2;
+}
+.grade-workspace .grade-matrix-wrap .matrix thead th {
+  position:sticky;
+  background:#dcecf8;
+  color:#102d4f;
+  z-index:9;
+}
+.grade-workspace .grade-matrix-wrap .matrix thead th.dark {background:#103c70;color:#fff}
+.grade-workspace .grade-matrix-wrap .matrix thead th.cyan {background:#28a9d2;color:#fff}
+.grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th {top:0;z-index:11}
+.grade-workspace .grade-matrix-wrap .matrix thead tr:nth-child(2) th {
+  position:sticky;
+  top:var(--grade-h1,36px);
+  z-index:10;
+}
+.grade-workspace .grade-matrix-wrap .matrix thead tr:nth-child(3) th {
+  position:sticky;
+  top:calc(var(--grade-h1,36px) + var(--grade-h2,36px));
+  z-index:10;
+}
+.grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-number,
+.grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-number {
+  position:sticky;
+  left:0;
+  width:48px;
+  min-width:48px;
+  max-width:48px;
+  z-index:15;
+  box-shadow:1px 0 #b5c5d9;
+}
+.grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student,
+.grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-student {
+  position:sticky;
+  left:48px;
+  width:260px;
+  min-width:260px;
+  max-width:260px;
+  z-index:15;
+  text-align:left;
+  white-space:normal;
+  box-shadow:3px 0 8px rgba(16,45,79,.16);
+}
+.grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-number,
+.grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-student {
+  top:0;
+  z-index:21;
+  background:#103c70;
+  color:#fff;
+}
+.grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-number,
+.grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student {background:#fff}
+.grade-workspace .grade-matrix-wrap .matrix tbody tr:nth-child(even) td.frozen-number,
+.grade-workspace .grade-matrix-wrap .matrix tbody tr:nth-child(even) td.frozen-student {background:#f6f9fc}
+.grade-workspace .grade-matrix-wrap .matrix tbody tr:hover td.frozen-number,
+.grade-workspace .grade-matrix-wrap .matrix tbody tr:hover td.frozen-student {background:#eef6fe}
+.grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student strong {overflow-wrap:anywhere}
+.grade-savebar {
+  position:relative;
+  bottom:auto;
+  z-index:3;
+  padding:10px 0;
+  margin:0;
+  min-width:0;
+}
+@media(max-width:800px){
+  .grade-workspace {min-height:180px}
+  .grade-workspace .grade-matrix-wrap {max-height:none}
+  .grade-savebar {bottom:auto}
+  .grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student,
+  .grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-student {
+    width:200px;min-width:200px;max-width:200px;
+  }
+}
+
+
+/* Módulo Calificaciones / rol Docente: tarjetas compactas, acceso directo. */
+.grid.cols-2.subject-card-grid.teacher-grade-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 275px), 340px));
+  gap: 16px;
+  justify-content: start;
+  align-items: stretch;
+}
+.subject-card-grid .course-card.teacher-grade-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 190px;
+  padding: 18px;
+  overflow: hidden;
+}
+.teacher-grade-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.subject-card-grid .teacher-grade-card .title {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--navy);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.teacher-grade-card .meta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.teacher-grade-card .stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.teacher-grade-card .tag {font-size: 11px;}
+.subject-card-grid .teacher-grade-card .teacher-grade-card-button {
+  align-self: flex-end;
+  margin-top: auto;
+  min-width: 112px;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  .grid.cols-2.subject-card-grid.teacher-grade-grid {
+    grid-template-columns: minmax(0,1fr);
+  }
+  .subject-card-grid .course-card.teacher-grade-card {min-height: 165px;}
+}
+
+
+/* Scroll personalizado del menú lateral docente/administrativo */
+.sidebar nav{
+  scrollbar-width:thin;
+  scrollbar-color:rgba(188,211,245,.95) rgba(255,255,255,.10);
+  padding-right:4px;
+}
+.sidebar nav::-webkit-scrollbar{width:12px}
+.sidebar nav::-webkit-scrollbar-track{
+  background:rgba(255,255,255,.10);
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);
+}
+.sidebar nav::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,#dbe8fb 0%,#9fbbe7 100%);
+  border-radius:999px;
+  border:2px solid rgba(8,43,92,.45);
+}
+.sidebar nav::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg,#f3f8ff 0%,#b6cdef 100%);
+}
+.sidebar nav::-webkit-scrollbar-corner{background:transparent}
+
+
+/* SGA UNEDID - Menu lateral compacto: periodo en una linea y nombre en dos. */
+.sidebar .period-chip{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:7px;
+  min-height:47px;
+  padding:10px 11px;
+  min-width:0;
+}
+.sidebar .period-chip span{
+  display:inline-block;
+  flex:0 0 auto;
+  font-size:10px;
+  line-height:1.2;
+  white-space:nowrap;
+}
+.sidebar .period-chip strong{
+  display:inline-block;
+  flex:0 1 auto;
+  min-width:0;
+  margin:0;
+  font-size:12px;
+  line-height:1.2;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  text-align:right;
+}
+.sidebar .sidebar-bottom{gap:8px}
+.sidebar .sidebar-user-details{flex:1 1 auto;min-width:0}
+.sidebar .sidebar-user-name{
+  display:block;
+  width:100%;
+  font-size:11px;
+  line-height:1.3;
+  font-weight:750;
+  letter-spacing:-.15px;
+}
+.sidebar .sidebar-user-name-line{
+  display:block;
+  width:100%;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sidebar .sidebar-user-id{font-size:11px;line-height:1.3;margin-top:3px}
+.sidebar .sidebar-bottom .logout{flex:0 0 auto}
+@media (min-width:761px) and (max-width:1050px){
+  .sidebar .period-chip{padding:9px 8px;gap:5px}
+  .sidebar .period-chip span{font-size:9px}
+  .sidebar .period-chip strong{font-size:11px}
+  .sidebar .sidebar-bottom{padding-left:3px;padding-right:3px;gap:6px}
+  .sidebar .sidebar-user-name{font-size:10px;letter-spacing:-.25px}
+}
+
+
+/* Mejoras UX fase 7: teclado, navegacion, tablas y modos consulta. */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{outline:3px solid #18b2dd;outline-offset:3px}
+.btn:disabled,button:disabled{cursor:not-allowed;opacity:.55;filter:grayscale(.2)}
+.btn.is-submitting{pointer-events:none;opacity:.75;position:relative}
+.btn.is-submitting::after{content:' ';width:12px;height:12px;display:inline-block;vertical-align:middle;margin-left:9px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sga-loading-rotate .7s linear infinite}
+@keyframes sga-loading-rotate{to{transform:rotate(360deg)}}
+.paginacion-sga{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:12px 0 18px}
+.paginacion-sga .actions{display:flex;flex-wrap:wrap;gap:8px}
+.table-wrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table td,.table th{overflow-wrap:break-word}
+@media(max-width:600px){.toolbar{flex-wrap:wrap}.toolbar .actions{flex-wrap:wrap}.form-actions{flex-wrap:wrap}.paginacion-sga{flex-direction:column;align-items:flex-start}}
+@media(prefers-reduced-motion:reduce){.btn.is-submitting::after{animation:none}}
+
+/* ========================================================================
+   SGA UNEDID - Responsive global (movil, tableta y escritorio)
+   Las matrices comparativas mantienen sus columnas y scroll independiente.
+   Los listados administrativos pasan a tarjetas por debajo de 620 px.
+   ======================================================================== */
+:root{--mobile-header-height:62px}
+html{min-width:0;scroll-padding-top:72px}
+body{min-width:0}
+.app-shell{width:100%;min-width:0;min-height:100vh;min-height:100dvh}
+.content{width:100%;min-width:0;max-width:100%;overflow-wrap:break-word}
+.content > *, .grid > *, .form-grid > *, .card > *, .toolbar > *{min-width:0;max-width:100%}
+.card{min-width:0}
+.card p, .card h2, .card h3, .card .meta, .content-top h1, .content-top p{overflow-wrap:anywhere}
+.card img, .content img:not(.brand img), .vote-hero img{max-width:100%;height:auto}
+fieldset{min-width:0;max-width:100%}
+legend{max-width:100%;overflow-wrap:anywhere}
+pre, code, .audit-json{max-width:100%}
+pre{overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+textarea{max-width:100%;min-height:70px;resize:vertical}
+select, input, textarea, button{min-width:0}
+input[type="checkbox"],input[type="radio"]{width:auto;flex:0 0 auto;accent-color:var(--blue)}
+input[type="file"]{max-width:100%;width:100%;overflow:hidden}
+input[type="date"],input[type="datetime-local"]{max-width:100%}
+label{max-width:100%;min-width:0}
+.form-grid > label, .form-grid > div, .form-grid > section{min-width:0}
+.form-grid input:not([type="checkbox"]):not([type="radio"]),.form-grid select,.form-grid textarea{max-width:100%}
+.btn{max-width:100%;line-height:1.3;text-align:center;white-space:normal;overflow-wrap:anywhere}
+.btn, .sidebar nav a, .sidebar-close-button, .mobile-menu-button{touch-action:manipulation}
+.actions, .toolbar, .form-actions, .stat-row, .savebar{min-width:0}
+.actions > *, .toolbar > form, .form-actions > *{max-width:100%;min-width:0}
+.actions > form{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.actions > form .btn{flex-shrink:0}
+.table-wrap, .matrix-wrap, .imp-results{max-width:100%;-webkit-overflow-scrolling:touch;overscroll-behavior-inline:contain}
+.table-wrap{position:relative;overflow-x:auto;overflow-y:auto}
+.table{max-width:none}
+.table th,.table td{overflow-wrap:anywhere}
+.table td form input:not([type="checkbox"]):not([type="radio"]),
+.table td form select{max-width:100%}
+.table-scroll-hint{display:none;position:sticky;left:0;top:0;z-index:1;width:max-content;max-width:100%;padding:5px 10px;margin:0;font:600 11px/1.4 Inter,Segoe UI,Arial,sans-serif;color:#365576;background:#eff6ff;border-radius:0 0 8px 0}
+.mobile-topbar,.sidebar-scrim,.sidebar-mobile-head{display:none}
+
+@media (max-width:1200px){
+  .content{padding:20px}
+  .grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .form-grid:not(.cols-2):not(.cols-3){grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (min-width:761px) and (max-width:1050px){
+  .sidebar{width:220px;flex:0 0 220px}
+  .content{padding:18px}
+  .grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .form-grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sidebar .brand strong{font-size:12px}
+  .sidebar .brand small{font-size:10px}
+}
+@media(max-width:760px){
+  .app-shell{display:block;min-width:0}
+  .content{width:100%;max-width:100%;padding:14px 12px 24px}
+  .content-top{align-items:flex-start;gap:10px;margin-bottom:16px}
+  .content-top h1{font-size:clamp(20px,5.5vw,25px);line-height:1.25}
+  .content-top p{font-size:13px;line-height:1.5}
+  .grid.cols-4,.grid.cols-3,.grid.cols-2,
+  .form-grid,.form-grid.cols-2,.form-grid.cols-3{grid-template-columns:minmax(0,1fr)}
+  .grid{gap:12px}
+  .card{padding:14px;border-radius:12px}
+  .section-title{margin-top:22px}
+  .toolbar{align-items:stretch;gap:10px}
+  .toolbar > form{width:100%}
+  .actions{gap:7px;align-items:center}
+  .form-actions{flex-wrap:wrap;align-items:stretch}
+  .savebar{align-items:stretch;gap:9px}
+  .table-wrap.has-wide-table .table-scroll-hint,
+  .imp-results.has-wide-table .table-scroll-hint{display:block}
+  .table{min-width:700px}
+  .table th,.table td{padding:9px 10px;font-size:12px}
+  .table .actions{min-width:140px}
+  .paginacion-sga{align-items:flex-start}
+  .paginacion-sga .actions{width:auto}
+  .cert-box{padding:14px}
+  .vote-hero{padding:16px}
+  .vote-hero h2{overflow-wrap:anywhere}
+  .candidate-vote-grid,.vote-admin-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,235px),1fr))}
+  .candidate-vote-card img,.candidate-admin-card > img{max-height:255px}
+  .vote-submit .btn{width:100%;min-width:0}
+  .grade-workspace{height:clamp(320px,63dvh,660px);min-height:320px}
+  .grade-workspace .grade-matrix-wrap{max-height:none}
+  .grade-workspace .grade-matrix-wrap .matrix{min-width:2350px}
+  .grade-workspace .grade-matrix-wrap .matrix th,
+  .grade-workspace .grade-matrix-wrap .matrix td{font-size:10px}
+  .grade-workspace .grade-matrix-wrap .matrix input{min-width:56px;width:60px;padding:8px 3px;text-align:center}
+  .grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-number,
+  .grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-number{width:36px;min-width:36px;max-width:36px;left:0}
+  .grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student,
+  .grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-student{left:36px;width:clamp(130px,38vw,172px);min-width:clamp(130px,38vw,172px);max-width:clamp(130px,38vw,172px)}
+  .grade-workspace .grade-matrix-wrap .matrix .student{min-width:130px}
+  .grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student strong{font-size:10px;line-height:1.25}
+  .grade-savebar{position:relative;bottom:auto;padding:9px 11px;gap:7px}
+  .grade-savebar .actions{flex-wrap:wrap}
+  .subject-card-grid .course-card.course-card-actions-left{grid-template-columns:minmax(112px,130px) minmax(0,1fr)}
+  .login{max-width:100%}
+  /* Progressive enhancement: sin JS se conserva el menu vertical accesible. */
+  .sga-js .mobile-topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:9px;
+    min-height:var(--mobile-header-height);padding:8px 12px;
+    position:sticky;top:0;z-index:1050;background:#082b5c;color:#fff;
+    box-shadow:0 2px 12px rgba(8,35,68,.18)
+  }
+  .mobile-menu-button{display:inline-flex;align-items:center;gap:8px;justify-content:center;min-height:44px;min-width:44px;padding:8px 10px;border:1px solid #ffffff55;border-radius:10px;background:#ffffff12;color:#fff;font:700 13px/1.2 Inter,Segoe UI,Arial,sans-serif;cursor:pointer}
+  .menu-bars{display:grid;gap:4px;width:18px;flex:0 0 18px}
+  .menu-bars span{display:block;height:2px;width:18px;border-radius:2px;background:#fff}
+  .mobile-brand{display:flex;align-items:center;gap:7px;min-width:0;margin-right:auto;font-size:13px;font-weight:800;white-space:nowrap}
+  .mobile-brand img{width:31px;height:31px;object-fit:cover;border-radius:7px;flex:0 0 31px;background:#fff}
+  .mobile-brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mobile-period{min-width:0;max-width:91px;padding:6px 7px;border-radius:7px;background:#ffffff19;font-size:10px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sga-js .sidebar{
+    position:fixed;inset:0 auto 0 0;z-index:1200;display:flex;flex-direction:column;
+    width:min(325px,88vw);max-width:100%;height:100vh;height:100dvh;
+    padding:12px;gap:12px;transform:translateX(-110%);visibility:hidden;
+    transition:transform .22s ease,visibility .22s ease;box-shadow:6px 0 30px rgba(0,0,0,.22)
+  }
+  .sga-js.sga-menu-open .sidebar{transform:translateX(0);visibility:visible}
+  .sga-js .sidebar-mobile-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;padding:0 4px 6px;color:#dbefff;font-size:13px}
+  .sidebar-close-button{display:flex;align-items:center;gap:8px;min-height:38px;padding:7px 11px;border:1px solid #ffffff45;background:#ffffff12;border-radius:9px;color:#fff;font-size:12px;font-weight:700;cursor:pointer}
+  .sidebar-close-button span{font-size:22px;line-height:1}
+  .sga-js .sidebar nav{flex:1 1 auto;min-height:0;max-height:none;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  .sga-js .sidebar nav a{min-height:42px;display:flex;align-items:center;padding:10px 11px}
+  .sga-js .sidebar .sidebar-bottom{display:flex;flex:0 0 auto;position:relative;margin-top:0;padding:12px 4px 4px}
+  .sga-js .sidebar .sidebar-user-name{font-size:12px}
+  .sga-js .sidebar .period-chip{flex:0 0 auto}
+  .sga-js .sidebar-scrim{display:block;position:fixed;inset:0;z-index:1150;width:100vw;height:100vh;height:100dvh;border:0;background:rgba(5,14,29,.55);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s ease,visibility .22s ease}
+  .sga-js.sga-menu-open .sidebar-scrim{opacity:1;visibility:visible;pointer-events:auto}
+  .sga-js.sga-menu-open body{overflow:hidden}
+  .sga-js .sidebar nav a[aria-current="page"]{background:#ffffff2d;color:#fff;font-weight:800;border-left:3px solid #18bee9}
+}
+@media (max-width:620px){
+  input,select,textarea{font-size:16px;line-height:1.35}
+  .btn{min-height:38px}
+  .btn-sm{min-height:34px}
+  .actions > form .btn{min-height:36px}
+  .toolbar > .actions,.toolbar form.actions{width:100%;max-width:100%}
+  .toolbar form.actions input[type="search"],#busquedaUsuarios{min-width:0!important;width:100%;max-width:none!important;flex:1 1 100%!important}
+  .toolbar .actions .btn{flex:1 1 auto}
+  .form-actions .btn{width:100%}
+  .savebar > .btn{width:100%}
+  .grid.cols-2.subject-card-grid.teacher-grade-grid{grid-template-columns:minmax(0,1fr)}
+  .sga-js .table-wrap.is-card-view{border:0;background:transparent;overflow:visible}
+  .sga-js .table-responsive-cards.table{display:block;width:100%;min-width:0;max-width:100%;border:0;background:transparent}
+  .sga-js .table-responsive-cards thead{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+  .sga-js .table-responsive-cards tbody{display:block;width:100%}
+  .sga-js .table-responsive-cards tbody tr{display:block;width:100%;margin:0 0 10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 11px;box-shadow:0 2px 8px rgba(9,35,66,.04)}
+  .sga-js .table-responsive-cards tbody tr[hidden]{display:none!important}
+  .sga-js .table-responsive-cards tbody td{display:block;width:100%;max-width:100%;padding:8px 2px;border-bottom:1px solid #e9eef4;white-space:normal;overflow-wrap:anywhere;text-align:left;font-size:13px;background:transparent}
+  .sga-js .table-responsive-cards tbody td:last-child{border-bottom:0}
+  .sga-js .table-responsive-cards tbody td[data-label]:not([colspan])::before{content:attr(data-label);display:block;margin:0 0 4px;color:#597189;font-size:10px;line-height:1.25;font-weight:800;letter-spacing:.055em;text-transform:uppercase}
+  .sga-js .table-responsive-cards tbody td .actions{width:100%;min-width:0;gap:6px}
+  .sga-js .table-responsive-cards tbody td .actions > *{max-width:100%}
+  .sga-js .table-responsive-cards tbody td .actions form{max-width:100%}
+  .sga-js .table-responsive-cards tbody td form input[type="number"]{max-width:100px}
+  .sga-js .table-responsive-cards tbody td select,
+  .sga-js .table-responsive-cards tbody td input[type="text"]{width:100%;max-width:100%}
+  .sga-js .table-responsive-cards tbody td .actions select{width:auto;min-width:min(145px,100%)!important;max-width:100%!important}
+  .sga-js .table-responsive-cards tbody tr td.empty{padding:22px 10px;text-align:center}
+  .sga-js .table-responsive-cards tbody td[colspan]{display:block}
+  .sga-js .table-responsive-cards tbody td[colspan]::before{content:none}
+  .sga-js .table-responsive-cards .badge{max-width:100%;white-space:normal}
+  .sga-js .behavior-table select{max-width:100%}
+  .imp-file{flex-direction:column;align-items:stretch}
+  .imp-file .btn{width:100%}
+  .imp-confirm label{display:flex;flex-direction:row;align-items:flex-start;gap:9px}
+  .imp-confirm input[type="checkbox"]{width:19px;height:19px;margin-top:1px}
+  .paginacion-sga .actions{justify-content:flex-start}
+  .vote-thanks{padding:20px 14px;margin:20px auto}
+  .candidate-vote-card img{max-height:225px}
+}
+@media(max-width:420px){
+  .content{padding:10px 9px 20px}
+  .card{padding:12px}
+  .mobile-brand{font-size:12px}
+  .mobile-period{max-width:76px;font-size:9px;padding:5px}
+  .mobile-menu-button{gap:5px;padding:7px 8px}
+  .subject-card-grid .course-card.course-card-actions-left{grid-template-columns:minmax(96px,108px) minmax(0,1fr);gap:10px;padding:11px}
+  .subject-card-grid .course-card-buttons .btn{font-size:11px;padding:7px 3px}
+  .grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-student,
+  .grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-student{left:32px;width:126px;min-width:126px;max-width:126px}
+  .grade-workspace .grade-matrix-wrap .matrix tbody td.frozen-number,
+  .grade-workspace .grade-matrix-wrap .matrix thead tr:first-child th.frozen-number{width:32px;min-width:32px;max-width:32px}
+}
+@media(prefers-reduced-motion:reduce){
+  .sga-js .sidebar,.sga-js .sidebar-scrim{transition:none}
+}
+
+/* Consolidados institucionales: referencia del alumno visible en pantallas tactiles. */
+@media(max-width:760px){
+  .sga-js .consolidado-tabla colgroup col:first-child,
+  .sga-js .ra-table colgroup col:first-child{width:34px!important}
+  .sga-js .consolidado-tabla colgroup col:nth-child(2),
+  .sga-js .ra-table colgroup col:nth-child(2){width:clamp(120px,38vw,160px)!important}
+  .sga-js .consolidado-tabla thead th:first-child,
+  .sga-js .ra-table thead th:first-child,
+  .sga-js .consolidado-tabla tbody td:first-child,
+  .sga-js .ra-table tbody td:first-child{
+    position:sticky;left:0;width:34px;min-width:34px;max-width:34px;
+    background:#f8fbff;z-index:3;box-shadow:1px 0 0 #ced9e5;
+    padding-left:4px;padding-right:4px;text-align:center
+  }
+  .sga-js .consolidado-tabla thead th:nth-child(2),
+  .sga-js .ra-table thead th:nth-child(2),
+  .sga-js .consolidado-tabla tbody td:nth-child(2),
+  .sga-js .ra-table tbody td:nth-child(2){
+    position:sticky;left:34px;width:clamp(120px,38vw,160px);
+    min-width:clamp(120px,38vw,160px);max-width:clamp(120px,38vw,160px);
+    background:#fff;z-index:3;box-shadow:3px 0 8px rgba(16,45,79,.15);
+    white-space:normal;overflow-wrap:anywhere
+  }
+  .sga-js .consolidado-tabla thead th:first-child,
+  .sga-js .consolidado-tabla thead th:nth-child(2),
+  .sga-js .ra-table thead th:first-child,
+  .sga-js .ra-table thead th:nth-child(2){z-index:5;background:#eef4fb}
+  .sga-js .consolidado-tabla tbody tr:nth-child(even) td:first-child,
+  .sga-js .consolidado-tabla tbody tr:nth-child(even) td:nth-child(2),
+  .sga-js .ra-table tbody tr:nth-child(even) td:first-child,
+  .sga-js .ra-table tbody tr:nth-child(even) td:nth-child(2){background:#f6f9fc}
+  .sga-js .consolidado-tabla tbody td:nth-child(2) strong,
+  .sga-js .ra-table tbody td:nth-child(2) strong{font-size:10px;overflow-wrap:anywhere}
+  .sga-js .consolidado-tabla tbody td:nth-child(2) .muted,
+  .sga-js .ra-table tbody td:nth-child(2) .muted{font-size:10px}
+  .ra-actions{flex-wrap:wrap;min-width:0}
+  .ra-actions > .btn{max-width:100%;white-space:normal}
+  body .login{width:min(430px,calc(100vw - 24px));padding:22px 18px;max-height:calc(100dvh - 20px);overflow-y:auto}
+  body .login-logo{gap:10px}
+  body .login-logo h1{font-size:clamp(18px,4.5vw,24px);line-height:1.18}
+}
+@media(max-width:420px){
+  body .login-logo{flex-direction:column;align-items:center;text-align:center;margin-bottom:16px}
+  body .login-logo img{width:53px;height:53px}
+  .sga-js .consolidado-tabla thead th:nth-child(2),
+  .sga-js .ra-table thead th:nth-child(2),
+  .sga-js .consolidado-tabla tbody td:nth-child(2),
+  .sga-js .ra-table tbody td:nth-child(2){width:122px;min-width:122px;max-width:122px}
+}
+
+/* Parche UNEDID: selectores de jornada y rol para subadministradores docentes. */
+.sidebar-role-controls{display:flex;flex-direction:column;gap:8px;padding:0 10px 6px}
+.sidebar-role-form{display:flex;flex-direction:column;gap:5px;margin:0}
+.sidebar-role-form label{color:#edf4ff;font-size:12px;font-weight:700}
+.sidebar-role-form select{width:100%;max-width:100%;min-height:36px;margin:0;padding:7px 9px;border-radius:8px;background:#fff;color:#1b344f;border:1px solid #cad9eb;font-size:12px}
+.sidebar-role-form select:disabled{opacity:.65;cursor:not-allowed}
+.sidebar-role-form small{font-size:11px;color:#bcd0e8;line-height:1.35}
+.sidebar-role-form noscript button{padding:6px 9px;border-radius:7px;border:1px solid #bcd0e8;background:#fff;color:#0a2e61;cursor:pointer}
+
+
+/* SGA UNEDID v1.3 - selector de Rol y Jornada en UNA SOLA FILA. */
+.sidebar-role-controls.sidebar-role-controls--compact{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-items:end;
+  column-gap:7px;
+  row-gap:3px;
+  padding:0 5px 3px;
+}
+.sidebar-role-controls--compact.sidebar-role-controls--dual{
+  grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);
+}
+.sidebar-role-controls--compact .sidebar-role-form{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  gap:3px;
+  margin:0;
+}
+.sidebar-role-controls--compact .sidebar-role-form label{
+  display:block;
+  color:#e0ecfa;
+  font-size:10px;
+  font-weight:700;
+  line-height:1.15;
+  letter-spacing:.015em;
+}
+.sidebar-role-controls--compact .sidebar-role-form select{
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  min-height:33px;
+  height:33px;
+  margin:0;
+  padding:5px 17px 5px 7px;
+  font-size:11px;
+  font-weight:600;
+  color:#193452;
+  border-radius:7px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.sidebar-role-controls--compact .sidebar-role-form small{
+  display:block;
+  font-size:10px;
+  line-height:1.25;
+}
+.sidebar-role-controls--compact .sidebar-role-form select:focus-visible{
+  outline:2px solid #8bd9ff;
+  outline-offset:2px;
+}
+
+/* SGA UNEDID V1.4: acceso compacto a contrasena en todos los perfiles */
+.sidebar .sidebar-bottom .sidebar-password-trigger{
+  flex:0 0 36px;width:36px;height:36px;display:inline-flex;align-items:center;
+  justify-content:center;color:#fff;background:#284b79;border:1px solid #5a7ca9;
+  border-radius:9px;cursor:pointer;transition:background .15s ease;
+}
+.sidebar .sidebar-bottom .sidebar-password-trigger:hover{background:#3a6293}
+.sidebar .sidebar-bottom .sidebar-password-trigger:focus-visible{outline:3px solid #18b2dd;outline-offset:2px}
+.sidebar .sidebar-bottom .logout{min-height:36px;display:inline-flex;align-items:center;justify-content:center}
+/* Dialog nativo: superpuesto al menu lateral fijo, sin desplazar los modulos. */
+.sga-password-dialog{width:min(440px,calc(100vw - 24px));max-width:100%;max-height:min(92dvh,720px);overflow:auto;
+  padding:0;border:1px solid #cad7e5;border-radius:17px;background:#fff;color:#24344b;
+  box-shadow:0 20px 65px rgba(3,21,48,.36)}
+.sga-password-dialog::backdrop{background:rgba(4,17,35,.68);backdrop-filter:blur(2px)}
+.sga-password-dialog .sga-password-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:19px 21px 15px;border-bottom:1px solid #e4ebf3}
+.sga-password-dialog .sga-password-head h2{margin:0;color:#123660;font-size:19px}
+.sga-password-dialog .sga-password-head p{margin:6px 0 0;color:#64758a;font-size:12px;line-height:1.45}
+.sga-password-dialog .sga-password-close{border:0;background:#edf2f8;color:#2c4565;border-radius:8px;
+  font:700 22px/1 Arial,sans-serif;width:34px;height:34px;cursor:pointer;flex:0 0 34px}
+.sga-password-dialog .sga-password-form{padding:19px 21px 21px;display:grid;gap:14px}
+.sga-password-dialog .sga-password-form label{font-size:12px;color:#314965;display:flex;flex-direction:column;gap:6px}
+.sga-password-dialog .sga-password-form input{width:100%;font-size:16px;min-height:43px;background:#fff}
+.sga-password-dialog .sga-password-hint{font-size:12px;color:#657790;line-height:1.5;margin:0}
+.sga-password-dialog .sga-password-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.sga-password-dialog .sga-password-actions button{min-height:40px}
+@media(max-width:380px){
+  .sidebar .sidebar-bottom{gap:5px}
+  .sidebar .sidebar-bottom .sidebar-password-trigger{flex-basis:34px;width:34px;height:34px}
+  .sidebar .sidebar-bottom .logout{padding:7px 9px}
+  .sga-password-dialog .sga-password-head,.sga-password-dialog .sga-password-form{padding-left:15px;padding-right:15px}
+}
