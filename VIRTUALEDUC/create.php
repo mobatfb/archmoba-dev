@@ -10,7 +10,7 @@ function creation_spec(?array $u, string $kind, string $role = '', int $course =
         return ['title'=>'Crear usuario','headers'=>['usuario','nombres','apellidos','correo','contrasena','rol'],'return'=>'page=users','limit'=>100];
     }
     if ($kind === 'course' && in_array($u['role'],['admin','subadmin','teacher'],true)) {
-        return ['title'=>'Crear curso','headers'=>['titulo','descripcion','usuario_responsable','modalidad','duracion','nivel','periodo'],'return'=>'page=courses','limit'=>500];
+        return ['title'=>'Crear curso','headers'=>['titulo','descripcion','usuario_responsable','modalidad','duracion','nivel','periodo','modelo_acceso','valor'],'return'=>'page=courses','limit'=>500];
     }
     if ($kind === 'lesson' && $course>0 && $u['role']!=='student' && course_for($course,$u)) {
         return ['title'=>'Crear lección','headers'=>['titulo','contenido'],'return'=>'course='.$course,'limit'=>500];
@@ -44,6 +44,8 @@ function creation_example(string $kind, array $headers): array {
         'duracion'=>'20',
         'nivel'=>'Básico',
         'periodo'=>$kind==='course'?(institution_settings()['active_period']?:date('Y')):'',
+        'modelo_acceso'=>'Totalmente gratuito',
+        'valor'=>'0.00',
         'contenido'=>'Contenido de la lección de ejemplo',
         'id_curso'=>'1',
         'usuario_estudiante'=>'estudiante.ejemplo',
@@ -64,7 +66,7 @@ function creation_template(?array $u): never {
     fputcsv($out,$example,';','"','');
     fclose($out); exit;
 }
-function csv_rows(array $headers,int $limit): array {
+function csv_rows(array $headers,int $limit,bool $allowLegacyCourse=false): array {
     $file=$_FILES['csv']??null;
     if (!is_array($file)||($file['error']??null)!==UPLOAD_ERR_OK||!is_uploaded_file($file['tmp_name']??'')||($file['size']??0)>2097152) throw new DomainException('Selecciona un CSV válido de máximo 2 MB.');
     $f=fopen($file['tmp_name'],'rb'); if (!$f) throw new DomainException('No se pudo leer el archivo.');
@@ -72,7 +74,10 @@ function csv_rows(array $headers,int $limit): array {
         $head=fgetcsv($f,0,';','"','');
         if (!$head) throw new DomainException('El CSV está vacío.');
         $head[0]=preg_replace('/^\xEF\xBB\xBF/','',(string)$head[0]);
-        if (array_map('trim',$head)!==$headers) throw new DomainException('Encabezado incorrecto. Descarga la plantilla de este módulo.');
+        $actual=array_map('trim',$head);
+        $legacy=$allowLegacyCourse && $actual===['titulo','descripcion','usuario_responsable','modalidad','duracion','nivel','periodo'];
+        if($legacy) $headers=$actual;
+        elseif($actual!==$headers) throw new DomainException('Encabezado incorrecto. Descarga la plantilla de este módulo.');
         $rows=[]; $line=1;
         while (($values=fgetcsv($f,0,';','"',''))!==false) {
             $line++;
@@ -80,6 +85,7 @@ function csv_rows(array $headers,int $limit): array {
             if (count($values)!==count($headers)) throw new DomainException('Registro '.$line.': número de columnas incorrecto. Usa punto y coma.');
             foreach($values as $v) if (!preg_match('//u',(string)$v)) throw new DomainException('Registro '.$line.': guarda el CSV en UTF-8.');
             $rows[$line]=array_combine($headers,$values);
+            if($legacy) $rows[$line]+=['modelo_acceso'=>'free','valor'=>'0.00'];
             if(count($rows)>$limit) throw new DomainException('El máximo es '.$limit.' registros por archivo.');
         }
         if (!$rows) throw new DomainException('El CSV no contiene registros.');
@@ -178,7 +184,8 @@ function creation_insert(array $u,string $kind,string $role,int $course,array $r
         $teacher=$responsibles[0];
         course_check_title($title,$responsibles);
         [$modality,$hours,$level,$period]=course_metadata($r);
-        query('INSERT INTO courses(title,description,teacher_id,modality,duration_hours,level,period,thumbnail_variant,thumbnail_path) VALUES(?,?,?,?,?,?,?,?,?)',[$title,$description,$teacher,$modality,$hours,$level,$period,random_int(1,3),$cover]);
+        [$accessModel,$accessPrice]=course_access_values($r);
+        query('INSERT INTO courses(title,description,teacher_id,modality,duration_hours,level,period,thumbnail_variant,thumbnail_path,access_model,access_price) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[$title,$description,$teacher,$modality,$hours,$level,$period,random_int(1,3),$cover,$accessModel,$accessPrice]);
         $newCourse=db()->lastInsertId();
         course_save_extra_responsibles($newCourse,$responsibles);
         query('INSERT INTO course_modules(course_id,title,position) VALUES(?,?,1)',[$newCourse,'Módulo 1']);
@@ -211,7 +218,7 @@ function handle_creation(?array $u): never {
             flash($result['added'].' estudiante(s) matriculado(s).'.($result['existing']?' '.$result['existing'].' ya estaba(n) matriculado(s).':'').($result['duplicates']?' '.$result['duplicates'].' fila(s) repetida(s) omitida(s).':''));
             go($back);
         }
-        $rows=$mode==='bulk'?csv_rows($spec['headers'],$spec['limit']):[1=>$_POST];
+        $rows=$mode==='bulk'?csv_rows($spec['headers'],$spec['limit'],$kind==='course'):[1=>$_POST];
         if($kind==='course'&&$mode==='individual') $cover=course_cover_upload();
         $pdo=db(); $pdo->beginTransaction(); $errors=[];
         try {
@@ -245,7 +252,7 @@ function creation_dialog(array $u,string $kind,string $role='',int $course=0): v
       <?php elseif($kind==='course'||$kind==='lesson'):?><label>Título<input name="titulo" required maxlength="180"></label><label><?=$kind==='course'?'Descripción':'Contenido'?><textarea name="<?=$kind==='course'?'descripcion':'contenido'?>" required></textarea></label><?php if($kind==='course'):?><?php render_responsible_picker(is_manager($u)?[]:[$u],!is_manager($u)); ?><?php require __DIR__.'/modules/course_fields.php'; ?><?php endif;?>
       <?php elseif($kind==='enroll'): if(!$course):?><label>Curso<select name="id_curso" required><option value="">Seleccionar</option><?php foreach(all('SELECT id,title FROM courses ORDER BY title') as $x):?><option value="<?=h($x['id'])?>">#<?=h($x['id'])?> · <?=h($x['title'])?></option><?php endforeach;?></select></label><?php endif;?><?php render_user_picker('Usuario del estudiante','usuario_estudiante','student',null,false,$course); ?><?php endif;?>
       <div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Crear registro</button></div></form></div>
-      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla con una fila de ejemplo. Reemplaza o elimina esa fila, completa tus registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 8 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='course'):?><p class="muted">Usa los usuarios exactos de los responsables separados por comas en la columna usuario_responsable. Los docentes solo pueden asignarse a sí mismos. Modalidad: En línea, Presencial, Híbrida; nivel: Básico, Intermedio, Avanzado; duración en horas. Cada curso recibe un SVG al azar.</p><?php endif;?><?php if($kind==='enroll'):?><p class="muted">Usa el usuario exacto del estudiante registrado.</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
+      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla con una fila de ejemplo. Reemplaza o elimina esa fila, completa tus registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 8 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='course'):?><p class="muted">Usa los usuarios exactos de los responsables separados por comas en la columna usuario_responsable. Los docentes solo pueden asignarse a sí mismos. Modalidad: En línea, Presencial, Híbrida; nivel: Básico, Intermedio, Avanzado; duración en horas. Modelo de acceso: Totalmente gratuito, Gratuito con certificación de pago o De pago con certificado incluido. Valor en USD: 0 para gratuito, mayor a 0 para los otros modelos. Cada curso recibe un SVG al azar.</p><?php endif;?><?php if($kind==='enroll'):?><p class="muted">Usa el usuario exacto del estudiante registrado.</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
     </dialog>
     <?php
 }
