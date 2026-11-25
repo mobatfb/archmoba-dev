@@ -3,6 +3,7 @@ declare(strict_types=1);
 if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 $isStudent=$u['role']==='student';
 $canManage=course_can_edit($u,$c);
+$accessLocked=course_content_locked($u,$c);
 $modules=all('SELECT id,title,position FROM course_modules WHERE course_id=? ORDER BY position,id',[$c['id']]);
 $responsibles=course_responsibles($c);
 $total=count($lessons); $completed=$isStudent?count(array_intersect(array_column($lessons,'id'),$done)):0;
@@ -17,7 +18,7 @@ $courseUrl='?course='.(string)$c['id'];
   <?php if($canManage):?><span class="ve-course-hero-status <?=$c['published']?'ve-status-published':'ve-status-draft'?>"><span aria-hidden="true"></span><?=$c['published']?'Publicado':'Borrador'?></span><?php endif;?>
   <img class="ve-course-cover" src="<?=h(course_cover_url($c))?>" alt="Portada del curso" width="720" height="405">
   <div class="ve-course-hero-copy"><h1><?=h($c['title'])?></h1><p><?=nl2br(h($c['description']))?></p>
-  <div class="ve-course-metadata"><?php foreach(course_metadata_labels($c) as $label=>$value):?><div><small><?=h($label)?></small><strong><?=h($value)?></strong></div><?php endforeach;?></div></div>
+  <div class="ve-course-metadata"><?php foreach(course_metadata_labels($c) as $label=>$value):?><div><small><?=h($label)?></small><strong><?=h($value)?></strong></div><?php endforeach;?></div><div class="ve-course-access-summary"><strong><?=h(course_access_models()[course_access_model($c)]??'Modelo no disponible')?></strong><span><?=h(course_access_summary($c))?></span></div></div>
 </div>
 <div class="ve-course-tabbar">
   <nav class="ve-course-tabs" aria-label="Secciones del curso"><?php foreach($tabs as $key=>$label):?><a href="<?=h($courseUrl.'&tab='.$key)?>" <?=$tab===$key?'aria-current="page"':''?>><?=h($label)?></a><?php endforeach;?></nav>
@@ -29,7 +30,9 @@ $courseUrl='?course='.(string)$c['id'];
 <?php if($canManage): require __DIR__.'/course_edit.php'; require __DIR__.'/course_enroll.php'; ?><script src="modules/course_admin.js?v=<?=h(VE_VERSION)?>" defer></script><?php endif;?>
 <div class="ve-course-layout">
   <section class="ve-course-panel">
-  <?php if($tab==='content'):?><h2>Temario del curso</h2>
+  <?php if($accessLocked && in_array($tab,['content','activities','assessments','grades'],true)):?><div class="ve-course-empty"><strong>Contenido de pago</strong><p><?=h(course_access_summary($c))?></p><p class="muted">El acceso se habilitará cuando esté disponible el sistema de pagos. Tu matrícula se conserva.</p></div>
+  <?php elseif($tab==='certificate'):?><h2>Certificado</h2><div class="ve-course-empty"><strong><?=h(course_access_summary($c))?></strong><p class="muted">La emisión de certificados y, cuando corresponda, el pago se habilitarán en una próxima etapa.</p></div>
+  <?php elseif($tab==='content'):?><h2>Temario del curso</h2>
     <?php foreach($modules as $m): $items=array_values(array_filter($lessons,fn($l)=>(string)$l['module_id']===(string)$m['id'])); $doneCount=$isStudent?count(array_intersect(array_column($items,'id'),$done)):0; ?>
       <details class="ve-course-module" open><summary><span><?=h($m['title'])?></span><small><?=$isStudent?$doneCount.' / '.count($items):count($items).' lecciones'?></small></summary>
         <?php if(!$items):?><div class="ve-course-empty"><span class="ve-empty-icon" aria-hidden="true">+</span><strong>Este módulo está vacío</strong><p class="muted">Aún no se han añadido contenidos.</p></div><?php endif;?>
@@ -40,7 +43,7 @@ $courseUrl='?course='.(string)$c['id'];
   <?php else:?><h2><?=h($tabs[$tab])?></h2><div class="ve-course-empty"><strong><?=h($empty[$tab])?></strong><p class="muted">Este apartado queda preparado para una próxima fase.</p></div><?php endif;?>
   </section>
   <aside class="ve-course-aside" id="ve-course-aside">
-    <section class="ve-course-panel"><h2><?=$isStudent?'Mi progreso del curso':'Contenido del curso'?><?php if($isStudent):?><strong><?=$percent?> %</strong><?php endif;?></h2><?php if($isStudent):?><progress value="<?=$completed?>" max="<?=max(1,$total)?>" aria-label="Progreso del curso"></progress><p class="muted"><?=$completed?> de <?=$total?> lecciones completadas</p><?php else:?><p class="muted"><?=count($modules)?> módulo(s) · <?=$total?> lección(es)</p><?php endif;?></section>
+    <section class="ve-course-panel"><h2><?=$isStudent?'Mi progreso del curso':'Contenido del curso'?><?php if($isStudent&&!$accessLocked):?><strong><?=$percent?> %</strong><?php endif;?></h2><?php if($accessLocked):?><p class="muted">Acceso pendiente de pago.</p><?php elseif($isStudent):?><progress value="<?=$completed?>" max="<?=max(1,$total)?>" aria-label="Progreso del curso"></progress><p class="muted"><?=$completed?> de <?=$total?> lecciones completadas</p><?php else:?><p class="muted"><?=count($modules)?> módulo(s) · <?=$total?> lección(es)</p><?php endif;?></section>
     <section class="ve-course-panel"><h2>Responsables</h2><div class="ve-responsible-list"><?php foreach($responsibles as $person): ?><div class="ve-course-teacher"><?php profile_preview_avatar($person,'ve-course-teacher-avatar',(int)$c['id']); ?><strong><?=h($person['name'])?></strong></div><?php endforeach; ?></div></section>
     <section class="ve-course-panel"><h2>Recursos del curso</h2><p class="muted">Aún no hay recursos disponibles.</p></section>
   </aside>
