@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.40
+# VIRTUALEDUC v0.1.41
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -155,6 +155,9 @@ Se corrige el contraste de los resultados del buscador de usuarios compartido (r
 
 ## Actualización a v0.1.40
 Cada curso admite hasta 50 responsables, con búsqueda, avatares y selección múltiple en Crear curso y Editar curso. El primero sigue siendo el responsable principal (courses.teacher_id) y los adicionales se guardan en course_responsibles. Los administradores y subadministradores mantienen las reglas anteriores de asignación; los docentes asignados pueden gestionar el curso pero no cambiar la lista de responsables. Los docentes conservan la creación de cursos propios. Todos los responsables aparecen en el panel del curso y Participantes, con miniaturas autorizadas por curso. En CSV se conserva la columna usuario_responsable: admite uno o varios usuarios separados por comas. Antes de sustituir los archivos, ejecutar migrations/0.1.40.sql en phpMyAdmin. La migración no altera las asignaciones existentes, contenidos, matrículas ni progreso.
+
+## Actualización a v0.1.41
+Crear y Editar curso incluyen Modelo de acceso y certificación: Totalmente gratuito, Gratuito con certificación de pago, De pago con certificado incluido. Los dos últimos muestran un campo de valor en USD junto al selector; el tercero representa un único precio para contenido y certificado. El servidor valida el modelo y precio decimal positivo (hasta 99.999.999,99 USD), o cero para gratuito. El catálogo y el banner muestran el modelo/valor; el CSV añade modelo_acceso y valor, y las plantillas anteriores siguen aceptándose como gratuitas. Ejecutar una sola vez migrations/0.1.41.sql en phpMyAdmin después de v0.1.40; los cursos existentes quedan gratuitos y se preservan las matrículas, responsables y contenidos. No se ha implementado la pasarela ni la emisión de certificados. Los cursos con contenido gratuito mantienen sus permisos habituales; los de pago bloquean el contenido a estudiantes (incluidos los ya matriculados) hasta implementar la verificación de pagos. Los responsables y gestores conservan su acceso de gestión. No se generan cobros ni certificados automáticamente.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
