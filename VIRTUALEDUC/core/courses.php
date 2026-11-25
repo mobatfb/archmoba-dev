@@ -98,14 +98,13 @@ function serve_course_cover(?array $u): never {
 
 // Edit metadata only: existing modules, lessons, enrollments and progress stay intact.
 function course_can_edit(?array $u,array $c): bool {
-    return is_manager($u) || ($u!==null && $u['role']==='teacher' && (string)$u['id']===(string)$c['teacher_id']);
+    return is_manager($u) || ($u!==null && $u['role']==='teacher' && course_has_responsible($c,$u['id']));
 }
 function course_edit_update(array $u,int $id,array $r): void {
     require_role($u,'admin','subadmin','teacher');
     $title=creation_value($r,'titulo',180);
     $description=creation_value($r,'descripcion',20000);
     [$modality,$hours,$level,$period]=course_metadata($r);
-    $username=creation_value($r,'usuario_responsable',190);
     $restore=$r['restore_default']??'';
     if(!in_array($restore,['','1'],true)) throw new DomainException('Opción de miniatura inválida.');
     $pdo=db(); $pdo->beginTransaction();
@@ -114,19 +113,17 @@ function course_edit_update(array $u,int $id,array $r): void {
         $actor=one('SELECT '.user_identity_columns().' FROM users WHERE id=? FOR UPDATE',[$u['id']]);
         $c=one('SELECT * FROM courses WHERE id=? FOR UPDATE',[$id]);
         if(!$actor || !$c || !course_can_edit($actor,$c)) throw new DomainException('Curso inexistente o no autorizado.');
-        $responsible=find_by_username($username);
-        if(!$responsible) throw new DomainException('Usuario responsable inexistente.');
-        $teacher=(int)$responsible['id'];
-        $allowed=is_manager($actor)?array_map('intval',array_column(available_teachers($actor),'id')):[(int)$actor['id']];
-        // A manager can retain the existing owner even if reassignment to that role is restricted.
-        if(!in_array($teacher,$allowed,true) && !(is_manager($actor) && $teacher===(int)$c['teacher_id'])) throw new DomainException('Usuario responsable no autorizado.');
-        if(one('SELECT id FROM courses WHERE title=? AND teacher_id=? AND id<>?',[$title,$teacher,$id])) throw new DomainException('Ya existe otro curso con este título y responsable.');
+        $existing=array_map('strval',array_column(course_responsibles($c),'id'));
+        $responsibles=is_manager($actor)?course_responsible_ids($actor,$r,$existing):$existing;
+        $teacher=$responsibles[0];
+        course_check_title($title,$responsibles,$id);
         $oldCover=$c['thumbnail_path']; $cover=$oldCover; $variant=(int)$c['thumbnail_variant'];
         $newCover=course_cover_upload();
         if($newCover!==null && $restore==='1') throw new DomainException('Elige una miniatura nueva o restaura la predeterminada, no ambas opciones.');
         if($newCover!==null) $cover=$newCover;
         elseif($restore==='1') { $cover=null; $variant=random_int(1,3); }
         query('UPDATE courses SET title=?,description=?,teacher_id=?,modality=?,duration_hours=?,level=?,period=?,thumbnail_variant=?,thumbnail_path=? WHERE id=?',[$title,$description,$teacher,$modality,$hours,$level,$period,$variant,$cover,$id]);
+        if(is_manager($actor)) course_save_extra_responsibles($id,$responsibles);
         $pdo->commit(); $committed=true;
     } catch(Throwable $e) {
         if($pdo->inTransaction()) $pdo->rollBack();
