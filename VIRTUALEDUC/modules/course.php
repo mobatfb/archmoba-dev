@@ -4,7 +4,7 @@ if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 $isStudent=$u['role']==='student';
 $canManage=course_can_edit($u,$c);
 $modules=all('SELECT id,title,position FROM course_modules WHERE course_id=? ORDER BY position,id',[$c['id']]);
-$teacher=one('SELECT name FROM users WHERE id=?',[$c['teacher_id']]);
+$teacher=one('SELECT id,name,first_names,last_names FROM users WHERE id=?',[$c['teacher_id']]);
 $total=count($lessons); $completed=$isStudent?count(array_intersect(array_column($lessons,'id'),$done)):0;
 $percent=$total?(int)round(100*$completed/$total):0;
 $tabs=['content'=>'Contenido','activities'=>'Actividades','assessments'=>'Evaluaciones','grades'=>'Calificaciones','participants'=>'Participantes','certificate'=>'Certificado'];
@@ -41,7 +41,7 @@ $courseUrl='?course='.(string)$c['id'];
   </section>
   <aside class="ve-course-aside">
     <section class="ve-course-panel"><h2><?=$isStudent?'Mi progreso del curso':'Contenido del curso'?><?php if($isStudent):?><strong><?=$percent?> %</strong><?php endif;?></h2><?php if($isStudent):?><progress value="<?=$completed?>" max="<?=max(1,$total)?>" aria-label="Progreso del curso"></progress><p class="muted"><?=$completed?> de <?=$total?> lecciones completadas</p><?php else:?><p class="muted"><?=count($modules)?> módulo(s) · <?=$total?> lección(es)</p><?php endif;?></section>
-    <section class="ve-course-panel"><h2>Responsable</h2><div class="ve-course-teacher"><span aria-hidden="true">♙</span><strong><?=h($teacher['name']??'Sin definir')?></strong></div></section>
+    <section class="ve-course-panel"><h2>Responsable</h2><div class="ve-course-teacher"><?php if($teacher) profile_preview_avatar($teacher,'ve-course-teacher-avatar',(int)$c['id']); else { ?><span class="ve-course-teacher-avatar" aria-hidden="true">?</span><?php } ?><strong><?=h($teacher['name']??'Sin definir')?></strong></div></section>
     <section class="ve-course-panel"><h2>Recursos del curso</h2><p class="muted">Aún no hay recursos disponibles.</p></section>
   </aside>
 </div>
