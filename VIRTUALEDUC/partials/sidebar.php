@@ -17,7 +17,14 @@ $navIcon=static function(string $key) use($navIcons): void {
     echo '<svg class="ve-nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'.($navIcons[$key]??$navIcons['home']).'</svg>';
 };
 ?>
-<aside class="ve-sidebar ve-institution-sidebar">
+<header class="ve-mobile-topbar" aria-label="Barra de navegación móvil">
+  <button type="button" class="ve-mobile-menu-button" id="ve-menu-open" aria-controls="ve-sidebar" aria-expanded="false" aria-label="Abrir menú principal"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Menú</span></button>
+  <?php render_institution_brand($settings); ?>
+  <span class="ve-mobile-period" title="<?=h($settings['active_period']?:'Sin definir')?>"><?=h($settings['active_period']?:'Sin definir')?></span>
+</header>
+<button type="button" class="ve-menu-scrim" id="ve-menu-scrim" aria-label="Cerrar menú" tabindex="-1" aria-hidden="true"></button>
+<aside class="ve-sidebar ve-institution-sidebar" id="ve-sidebar" aria-label="Menú principal" tabindex="-1">
+  <div class="ve-sidebar-mobile-head"><strong>Navegación</strong><button type="button" id="ve-menu-close" aria-label="Cerrar menú principal">Cerrar <span aria-hidden="true">×</span></button></div>
   <?php render_institution_brand($settings); ?>
   <details class="ve-menu" open>
     <summary class="ve-menu-title">Menú de navegación</summary>
