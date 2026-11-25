@@ -4,3 +4,6 @@
 *.zip
 /storage/uploads/*
 !/storage/uploads/.gitkeep
+
+/auth/config.local.php
+/mail/config.local.php

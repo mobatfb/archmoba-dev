@@ -1,0 +1,41 @@
+-- SORTEOWEB 1.1.0. Importar en aulaprof_sorteos. MariaDB 11.4.
+-- Repetible. No elimina tablas ni datos existentes. Requiere 1.0.1.
+SET NAMES utf8mb4;
+CREATE TABLE IF NOT EXISTS users (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ email VARCHAR(254) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
+ first_names VARCHAR(120) NOT NULL DEFAULT '',
+ last_names VARCHAR(120) NOT NULL DEFAULT '',
+ profile_complete TINYINT(1) NOT NULL DEFAULT 0,
+ active TINYINT(1) NOT NULL DEFAULT 1,
+ verified_at DATETIME NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS auth_otp (
+ email VARCHAR(254) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+ challenge_id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ code_mac CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ sent_at INT UNSIGNED NOT NULL,
+ expires_at INT UNSIGNED NOT NULL,
+ attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+ used_at INT UNSIGNED DEFAULT NULL,
+ KEY ix_otp_expiry(expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS auth_attempts (
+ bucket CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+ window_start INT UNSIGNED NOT NULL,
+ attempts INT UNSIGNED NOT NULL,
+ KEY ix_auth_window(window_start)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS mail_logs (
+ id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ email_digest CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ purpose VARCHAR(32) NOT NULL,
+ status ENUM('sent','failed') NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ KEY ix_mail_created(created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS user_id BIGINT UNSIGNED NULL;
+ALTER TABLE participants ADD INDEX IF NOT EXISTS ix_participant_user (user_id);
+ALTER TABLE participants ADD CONSTRAINT fk_participant_user FOREIGN KEY IF NOT EXISTS fk_participant_user (user_id) REFERENCES users(id) ON DELETE SET NULL;

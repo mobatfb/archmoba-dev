@@ -1,0 +1,4 @@
+Options -Indexes
+<FilesMatch "(?i)\.(php|sql|ini|log|md|bak|zip)$">
+    Require all denied
+</FilesMatch>
