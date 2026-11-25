@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 if (!defined('SW_APP')) { http_response_code(404); exit; }
-const SW_VERSION = '1.0.5';
+const SW_VERSION = '1.0.6';
 date_default_timezone_set('America/Guayaquil');
 $https = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') || ($_SERVER['SERVER_PORT'] ?? '') === '443';
 $local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1','::1'], true) && in_array(strtolower(parse_url('http://'.($_SERVER['HTTP_HOST']??''),PHP_URL_HOST)??''),['localhost','127.0.0.1','[::1]'],true);
