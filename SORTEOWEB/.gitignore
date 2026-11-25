@@ -7,3 +7,5 @@
 
 /auth/config.local.php
 /mail/config.local.php
+
+/wallet/config.local.php

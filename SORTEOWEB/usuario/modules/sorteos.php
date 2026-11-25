@@ -3,23 +3,36 @@
 <?php if(!$rows):?>
 <div class="user-empty">No hay sorteos activos por el momento.</div>
 <?php else:?>
-<div class="user-raffle-list"><?php foreach($rows as $r): $slots=array_values(array_filter(explode(',',(string)($r['photo_slots']??'')),fn($n)=>in_array($n,['1','2','3'],true))); ?>
+<div class="user-raffle-list">
+<?php foreach($rows as $r):
+    $slots=array_values(array_filter(explode(',',(string)($r['photo_slots']??'')),fn($n)=>in_array($n,['1','2','3'],true)));
+    $id='raffle-'.h($r['id']);
+?>
 <article class="user-raffle-card">
     <div class="user-raffle-media">
         <?php if($slots):?>
         <section class="user-mini-carousel" aria-label="Galería de <?=h($r['title'])?>" data-carousel>
-            <?php foreach($slots as $i=>$slot):?><figure class="user-mini-slide" data-slide <?=$i===0?'':'hidden'?>><img src="<?=h(pub_url('photo',['id'=>$r['id'],'slot'=>(int)$slot]))?>" alt="<?=h($r['title'])?> · imagen <?=$i+1?>" <?=$i===0?'fetchpriority="high"':'loading="lazy"'?>></figure><?php endforeach;?>
+            <?php foreach($slots as $i=>$slot):?><figure class="user-mini-slide" data-slide <?=$i===0?'':'hidden'?>><img src="<?=h(pub_url('photo',['id'=>$r['id'],'slot'=>(int)$slot]))?>" alt="<?=h($r['title'])?> · imagen <?=$i+1?>" loading="lazy"></figure><?php endforeach;?>
             <?php if(count($slots)>1):?><button type="button" class="carousel-arrow prev user-mini-prev" data-prev aria-label="Imagen anterior">‹</button><button type="button" class="carousel-arrow next user-mini-next" data-next aria-label="Imagen siguiente">›</button><div class="user-mini-dots"><?php foreach($slots as $i=>$slot):?><button type="button" data-dot="<?=$i?>" aria-label="Mostrar imagen <?=$i+1?>" aria-pressed="<?=$i===0?'true':'false'?>"></button><?php endforeach;?><button type="button" class="carousel-pause" data-pause aria-label="Pausar carrusel">Ⅱ</button></div><?php endif;?>
         </section>
         <?php else:?><div class="user-raffle-placeholder" aria-hidden="true">★</div><?php endif;?>
     </div>
     <div class="user-raffle-copy">
-        <div class="user-raffle-meta"><span class="badge">Sorteo activo</span><?php if((string)$r['type']==='producto'):?><span class="muted-chip">Premio físico</span><?php else:?><span class="muted-chip">Premio en dinero</span><?php endif;?></div>
         <h2><?=h($r['title'])?></h2>
-        <p class="raffle-desc"><?=h($r['description']!==''?$r['description']:'Descubre este premio y participa desde tu cuenta.')?></p>
-        <div class="user-raffle-stats"><div><small>Boletos disponibles</small><strong><?=number_format((int)$r['total'])?></strong></div><div><small>Valor por boleto</small><strong><?=money($r['price_cents'])?></strong></div></div>
-        <div class="user-raffle-actions"><a class="pub-btn cta" href="<?=h(pub_url('account',['tab'=>'boletos']))?>">Participar por <?=money($r['price_cents'])?></a></div>
+        <div class="user-raffle-actions"><button type="button" class="pub-btn cta" data-user-dialog="<?=$id?>-details">Ver detalles y participar · <?=money($r['price_cents'])?></button></div>
     </div>
-</article><?php endforeach;?></div>
+</article>
+<dialog class="user-raffle-dialog" id="<?=$id?>-details" aria-labelledby="<?=$id?>-title">
+    <div class="user-dialog-head"><h2 id="<?=$id?>-title" tabindex="-1"><?=h($r['title'])?></h2><form method="dialog"><button class="user-dialog-close" aria-label="Cerrar detalles" autofocus>×</button></form></div>
+    <div class="user-dialog-body"><p class="raffle-desc"><?=h($r['description']!==''?$r['description']:'Consulta las condiciones del sorteo antes de participar.')?></p><dl class="user-raffle-facts"><div><dt>Tipo de premio</dt><dd><?=$r['type']==='producto'?'Producto':'Dinero'?></dd></div><div><dt>Total de boletos</dt><dd><?=number_format((int)$r['total'])?></dd></div><div><dt>Valor por boleto</dt><dd><?=money($r['price_cents'])?></dd></div></dl></div>
+    <div class="user-dialog-foot"><form method="dialog"><button class="pub-btn secondary">Cerrar</button></form><button type="button" class="pub-btn cta" data-user-dialog="<?=$id?>-participate">Participar por <?=money($r['price_cents'])?></button></div>
+</dialog>
+<dialog class="user-raffle-dialog" id="<?=$id?>-participate" aria-labelledby="<?=$id?>-participate-title">
+    <div class="user-dialog-head"><h2 id="<?=$id?>-participate-title">Participar</h2><form method="dialog"><button class="user-dialog-close" aria-label="Cerrar participación" autofocus>×</button></form></div>
+    <div class="user-dialog-body"><h3><?=h($r['title'])?></h3><p>Valor por boleto: <strong><?=money($r['price_cents'])?></strong></p><p class="user-participation-note">La selección de números y el pago en línea aún no están habilitados. Puedes consultar los boletos que ya tengas vinculados a tu cuenta.</p></div>
+    <div class="user-dialog-foot"><form method="dialog"><button class="pub-btn secondary">Cerrar</button></form><a class="pub-btn secondary" href="<?=h(pub_url('account',['tab'=>'boletos']))?>">Mis boletos</a></div>
+</dialog>
+<?php endforeach;?>
+</div>
+<script defer src="usuario/app.js?v=<?=h(SW_VERSION)?>"></script>
 <?php endif;?>
-<p class="user-sub">La selección de boletos y el pago en línea se habilitarán más adelante.</p>

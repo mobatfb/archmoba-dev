@@ -12,5 +12,5 @@ header('Cache-Control: no-store');
 ini_set('session.use_strict_mode','1');
 ini_set('session.use_only_cookies','1');
 session_name(defined('SW_PUBLIC') && SW_PUBLIC ? 'sorteoweb_public' : 'sorteoweb_session');
-session_set_cookie_params(['lifetime'=>0,'path'=>rtrim(dirname($_SERVER['SCRIPT_NAME']??'/'),'/\\').'/','secure'=>$https,'httponly'=>true,'samesite'=>'Strict']);
+session_set_cookie_params(['lifetime'=>0,'path'=>rtrim(dirname($_SERVER['SCRIPT_NAME']??'/'),'/\\').'/','secure'=>$https,'httponly'=>true,'samesite'=>(defined('SW_PUBLIC')&&SW_PUBLIC?'Lax':'Strict')]);
 session_start();
