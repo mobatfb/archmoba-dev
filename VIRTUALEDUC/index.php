@@ -3,6 +3,7 @@ declare(strict_types=1);
 require __DIR__.'/app.php';
 require __DIR__.'/core/institution.php';
 require __DIR__.'/core/profile.php';
+require __DIR__.'/core/user_picker.php';
 require __DIR__.'/core/courses.php';
 require __DIR__.'/core/course_enrollments.php';
 require __DIR__.'/panel.php';
