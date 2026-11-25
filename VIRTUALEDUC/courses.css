@@ -9,3 +9,16 @@
 .ve-course-grid{align-items:stretch}.ve-course-card{padding:0;overflow:hidden;display:flex;flex-direction:column}.ve-course-card>a{display:block}.ve-course-card img{width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;display:block}.ve-course-card-body{padding:18px;flex:1;display:flex;align-items:flex-start;flex-direction:column}.ve-course-card h3{margin:12px 0 0}.ve-course-card .ve-course-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-size:13px}.ve-course-card-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;font-size:12px;margin:0 0 18px}.ve-course-card-meta dt{color:#607187}.ve-course-card-meta dd{margin:3px 0 0;font-weight:600;overflow-wrap:anywhere}.ve-course-card-body>.btn{margin-top:auto}
 @media(max-width:1080px){.ve-course-layout{grid-template-columns:minmax(0,1fr)}.ve-course-aside{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}.ve-course-metadata{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.ve-course-hero{grid-template-columns:minmax(0,1fr)}.ve-course-cover{min-height:0;max-height:210px;aspect-ratio:16/9}.ve-course-hero-copy{padding:18px}.ve-course-fields{grid-template-columns:1fr}.ve-course-tabs a{padding:10px 14px}.ve-course-panel{padding:14px}.ve-course-lesson>summary{flex-wrap:wrap}.ve-lesson-body{padding-left:0}}
+
+/* Four courses per desktop row, two per compact/mobile row. */
+.grid.ve-course-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.ve-course-grid .ve-course-card{margin-bottom:0;min-width:0}
+.ve-course-card-body{width:100%;min-width:0;padding:14px;overflow-wrap:anywhere}
+.ve-course-card h3{font-size:16px;line-height:1.35}
+.ve-course-card-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,105px),1fr));gap:7px;width:100%;margin-top:auto}
+.ve-course-card-actions .btn{display:flex;align-items:center;justify-content:center;text-align:center;min-width:0;font-size:13px;padding:10px 8px}
+.ve-edit-cover{display:block;max-width:100%;height:auto;border-radius:8px;margin:14px 0}
+.ve-cover-restore{display:flex;align-items:center;gap:8px;font-size:13px}
+.ve-cover-restore input[type=checkbox]{width:18px;height:18px;min-height:18px;flex:none;margin:0}
+@media(max-width:1100px){.grid.ve-course-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
+@media(max-width:480px){.grid.ve-course-grid{gap:8px}.ve-course-card-body{padding:10px}.ve-course-card h3{font-size:14px}.ve-course-card-meta{grid-template-columns:minmax(0,1fr);gap:6px;font-size:11px;margin-bottom:12px}.ve-course-card-meta>div{display:flex;flex-wrap:wrap;gap:3px 6px;align-items:baseline}.ve-course-card-meta dd{margin:0}.ve-course-card .ve-course-text{font-size:12px}.ve-course-card-actions{grid-template-columns:minmax(0,1fr)}.ve-course-card .tag{font-size:11px;padding:4px 7px}}
