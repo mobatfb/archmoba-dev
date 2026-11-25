@@ -1,21 +1,16 @@
-/* FUTUREO STUDIO v0.1.7 - voice recorder */
+/* FUTUREO STUDIO v0.1.8: live DAW voice track */
 .workspace-stage .workspace:has(.voice-recorder){display:flex;flex-direction:column;overflow:hidden}
-.voice-recorder{flex:1;min-height:0;min-width:0;width:100%;display:flex;flex-direction:column;gap:20px;padding:68px 24px 24px;overflow:auto;overscroll-behavior:contain;background:radial-gradient(ellipse at 50% 20%,#11223b 0,transparent 58%),#090f1b}
-.record-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;flex:none;min-width:0;padding:22px 10px 18px}
-.record-clock{font-size:clamp(34px,5vw,60px);font-weight:300;letter-spacing:.05em;font-variant-numeric:tabular-nums;line-height:1;color:#dcecff}
-.record-button{display:grid;place-items:center;width:86px;height:86px;border:1px solid #fc6c83;border-radius:50%;background:#5b1b2d;color:#fff;box-shadow:0 0 0 7px #fd456514,0 12px 32px #0005;transition:background .15s,box-shadow .15s;flex:none}
-.record-button:hover:not(:disabled){background:#9b2741;box-shadow:0 0 0 7px #fd45652b,0 12px 32px #0005}
-.record-button:disabled{opacity:.48;cursor:wait}
-.record-button.is-recording{background:#cb274b;box-shadow:0 0 0 7px #fd45652e,0 0 24px #fd456548}
-.record-button.is-recording svg{display:none}.record-button.is-recording::before{content:'';width:25px;height:25px;background:white;border-radius:5px}
-.record-caption{font-size:14px;font-weight:700;color:#edf4ff}
-.record-status{margin:0;color:#a9bbd2;text-align:center;font-size:12px;max-width:100%;overflow-wrap:anywhere;min-height:18px}
-.record-status[data-state="error"]{color:#ff9da8}.record-status[data-state="ok"]{color:#7ce1b5}
-.record-recovery{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}.record-recovery[hidden]{display:none}.record-recovery .subtle{font-size:11px;padding:6px 9px}
-.record-library{width:min(100%,760px);margin:0 auto;min-width:0;flex:none}
-.record-library-title{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:0 0 9px;margin-bottom:10px;color:#b8cae0}.record-library-title h2{font-size:15px;margin:0}.record-library-title span{font-size:12px;color:var(--muted)}
-.record-list{display:grid;gap:10px}.voice-empty{font-size:12px;color:var(--muted);margin:12px 0;text-align:center}
-.voice-item{min-width:0;border:1px solid var(--line);border-radius:10px;background:#101827;padding:12px;display:grid;gap:8px}.voice-item strong{font-size:13px;color:#edf4ff;overflow-wrap:anywhere}.voice-item small{font-size:11px;color:var(--muted)}.voice-item audio{width:100%;height:38px;display:block}
-[data-orientation="vertical"] .voice-recorder{padding:60px 12px 14px;gap:12px}[data-orientation="vertical"] .record-panel{padding:12px 3px}[data-orientation="vertical"] .record-clock{font-size:42px}
-@media(max-width:400px){.voice-recorder{padding-inline:10px}.record-button{width:72px;height:72px}.voice-item{padding:9px}}
-@media(prefers-reduced-motion:reduce){.record-button{transition:none}}
+.voice-recorder{flex:1;min-height:0;min-width:0;width:100%;display:flex;flex-direction:column;gap:12px;padding:64px 16px 14px;background:#090f1b;overflow:auto}
+.daw-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);min-height:24px}
+.daw-track-label{display:flex;align-items:center;gap:7px;font-weight:800;color:#33d5ff;letter-spacing:.08em;white-space:nowrap}.daw-track-label i{width:8px;height:8px;background:#33d5ff;border-radius:50%}
+#voice-saved{text-align:right;font-variant-numeric:tabular-nums}
+.daw-timeline{flex:1;min-height:110px;min-width:0;border:1px solid #30445d;border-radius:9px;background:#0b1422;overflow:hidden;display:flex}
+#voice-canvas{width:100%;height:100%;min-height:0;min-width:0;display:block;touch-action:none;cursor:crosshair}
+.daw-transport{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#101827;flex-wrap:wrap}
+.daw-buttons{display:flex;align-items:center;gap:8px}.daw-button,.record-button{display:grid;place-items:center;width:46px;height:42px;border:1px solid #30445d;border-radius:8px;color:#c6ddf5;background:#111f31;font-size:18px;line-height:1;flex:none}
+.daw-button:hover:not(:disabled),.record-button:hover:not(:disabled){border-color:#33d5ff;color:#fff}.daw-button:disabled,.record-button:disabled{opacity:.35;cursor:default}.record-button{color:#ff7089;border-color:#7d354b;background:#291827}.record-button span{width:17px;height:17px;border-radius:50%;background:#ff426a;box-shadow:0 0 10px #ff426a70}.record-button.is-recording{border-color:#ff426a;background:#622039}.record-button.is-recording span{border-radius:3px;background:#fff}
+.record-clock{font-size:clamp(22px,3.4vw,36px);font-variant-numeric:tabular-nums;line-height:1;color:#e3f4ff;font-weight:500;white-space:nowrap;letter-spacing:.035em}
+.record-status{margin:0;min-height:18px;color:#a9bbd2;font-size:12px;overflow-wrap:anywhere}.record-status[data-state="error"]{color:#ff9da8}.record-status[data-state="ok"]{color:#7ce1b5}
+.record-recovery{display:flex;gap:7px;flex-wrap:wrap}.record-recovery[hidden]{display:none}.record-recovery .subtle{font-size:11px;padding:6px 9px}#voice-audio{display:none}
+[data-orientation="vertical"] .voice-recorder{padding:60px 9px 10px;gap:8px}[data-orientation="vertical"] .daw-transport{justify-content:center;flex-wrap:wrap}[data-orientation="vertical"] .record-clock{font-size:25px}[data-orientation="vertical"] .daw-buttons{gap:5px}[data-orientation="vertical"] .daw-button,[data-orientation="vertical"] .record-button{width:37px;height:37px}
+@media(max-width:380px){.daw-heading{font-size:10px}.voice-recorder{padding-inline:7px}.daw-transport{padding:7px}.daw-buttons{gap:5px}.daw-button,.record-button{width:36px;height:36px}}
