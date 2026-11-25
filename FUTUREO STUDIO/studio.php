@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.6 - PHP 7.4+
+// FUTUREO STUDIO v0.1.7 - PHP 7.4+
 date_default_timezone_set('America/Guayaquil');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
@@ -10,37 +10,7 @@ $adminPage = $adminPage ?? false;
 $storage = __DIR__ . '/proyectos';
 function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function redirect(string $url): void { header('Location: ' . $url, true, 303); exit; }
-function projectName(string $s): bool { return strlen($s) <= 160 && preg_match('/\A[A-Za-z0-9_-]+\.fprj\z/i', $s) === 1; }
-function projects(string $dir): array {
-    $out = [];
-    foreach (glob($dir . '/*', GLOB_NOSORT) ?: [] as $path) {
-        $name = basename($path);
-        if (!projectName($name) || !is_file($path) || is_link($path)) continue;
-        $out[] = ['name' => $name, 'mtime' => (int) filemtime($path)];
-    }
-    usort($out, static function ($a, $b) { return ($b['mtime'] <=> $a['mtime']) ?: strcmp($b['name'], $a['name']); });
-    return $out;
-}
-function createProject(string $dir): string {
-    if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) throw new RuntimeException('No se pudo crear la carpeta proyectos.');
-    if (!is_writable($dir) || is_link($dir)) throw new RuntimeException('La carpeta proyectos no permite escritura.');
-    $base = 'sin_nombre_' . date('Ymd');
-    for ($i = 1; $i <= 9999; $i++) {
-        $name = $base . ($i === 1 ? '' : '_' . sprintf('%02d', $i)) . '.fprj';
-        $path = $dir . '/' . $name;
-        $fp = @fopen($path, 'xb');
-        if ($fp === false) {
-            if (file_exists($path) || is_link($path)) continue;
-            throw new RuntimeException('No se pudo escribir el proyecto. Revisa los permisos del hosting.');
-        }
-        $data = json_encode(['format'=>'FPRJ','version'=>1,'name'=>substr($name,0,-5),'status'=>'temporal','created_at'=>date(DATE_ATOM),'module'=>null,'content'=>new stdClass()], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
-        $n = fwrite($fp, $data);
-        fclose($fp);
-        if ($n !== strlen($data)) { @unlink($path); throw new RuntimeException('No se pudo guardar el proyecto completo.'); }
-        return $name;
-    }
-    throw new RuntimeException('Se alcanzó el límite de nombres para hoy.');
-}
+require_once __DIR__ . '/projects.php';
 $error = '';
 $logged = false;
 $csrf = '';
@@ -77,12 +47,12 @@ $page = $adminPage ? 'admin.php' : 'index.php';
 $project = null;
 if ((!$adminPage || $logged) && isset($_GET['project'])) {
     $name = $_GET['project'];
-    if (is_string($name) && projectName($name) && is_file($storage . '/' . $name) && !is_link($storage . '/' . $name)) $project = $name;
+    if (is_string($name) && projectName($name) && projectPath($storage, $name) !== null) $project = $name;
     else { http_response_code(404); $error = 'Proyecto no encontrado.'; }
 }
 $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 ?><!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FUTUREO STUDIO<?= $adminPage ? ' | Administración' : '' ?></title><link rel="icon" type="image/png" href="assets/icono.png"><link rel="stylesheet" href="assets/studio.css?v=0.1.6"><?php if ($adminPage && $logged && $project !== null): ?><link rel="stylesheet" href="assets/tracks.css?v=0.1.6"><?php endif; ?></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FUTUREO STUDIO<?= $adminPage ? ' | Administración' : '' ?></title><link rel="icon" type="image/png" href="assets/icono.png"><link rel="stylesheet" href="assets/studio.css?v=0.1.7"><?php if ($adminPage && $logged && $project !== null): ?><link rel="stylesheet" href="assets/recorder.css?v=0.1.7"><?php endif; ?></head>
 <body<?= $adminPage && $logged ? ' class="admin-orientation' . ($project !== null ? ' workspace-open' : '') . '" data-orientation="horizontal"' : '' ?>>
 <?php if (!($adminPage && $logged && $project !== null)): ?>
 <header class="top"><a class="brand" href="<?= e($page) ?>"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></a><nav><?php if ($adminPage && $logged): ?><a href="index.php">Vista pública</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form><?php elseif (!$adminPage): ?><a href="admin.php">Administración</a><?php else: ?><a href="index.php">Inicio</a><?php endif; ?></nav></header>
@@ -92,7 +62,10 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 <?php elseif ($project !== null): ?>
 <?php if ($adminPage && $logged): ?>
 <details class="workspace-controls"><summary title="Controles del proyecto" aria-label="Controles del proyecto"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></summary><div class="workspace-menu"><div class="brand workspace-brand"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></div><span class="workspace-name"><?= e($project) ?></span><a class="subtle" href="admin.php">← Proyectos</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><a class="subtle" href="index.php">Vista pública</a><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form></div></details>
-<div class="workspace-stage"><main class="workspace" aria-label="Editor de audio multipista"><section class="audio-editor" aria-label="Vista de diseño multipista"></section></main></div>
+<div class="workspace-stage"><main class="workspace" aria-label="Grabadora de voz"><section class="voice-recorder" data-project="<?= e($project) ?>" data-csrf="<?= e($csrf) ?>" aria-label="Grabadora de voz">
+<div class="record-panel"><div class="record-clock" id="voice-clock">00:00</div><button type="button" class="record-button" id="voice-record" disabled aria-label="Grabar voz"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8"/></svg></button><div class="record-caption" id="voice-caption">Grabar voz</div><p class="record-status" id="voice-status" role="status" aria-live="polite">Cargando grabadora...</p><div class="record-recovery" id="voice-recovery" hidden><button type="button" class="subtle" id="voice-retry">Reintentar guardado</button><a class="subtle" id="voice-download" download>Descargar copia</a><button type="button" class="subtle" id="voice-discard">Descartar</button></div></div>
+<div class="record-library"><div class="record-library-title"><h2>Grabaciones</h2><span id="voice-count">0</span></div><div id="voice-list" class="record-list"></div></div>
+</section></main></div>
 <?php else: ?><div class="workspace-bar"><a href="<?= e($page) ?>">← Proyectos</a><span><?= e($project) ?></span></div><main class="workspace" aria-label="Espacio de trabajo vacío"></main><?php endif; ?>
 <?php else: ?>
 <main class="dashboard"><?php if ($adminPage): ?><div class="intro"><div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Proyectos</h1><p class="muted">Crea y abre tus proyectos locales.</p></div><span class="count"><?= count($list) ?> proyectos</span></div><?php endif; ?>
@@ -139,5 +112,5 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 })();
 </script>
 <?php endif; ?>
-<?php if ($adminPage && $logged && $project !== null): ?><script src="assets/tracks.js?v=0.1.6"></script><?php endif; ?>
+<?php if ($adminPage && $logged && $project !== null): ?><script src="assets/recorder.js?v=0.1.7"></script><?php endif; ?>
 </body></html>
