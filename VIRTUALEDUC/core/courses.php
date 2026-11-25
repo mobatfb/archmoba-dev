@@ -4,6 +4,47 @@ if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 
 function course_modalities(): array { return ['online'=>'En línea','presential'=>'Presencial','hybrid'=>'Híbrida']; }
 function course_levels(): array { return ['basic'=>'Básico','intermediate'=>'Intermedio','advanced'=>'Avanzado']; }
+// Commercial model is independent from academic modality and enrollment.
+function course_access_models(): array {
+    return ['free'=>'Totalmente gratuito','free_paid_certificate'=>'Gratuito con certificación de pago','paid_included'=>'De pago con certificado incluido'];
+}
+function course_access_values(array $r): array {
+    $model=creation_value($r,'modelo_acceso',100);
+    foreach(course_access_models() as $key=>$label) if($model===$label) { $model=$key; break; }
+    if(!isset(course_access_models()[$model])) throw new DomainException('Selecciona un modelo de acceso y certificación válido.');
+    $raw=$r['valor']??'';
+    if(!is_string($raw)) throw new DomainException('Valor inválido.');
+    $raw=str_replace(',','.',trim($raw));
+    if($model==='free') {
+        if($raw!=='' && !preg_match('/\A0+(?:\.0{1,2})?\z/D',$raw)) throw new DomainException('Un curso totalmente gratuito no puede tener precio.');
+        return [$model,'0.00'];
+    }
+    if(!preg_match('/\A[0-9]{1,8}(?:\.[0-9]{1,2})?\z/D',$raw)) throw new DomainException('Indica un valor en USD, con un máximo de dos decimales.');
+    [$whole,$fraction]=array_pad(explode('.',$raw,2),2,'');
+    $whole=ltrim($whole,'0'); if($whole==='') $whole='0';
+    $fraction=str_pad($fraction,2,'0');
+    if($whole==='0' && $fraction==='00') throw new DomainException('El valor debe ser mayor que cero.');
+    return [$model,$whole.'.'.$fraction];
+}
+function course_access_model(array $c): string {
+    return $c['access_model']??'free';
+}
+function course_access_price(array $c): string {
+    return 'USD '.number_format((float)($c['access_price']??0),2,'.',',');
+}
+function course_access_summary(array $c): string {
+    return match(course_access_model($c)) {
+        'free'=>'Contenido y certificado gratuitos',
+        'free_paid_certificate'=>'Contenido gratuito · Certificado: '.course_access_price($c),
+        'paid_included'=>'Contenido + certificado: '.course_access_price($c),
+        default=>'Modelo de acceso no disponible'
+    };
+}
+// Checkout and certificate issuance are not implemented yet. Enrollment alone
+// must never unlock paid content; future payment verification will extend this rule.
+function course_content_locked(array $u,array $c): bool {
+    return $u['role']==='student' && course_access_model($c)!=='free' && course_access_model($c)!=='free_paid_certificate';
+}
 function course_metadata(array $r): array {
     $modality=creation_value($r,'modalidad',30);
     $level=creation_value($r,'nivel',30);
@@ -105,6 +146,7 @@ function course_edit_update(array $u,int $id,array $r): void {
     $title=creation_value($r,'titulo',180);
     $description=creation_value($r,'descripcion',20000);
     [$modality,$hours,$level,$period]=course_metadata($r);
+    [$accessModel,$accessPrice]=course_access_values($r);
     $restore=$r['restore_default']??'';
     if(!in_array($restore,['','1'],true)) throw new DomainException('Opción de miniatura inválida.');
     $pdo=db(); $pdo->beginTransaction();
@@ -122,7 +164,7 @@ function course_edit_update(array $u,int $id,array $r): void {
         if($newCover!==null && $restore==='1') throw new DomainException('Elige una miniatura nueva o restaura la predeterminada, no ambas opciones.');
         if($newCover!==null) $cover=$newCover;
         elseif($restore==='1') { $cover=null; $variant=random_int(1,3); }
-        query('UPDATE courses SET title=?,description=?,teacher_id=?,modality=?,duration_hours=?,level=?,period=?,thumbnail_variant=?,thumbnail_path=? WHERE id=?',[$title,$description,$teacher,$modality,$hours,$level,$period,$variant,$cover,$id]);
+        query('UPDATE courses SET title=?,description=?,teacher_id=?,modality=?,duration_hours=?,level=?,period=?,thumbnail_variant=?,thumbnail_path=?,access_model=?,access_price=? WHERE id=?',[$title,$description,$teacher,$modality,$hours,$level,$period,$variant,$cover,$accessModel,$accessPrice,$id]);
         if(is_manager($actor)) course_save_extra_responsibles($id,$responsibles);
         $pdo->commit(); $committed=true;
     } catch(Throwable $e) {
