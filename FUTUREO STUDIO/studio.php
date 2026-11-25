@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.4 - PHP 7.4+
+// FUTUREO STUDIO v0.1.5 - PHP 7.4+
 date_default_timezone_set('America/Guayaquil');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
@@ -91,7 +91,7 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 <main class="login-wrap"><section class="login"><img class="mark" src="assets/icono.png" alt="FUTUREO"><p class="eyebrow">FUTUREO STUDIO</p><h1>Iniciar sesión</h1><p class="muted">Acceso al panel de proyectos.</p><?php if ($error): ?><p class="error" role="alert"><?= e($error) ?></p><?php endif; ?><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><label for="user">Usuario</label><input id="user" name="user" autocomplete="username" required><label for="password">Contraseña</label><input id="password" name="password" type="password" autocomplete="current-password" required><button class="primary" name="action" value="login">Ingresar</button></form></section></main>
 <?php elseif ($project !== null): ?>
 <?php if ($adminPage && $logged): ?>
-<details class="workspace-controls"><summary title="Controles del proyecto" aria-label="Controles del proyecto"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></summary><div class="workspace-menu"><span class="workspace-name"><?= e($project) ?></span><a class="subtle" href="admin.php">← Proyectos</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><a class="subtle" href="index.php">Vista pública</a><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form></div></details>
+<details class="workspace-controls"><summary title="Controles del proyecto" aria-label="Controles del proyecto"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></summary><div class="workspace-menu"><div class="brand workspace-brand"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></div><span class="workspace-name"><?= e($project) ?></span><a class="subtle" href="admin.php">← Proyectos</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><a class="subtle" href="index.php">Vista pública</a><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form></div></details>
 <div class="workspace-stage"><main class="workspace" aria-label="Espacio de trabajo vacío"></main></div>
 <?php else: ?><div class="workspace-bar"><a href="<?= e($page) ?>">← Proyectos</a><span><?= e($project) ?></span></div><main class="workspace" aria-label="Espacio de trabajo vacío"></main><?php endif; ?>
 <?php else: ?>
@@ -106,6 +106,18 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 (() => {
     const button = document.getElementById('orientation-toggle');
     const label = document.getElementById('orientation-label');
+    const controls = document.querySelector('.workspace-controls');
+    if (controls) {
+        document.addEventListener('click', (event) => {
+            if (controls.open && !controls.contains(event.target)) controls.open = false;
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && controls.open) {
+                controls.open = false;
+                controls.querySelector('summary').focus();
+            }
+        });
+    }
     const key = 'futureo.studio.orientation';
     let orientation = 'horizontal';
     try { if (localStorage.getItem(key) === 'vertical') orientation = 'vertical'; } catch (_) {}

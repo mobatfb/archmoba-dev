@@ -25,3 +25,9 @@
 .workspace-menu .subtle:hover{border-color:var(--accent)}
 .workspace-menu form{margin:0}
 .workspace-name{color:var(--muted);font-size:11px;overflow-wrap:anywhere;padding:3px 5px}
+
+/* v0.1.5: brand inside the floating workspace menu */
+.workspace-brand{gap:8px;padding:5px 4px 9px;border-bottom:1px solid var(--line);margin-bottom:1px}
+.workspace-brand img{width:128px;max-width:calc(100% - 62px);height:auto;object-fit:contain}
+.workspace-brand b{font-size:17px}
+.workspace-brand span{font-size:10px;letter-spacing:.16em;padding-left:8px;white-space:nowrap}
