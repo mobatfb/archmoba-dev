@@ -12,7 +12,7 @@ $filtered=array_filter($rows,fn($r)=>$filter==='todos'||$r['status']===$filter);
 </section>
 <section class="raffle-step raffle-settings" data-raffle-step="2" data-raffle-settings hidden>
 <h3 tabindex="-1">2. Configura el sorteo</h3><p class="muted tiny" data-selected-type></p>
-<div class="form-grid" data-money-inputs hidden><label>Monto del premio ($)<input name="money_amount" type="number" min="0.01" max="1000000" step="0.01" placeholder="500.00" disabled></label><label>Cantidad de participaciones<input name="pricing_participations" type="number" min="1" max="1000000" step="1" value="100" disabled></label></div>
+<div class="form-grid" data-money-inputs hidden><label>Monto del premio ($)<input name="money_amount" type="number" min="100" max="1000000" step="100" value="100" placeholder="100" disabled><small class="muted tiny">De $100 en $100.</small></label><label>Cantidad de participaciones<input name="pricing_participations" type="number" min="1" max="1000000" step="1" value="100" disabled></label></div>
 <div data-money-calculation class="money-calculation" hidden><span class="muted tiny">Título automático</span><strong data-money-title>Ingresa el monto</strong><p class="muted tiny" data-money-note></p></div>
 <label>Modalidad de participación<select name="participation_mode" required><option value="exclusivo">Números exclusivos · un titular por número</option><option value="compartido">Números compartidos · varios titulares por número</option></select></label><p class="muted tiny" data-mode-note></p>
 <label data-prize-field hidden>Equivalente económico del producto ($)<input name="prize_value" type="number" min="0.01" max="1000000" step="0.01" disabled></label>

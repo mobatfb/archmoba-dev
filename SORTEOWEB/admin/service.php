@@ -30,13 +30,14 @@ function raffle_close_input(): int {
     $v=field('closes_at',16);$tz=new DateTimeZone('America/Guayaquil');$dt=DateTimeImmutable::createFromFormat('!Y-m-d\TH:i',$v,$tz);
     if(!$dt||$dt->format('Y-m-d\TH:i')!==$v||$dt->getTimestamp()<=time())throw new DomainException('Selecciona una fecha y hora de cierre futura (Ecuador).');return $dt->getTimestamp();
 }
+function validate_money_prize(int $prize): int {if($prize<10000||$prize>100000000||$prize%10000!==0)throw new DomainException('El premio en dinero debe ser de $100 en $100, desde $100 hasta $1.000.000.');return $prize;}
 function money_raffle_title(int $prize): string {return 'Gana '.money($prize).' en efectivo';}
 function money_raffle_price(int $prize,int $quantity): int {if($prize<1||$quantity<1)throw new DomainException('Monto o cantidad inválidos.');return intdiv($prize+$quantity-1,$quantity);}
 function save_raffle(array $u): void {
     $id=record_id('raffle_id',true);$type=field('type',10);$desc=$type==='dinero'?'':field('description',10000,false);$mode=field('participation_mode',12);
     if(!in_array($type,['producto','dinero'],true)||!in_array($mode,['exclusivo','compartido'],true))throw new DomainException('Selecciona el tipo de premio y la modalidad.');
     $isMoney=$type==='dinero';
-    $prize=$isMoney?price_cents(field('money_amount',15)):($mode==='compartido'?price_cents(field('prize_value',15)):null);
+    $prize=$isMoney?validate_money_prize(price_cents(field('money_amount',15))):($mode==='compartido'?price_cents(field('prize_value',15)):null);
     $title=$isMoney?money_raffle_title($prize):field('title',180);
     $planned=$isMoney?integer('pricing_participations',1,1000000):null;
     $closeMode=field('close_mode',10);if(!in_array($closeMode,['fecha','capacidad'],true))throw new DomainException('Selecciona la condición de cierre.');
@@ -92,7 +93,7 @@ function duplicate_raffle(array $u): void {
 }
 function raffle_transition(array $u,string $action): void {
     $id=record_id('raffle_id');tx(function()use($u,$action,$id){$r=raffle_lock($id);
-        if($action==='activate'&&$r['status']==='borrador'){draw_create($r);query("UPDATE raffles SET status='activo',updated_at=NOW() WHERE id=?",[$id]);}
+        if($action==='activate'&&$r['status']==='borrador'){if($r['type']==='dinero')validate_money_prize((int)$r['prize_cents']);draw_create($r);query("UPDATE raffles SET status='activo',updated_at=NOW() WHERE id=?",[$id]);}
         elseif($action==='finish'&&$r['status']==='activo'){if((int)$r['draw_version']===1){if(!draw_finish_locked($r))throw new DomainException('Aún no se ha alcanzado la condición de cierre anunciada.');}else query("UPDATE raffles SET status='finalizado',finalized_at=NOW(),updated_at=NOW() WHERE id=?",[$id]);}
         elseif($action==='reactivate'&&$r['status']==='finalizado'){
             if((int)$r['draw_version']===1||one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$id])||one('SELECT raffle_id FROM winners WHERE raffle_id=? FOR UPDATE',[$id]))throw new DomainException('No se puede reactivar un sorteo que ya tiene evidencia o un ganador registrado.');

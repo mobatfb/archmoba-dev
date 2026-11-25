@@ -8,6 +8,7 @@ const photoUrl=(id,slot)=>`index.php?photo=${encodeURIComponent(id)}&slot=${slot
 const previewUrls=new Map();
 let wizardStep=1,lastPrizeType='',productPrice='1.00';
 const moneyCents=value=>{const m=String(value).match(/^(0|[1-9][0-9]{0,6})(?:[.,]([0-9]{1,2}))?$/);if(!m)return 0;const n=Number(m[1])*100+Number((m[2]||'').padEnd(2,'0'));return n>0&&n<=100000000?n:0;};
+const prizeAmount=value=>{const n=moneyCents(value);return n>=10000&&n%10000===0?n:0;};
 const cashLabel=cents=>'$'+(cents/100).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.');
 const cashTitle=cents=>`Gana ${cashLabel(cents)} en efectivo`;
 const integerValue=value=>{const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=1000000?n:0;};
@@ -16,12 +17,13 @@ function updatePotential(){
     const rounding=$('[data-rounding-note]',rf),potentialLabel=$('[data-potential-label]',rf);
     let n=integerValue(shared&&cap?e.participation_limit.value:e.ticket_count.value),p=moneyCents(e.price.value);
     if(cash){
-        const amount=moneyCents(e.money_amount.value),quantity=integerValue(e.pricing_participations.value);
+        const amount=prizeAmount(e.money_amount.value),quantity=integerValue(e.pricing_participations.value);
+        e.money_amount.setCustomValidity(e.money_amount.value!==''&&!amount?'Ingresa un monto de $100 en $100 (100, 200, 300...).':'');
         p=amount&&quantity?Math.ceil(amount/quantity):0;n=quantity;
         e.price.value=p?(p/100).toFixed(2):'';e.price.setCustomValidity('');
         if(!shared)e.ticket_count.value=quantity||'';
         if(cap)e.participation_limit.value=quantity||'';
-        $('[data-money-title]',rf).textContent=amount?cashTitle(amount):'Ingresa el monto';
+        $('[data-money-title]',rf).textContent=amount?cashTitle(amount):'Ingresa un monto múltiplo de $100';
         $('[data-money-note]',rf).textContent=shared?(cap?'La cantidad indicada será la capacidad total de participaciones pagadas. Cada cuenta puede elegir varios números distintos.':'La cantidad indicada sirve para calcular el precio; no limita las ventas. Cada cuenta puede elegir varios números distintos.'):'Cada participación corresponde a un número exclusivo. Una persona puede adquirir varios números.';
         potentialLabel.textContent=shared&&!cap?'Ingreso estimado':'Ingreso a capacidad completa';
         rounding.hidden=!(amount&&quantity&&p*quantity>amount);
@@ -59,11 +61,11 @@ function validateRaffle(){
     if(!e.closes_at.disabled&&e.closes_at.value&&Date.parse(e.closes_at.value+'-05:00')<=Date.now())e.closes_at.setCustomValidity('Selecciona una fecha y hora futuras (Ecuador).');
     const fields=$$('input,select,textarea',$('[data-raffle-step="2"]',rf));
     for(const field of fields){if(field.disabled||!field.willValidate)continue;if(!field.checkValidity()){wizardShow(2);field.reportValidity();return false;}}
-    if(e.type.value==='dinero'&&(!moneyCents(e.money_amount.value)||!integerValue(e.pricing_participations.value)||!moneyCents(e.price.value))){wizardShow(2);showClientNotice($('.dialog-body',rf),'Ingresa un monto válido y la cantidad de participaciones.');return false;}
+    if(e.type.value==='dinero'&&(!prizeAmount(e.money_amount.value)||!integerValue(e.pricing_participations.value)||!moneyCents(e.price.value))){wizardShow(2);showClientNotice($('.dialog-body',rf),'Ingresa un monto válido y la cantidad de participaciones.');return false;}
     return true;
 }
 function buildSummary(){
-    const e=rf.elements,cash=e.type.value==='dinero',shared=e.participation_mode.value==='compartido',cap=e.close_mode.value==='capacidad',amount=moneyCents(e.money_amount.value),quantity=integerValue(e.pricing_participations.value),details=$('[data-summary-details]',rf);
+    const e=rf.elements,cash=e.type.value==='dinero',shared=e.participation_mode.value==='compartido',cap=e.close_mode.value==='capacidad',amount=prizeAmount(e.money_amount.value),quantity=integerValue(e.pricing_participations.value),details=$('[data-summary-details]',rf);
     $('[data-summary-title]',rf).textContent=cash?cashTitle(amount):e.title.value.trim();
     $('[data-summary-description]',rf).textContent=cash?`Premio en efectivo de ${cashLabel(amount)}. ${shared?'El importe se divide entre las cuentas titulares pagadas del número ganador.':'El titular pagado recibe el importe total.'}`:e.description.value.trim();
     const photos=$('[data-summary-photos]',rf);photos.replaceChildren();
