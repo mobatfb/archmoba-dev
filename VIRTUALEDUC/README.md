@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.32
+# VIRTUALEDUC v0.1.33
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -131,6 +131,9 @@ Los participantes, las listas de estudiantes disponibles y seleccionados, los bu
 
 ## Actualización a v0.1.32
 En pantallas de hasta 900 píxeles, el panel derecho del curso se abre desde el botón Panel del curso como un lateral flotante. Permite cerrar con la X, tocar fuera o Escape; bloquea el desplazamiento del fondo y conserva el contenido y los permisos originales. En pantallas mayores se conserva la distribución anterior. Sin JavaScript o soporte de diálogo modal, el panel sigue disponible en línea. No requiere SQL.
+
+## Actualización a v0.1.33
+La navegación móvil principal adopta el diseño lateral de SGA: barra superior compacta con botón Menú, identidad institucional y período; menú flotante desde la izquierda, cerrado por defecto, con fondo oscurecido, cierre por X, toque exterior, Escape o selección de enlace y desplazamiento interno. Se mantiene el límite responsive de 900 px y el panel derecho del curso de v0.1.32 independiente. En escritorio no se modifica la navegación; sin JavaScript queda disponible el menú anterior. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
