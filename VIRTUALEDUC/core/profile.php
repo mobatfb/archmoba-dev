@@ -51,14 +51,22 @@ function profile_avatar(array $u,string $class): void {
     if (profile_has_photo($u)) { ?><img class="<?=h($class)?>" src="?profile_photo=1" alt="Foto de perfil"><?php }
     else { ?><span class="<?=h($class)?>" aria-label="Iniciales del usuario"><?=h(profile_initials($u))?></span><?php }
 }
-function profile_preview_avatar(array $u,string $class,?int $courseId=null): void {
-    $url=$courseId===null?'?profile_photo=1&thumb_id='.(string)$u['id']:'?profile_photo=1&course_teacher='.(string)$courseId;
-    if (function_exists('imagejpeg') && profile_has_photo($u)) { ?><img class="<?=h($class)?>" src="<?=h($url)?>" alt="Foto de <?=h($u['name']??$u['username']??'usuario')?>" loading="lazy" decoding="async" width="42" height="42"><?php }
-    else { ?><span class="<?=h($class)?>" aria-label="Iniciales del usuario"><?=h(profile_initials($u))?></span><?php }
+function profile_preview_data(array $u,?int $courseId=null,string $scope='teacher'): array {
+    $params=['profile_photo'=>1];
+    if ($courseId===null) $params['thumb_id']=(string)$u['id'];
+    elseif ($scope==='teacher') $params['course_teacher']=$courseId;
+    else { $params['thumb_id']=(string)$u['id']; $params[$scope==='candidate'?'course_candidate':'course_member']=$courseId; }
+    return ['initials'=>profile_initials($u),'avatar'=>function_exists('imagejpeg') && profile_has_photo($u)?'?'.http_build_query($params,'','&',PHP_QUERY_RFC3986):null];
+}
+function profile_preview_avatar(array $u,string $class,?int $courseId=null,string $scope='teacher'): void {
+    $data=profile_preview_data($u,$courseId,$scope);
+    ?><span class="<?=h($class)?> ve-avatar-preview" aria-hidden="true"><span><?=h($data['initials'])?></span><?php if($data['avatar']!==null):?><img src="<?=h($data['avatar'])?>" alt="" loading="lazy" decoding="async" width="42" height="42"><?php endif;?></span><?php
 }
 function profile_photo_target(array $actor, mixed $id): ?array {
     if ($id===null) return $actor;
-    if (!is_string($id) || !preg_match('/\A[1-9][0-9]{0,19}\z/D',$id) || !is_manager($actor)) return null;
+    if (!is_string($id) || !preg_match('/\A[1-9][0-9]{0,19}\z/D',$id)) return null;
+    if ($id===(string)$actor['id']) return $actor;
+    if (!is_manager($actor)) return null;
     if ($actor['role']==='admin') return one('SELECT id,role FROM users WHERE id=?',[$id]);
     return one("SELECT id,role FROM users WHERE id=? AND role IN ('teacher','student')",[$id]);
 }
@@ -69,6 +77,17 @@ function profile_course_teacher_target(array $actor,mixed $courseId): ?array {
     if (!$id) return null;
     $course=course_for($id,$actor);
     return $course?one('SELECT id FROM users WHERE id=?',[$course['teacher_id']]):null;
+}
+// Classmates require an active course membership; candidates require course management.
+function profile_course_person_target(array $actor,mixed $courseId,mixed $personId,bool $candidate): ?array {
+    if (!is_string($courseId) || !is_string($personId) || !preg_match('/\A[1-9][0-9]{0,19}\z/D',$personId)) return null;
+    $id=filter_var($courseId,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+    if (!$id || !($course=course_for($id,$actor))) return null;
+    if ($candidate) {
+        if (!course_can_edit($actor,$course)) return null;
+        return one("SELECT id FROM users WHERE id=? AND role='student' AND NOT EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id=? AND e.student_id=users.id)",[$personId,$id]);
+    }
+    return one('SELECT u.id FROM users u JOIN enrollments e ON e.student_id=u.id WHERE e.course_id=? AND u.id=?',[$id,$personId]);
 }
 function profile_output_preview(string $raw): bool {
     if (!function_exists('imagejpeg') || !function_exists('imagecreatefromstring')) return false;
@@ -96,8 +115,12 @@ function serve_profile_photo(?array $u): never {
     if (in_array($_SERVER['HTTP_SEC_FETCH_SITE']??'',['cross-site','same-site'],true)) { http_response_code(403); exit; }
     $thumb=$_GET['thumb_id']??null;
     $courseTeacher=$_GET['course_teacher']??null;
-    if ($courseTeacher!==null && $thumb!==null) { http_response_code(404); exit; }
-    $target=$courseTeacher!==null?profile_course_teacher_target($u,$courseTeacher):profile_photo_target($u,$thumb);
+    $member=$_GET['course_member']??null; $candidate=$_GET['course_candidate']??null;
+    $scopes=($courseTeacher!==null?1:0)+($member!==null?1:0)+($candidate!==null?1:0);
+    if ($scopes>1 || ($courseTeacher!==null && $thumb!==null) || (($member!==null || $candidate!==null) && $thumb===null)) { http_response_code(404); exit; }
+    if ($courseTeacher!==null) $target=profile_course_teacher_target($u,$courseTeacher);
+    elseif ($member!==null || $candidate!==null) $target=profile_course_person_target($u,$member??$candidate,$thumb,$candidate!==null);
+    else $target=profile_photo_target($u,$thumb);
     $path=$target?profile_path($target):null;
     if (!$target || !$path || !profile_has_photo($target) || !($fp=@fopen($path,'rb'))) { http_response_code(404); exit; }
     $stat=fstat($fp);
