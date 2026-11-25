@@ -2,14 +2,14 @@
 require_once dirname(__DIR__).'/tickets.php';
 try{$s=ticket_snapshot($_GET['id']??null,$_GET['p']??1,$_GET['numero']??null,(int)$u['id']);}catch(DomainException $e){$s=null;}
 ?>
-<a class="ticket-back" href="<?=h(pub_url('account',['tab'=>'sorteos']))?>">← Volver a sorteos</a>
+<a class="ticket-back" href="<?=h(pub_url('account',['tab'=>'sorteos']))?>">Volver</a>
 <?php if(!$s||!$s['active']):?><div class="user-empty">Este sorteo no está disponible.</div><?php else:
     $params=['tab'=>'numeros','id'=>$s['id']];$blocked=(array)$s['blocked'];
     $jump=$_GET['numero']??'';$highlight=is_string($jump)&&preg_match('/^[0-9]{1,7}$/D',$jump)?(int)$jump:0;
 ?>
 <section class="ticket-board" data-ticket-board data-url="<?=h(pub_url('ticket_status',['id'=>$s['id'],'p'=>$s['page']]))?>" data-start="<?=$s['start']?>" data-end="<?=$s['end']?>" data-shared="<?=$s['shared']?'1':'0'?>">
     <div class="ticket-board-head"><div><h2><?=h($s['title'])?></h2><p>Selecciona un número disponible · <strong data-ticket-price><?=h($s['price_label'])?></strong> por participación</p><p><?=h($s['close_label'])?></p></div><span class="ticket-live" data-ticket-live role="status">Actualización cada 5 s</span></div>
-    <?php if($s['has_evidence']):?><p class="ticket-conditions-link"><a class="draw-verify-link" href="<?=h(pub_url('evidence',['id'=>$s['id']]))?>">Transparencia y condiciones del sorteo →</a></p><?php endif;?>
+    <?php if($s['has_evidence']):?><p class="ticket-conditions-link"><a class="draw-verify-link" href="<?=h(pub_url('evidence',['id'=>$s['id'],'from'=>'numeros','return_page'=>$s['page']]+($highlight>0?['return_number'=>$highlight]:[])))?>">Transparencia y condiciones del sorteo →</a></p><?php endif;?>
     <div class="ticket-summary"><span><strong data-ticket-paid><?=number_format($s['paid'])?></strong> vendidos</span><span><strong data-ticket-pending><?=number_format($s['pending'])?></strong> pendientes</span><span><strong data-ticket-available><?=$s['available']===null?'Sin límite':number_format($s['available'])?></strong> cupos disponibles</span><span><strong data-ticket-total><?=number_format($s['total'])?></strong> números</span></div>
     <div class="ticket-toolbar"><div class="ticket-legend"><span><i class="ticket-swatch free"></i> Disponible</span><?php if($s['shared']):?><span><i class="ticket-swatch sold"></i> Comprado por otros (disponible)</span><span><i class="ticket-swatch mine"></i> Ya lo tienes</span><?php else:?><span><i class="ticket-swatch sold"></i> Vendido</span><span><i class="ticket-swatch pending"></i> Pendiente</span><?php endif;?></div><form class="ticket-find" method="get" action="index.php"><input type="hidden" name="view" value="account"><input type="hidden" name="tab" value="numeros"><input type="hidden" name="id" value="<?=h($s['id'])?>"><input name="numero" aria-label="Buscar número de boleto" inputmode="numeric" pattern="[0-9]{1,7}" maxlength="7" placeholder="Ej. 0001" required><button class="pub-btn secondary" type="submit">Ir al número</button></form></div>
     <div class="ticket-grid" aria-label="Números de boletos">

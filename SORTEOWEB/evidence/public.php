@@ -11,17 +11,33 @@ function draw_download(): never {
     if(!$r||!is_string($r['archive'])||!hash_equals($r['sha256'],hash('sha256',$r['archive']))){http_response_code(404);exit;}
     session_write_close();header('Content-Type: application/zip');header('Content-Disposition: attachment; filename="resultado-'.$r['id'].'.zip"');header('X-Content-Type-Options: nosniff');header('Content-Length: '.strlen($r['archive']));header('Cache-Control: no-store');echo $r['archive'];exit;
 }
+// Only reconstruct known internal routes; never trust a supplied redirect URL.
+function draw_back_url(?array $r,string $view): string {
+    if($view==='results')return pub_url('home').'#transparencia';
+    $from=$_GET['from']??null;
+    if($from==='home')return pub_url('home').'#sorteos';
+    if($from==='sorteos')return pub_url('account',['tab'=>'sorteos']);
+    if($from==='numeros'&&$r){
+        $params=['tab'=>'numeros','id'=>$r['id']];
+        foreach(['return_page'=>'p','return_number'=>'numero'] as $key=>$name){
+            $n=filter_var($_GET[$key]??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>1000000]]);
+            if($n!==false)$params[$name]=$n;
+        }
+        return pub_url('account',$params);
+    }
+    return pub_url('results');
+}
 function draw_public_page(?array $u,string $view): void {
     $r=$view==='evidence'?draw_public_record($_GET['id']??null):null;
     if($view==='evidence'&&!$r)http_response_code(404);
     pub_head($view==='results'?'Resultados':'Transparencia del sorteo',$u);
     ?><main class="public-wrap draw-public">
-        <?php if($view!=='results'):?><a class="pub-btn secondary" href="<?=h(pub_url('results'))?>">← Volver a resultados</a><?php endif;?>
+        <a class="pub-btn secondary" data-draw-back href="<?=h(draw_back_url($r,$view))?>">Volver</a>
         <h1><?=$view==='results'?'Sorteos y resultados':h($r['title']??'Información no disponible')?></h1>
         <?php if($view==='results'):
             $rows=all("SELECT r.id,r.title,r.status,r.draw_outcome,e.revealed_number FROM raffles r JOIN raffle_evidence e ON e.raffle_id=r.id WHERE r.draw_version=1 AND r.status IN ('activo','finalizado') AND e.published_at IS NOT NULL ORDER BY r.created_at DESC");
             if(!$rows):?><div class="user-empty">Aún no hay sorteos con resultados protegidos publicados.</div><?php else:foreach($rows as $x):?>
-                <article class="draw-result-row"><div><strong><?=h($x['title'])?></strong><p><?=h(state_name($x['status']))?><?=$x['status']==='finalizado'&&$x['revealed_number']!==null?' · Número '.h(str_pad((string)$x['revealed_number'],4,'0',STR_PAD_LEFT)):''?></p></div><a class="pub-btn primary" href="<?=h(pub_url('evidence',['id'=>$x['id']]))?>">Ver condiciones y resultado</a></article>
+                <article class="draw-result-row"><div><strong><?=h($x['title'])?></strong><p><?=h(state_name($x['status']))?><?=$x['status']==='finalizado'&&$x['revealed_number']!==null?' · Número '.h(str_pad((string)$x['revealed_number'],4,'0',STR_PAD_LEFT)):''?></p></div><a class="pub-btn primary" href="<?=h(pub_url('evidence',['id'=>$x['id'],'from'=>'results']))?>">Ver condiciones y resultado</a></article>
             <?php endforeach;endif;
         elseif($r):?>
             <article class="draw-evidence-card">

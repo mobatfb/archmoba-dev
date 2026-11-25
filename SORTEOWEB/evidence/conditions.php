@@ -28,7 +28,7 @@ function pub_draw_conditions(array $r,bool $link=true): void {
             <?php if(!$shared&&$date):?><li>Si llega la fecha de cierre sin que todos los números estén vendidos y pagados, no se entrega el premio y se registran las devoluciones de los boletos pagados, pendientes de revisión.</li><?php endif;?>
             <li>Las entregas de premios y devoluciones requieren gestión posterior; no se realizan transferencias automáticas.</li>
         </ul>
-        <?php if($link):?><a class="draw-verify-link" href="<?=h(pub_url('evidence',['id'=>$r['id']]))?>">Consultar archivo y código de verificación →</a><?php endif;?>
+        <?php if($link):?><a class="draw-verify-link" href="<?=h(pub_url('evidence',['id'=>$r['id'],'from'=>'sorteos']))?>">Consultar archivo y código de verificación →</a><?php endif;?>
     </section>
     <?php
 }
