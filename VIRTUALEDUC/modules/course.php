@@ -2,24 +2,31 @@
 declare(strict_types=1);
 if (!defined('VE_VERSION')) { http_response_code(404); exit; }
 $isStudent=$u['role']==='student';
+$canManage=course_can_edit($u,$c);
 $modules=all('SELECT id,title,position FROM course_modules WHERE course_id=? ORDER BY position,id',[$c['id']]);
 $teacher=one('SELECT name FROM users WHERE id=?',[$c['teacher_id']]);
 $total=count($lessons); $completed=$isStudent?count(array_intersect(array_column($lessons,'id'),$done)):0;
 $percent=$total?(int)round(100*$completed/$total):0;
-$tabs=['content'=>'Contenido','activities'=>'Actividades','assessments'=>'Evaluaciones','grades'=>'Calificaciones','certificate'=>'Certificado'];
+$tabs=['content'=>'Contenido','activities'=>'Actividades','assessments'=>'Evaluaciones','grades'=>'Calificaciones','participants'=>'Participantes','certificate'=>'Certificado'];
 $tab=is_string($_GET['tab']??null)&&isset($tabs[$_GET['tab']])?$_GET['tab']:'content';
 $empty=['activities'=>'Aún no hay actividades disponibles.','assessments'=>'Aún no hay evaluaciones disponibles.','grades'=>'Aún no hay calificaciones disponibles.','certificate'=>'Aún no hay certificados disponibles.'];
 $courseUrl='?course='.(string)$c['id'];
 ?>
 <div class="ve-course-breadcrumb"><a class="btn" href="?page=courses">← Cursos</a><span>Inicio / Cursos / <?=h($c['title'])?></span></div>
-<div class="ve-course-hero">
+<div class="ve-course-hero<?=$canManage?' ve-course-hero-has-status':''?>">
+  <?php if($canManage):?><span class="ve-course-hero-status <?=$c['published']?'ve-status-published':'ve-status-draft'?>"><span aria-hidden="true"></span><?=$c['published']?'Publicado':'Borrador'?></span><?php endif;?>
   <img class="ve-course-cover" src="<?=h(course_cover_url($c))?>" alt="Portada del curso" width="720" height="405">
   <div class="ve-course-hero-copy"><h1><?=h($c['title'])?></h1><p><?=nl2br(h($c['description']))?></p>
   <div class="ve-course-metadata"><?php foreach(course_metadata_labels($c) as $label=>$value):?><div><small><?=h($label)?></small><strong><?=h($value)?></strong></div><?php endforeach;?></div></div>
 </div>
-<nav class="ve-course-tabs" aria-label="Secciones del curso"><?php foreach($tabs as $key=>$label):?><a href="<?=h($courseUrl.'&tab='.$key)?>" <?=$tab===$key?'aria-current="page"':''?>><?=h($label)?></a><?php endforeach;?></nav>
-<?php if(!$isStudent):?><div class="ve-course-tools"><button type="button" data-ve-open="edit-course-dialog" aria-haspopup="dialog">Editar curso</button><span class="tag"><?=$c['published']?'Publicado':'Borrador'?></span><form method="post"><?php action('publish',(int)$c['id']);?><button class="ve-quiet"><?=$c['published']?'Ocultar curso':'Publicar curso'?></button></form><?php creation_dialog($u,'lesson','',(int)$c['id']); if(is_manager($u)) creation_dialog($u,'enroll','',(int)$c['id']); ?></div><?php endif;?>
-<?php if(!$isStudent) require __DIR__.'/course_edit.php'; ?>
+<div class="ve-course-tabbar">
+  <nav class="ve-course-tabs" aria-label="Secciones del curso"><?php foreach($tabs as $key=>$label):?><a href="<?=h($courseUrl.'&tab='.$key)?>" <?=$tab===$key?'aria-current="page"':''?>><?=h($label)?></a><?php endforeach;?></nav>
+  <?php if($canManage):?><details class="ve-course-admin" data-ve-course-admin><summary class="btn"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9 3-.6 2.3-2 .9L4 5l-2 3 1.8 1.6v4.8L2 16l2 3 2.4-1.2 2 .9L9 21h6l.6-2.3 2-.9L20 19l2-3-1.8-1.6V9.6L22 8l-2-3-2.4 1.2-2-.9L15 3z"/></svg><span>Administrar</span><span aria-hidden="true">⌄</span></summary>
+    <div class="ve-course-admin-menu"><button type="button" data-ve-open="edit-course-dialog" aria-haspopup="dialog">Editar curso</button><button type="button" data-ve-open="course-enroll-dialog" aria-haspopup="dialog">Crear matrícula</button><form method="post" class="ve-course-visibility"><?php action('publish',(int)$c['id']);?><button type="submit"><?=$c['published']?'Ocultar curso':'Publicar curso'?></button></form></div>
+  </details><?php endif;?>
+</div>
+<?php if($canManage):?><div class="ve-course-tools"><?php creation_dialog($u,'lesson','',(int)$c['id']); ?></div><?php endif;?>
+<?php if($canManage): require __DIR__.'/course_edit.php'; require __DIR__.'/course_enroll.php'; ?><script src="modules/course_admin.js?v=<?=h(VE_VERSION)?>" defer></script><?php endif;?>
 <div class="ve-course-layout">
   <section class="ve-course-panel">
   <?php if($tab==='content'):?><h2>Temario del curso</h2>
@@ -29,6 +36,7 @@ $courseUrl='?course='.(string)$c['id'];
         <?php foreach($items as $l):?><details class="ve-course-lesson"><summary><span class="ve-lesson-symbol" aria-hidden="true">▤</span><span><?=h($l['title'])?></span><?php if($isStudent):?><small class="<?=in_array($l['id'],$done)?'ve-done':''?>"><?=in_array($l['id'],$done)?'✓ Completada':'Pendiente'?></small><?php endif;?></summary><div class="ve-lesson-body"><p class="lesson"><?=h($l['content'])?></p><?php if($isStudent&&!in_array($l['id'],$done)):?><form method="post"><?php action('complete',(int)$c['id']);?><input type="hidden" name="lesson_id" value="<?=h($l['id'])?>"><button>Marcar como completada</button></form><?php endif;?></div></details><?php endforeach;?>
       </details>
     <?php endforeach;?>
+  <?php elseif($tab==='participants'): require __DIR__.'/course_participants.php'; ?>
   <?php else:?><h2><?=h($tabs[$tab])?></h2><div class="ve-course-empty"><strong><?=h($empty[$tab])?></strong><p class="muted">Este apartado queda preparado para una próxima fase.</p></div><?php endif;?>
   </section>
   <aside class="ve-course-aside">
