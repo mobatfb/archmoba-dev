@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.12 - authenticated voice recording storage.
+// FUTUREO STUDIO v0.1.13 - authenticated voice recording storage.
 date_default_timezone_set('America/Guayaquil');
 require_once __DIR__ . '/projects.php';
 header('X-Content-Type-Options: nosniff');
@@ -181,8 +181,13 @@ if ($action==='waveform') {
     if ($method!=='GET'||$item['mime']!=='audio/wav') reply(['ok'=>true,'peaks'=>[]]);
     reply(['ok'=>true,'peaks'=>waveformPeaks($media,waveSize($media))]);
 }
+clearstatcache(true,$media);
 $length = filesize($media);
-if ($length === false || $length === 0) fail('Audio vacío.',404);
+if ($length === false || $length === 0 || ($item['mime']==='audio/wav' && $length<=44)) fail('El archivo de audio no contiene muestras guardadas.',404);
+// Binary audio must not be compressed or prefixed with PHP output.
+@ini_set('zlib.output_compression','0');
+while(ob_get_level()>0){if(!@ob_end_clean())break;}
+header_remove('Content-Encoding');
 $start = 0; $end = $length-1;
 $range = $_SERVER['HTTP_RANGE'] ?? '';
 if ($range !== '') {
@@ -193,6 +198,7 @@ if ($range !== '') {
     http_response_code(206); header('Content-Range: bytes '.$start.'-'.$end.'/'.$length);
 }
 header('Content-Type: '.$item['mime']);
+header('Cache-Control: private, no-store, no-transform');
 header('Accept-Ranges: bytes');
 header('Content-Disposition: inline; filename="'.$item['file'].'"');
 header('Content-Length: '.($end-$start+1));
