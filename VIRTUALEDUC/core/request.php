@@ -12,6 +12,7 @@ try {
         go();
     }
     if (isset($_GET['profile_photo'])) { serve_profile_photo($u); }
+    if (isset($_GET['course_cover'])) { serve_course_cover($u); }
     if (isset($_GET['template'])) {
         try { creation_template($u); } catch (DomainException $e) { http_response_code(403); exit(h($e->getMessage())); }
     }
