@@ -15,6 +15,9 @@ function creation_spec(?array $u, string $kind, string $role = '', int $course =
     if ($kind === 'lesson' && $course>0 && $u['role']!=='student' && course_for($course,$u)) {
         return ['title'=>'Crear lección','headers'=>['titulo','contenido'],'return'=>'course='.$course,'limit'=>500];
     }
+    if ($kind === 'course_enroll' && $course>0 && ($c=course_for($course,$u)) && course_can_edit($u,$c)) {
+        return ['title'=>'Matrícula masiva','headers'=>['usuario'],'return'=>'course='.$course.'&tab=participants','limit'=>COURSE_ENROLL_LIMIT];
+    }
     if ($kind === 'enroll' && is_manager($u) && ($course===0 || course_for($course,$u))) {
         return ['title'=>'Crear matrícula','headers'=>$course?['usuario_estudiante']:['id_curso','usuario_estudiante'],'return'=>$course?'course='.$course:'page=enrollments','limit'=>500];
     }
@@ -51,7 +54,8 @@ function creation_template(?array $u): never {
     [$kind,$role,$course]=creation_context($_GET);
     $spec=creation_spec($u,$kind,$role,$course);
     header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="plantilla_'.$kind.($role?'_'.$role:'').'.csv"');
+    $filename=$kind==='course_enroll'?'plantilla_matricula_masiva.csv':'plantilla_'.$kind.($role?'_'.$role:'').'.csv';
+    header('Content-Disposition: attachment; filename="'.$filename.'"');
     echo "\xEF\xBB\xBF";
     $out=fopen('php://output','wb');
     fputcsv($out,$spec['headers'],';','"','');
@@ -200,6 +204,12 @@ function handle_creation(?array $u): never {
         $spec=creation_spec($u,$kind,$role,$course); $back=$spec['return'];
         $mode=$_POST['mode']??'';
         if(!in_array($mode,['individual','bulk'],true)) throw new DomainException('Modo inválido.');
+        if($kind==='course_enroll') {
+            if($mode!=='bulk') throw new DomainException('Usa la pestaña Masivo (CSV).');
+            $result=course_enroll_csv($u,$course,csv_rows($spec['headers'],$spec['limit']));
+            flash($result['added'].' estudiante(s) matriculado(s).'.($result['existing']?' '.$result['existing'].' ya estaba(n) matriculado(s).':'').($result['duplicates']?' '.$result['duplicates'].' fila(s) repetida(s) omitida(s).':''));
+            go($back);
+        }
         $rows=$mode==='bulk'?csv_rows($spec['headers'],$spec['limit']):[1=>$_POST];
         if($kind==='course'&&$mode==='individual') $cover=course_cover_upload();
         $pdo=db(); $pdo->beginTransaction(); $errors=[];
