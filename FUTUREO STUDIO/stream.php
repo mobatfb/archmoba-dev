@@ -29,6 +29,7 @@ function waveInfo(array $item,string $dir): array {
             $item['duration_ms']=(int)round($bytes/$rate/2*1000);
         }
     }
+    if (isset($item['clip_duration_ms'])) $item['duration_ms']=max(0,(int)$item['clip_duration_ms']);
     return $item;
 }
 function handleStream(string $action,string $path,string $folder,string $dir): void {
@@ -65,6 +66,7 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
     }
     if ($index===null) fail('Grabación no encontrada.',404);
     $item=$items[$index];
+    if (isset($item['clip_duration_ms'])) fail('El clip editado no admite escritura de audio.',409);
     $rate=(int)($item['sample_rate']??0);
     if ($item['mime']!=='audio/wav'||$rate<8000||$rate>192000) fail('Grabación no compatible.',409);
     $media=$dir.'/'.$item['file'];
@@ -113,7 +115,7 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
     flock($lock,LOCK_UN);fclose($lock);
     reply(['ok'=>true,'recording'=>$item,'pcm_bytes'=>$bytes]);
 }
-function waveformPeaks(string $media,int $bytes): array {
+function waveformPeaks(string $media,int $bytes,int $offset=0): array {
     $fp=@fopen($media,'rb');if(!$fp||$bytes<2) {if($fp)fclose($fp);return [];}
     $samples=intdiv($bytes,2);$bins=min(720,max(1,(int)ceil($samples/1200)));$out=[];
     // Bounded representative samples per bin; live waveform uses every recorded sample.
@@ -122,7 +124,7 @@ function waveformPeaks(string $media,int $bytes): array {
         $peak=0;$window=min(192,max(1,$b-$a));
         for($j=0;$j<3;$j++){
             $pos=$a+(int)floor(max(0,$b-$a-$window)*$j/2);
-            if(fseek($fp,44+$pos*2)!==0)continue;
+            if(fseek($fp,44+$offset+$pos*2)!==0)continue;
             $buf=fread($fp,$window*2);if(!is_string($buf)||strlen($buf)<2)continue;
             foreach(unpack('v*',substr($buf,0,strlen($buf)&~1))?:[] as $v){$v=$v>=32768?$v-65536:$v;$peak=max($peak,abs($v));}
         }

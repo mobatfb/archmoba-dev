@@ -50,3 +50,20 @@
 #voice-canvas.clip-hover{cursor:grab}
 #voice-canvas.clip-dragging{cursor:grabbing}
 #voice-canvas.clip-saving{cursor:wait}
+
+/* v0.1.14: compact editing tools in the lower transport bar. */
+.daw-tools{display:flex;gap:5px;align-items:center;flex:none;padding-left:10px;border-left:1px solid #34465d}
+.daw-tool{display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid #30445d;border-radius:7px;background:#0e1928;color:#b8cce3}
+.daw-tool svg{pointer-events:none;max-width:22px}
+.daw-tool:hover:not(:disabled){border-color:#33d5ff;color:#fff}
+.daw-tool[aria-pressed="true"]{background:#153a50;border-color:#33d5ff;color:#53e4ff;box-shadow:0 0 0 1px #33d5ff35 inset}
+.daw-tool[data-tool="erase"][aria-pressed="true"]{background:#42202e;border-color:#ff6e8b;color:#ff9bb0}
+.daw-tool:disabled{opacity:.45;cursor:default}
+#voice-canvas[data-tool="pointer"]{cursor:default}
+#voice-canvas[data-tool="hand"]{cursor:grab}
+#voice-canvas[data-tool="cut"],#voice-canvas[data-tool="erase"]{cursor:crosshair}
+#voice-canvas[data-tool="hand"].clip-dragging{cursor:grabbing}
+#voice-canvas.clip-saving{cursor:wait}
+[data-orientation="vertical"] .daw-tools{padding-left:0;border:0;justify-content:center}
+[data-orientation="vertical"] .daw-tool{width:35px;height:35px}
+@media(max-width:620px){.daw-tools{padding-left:5px;gap:4px}.daw-tool{width:34px;height:34px}.daw-tool svg{width:18px;height:18px}}

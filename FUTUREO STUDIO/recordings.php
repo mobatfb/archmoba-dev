@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.13 - authenticated voice recording storage.
+// FUTUREO STUDIO v0.1.14 - authenticated voice recording storage.
 date_default_timezone_set('America/Guayaquil');
 require_once __DIR__ . '/projects.php';
 header('X-Content-Type-Options: nosniff');
@@ -73,6 +73,52 @@ $action = $method === 'POST' ? ($_POST['action'] ?? '') : ($_GET['action'] ?? 'l
 define('FUTUREO_RECORDINGS',true);
 require_once __DIR__.'/stream.php';
 if ($method === 'POST' && in_array($action,['stream_start','stream_chunk','stream_finish'],true)) handleStream($action,$path,$folder,$dir);
+// Non-destructive edits: each segment references the same immutable source audio.
+if ($method === 'POST' && in_array($action,['split_clip','delete_clip'],true)) {
+    $id=$_POST['recording_id']??'';
+    if (!is_string($id)||!preg_match('/\A[a-f0-9]{24}\z/',$id)) fail('Clip inválido.');
+    if (!ensureDir($folder)||!ensureDir($dir)||is_link($dir.'/.lock')) fail('No se puede escribir en el proyecto.',500);
+    $lock=@fopen($dir.'/.lock','c+b');
+    if (!$lock||!flock($lock,LOCK_EX)) fail('No se pudo bloquear el proyecto.',500);
+    $data=readProject($path); $items=savedRecordings($data);
+    $offsets=[1=>0,2=>0,3=>0,4=>0]; $target=null; $normalized=[];
+    foreach($items as $item){
+        $t=(int)($item['track']??1); if($t<1||$t>4)$t=1;
+        $item['track']=$t; $info=waveInfo($item,$dir);
+        if(!isset($item['start_ms'])||!is_numeric($item['start_ms'])||(float)$item['start_ms']<0){
+            $item['start_ms']=$offsets[$t]; $offsets[$t]+=max(0,(int)($info['duration_ms']??0));
+        }else $item['start_ms']=(int)$item['start_ms'];
+        $normalized[$item['id']]=$item;
+        if($item['id']===$id)$target=$item;
+    }
+    // Deletion is idempotent; a lost response can safely be retried.
+    if($target===null){if($action==='delete_clip')reply(['ok'=>true,'deleted'=>$id]);fail('Clip no encontrado.',404);}
+    $segments=[];
+    if($action==='split_clip'){
+        $media=$dir.'/'.$target['file'];
+        if(!is_file($media)||is_link($media))fail('Audio no encontrado.',404);
+        $info=waveInfo($target,$dir); $len=(int)($info['duration_ms']??0);
+        $cut=filter_var($_POST['cut_ms']??null,FILTER_VALIDATE_INT);
+        $rightId=$_POST['right_id']??'';
+        if(!is_string($rightId)||!preg_match('/\A[a-f0-9]{24}\z/',$rightId)||isset($normalized[$rightId]))fail('Identificador de corte inválido.',409);
+        if($cut===false||$cut<1||$cut>=$len)fail('El corte debe estar dentro del clip.',422);
+        if(count($items)>=500)fail('El proyecto alcanzó el límite de 500 clips.',409);
+        $source=max(0,(int)($target['source_offset_ms']??0));
+        $left=$target; $left['source_offset_ms']=$source; $left['clip_duration_ms']=$cut; $left['duration_ms']=$cut; $left['status']='saved';
+        $right=$target; $right['id']=$rightId; $right['source_offset_ms']=$source+$cut; $right['clip_duration_ms']=$len-$cut; $right['duration_ms']=$len-$cut; $right['start_ms']=$target['start_ms']+$cut; $right['status']='saved';
+        $segments=[$left,$right];
+    }
+    $out=[];
+    foreach($data['content']['recordings']??[] as $original){
+        $key=is_array($original)?($original['id']??null):null;
+        if($key===$id){foreach($segments as $segment)$out[]=$segment;continue;}
+        $out[]=is_string($key)&&isset($normalized[$key])?$normalized[$key]:$original;
+    }
+    $data['content']['recordings']=$out; storeProject($path,$data);
+    flock($lock,LOCK_UN); fclose($lock);
+    if($action==='delete_clip')reply(['ok'=>true,'deleted'=>$id]);
+    reply(['ok'=>true,'recordings'=>array_map(static function($r)use($dir){return waveInfo($r,$dir);},$segments)]);
+}
 // Move only clip metadata. Audio bytes are never rewritten or moved.
 if ($method === 'POST' && $action === 'move_clip') {
     $id = $_POST['recording_id'] ?? '';
@@ -94,7 +140,7 @@ if ($method === 'POST' && $action === 'move_clip') {
     foreach($items as $i=>$item){
         $t=(int)($item['track']??1); if($t<1||$t>4)$t=1;
         $item['track']=$t;
-        if(!array_key_exists('start_ms',$item)||!is_numeric($item['start_ms'])&&$item['start_ms']!==null||(float)$item['start_ms']<0){
+        if(!isset($item['start_ms'])||!is_numeric($item['start_ms'])||(float)$item['start_ms']<0){
             $item['start_ms']=$offsets[$t];
             $info=waveInfo($item,$dir); $offsets[$t]+=max(0,(int)($info['duration_ms']??0));
         } else $item['start_ms']=(int)$item['start_ms'];
@@ -179,7 +225,14 @@ $media = $dir.'/'.$item['file'];
 if (!is_file($media) || is_link($media)) fail('Audio no encontrado.',404);
 if ($action==='waveform') {
     if ($method!=='GET'||$item['mime']!=='audio/wav') reply(['ok'=>true,'peaks'=>[]]);
-    reply(['ok'=>true,'peaks'=>waveformPeaks($media,waveSize($media))]);
+    $bytes=waveSize($media); $offset=0;
+    if(isset($item['clip_duration_ms'])){
+        $rate=(int)($item['sample_rate']??0);
+        if($rate<8000||$rate>192000)reply(['ok'=>true,'peaks'=>[]]);
+        $offset=min($bytes,(int)round(max(0,(int)($item['source_offset_ms']??0))*$rate/1000)*2);
+        $bytes=min($bytes-$offset,(int)round(max(0,(int)$item['clip_duration_ms'])*$rate/1000)*2);
+    }
+    reply(['ok'=>true,'peaks'=>waveformPeaks($media,$bytes,$offset)]);
 }
 clearstatcache(true,$media);
 $length = filesize($media);
