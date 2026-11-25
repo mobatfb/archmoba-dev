@@ -2,7 +2,20 @@
 declare(strict_types=1);
 if (!defined('SW_APP') || !SW_PUBLIC) { http_response_code(404); exit; }
 require_once __DIR__.'/templates/otp.php';
-function mail_settings(): array { $file=__DIR__.'/config.local.php';if(!is_file($file))throw new RuntimeException('Mail not configured');$c=require $file;if(!is_array($c)||!filter_var($c['from_email']??'',FILTER_VALIDATE_EMAIL)||preg_match('/[\r\n]/',(string)($c['from_email']??'')))throw new RuntimeException('Mail config invalid');return $c; }
+function mail_settings(): array {
+    $file=__DIR__.'/config.local.php';
+    if(!is_file($file))throw new RuntimeException('Mail not configured');
+    $c=require $file;
+    if(!is_array($c)||!is_string($c['from_email']??null)||!filter_var($c['from_email'],FILTER_VALIDATE_EMAIL)||preg_match('/[\r\n]/',$c['from_email']))throw new RuntimeException('Mail config invalid');
+    $transport=$c['transport']??'';
+    if($transport==='mail'){
+        if(!function_exists('mail'))throw new RuntimeException('PHP mail unavailable');
+    }elseif($transport==='smtp'){
+        $host=$c['smtp_host']??'';$port=filter_var($c['smtp_port']??null,FILTER_VALIDATE_INT);
+        if(!is_string($host)||!preg_match('/^[a-zA-Z0-9.-]+$/D',$host)||$port===false||$port<1||$port>65535||!in_array($c['smtp_security']??'',['tls','starttls'],true)||!is_string($c['smtp_user']??null)||$c['smtp_user']===''||!is_string($c['smtp_password']??null)||$c['smtp_password']===''||!extension_loaded('openssl'))throw new RuntimeException('SMTP config invalid');
+    }else throw new RuntimeException('Mail transport invalid');
+    return $c;
+}
 function smtp_read($s,array $expected): string { $reply='';for($i=0;$i<80;$i++){ $line=fgets($s,4096);if($line===false)throw new RuntimeException('SMTP response failed');$reply.=$line;if(preg_match('/^([0-9]{3}) /',$line,$m)){if(!in_array((int)$m[1],$expected,true))throw new RuntimeException('SMTP rejected request');return $reply;} }throw new RuntimeException('SMTP response too long'); }
 function smtp_write($s,string $line): void { $n=strlen($line);$pos=0;while($pos<$n){$w=fwrite($s,substr($line,$pos));if($w===false||$w===0)throw new RuntimeException('SMTP write failed');$pos+=$w;} }
 function smtp_cmd($s,string $cmd,array $expected): string { smtp_write($s,$cmd."\r\n");return smtp_read($s,$expected); }
@@ -16,8 +29,8 @@ function smtp_send(array $c,string $to,string $subject,string $headers,string $b
         $raw='To: '.$to."\r\n".'Subject: '.$subject."\r\n".$headers."\r\n\r\n".$body;$raw=preg_replace('/\r\n|\r|\n/',"\r\n",$raw);$raw=preg_replace('/(?m)^\./','..',$raw);smtp_write($s,rtrim($raw,"\r\n")."\r\n.\r\n");smtp_read($s,[250]);try{smtp_cmd($s,'QUIT',[221]);}catch(Throwable $ignored){}
     }finally{fclose($s);}
 }
-function send_otp_mail(string $to,string $code): void {
-    $c=mail_settings();[$subject,$plain,$html]=otp_template($code);$boundary='sw_'.bin2hex(random_bytes(18));$name=(string)($c['from_name']??'SORTEOWEB');$name='=?UTF-8?B?'.base64_encode($name).'?=';
+function send_otp_mail(string $to,string $code,?array $settings=null): void {
+    $c=$settings??mail_settings();[$subject,$plain,$html]=otp_template($code);$boundary='sw_'.bin2hex(random_bytes(18));$name=(string)($c['from_name']??'SORTEOWEB');$name='=?UTF-8?B?'.base64_encode($name).'?=';
     $headers='From: '.$name.' <'.$c['from_email'].">\r\nDate: ".date(DATE_RFC2822)."\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"".$boundary.'"';
     $body='--'.$boundary."\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n".chunk_split(base64_encode($plain)).'--'.$boundary."\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n".chunk_split(base64_encode($html)).'--'.$boundary."--\r\n";
     if(($c['transport']??'')==='smtp'){smtp_send($c,$to,$subject,$headers,$body);return;}
