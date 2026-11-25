@@ -11,7 +11,7 @@ $settings=institution_settings();
   <form method="post" enctype="multipart/form-data">
     <?php action('institution_save'); ?>
     <div class="ve-institution-logo-field">
-      <?php if(institution_logo_file($settings['logo_path'])):?><img class="ve-logo-preview" src="?institution_logo=1" alt="Logo actual"><?php else:?><span class="ve-logo-preview ve-brand-mark">VE</span><?php endif;?>
+      <?php if(institution_logo_file($settings['logo_path'])):?><img class="ve-logo-preview" src="<?=h(institution_logo_url($settings))?>" alt="Logo actual"><?php else:?><span class="ve-logo-preview ve-brand-mark">VE</span><?php endif;?>
       <div><label>Logo o icono institucional<input type="file" name="logo" accept="image/png,image/jpeg,image/webp"></label><small class="muted">PNG, JPG o WebP · máximo 2 MB · hasta 4096 × 4096 px</small><?php if($settings['logo_path']):?><label class="ve-remove-logo"><input type="checkbox" name="remove_logo" value="1"> Eliminar logo actual (si no seleccionas uno nuevo)</label><?php endif;?></div>
     </div>
     <label>Nombre de la institución<input name="institution_name" required maxlength="180" value="<?=h($settings['institution_name'])?>"></label>
