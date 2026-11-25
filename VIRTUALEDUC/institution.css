@@ -20,11 +20,9 @@
 
 /* Lightweight menu icons, shared across desktop and mobile. */
 .ve-institution-sidebar .ve-group .ve-nav-icon{flex:none;width:18px;height:18px;display:block}
-.ve-institution-sidebar .ve-group summary .ve-nav-icon{width:15px;height:15px}
 .ve-institution-sidebar .ve-group summary,.ve-institution-sidebar .ve-group a{display:flex;align-items:center;gap:10px}
 .ve-institution-sidebar .ve-group a{padding-left:13px}
 .ve-institution-sidebar .ve-group a>span,.ve-institution-sidebar .ve-group summary>span{min-width:0;overflow-wrap:anywhere}
 .ve-institution-sidebar .ve-group a .ve-nav-icon{color:#bfd8f3}
 .ve-institution-sidebar .ve-group a.ve-active .ve-nav-icon,.ve-institution-sidebar .ve-group a:hover .ve-nav-icon{color:#fff}
 .ve-sidebar-user button.ve-exit{display:inline-flex;align-items:center;gap:4px}
-.ve-sidebar-user button.ve-exit .ve-nav-icon{width:15px;height:15px;flex:none}
