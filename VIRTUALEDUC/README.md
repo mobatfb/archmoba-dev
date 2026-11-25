@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.26
+# VIRTUALEDUC v0.1.28
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -113,6 +113,12 @@ El curso muestra portada, datos, pestañas, temario, progreso real, responsable 
 
 ## Actualización a v0.1.26
 El catálogo muestra cuatro cursos por fila en escritorio (ancho superior a 1100 px) y dos en pantallas compactas y móviles. Editar curso abre un flotante independiente desde la tarjeta o desde el interior del curso. Permite actualizar el título, descripción, responsable autorizado, modalidad, duración, nivel, período y miniatura. Si no se selecciona otra imagen, conserva la actual; también puede restaurar un SVG predeterminado. Los administradores y subadministradores conservan su alcance, los docentes solo editan sus propios cursos y los estudiantes no pueden editar. Los módulos, lecciones, matrículas y progreso no se modifican. Aplicar sobre v0.1.25, con su migración ya ejecutada; no requiere SQL adicional.
+
+## Actualización a v0.1.27
+Dentro del curso, el botón Administrar reúne Editar curso y Crear matrícula para administradores, subadministradores y docentes responsables. La matrícula múltiple muestra estudiantes aún no matriculados, búsqueda paginada (50 por consulta), lista de seleccionados y hasta 500 estudiantes por operación. Se validan permisos, roles y duplicados en el servidor y se guardan las matrículas en una transacción. Participantes se ubica después de Calificaciones; los gestores del curso consultan nombre, usuario y fecha de matrícula, mientras los estudiantes matriculados solo ven los nombres. Se conserva la creación de lecciones, publicación y matrícula global. En el catálogo, toda la tarjeta abre el curso; un lápiz en la esquina superior derecha abre directamente el flotante de edición para los gestores autorizados. Se eliminan los botones Abrir curso y Editar del pie de las tarjetas. La miniatura cubre toda la tarjeta y la información (estado, título, descripción, modalidad, duración, nivel y período) aparece encima con un degradado oscuro semitransparente. Los textos largos se abrevian visualmente, conservando los datos completos al abrir el curso. Se mantienen cuatro columnas en escritorio y dos en móvil. Aplicar sobre v0.1.26; no requiere SQL.
+
+## Actualización a v0.1.28
+El estado Publicado o Borrador se muestra en la esquina superior derecha de la portada del curso para sus gestores autorizados. Ocultar curso o Publicar curso es la última opción de Administrar, después de Crear matrícula. Se mantiene la validación de permisos y el envío POST con protección CSRF. Parche acumulativo sobre v0.1.26 o v0.1.27; no requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
