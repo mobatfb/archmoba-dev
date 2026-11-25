@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.24
+# VIRTUALEDUC v0.1.25
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -103,6 +103,13 @@ La sección Capacitaciones pasa a llamarse Cursos en el menú, el panel principa
 
 ## Actualización a v0.1.24
 El menú lateral incorpora iconos SVG locales en todas las secciones, enlaces y en Salir, para los cuatro roles. No utiliza fuentes de iconos ni servicios externos. Se conservan los permisos, las rutas y la navegación adaptable. Aplicar sobre v0.1.23; no requiere SQL.
+
+## Actualización a v0.1.25
+Hacer un respaldo y detener el acceso al sistema. Sobre v0.1.24, importar una sola vez migrations/0.1.25.sql en phpMyAdmin y copiar los archivos del parche en la raíz del sistema. No reinstalar schema.sql en una base existente. Se conservan los cursos, las matrículas, las lecciones y su progreso. Los cursos previos conservan sus datos; modalidad, duración, nivel y período quedan sin definir hasta completarlos en una futura edición. Cada curso recibe un módulo inicial; las lecciones anteriores se asocian a él.
+
+La creación individual solicita modalidad (En línea, Presencial o Híbrida), duración en horas (hasta dos decimales), nivel (Básico, Intermedio o Avanzado), período (prellenado con el período activo, si existe) y miniatura opcional. JPG/PNG/WebP hasta 5 MB, 12 megapíxeles; GD la convierte a JPEG de 720 × 405. Se almacena en la carpeta privada del hosting, bajo course-covers del directorio privado de perfiles, sin exponer archivos directamente. Requiere GD y permisos de escritura fuera de la raíz web únicamente si se sube una imagen. Sin imagen se asigna aleatoriamente uno de tres SVG locales; se conserva la elección. Los CSV usan el nuevo encabezado titulo;descripcion;usuario_responsable;modalidad;duracion;nivel;periodo y no necesitan imágenes. Descargar la nueva plantilla.
+
+El curso muestra portada, datos, pestañas, temario, progreso real, responsable y recursos. Un nuevo curso tiene un módulo vacío; las lecciones existentes y las acciones de publicación, matrícula y progreso siguen disponibles. Actividades, evaluaciones, calificaciones, certificado y recursos son estados vacíos para la siguiente fase; todavía no se implementa el modo edición de módulos. No se generan datos ficticios. Para una instalación nueva, schema.sql incluye la estructura actualizada.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
