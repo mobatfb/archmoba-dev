@@ -3,16 +3,46 @@ declare(strict_types=1);
 if(!defined('SW_APP')){http_response_code(404);exit;}
 require_once __DIR__.'/generator.php';
 function draw_key(): string {
-    $env=getenv('SW_EVIDENCE_KEY');$file=__DIR__.'/config.local.php';$c=is_file($file)?require $file:[];$hex=$env!==false?$env:($c['key_hex']??'');
-    if(!function_exists('sodium_crypto_secretbox')||!is_string($hex)||!preg_match('/^[a-fA-F0-9]{64}$/D',$hex)||count(array_unique(str_split(strtolower($hex))))<8)throw new DomainException('Configura la clave privada de evidencia (evidence/config.local.php) y habilita Sodium.');
+    if(!function_exists('sodium_crypto_secretbox'))throw new DomainException('Habilita Sodium en la versión PHP del sitio.');
+    $env=getenv('SW_EVIDENCE_KEY');$file=__DIR__.'/config.local.php';
+    if($env!==false){$hex=$env;}else{
+        clearstatcache(true,$file);
+        if(!is_file($file)||!is_readable($file))throw new DomainException('No se encontró la clave privada de evidencia. Si ya tienes sorteos con evidencia, restaura la clave original.');
+        $c=require $file;$hex=is_array($c)?($c['key_hex']??''):'';
+    }
+    if(!is_string($hex)||!preg_match('/^[a-fA-F0-9]{64}$/D',$hex)||count(array_unique(str_split(strtolower($hex))))<8)throw new DomainException('La clave privada de evidencia no es válida. No se reemplazó.');
     return hex2bin($hex);
+}
+// Only an authenticated activation may initialize a missing key, never a reveal.
+function draw_prepare_key(): void {
+    if(!function_exists('sodium_crypto_secretbox'))throw new DomainException('Habilita Sodium en la versión PHP del sitio.');
+    $file=__DIR__.'/config.local.php';clearstatcache(true,$file);
+    if(getenv('SW_EVIDENCE_KEY')!==false||file_exists($file)||is_link($file)){draw_key();return;}
+    // No automatic recovery: a new key cannot decrypt any previous commitment.
+    if(one('SELECT raffle_id FROM raffle_evidence WHERE sealed_result IS NOT NULL LIMIT 1 FOR UPDATE')){
+        clearstatcache(true,$file);
+        if(getenv('SW_EVIDENCE_KEY')!==false||is_file($file)){draw_key();return;}
+        throw new DomainException('Falta la clave privada original y ya existen sorteos con evidencia. Restaura config.local.php desde tu respaldo.');
+    }
+    $bytes="<?php\nif(!defined('SW_APP')){http_response_code(404);exit;}\nreturn ['key_hex'=>'".bin2hex(random_bytes(32))."'];\n";
+    // Exclusive creation: never truncate, replace or rotate an existing key.
+    $mask=umask(0077);try{$f=@fopen($file,'x');}finally{umask($mask);}
+    if($f===false){
+        clearstatcache(true,$file);
+        if(getenv('SW_EVIDENCE_KEY')!==false||is_file($file)){draw_key();return;}
+        throw new DomainException('No se pudo crear la clave privada. PHP necesita permiso de escritura en evidence/.');
+    }
+    try{
+        if(!@chmod($file,0600)||fwrite($f,$bytes)!==strlen($bytes)||!fflush($f))throw new DomainException('No se pudo guardar la clave privada. Revisa los permisos del hosting.');
+    }finally{fclose($f);}
+    draw_key();
 }
 function draw_seal(array $data): string {$key=draw_key();$nonce=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return $nonce.sodium_crypto_secretbox(json_encode($data,JSON_THROW_ON_ERROR),$nonce,$key);}
 function draw_unseal(string $sealed): array {$key=draw_key();$n=SODIUM_CRYPTO_SECRETBOX_NONCEBYTES;$plain=sodium_crypto_secretbox_open(substr($sealed,$n),substr($sealed,0,$n),$key);if($plain===false)throw new DomainException('No se pudo verificar la evidencia protegida.');return json_decode($plain,true,512,JSON_THROW_ON_ERROR);}
 function draw_create(array $r): void {
     if((int)$r['draw_version']!==1||!in_array($r['close_mode'],['fecha','capacidad'],true)||($r['close_mode']==='fecha'&&(empty($r['closes_at'])||(int)$r['closes_at']<=time()))||($r['close_mode']==='capacidad'&&((int)$r['participation_limit']<1||($r['participation_mode']==='exclusivo'&&(int)$r['participation_limit']!==(int)$r['total'])))||($r['type']==='dinero'||$r['participation_mode']==='compartido')&&(int)$r['prize_cents']<1)throw new DomainException('Edita el borrador y configura el premio y la condición de cierre válida.');
     if(one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$r['id']])||one('SELECT id FROM participants WHERE raffle_id=? LIMIT 1 FOR UPDATE',[$r['id']]))throw new DomainException('El borrador ya tiene evidencia o participantes.');
-    draw_key();$number=random_int(1,(int)$r['total']);$password=bin2hex(random_bytes(24));
+    draw_prepare_key();$number=random_int(1,(int)$r['total']);$password=bin2hex(random_bytes(24));
     $rules=['version'=>1,'raffle_id'=>$r['id'],'title'=>$r['title'],'mode'=>$r['participation_mode'],'type'=>$r['type'],'total'=>(int)$r['total'],'price_cents'=>(int)$r['price_cents'],'prize_cents'=>$r['prize_cents']===null?null:(int)$r['prize_cents'],'close_mode'=>$r['close_mode'],'participation_limit'=>$r['participation_limit']===null?null:(int)$r['participation_limit'],'closes_at'=>$r['closes_at']===null?null:(int)$r['closes_at'],'no_winner_policy'=>'refund-review-no-redraw','exclusive_incomplete_policy'=>'refund-review','policy'=>'preselected-random-int-v1'];
     $zip=draw_zip($rules,$number,$password);$sha=hash('sha256',$zip);
     $sealed=draw_seal(['id'=>$r['id'],'number'=>$number,'password'=>$password,'sha256'=>$sha,'rules'=>$rules]);
