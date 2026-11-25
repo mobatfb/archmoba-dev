@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 if (!defined('SW_APP')) { http_response_code(404); exit; }
-const SW_VERSION = '1.0.2';
+const SW_VERSION = '1.0.3';
 date_default_timezone_set('America/Guayaquil');
 $https = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off') || ($_SERVER['SERVER_PORT'] ?? '') === '443';
 $local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1','::1'], true) && in_array(strtolower(parse_url('http://'.($_SERVER['HTTP_HOST']??''),PHP_URL_HOST)??''),['localhost','127.0.0.1','[::1]'],true);
@@ -31,7 +31,7 @@ function tx(callable $f): mixed { $d=db();$d->beginTransaction();try{$v=$f();$d-
 function go(string $page='sorteos',array $params=[]): never { header('Location: index.php?'.http_build_query(['page'=>$page]+$params),true,303);exit; }
 function token(): string { return $_SESSION['csrf']??=bin2hex(random_bytes(32)); }
 function csrf(): string { return '<input type="hidden" name="csrf" value="'.h(token()).'">'; }
-function verify_csrf(): void { $v=$_POST['csrf']??null;if(!is_string($v)||!hash_equals(token(),$v)){http_response_code(403);exit('Solicitud inválida. Recarga la página.');} }
+function verify_csrf(): void { $v=$_POST['csrf']??null;if(!is_string($v)||!hash_equals(token(),$v)){http_response_code(403);render_message('Solicitud inválida','Recarga la página e inténtalo de nuevo.');exit;} }
 function flash(string $message,string $kind='success'): void { $_SESSION['flash']=[$message,$kind]; }
 function field(string $key,int $max,bool $required=true): string { $v=$_POST[$key]??'';if(!is_string($v))throw new DomainException('Campo inválido.');$v=trim($v);if(($required&&$v==='')||strlen($v)>$max)throw new DomainException('Revisa los campos y sus longitudes.');return $v; }
 function integer(string $key,int $min,int $max): int { $v=filter_var($_POST[$key]??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>$min,'max_range'=>$max]]);if($v===false)throw new DomainException('Número inválido: '.$key);return $v; }

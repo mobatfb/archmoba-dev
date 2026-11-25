@@ -10,3 +10,15 @@
 .raffle-summary strong{color:var(--accent);font-weight:750;font-variant-numeric:tabular-nums}
 .raffle-summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:760px){.raffle-summary{padding:9px 11px;font-size:12px}.raffle-summary>span{padding:0 10px}}
+
+/* Global dismissible messages and raffle heading action. */
+.notice[data-notice]{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px 9px 16px;min-height:46px}
+.notice-text{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.5}
+.notice-close{flex:0 0 30px;width:30px;height:30px;display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:inherit;font-size:22px;line-height:1;cursor:pointer}
+.notice-close:hover{background:#10294d12}.notice-close:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.notice.warning{background:#fff6df;border-color:#eed59a;color:#80551c}.notice.info{background:#edf4fc;border-color:#c9daee;color:#245b9d}
+.login-card .notice,.dialog-body .notice{margin-bottom:0}
+.raffle-heading-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.raffle-heading-row>.btn{flex:none}.raffle-search-toolbar{justify-content:flex-end}
+#action-confirm-dialog{max-width:440px}
+@media(max-width:760px){.raffle-heading-row h1{font-size:26px}.raffle-heading-row>.btn{font-size:12px;padding:9px 12px}.notice[data-notice]{padding-left:12px}}
