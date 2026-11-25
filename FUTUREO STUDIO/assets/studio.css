@@ -9,3 +9,19 @@
 [data-orientation="vertical"] .workspace-stage .workspace{aspect-ratio:9/16;width:min(100%,max(90px,calc((100vh - 156px)*.5625)))}
 @media(max-width:700px){.admin-orientation .top{height:auto;min-height:64px;flex-wrap:wrap;padding-block:8px}.admin-orientation .top nav{gap:8px;flex-wrap:wrap}.admin-orientation .brand img{max-width:38vw}.workspace-stage{min-height:calc(100vh - 140px);padding:12px}.workspace-stage .workspace{width:min(100%,max(160px,calc((100vh - 164px)*1.777778)))}[data-orientation="vertical"] .workspace-stage .workspace{width:min(100%,max(90px,calc((100vh - 164px)*.5625)))}}
 @media(prefers-reduced-motion:reduce){.orientation-control svg{transition:none}}
+
+/* v0.1.4: full-screen workspace with floating controls */
+.workspace-open{overflow:hidden}
+.workspace-open .workspace-stage{height:100vh;height:100dvh;min-height:0;padding:0}
+.workspace-open[data-orientation="horizontal"] .workspace-stage{align-items:stretch;justify-content:stretch}
+.workspace-open[data-orientation="horizontal"] .workspace-stage .workspace{flex:1 1 auto;width:100%;max-width:none;aspect-ratio:auto;min-width:0;min-height:0;border:0;box-shadow:none}
+.workspace-open[data-orientation="vertical"] .workspace-stage .workspace{aspect-ratio:9/16;width:min(100%,calc(100vh * .5625));width:min(100%,calc(100dvh * .5625));max-height:100%;min-height:0}
+.workspace-controls{position:fixed;z-index:20;top:12px;left:12px;top:max(12px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left))}
+.workspace-controls summary{display:grid;place-items:center;width:42px;height:42px;list-style:none;cursor:pointer;background:#090f1be8;border:1px solid var(--line);border-radius:12px;color:var(--accent);box-shadow:0 5px 20px #0005}
+.workspace-controls summary::-webkit-details-marker{display:none}
+.workspace-controls summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.workspace-menu{display:grid;gap:7px;width:min(230px,calc(100vw - 24px));margin-top:8px;padding:10px;background:#090f1bf5;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 32px #0006}
+.workspace-menu .subtle{display:flex;align-items:center;justify-content:flex-start;width:100%;font-size:13px;text-align:left;padding:8px 11px}
+.workspace-menu .subtle:hover{border-color:var(--accent)}
+.workspace-menu form{margin:0}
+.workspace-name{color:var(--muted);font-size:11px;overflow-wrap:anywhere;padding:3px 5px}
