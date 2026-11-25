@@ -9,3 +9,5 @@
 /mail/config.local.php
 
 /wallet/config.local.php
+
+/evidence/config.local.php

@@ -2,11 +2,12 @@
 declare(strict_types=1);
 if (!defined('SW_APP') || !SW_PUBLIC) { http_response_code(404); exit; }
 require __DIR__.'/otp.php';
-$view=$_GET['view']??'home';if(!is_string($view)||!in_array($view,['home','login','verify','profile','account','photo','payphone_return','ticket_status'],true))$view='home';
+$view=$_GET['view']??'home';if(!is_string($view)||!in_array($view,['home','login','verify','profile','account','photo','payphone_return','ticket_status','evidence','evidence_zip','results'],true))$view='home';
 if(!$https&&!$local){http_response_code(400);pub_head('Conexión segura requerida');echo '<main class="public-wrap">';pub_message('Abre la página mediante HTTPS para proteger tu acceso.','error');echo '</main>';pub_footer();exit;}
 try {
     if($view==='photo'){public_photo();}
     if($view==='payphone_return'){require_once dirname(__DIR__).'/wallet/payphone.php';payphone_return();}
+    if($view==='evidence_zip'){require_once dirname(__DIR__).'/evidence/public.php';draw_download();}
     $lastSeen=$_SESSION['public_seen']??null;
     $u=public_user();
     if($view==='ticket_status'){if($u&&is_int($lastSeen))$_SESSION['public_seen']=$lastSeen;require_once dirname(__DIR__).'/usuario/tickets.php';ticket_status_response($u);}
@@ -24,6 +25,8 @@ try {
         } catch(DomainException $e){pub_flash($e->getMessage(),'error');pub_go($target==='photo'?'home':$target);}
         catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());pub_flash('No se pudo completar la operación. Revisa la configuración del correo o inténtalo más tarde.','error');pub_go($target==='photo'?'home':$target);}
     }
+    if(in_array($view,['home','account','results','evidence'],true))draw_process_due();
+    if($view==='evidence'||$view==='results'){require_once dirname(__DIR__).'/evidence/public.php';draw_public_page($u,$view);exit;}
     if($u&&!profile_complete($u)&&$view!=='profile')pub_go('profile');
     if($view==='home'){$raffles=active_raffles();require dirname(__DIR__).'/landing/index.php';exit;}
     if($view==='login'){if($u)pub_go('account');require __DIR__.'/login.php';exit;}
@@ -31,4 +34,4 @@ try {
     if(!$u)pub_go('login');
     if($view==='profile'){require dirname(__DIR__).'/usuario/modules/perfil.php';exit;}
     require dirname(__DIR__).'/usuario/index.php';
-} catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());http_response_code(503);pub_head('Servicio no disponible');echo '<main class="public-wrap">';pub_message('El servicio no está disponible en este momento. Si administras el sitio, revisa config.php y el parche SQL 1.1.0.','error');echo '<a href="index.php">Volver al inicio</a></main>';pub_footer();}
+} catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());http_response_code(503);pub_head('Servicio no disponible');echo '<main class="public-wrap">';pub_message('El servicio no está disponible en este momento. Si administras el sitio, revisa config.php y los parches SQL 1.1.0, 1.1.6 y 1.2.0.','error');echo '<a href="index.php">Volver al inicio</a></main>';pub_footer();}

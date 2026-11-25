@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 if (!defined('SW_APP') || SW_PUBLIC) { http_response_code(404); exit; }
+require_once dirname(__DIR__).'/evidence/service.php';
 function go(string $page='sorteos',array $params=[]): never { header('Location: index.php?'.http_build_query(['page'=>$page]+$params),true,303);exit; }
 function verify_csrf(): void { $v=$_POST['csrf']??null;if(!is_string($v)||!hash_equals(token(),$v)){http_response_code(403);render_message('Solicitud inválida','Recarga la página e inténtalo de nuevo.');exit;} }
 function flash(string $message,string $kind='success'): void { $_SESSION['flash']=[$message,$kind]; }
@@ -25,22 +26,33 @@ function login(): void { $username=field('username',120);$password=$_POST['passw
 function change_password(array $u): void { $old=$_POST['current_password']??'';$new=$_POST['new_password']??'';$repeat=$_POST['confirm_password']??'';if(!is_string($old)||!is_string($new)||!is_string($repeat)||strlen($old)>256)throw new DomainException('Contraseña inválida.');if($new!==$repeat||strlen($new)<12||strlen($new)>72||!preg_match('/[A-Z]/',$new)||!preg_match('/[a-z]/',$new)||!preg_match('/[0-9]/',$new)||!preg_match('/[^a-zA-Z0-9]/',$new))throw new DomainException('Usa 12 a 72 caracteres, mayúsculas, minúsculas, número y símbolo.');tx(function()use($u,$old,$new){$a=one('SELECT password_hash FROM admins WHERE id=? FOR UPDATE',[$u['id']]);if(!$a||!password_verify($old,$a['password_hash']))throw new DomainException('La contraseña actual no coincide.');query('UPDATE admins SET password_hash=?,must_change_password=0 WHERE id=?',[password_hash($new,PASSWORD_DEFAULT),$u['id']]);audit($u,'password_change',null);});session_regenerate_id(true);flash('Contraseña actualizada.');go(); }
 function raffle_lock(string $id): array { $r=one('SELECT r.*,r.total AS ticket_count,r.price_cents AS ticket_price_cents FROM raffles r WHERE id=? FOR UPDATE',[$id]);if(!$r)throw new DomainException('Sorteo no encontrado.');return $r; }
 function load_photos(): array { $images=[];for($i=1;$i<=3;$i++){ $f=$_FILES['photo'.$i]??null;if(!$f||$f['error']===UPLOAD_ERR_NO_FILE)continue;if($f['error']!==UPLOAD_ERR_OK||!is_uploaded_file($f['tmp_name'])||$f['size']>2097152)throw new DomainException('Cada fotografía debe pesar máximo 2 MB.');$mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);$size=@getimagesize($f['tmp_name']);if(!in_array($mime,['image/jpeg','image/png','image/webp'],true)||!$size||$size[0]>8000||$size[1]>8000)throw new DomainException('Solo fotografías JPG, PNG o WebP válidas (máximo 8000 px por lado).');$bytes=file_get_contents($f['tmp_name']);if($bytes===false)throw new DomainException('No se pudo leer la fotografía.');$images[$i]=[$mime,$bytes];}return $images; }
+function raffle_close_input(): int {
+    $v=field('closes_at',16);$tz=new DateTimeZone('America/Guayaquil');$dt=DateTimeImmutable::createFromFormat('!Y-m-d\TH:i',$v,$tz);
+    if(!$dt||$dt->format('Y-m-d\TH:i')!==$v||$dt->getTimestamp()<=time())throw new DomainException('Selecciona una fecha y hora de cierre futura (Ecuador).');return $dt->getTimestamp();
+}
 function save_raffle(array $u): void {
-    $id=record_id('raffle_id',true);$title=field('title',180);$desc=field('description',10000,false);$type=field('type',10);
-    if(!in_array($type,['producto','dinero'],true))throw new DomainException('Tipo de sorteo inválido.');
-    $total=integer('ticket_count',1,1000000);$price=price_cents(field('price',15));$photos=load_photos();
-    tx(function()use($u,$id,$title,$desc,$type,$total,$price,$photos){
+    $id=record_id('raffle_id',true);$title=field('title',180);$type=field('type',10);$desc=$type==='dinero'?'':field('description',10000,false);$mode=field('participation_mode',12);
+    if(!in_array($type,['producto','dinero'],true)||!in_array($mode,['exclusivo','compartido'],true))throw new DomainException('Selecciona el tipo de premio y la modalidad.');
+    $prize=$type==='dinero'||$mode==='compartido'?price_cents(field('prize_value',15)):null;
+    $closeMode=field('close_mode',10);if(!in_array($closeMode,['fecha','capacidad'],true))throw new DomainException('Selecciona la condición de cierre.');
+    $total=integer('ticket_count',1,1000000);$close=$closeMode==='fecha'?raffle_close_input():null;
+    $limit=$closeMode==='capacidad'?($mode==='exclusivo'?$total:integer('participation_limit',1,1000000)):null;
+    $price=price_cents(field('price',15));$photos=$type==='producto'?load_photos():[];
+    if($type==='dinero')$desc='Premio en efectivo de '.money($prize).'. '.($mode==='compartido'?'El importe se divide en partes iguales entre las cuentas titulares pagadas del número ganador.':'El titular pagado del número ganador recibe el importe total.').' La condición de cierre y la evidencia se publican antes de la venta.';
+    $order=explode(',',field('photo_order',5));$check=$order;sort($check);if($check!==['1','2','3'])throw new DomainException('Orden de fotografías inválido.');
+    tx(function()use($u,$id,$title,$desc,$type,$mode,$prize,$close,$total,$price,$photos,$order,$closeMode,$limit){
         $new=$id==='';
-        if(!$new){$r=raffle_lock($id);if(!in_array($r['status'],['borrador','activo'],true))throw new DomainException('No se pueden editar sorteos finalizados.');
-            if(one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$id]))throw new DomainException('No se pueden cambiar las condiciones de un sorteo con evidencia registrada.');
-            if(one('SELECT id FROM participants WHERE raffle_id=? LIMIT 1 FOR UPDATE',[$id]))throw new DomainException('No se puede editar un sorteo con boletos registrados.');
-            query('UPDATE raffles SET title=?,description=?,type=?,total=?,price_cents=?,updated_at=NOW() WHERE id=?',[$title,$desc,$type,$total,$price,$id]);
-        }else{$id=bin2hex(random_bytes(12));query('INSERT INTO raffles(id,title,description,type,total,price_cents,created_at,updated_at) VALUES(?,?,?,?,?,?,NOW(),NOW())',[$id,$title,$desc,$type,$total,$price]);}
+        if(!$new){$r=raffle_lock($id);if($r['status']!=='borrador')throw new DomainException('Las condiciones publicadas no pueden modificarse. Duplica el sorteo para preparar otro.');
+            if(one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$id])||one('SELECT id FROM participants WHERE raffle_id=? LIMIT 1 FOR UPDATE',[$id]))throw new DomainException('No se puede editar un sorteo con evidencia o boletos registrados.');
+            query('UPDATE raffles SET title=?,description=?,type=?,total=?,price_cents=?,participation_mode=?,prize_cents=?,closes_at=?,close_mode=?,participation_limit=?,draw_version=1,updated_at=NOW() WHERE id=?',[$title,$desc,$type,$total,$price,$mode,$prize,$close,$closeMode,$limit,$id]);
+        }else{$id=bin2hex(random_bytes(12));query('INSERT INTO raffles(id,title,description,type,total,price_cents,participation_mode,prize_cents,closes_at,close_mode,participation_limit,draw_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,NOW(),NOW())',[$id,$title,$desc,$type,$total,$price,$mode,$prize,$close,$closeMode,$limit]);}
+        $items=[];if($type==='producto'){foreach(all('SELECT slot,filename,mime,content FROM raffle_photos WHERE raffle_id=? FOR UPDATE',[$id]) as $p)$items[(int)$p['slot']]=$p;
         for($i=1;$i<=3;$i++){
-            if(isset($_POST['remove_photo'.$i])&&!isset($photos[$i]))query('DELETE FROM raffle_photos WHERE raffle_id=? AND slot=?',[$id,$i]);
-            if(isset($photos[$i])){[$mime,$content]=$photos[$i];$filename=bin2hex(random_bytes(16)).'.'.(['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'][$mime]);
-                query('INSERT INTO raffle_photos(raffle_id,slot,filename,mime,content) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE filename=VALUES(filename),mime=VALUES(mime),content=VALUES(content)',[$id,$i,$filename,$mime,$content]);}
+            if(isset($_POST['remove_photo'.$i])&&!isset($photos[$i]))unset($items[$i]);
+            if(isset($photos[$i])){[$mime,$content]=$photos[$i];$items[$i]=['filename'=>bin2hex(random_bytes(16)).'.'.(['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'][$mime]),'mime'=>$mime,'content'=>$content];}
         }
+        }
+        query('DELETE FROM raffle_photos WHERE raffle_id=?',[$id]);$slot=0;foreach($order as $original){$item=$items[(int)$original]??null;if($item)query('INSERT INTO raffle_photos(raffle_id,slot,filename,mime,content) VALUES(?,?,?,?,?)',[$id,++$slot,$item['filename'],$item['mime'],$item['content']]);}
         audit($u,$new?'raffle_create':'raffle_save',$id);
     });flash('Sorteo guardado.');go();
 }
@@ -53,8 +65,8 @@ function duplicate_raffle(array $u): void {
         $title=substr($r['title'],0,172);
         while($title!==''&&!preg_match('//u',$title))$title=substr($title,0,-1);
         $title=rtrim($title).' (copia)';
-        query("INSERT INTO raffles(id,title,description,type,total,price_cents,status,created_at,updated_at) VALUES(?,?,?,?,?,?,'borrador',NOW(),NOW())",[$id,$title,$r['description'],$r['type'],$r['total'],$r['price_cents']]);
-        foreach(all('SELECT slot,filename,mime,content FROM raffle_photos WHERE raffle_id=? ORDER BY slot FOR UPDATE',[$source]) as $p){
+        query("INSERT INTO raffles(id,title,description,type,total,price_cents,participation_mode,prize_cents,close_mode,participation_limit,draw_version,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,'borrador',NOW(),NOW())",[$id,$title,$r['description'],$r['type'],$r['total'],$r['price_cents'],$r['participation_mode'],$r['prize_cents'],$r['close_mode'],$r['participation_limit']]);
+        if($r['type']==='producto')foreach(all('SELECT slot,filename,mime,content FROM raffle_photos WHERE raffle_id=? ORDER BY slot FOR UPDATE',[$source]) as $p){
             $bytes=$p['content'];$mime=$p['mime'];
             // Preserve legacy photos by reading the original file into an independent BLOB.
             if($bytes===null&&preg_match('/^[a-f0-9]{24,64}\.(jpg|jpeg|png|webp)$/D',$p['filename'])){
@@ -73,10 +85,10 @@ function duplicate_raffle(array $u): void {
 }
 function raffle_transition(array $u,string $action): void {
     $id=record_id('raffle_id');tx(function()use($u,$action,$id){$r=raffle_lock($id);
-        if($action==='activate'&&$r['status']==='borrador')query("UPDATE raffles SET status='activo',updated_at=NOW() WHERE id=?",[$id]);
-        elseif($action==='finish'&&$r['status']==='activo')query("UPDATE raffles SET status='finalizado',finalized_at=NOW(),updated_at=NOW() WHERE id=?",[$id]);
+        if($action==='activate'&&$r['status']==='borrador'){draw_create($r);query("UPDATE raffles SET status='activo',updated_at=NOW() WHERE id=?",[$id]);}
+        elseif($action==='finish'&&$r['status']==='activo'){if((int)$r['draw_version']===1){if(!draw_finish_locked($r))throw new DomainException('Aún no se ha alcanzado la condición de cierre anunciada.');}else query("UPDATE raffles SET status='finalizado',finalized_at=NOW(),updated_at=NOW() WHERE id=?",[$id]);}
         elseif($action==='reactivate'&&$r['status']==='finalizado'){
-            if(one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$id])||one('SELECT raffle_id FROM winners WHERE raffle_id=? FOR UPDATE',[$id]))throw new DomainException('No se puede reactivar un sorteo que ya tiene evidencia o un ganador registrado.');
+            if((int)$r['draw_version']===1||one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$id])||one('SELECT raffle_id FROM winners WHERE raffle_id=? FOR UPDATE',[$id]))throw new DomainException('No se puede reactivar un sorteo que ya tiene evidencia o un ganador registrado.');
             query("UPDATE raffles SET status='activo',finalized_at=NULL,updated_at=NOW() WHERE id=?",[$id]);
             audit($u,'reactivate',$id,'Fecha de cierre anterior: '.($r['finalized_at']??'No registrada'));
             return;
@@ -90,31 +102,34 @@ function raffle_transition(array $u,string $action): void {
 function save_participant(array $u): void {
     $rid=record_id('raffle_id');$pid=record_id('participant_id',true);$number=integer('ticket_number',1,1000000);$name=field('name',180);$email=field('email',254,false);$phone=field('phone',50,false);$pay=field('payment_status',10);$link=isset($_POST['link_user'])&&$_POST['link_user']==='1';
     if(($email!==''&&!filter_var($email,FILTER_VALIDATE_EMAIL))||!in_array($pay,['pendiente','pagado'],true))throw new DomainException('Correo o estado de pago inválido.');
-    tx(function()use($u,$rid,$pid,$number,$name,$email,$phone,$pay,$link){$r=raffle_lock($rid);if($r['status']!=='activo')throw new DomainException('El sorteo debe estar activo.');if($number>(int)$r['total'])throw new DomainException('Número fuera del rango de boletos.');
+    tx(function()use($u,$rid,$pid,$number,$name,$email,$phone,$pay,$link){$r=raffle_lock($rid);if($r['status']!=='activo'||($r['closes_at']!==null&&(int)$r['closes_at']<=time()))throw new DomainException('El sorteo debe estar activo y dentro del plazo de venta.');if($number>(int)$r['total'])throw new DomainException('Número fuera del rango de boletos.');
         $p=$pid!==''?one('SELECT * FROM participants WHERE id=? AND raffle_id=? FOR UPDATE',[$pid,$rid]):null;
         if($pid!==''&&!$p)throw new DomainException('Participante no encontrado.');
+        if(!$p&&$r['close_mode']==='capacidad'&&(int)one('SELECT COUNT(*) AS n FROM participants WHERE raffle_id=?',[$rid])['n']>=(int)$r['participation_limit'])throw new DomainException('La capacidad ya está ocupada por boletos pagados o pendientes.');
         if($p&&$p['payment']==='pagado'&&($pay!=='pagado'||$number!==(int)$p['number']))throw new DomainException('Un boleto pagado no puede cambiar de número ni volver a pendiente.');
-        if(one('SELECT id FROM participants WHERE raffle_id=? AND number=? AND id<>?',[$rid,$number,$pid]))throw new DomainException('Ese número ya está registrado.');
+        if($r['participation_mode']==='exclusivo'&&one('SELECT id FROM participants WHERE raffle_id=? AND number=? AND id<>?',[$rid,$number,$pid]))throw new DomainException('Ese número ya está registrado.');
         $uid=$p['user_id']??null;
         if($uid!==null){$account=one('SELECT email FROM users WHERE id=?',[$uid]);if(!$account||strtolower($email)!==$account['email'])throw new DomainException('No se puede cambiar el correo de un boleto ya vinculado a una cuenta.');}
-        elseif($link){$account=one('SELECT id FROM users WHERE email=? AND active=1 AND profile_complete=1',[strtolower($email)]);if(!$account)throw new DomainException('El correo debe pertenecer a una cuenta verificada con perfil completo.');$uid=$account['id'];}
-        if($p)query('UPDATE participants SET number=?,name=?,email=?,phone=?,payment=?,user_id=?,updated_at=NOW() WHERE id=? AND raffle_id=?',[$number,$name,$email,$phone,$pay,$uid,$pid,$rid]);
-        else{$pid=bin2hex(random_bytes(12));query('INSERT INTO participants(id,raffle_id,number,name,email,phone,payment,user_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,NOW(),NOW())',[$pid,$rid,$number,$name,$email,$phone,$pay,$uid]);}
-        audit($u,$p?'participant_save':'participant_create',$rid,'Boleto '.$number.'; '.$pay,$pid);
+        elseif($link||(int)$r['draw_version']===1){$account=one('SELECT id FROM users WHERE email=? AND active=1 AND profile_complete=1',[strtolower($email)]);if(!$account)throw new DomainException('El correo debe pertenecer a una cuenta verificada con perfil completo.');$uid=$account['id'];}
+        if($uid!==null&&one('SELECT id FROM participants WHERE raffle_id=? AND number=? AND user_id=? AND id<>?',[$rid,$number,$uid,$pid]))throw new DomainException('Esta cuenta ya tiene ese número.');
+        if($p)query('UPDATE participants SET number=?,name=?,email=?,phone=?,payment=?,user_id=?,participation_mode=?,updated_at=NOW() WHERE id=? AND raffle_id=?',[$number,$name,$email,$phone,$pay,$uid,$r['participation_mode'],$pid,$rid]);
+        else{$pid=bin2hex(random_bytes(12));query('INSERT INTO participants(id,raffle_id,number,name,email,phone,payment,user_id,participation_mode,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,NOW(),NOW())',[$pid,$rid,$number,$name,$email,$phone,$pay,$uid,$r['participation_mode']]);}
+        audit($u,$p?'participant_save':'participant_create',$rid,'Boleto '.$number.'; '.$pay,$pid);if((int)$r['draw_version']===1)draw_finish_locked($r);
     });flash('Participante guardado.');go('participantes',['id'=>$rid]);
 }
 function delete_participant(array $u): void {
     $rid=record_id('raffle_id');$pid=record_id('participant_id');tx(function()use($u,$rid,$pid){$r=raffle_lock($rid);$p=one('SELECT * FROM participants WHERE id=? AND raffle_id=? FOR UPDATE',[$pid,$rid]);
-        if($r['status']!=='activo'||!$p||$p['payment']!=='pendiente')throw new DomainException('Solo puedes liberar boletos pendientes de sorteos activos.');
+        if($r['status']!=='activo'||($r['closes_at']!==null&&(int)$r['closes_at']<=time())||!$p||$p['payment']!=='pendiente')throw new DomainException('Solo puedes liberar boletos pendientes de sorteos activos.');
         query('DELETE FROM participants WHERE id=? AND raffle_id=?',[$pid,$rid]);audit($u,'participant_delete',$rid,'Boleto '.$p['number'],$pid);
     });flash('Boleto liberado.');go('participantes',['id'=>$rid]);
 }
 function raffle_list(?string $status=null): array {
-    $sql="SELECT r.*,r.total AS ticket_count,r.price_cents AS ticket_price_cents,COALESCE(p.registered,0) registered,COALESCE(p.paid,0) paid,COALESCE(p.paid,0)*r.price_cents AS income,COALESCE(p.pending,0)*r.price_cents AS pending_income,(SELECT MIN(slot) FROM raffle_photos f WHERE f.raffle_id=r.id) first_photo,EXISTS(SELECT 1 FROM raffle_evidence e WHERE e.raffle_id=r.id) has_evidence FROM raffles r LEFT JOIN (SELECT raffle_id,COUNT(*) registered,SUM(payment='pagado') paid,SUM(payment='pendiente') pending FROM participants GROUP BY raffle_id) p ON r.id=p.raffle_id";
+    $sql="SELECT r.*,r.total AS ticket_count,r.price_cents AS ticket_price_cents,COALESCE(p.registered,0) registered,COALESCE(p.paid,0) paid,COALESCE(p.paid,0)*r.price_cents AS income,COALESCE(p.pending,0)*r.price_cents AS pending_income,CASE WHEN r.type='dinero' AND r.draw_version=1 THEN 1 ELSE (SELECT MIN(slot) FROM raffle_photos f WHERE f.raffle_id=r.id) END first_photo,EXISTS(SELECT 1 FROM raffle_evidence e WHERE e.raffle_id=r.id) has_evidence,(SELECT COUNT(DISTINCT number) FROM participants q WHERE q.raffle_id=r.id) AS distinct_numbers FROM raffles r LEFT JOIN (SELECT raffle_id,COUNT(*) registered,SUM(payment='pagado') paid,SUM(payment='pendiente') pending FROM participants GROUP BY raffle_id) p ON r.id=p.raffle_id";
     return all($sql.($status?' WHERE r.status=?':'').' ORDER BY r.created_at DESC,r.id DESC',$status?[$status]:[]);
 }
 function serve_photo(): never {
     $id=$_GET['photo']??null;$slot=filter_var($_GET['slot']??null,FILTER_VALIDATE_INT);if(!valid_id($id)||!in_array($slot,[1,2,3],true)){http_response_code(404);exit;}
+    if($slot===1&&one("SELECT id FROM raffles WHERE id=? AND type='dinero' AND draw_version=1",[$id])){draw_money_photo();}
     $p=one('SELECT filename,mime,content FROM raffle_photos WHERE raffle_id=? AND slot=?',[$id,$slot]);if(!$p){http_response_code(404);exit;}
     $mime=$p['mime'];$bytes=$p['content'];
     if($bytes===null && preg_match('/^[a-f0-9]{24,64}\.(jpg|jpeg|png|webp)$/D',$p['filename'])){

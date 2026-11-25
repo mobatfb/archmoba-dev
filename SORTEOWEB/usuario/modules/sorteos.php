@@ -11,7 +11,9 @@
     $registered=max(0,(int)$r['registered_count']);
     $paid=min($registered,max(0,(int)$r['paid_count']));
     $pending=$registered-$paid;
-    $available=max(0,$total-$registered);
+    $shared=$r['participation_mode']==='compartido';$capped=$r['close_mode']==='capacidad';$capacity=$capped?(int)$r['participation_limit']:$total;
+    $coverage=$shared&&!$capped; $barPaid=$coverage?(int)$r['paid_distinct_count']:$paid;$barPending=$coverage?max(0,(int)$r['distinct_count']-$barPaid):$pending;
+    $available=max(0,$capacity-$barPaid-$barPending);
 ?>
 <article class="user-raffle-card">
     <div class="user-raffle-media">
@@ -25,21 +27,18 @@
     <div class="user-raffle-copy">
         <h2><?=h($r['title'])?></h2>
         <div class="user-ticket-capacity">
-            <div class="user-ticket-labels"><span><strong><?=number_format($paid)?></strong> comprados</span><span><strong><?=number_format($available)?></strong> disponibles</span></div>
-            <div class="user-ticket-bar" role="img" aria-label="<?=h($paid.' comprados, '.$pending.' pendientes de pago y '.$available.' disponibles, de '.$total.' boletos')?>">
-                <?php if($paid>0):?><span class="ticket-paid" style="flex-grow:<?=$paid?>" aria-hidden="true"></span><?php endif;?>
-                <?php if($pending>0):?><span class="ticket-pending" style="flex-grow:<?=$pending?>" aria-hidden="true"></span><?php endif;?>
-                <?php if($available>0):?><span class="ticket-free" style="flex-grow:<?=$available?>" aria-hidden="true"></span><?php endif;?>
-            </div>
-            <div class="user-ticket-caption"><span>Total: <?=number_format($total)?> boletos</span><?php if($pending>0):?><span class="ticket-pending-label"><strong><?=number_format($pending)?></strong> pendientes de pago</span><?php endif;?></div>
+            <div class="user-ticket-labels"><span><strong><?=number_format($paid)?></strong> participaciones pagadas</span><span><strong><?=number_format($available)?></strong> <?=$coverage?'números sin titulares':'cupos disponibles'?></span></div>
+            <?php $den=max(1,$barPaid+$barPending+$available);$wPaid=(int)round(1000*$barPaid/$den);$wPending=min(1000-$wPaid,(int)round(1000*$barPending/$den));?>
+            <svg class="user-ticket-bar" viewBox="0 0 1000 10" preserveAspectRatio="none" role="img" aria-label="<?=h($barPaid.' pagados, '.$barPending.' pendientes y '.$available.' libres; '.($coverage?'cobertura de números':'capacidad de venta'))?>"><rect width="1000" height="10" fill="#e3eaf4"/><rect width="<?=$wPaid?>" height="10" fill="#15966b"/><rect x="<?=$wPaid?>" width="<?=$wPending?>" height="10" fill="#e5aa3e"/></svg>
+            <div class="user-ticket-caption"><span><?=$coverage?'Cobertura: ':'Capacidad: '?><?=number_format($capacity)?> <?=$coverage?'números (sin límite de participaciones)':'participaciones'?></span><?php if($pending>0):?><span class="ticket-pending-label"><strong><?=number_format($pending)?></strong> pendientes de pago</span><?php endif;?></div>
         </div>
-        <div class="user-raffle-actions"><button type="button" class="pub-btn cta" data-user-dialog="<?=$id?>-details">Ver detalles y participar · <?=money($r['price_cents'])?></button></div>
+        <p class="draw-rule-mini"><?=h(draw_close_label($r))?> · <?=h(ucfirst($r['participation_mode']))?></p><div class="user-raffle-actions"><button type="button" class="pub-btn cta" data-user-dialog="<?=$id?>-details">Ver detalles y participar · <?=money($r['price_cents'])?></button></div>
     </div>
 </article>
 <dialog class="user-raffle-dialog user-details-dialog" id="<?=$id?>-details" aria-labelledby="<?=$id?>-title">
     <div class="user-dialog-head"><h2 id="<?=$id?>-title" tabindex="-1"><?=h($r['title'])?></h2><form method="dialog"><button class="user-dialog-close" aria-label="Cerrar detalles" autofocus>×</button></form></div>
-    <?php if($slots):?><div class="user-details-gallery" aria-label="Fotografías del premio"><?php foreach($slots as $i=>$slot):$photoUrl=h(pub_url('photo',['id'=>$r['id'],'slot'=>(int)$slot]));?><button type="button" class="user-details-photo" data-gallery-photo aria-label="Ampliar imagen <?=$i+1?> de <?=count($slots)?>"><img class="user-details-photo-bg" src="<?=$photoUrl?>" alt="" aria-hidden="true" loading="lazy"><img class="user-details-photo-main" src="<?=$photoUrl?>" alt="<?=h($r['title'])?> · imagen <?=$i+1?>" loading="lazy"></button><?php endforeach;?></div><?php endif;?>
-    <div class="user-details-scroll" tabindex="0" aria-label="Descripción del sorteo"><p class="raffle-desc"><?=h($r['description']!==''?$r['description']:'Consulta las condiciones del sorteo antes de participar.')?></p></div>
+    <?php if($slots):?><div class="user-details-gallery" data-photo-count="<?=count($slots)?>" aria-label="Fotografías del premio"><?php foreach($slots as $i=>$slot):$photoUrl=h(pub_url('photo',['id'=>$r['id'],'slot'=>(int)$slot]));?><button type="button" class="user-details-photo" data-gallery-photo aria-label="Ampliar imagen <?=$i+1?> de <?=count($slots)?>"><img class="user-details-photo-bg" src="<?=$photoUrl?>" alt="" aria-hidden="true" loading="lazy"><img class="user-details-photo-main" src="<?=$photoUrl?>" alt="<?=h($r['title'])?> · imagen <?=$i+1?>" loading="lazy"></button><?php endforeach;?></div><?php endif;?>
+    <div class="user-details-scroll" tabindex="0" aria-label="Descripción del sorteo"><p class="raffle-desc"><?=h($r['description']!==''?$r['description']:'Consulta las condiciones del sorteo antes de participar.')?></p><?php if((int)$r['draw_version']===1):?><section class="draw-detail-rules"><strong>Condiciones publicadas</strong><p><?=h(draw_close_label($r))?> · <?=h(ucfirst($r['participation_mode']))?>. <?=($r['participation_mode']==='compartido'?'Una participación por cuenta y número; el premio se divide entre titulares pagados.':'Un titular por número.')?></p><?php if($r['prize_cents']!==null):?><p>Premio o equivalente: <?=money($r['prize_cents'])?></p><?php endif;?><p>Sin titulares ganadores, o venta exclusiva incompleta al cierre, se registrará devolución pendiente de revisión. No habrá una nueva selección.</p><a href="<?=h(pub_url('evidence',['id'=>$r['id']]))?>">Consultar hash y descargar evidencia original →</a></section><?php endif;?></div>
     <dl class="user-raffle-facts user-details-facts"><div><dt>Tipo de premio</dt><dd><?=$r['type']==='producto'?'Producto':'Dinero'?></dd></div><div><dt>Total de boletos</dt><dd><?=number_format((int)$r['total'])?></dd></div><div><dt>Valor por boleto</dt><dd><?=money($r['price_cents'])?></dd></div></dl>
     <div class="user-dialog-foot"><form method="dialog"><button class="pub-btn secondary">Cerrar</button></form><a class="pub-btn primary" href="<?=h(pub_url('account',['tab'=>'numeros','id'=>$r['id']]))?>">Participar por <?=money($r['price_cents'])?></a></div>
 </dialog>
