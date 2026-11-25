@@ -10,7 +10,7 @@ function creation_spec(?array $u, string $kind, string $role = '', int $course =
         return ['title'=>'Crear usuario','headers'=>['usuario','nombres','apellidos','correo','contrasena','rol'],'return'=>'page=users','limit'=>100];
     }
     if ($kind === 'course' && in_array($u['role'],['admin','subadmin','teacher'],true)) {
-        return ['title'=>'Crear curso','headers'=>['titulo','descripcion','usuario_responsable'],'return'=>'page=courses','limit'=>500];
+        return ['title'=>'Crear curso','headers'=>['titulo','descripcion','usuario_responsable','modalidad','duracion','nivel','periodo'],'return'=>'page=courses','limit'=>500];
     }
     if ($kind === 'lesson' && $course>0 && $u['role']!=='student' && course_for($course,$u)) {
         return ['title'=>'Crear lección','headers'=>['titulo','contenido'],'return'=>'course='.$course,'limit'=>500];
@@ -37,6 +37,10 @@ function creation_example(string $kind, array $headers): array {
         'titulo'=>$kind==='lesson'?'Introducción al tema':'Curso de ejemplo',
         'descripcion'=>'Descripción del curso',
         'usuario_responsable'=>'docente.ejemplo',
+        'modalidad'=>'En línea',
+        'duracion'=>'20',
+        'nivel'=>'Básico',
+        'periodo'=>$kind==='course'?(institution_settings()['active_period']?:date('Y')):'',
         'contenido'=>'Contenido de la lección de ejemplo',
         'id_curso'=>'1',
         'usuario_estudiante'=>'estudiante.ejemplo',
@@ -152,7 +156,7 @@ function update_user_identity(?array $u): void {
     }
 }
 
-function creation_insert(array $u,string $kind,string $role,int $course,array $r): void {
+function creation_insert(array $u,string $kind,string $role,int $course,array $r,?string $cover=null): void {
     if($kind==='user') {
         $requested=strtolower(creation_value($r,'rol',30));
         $role=['administrador'=>'admin','subadministrador'=>'subadmin','docente'=>'teacher','estudiante'=>'student'][$requested]??$requested;
@@ -169,12 +173,17 @@ function creation_insert(array $u,string $kind,string $role,int $course,array $r
         if(!$t||!in_array((int)$t['id'],$allowed,true)) throw new DomainException('Usuario responsable no autorizado o inexistente.');
         $teacher=(int)$t['id'];
         if(one('SELECT id FROM courses WHERE title=? AND teacher_id=?',[$title,$teacher])) throw new DomainException('Ya existe un curso con este título y responsable.');
-        query('INSERT INTO courses(title,description,teacher_id) VALUES(?,?,?)',[$title,$description,$teacher]);
+        [$modality,$hours,$level,$period]=course_metadata($r);
+        query('INSERT INTO courses(title,description,teacher_id,modality,duration_hours,level,period,thumbnail_variant,thumbnail_path) VALUES(?,?,?,?,?,?,?,?,?)',[$title,$description,$teacher,$modality,$hours,$level,$period,random_int(1,3),$cover]);
+        $newCourse=db()->lastInsertId();
+        query('INSERT INTO course_modules(course_id,title,position) VALUES(?,?,1)',[$newCourse,'Módulo 1']);
     } elseif($kind==='lesson') {
         $title=creation_value($r,'titulo',180); $content=creation_value($r,'contenido',60000);
         if(one('SELECT id FROM lessons WHERE course_id=? AND title=?',[$course,$title])) throw new DomainException('Ya existe una lección con este título.');
         $order=count_rows('SELECT COALESCE(MAX(sort_order),0) FROM lessons WHERE course_id=?',[$course])+1;
-        query('INSERT INTO lessons(course_id,title,content,sort_order) VALUES(?,?,?,?)',[$course,$title,$content,$order]);
+        $module=one('SELECT id FROM course_modules WHERE course_id=? ORDER BY position,id LIMIT 1',[$course]);
+        if(!$module) throw new DomainException('El curso no tiene un módulo inicial.');
+        query('INSERT INTO lessons(course_id,module_id,title,content,sort_order) VALUES(?,?,?,?,?)',[$course,$module['id'],$title,$content,$order]);
     } elseif($kind==='enroll') {
         if(!$course) $course=(int)filter_var($r['id_curso']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
         if(!$course||!course_for($course,$u)) throw new DomainException('Curso inexistente o no autorizado.');
@@ -185,25 +194,27 @@ function creation_insert(array $u,string $kind,string $role,int $course,array $r
     }
 }
 function handle_creation(?array $u): never {
-    $back='';
+    $back=''; $cover=null; $committed=false;
     try {
         [$kind,$role,$course]=creation_context($_POST);
         $spec=creation_spec($u,$kind,$role,$course); $back=$spec['return'];
         $mode=$_POST['mode']??'';
         if(!in_array($mode,['individual','bulk'],true)) throw new DomainException('Modo inválido.');
         $rows=$mode==='bulk'?csv_rows($spec['headers'],$spec['limit']):[1=>$_POST];
+        if($kind==='course'&&$mode==='individual') $cover=course_cover_upload();
         $pdo=db(); $pdo->beginTransaction(); $errors=[];
         try {
             foreach($rows as $line=>$r) {
-                try { creation_insert($u,$kind,$role,$course,$r); }
+                try { creation_insert($u,$kind,$role,$course,$r,$cover); }
                 catch(DomainException $e) { $errors[]='Registro '.$line.': '.$e->getMessage(); }
                 if(count($errors)>=10) break;
             }
             if($errors) throw new DomainException('No se guardó ningún registro. '.implode(' | ',$errors));
-            $pdo->commit(); flash(count($rows).' registro(s) creado(s) correctamente.');
+            $pdo->commit(); $committed=true; flash(count($rows).' registro(s) creado(s) correctamente.');
         } catch(Throwable $e) { if($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
     } catch(DomainException $e) { flash($e->getMessage(),'error'); }
     catch(Throwable $e) { error_log('VIRTUALEDUC creation failed: '.get_class($e)); flash('No se guardaron registros. Revisa los datos y vuelve a intentar.','error'); }
+    finally { if(!$committed&&$cover) course_cover_remove($cover); }
     go($back);
 }
 function creation_hidden(string $kind,string $role,int $course,string $mode): void {
@@ -218,12 +229,12 @@ function creation_dialog(array $u,string $kind,string $role='',int $course=0): v
     <dialog class="ve-dialog" id="<?=h($id)?>" aria-labelledby="<?=h($id)?>-title">
       <div class="ve-dialog-head"><h2 id="<?=h($id)?>-title"><?=h($s['title'])?></h2><button type="button" class="ve-quiet" data-ve-close aria-label="Cerrar">×</button></div>
       <div class="ve-tabs" role="tablist"><button type="button" role="tab" id="<?=h($id)?>-individual-tab" aria-controls="<?=h($id)?>-individual" aria-selected="true" data-ve-tab="individual">Individual</button><button type="button" role="tab" id="<?=h($id)?>-bulk-tab" aria-controls="<?=h($id)?>-bulk" aria-selected="false" data-ve-tab="bulk">Masivo (CSV)</button></div>
-      <div role="tabpanel" id="<?=h($id)?>-individual" aria-labelledby="<?=h($id)?>-individual-tab" data-ve-panel="individual"><form method="post"><?php creation_hidden($kind,$role,$course,'individual');?>
+      <div role="tabpanel" id="<?=h($id)?>-individual" aria-labelledby="<?=h($id)?>-individual-tab" data-ve-panel="individual"><form method="post" <?=$kind==='course'?'enctype="multipart/form-data"':''?>><?php creation_hidden($kind,$role,$course,'individual');?>
       <?php if($kind==='user'):?><label>Usuario<input name="usuario" required maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,79}" autocomplete="off"></label><label>Nombres<input name="nombres" required maxlength="150"></label><label>Apellidos<input name="apellidos" required maxlength="150"></label><label>Correo electrónico<input type="email" name="correo" required maxlength="190"></label><label>Contraseña (mínimo 8 caracteres)<input type="password" name="contrasena" required minlength="8" maxlength="72" autocomplete="new-password"></label><label>Rol<select name="rol" required><option value="">Seleccionar rol</option><?php foreach(creatable_roles($u) as $r):?><option value="<?=h($r)?>"><?=h(role_label($r))?></option><?php endforeach;?></select></label>
-      <?php elseif($kind==='course'||$kind==='lesson'):?><label>Título<input name="titulo" required maxlength="180"></label><label><?=$kind==='course'?'Descripción':'Contenido'?><textarea name="<?=$kind==='course'?'descripcion':'contenido'?>" required></textarea></label><?php if($kind==='course'):?><label>Usuario responsable<input name="usuario_responsable" required maxlength="190" autocomplete="off" <?php if(is_manager($u)):?>list="<?=h($id)?>-responsables"<?php else:?>value="<?=h($u['username'])?>" readonly<?php endif;?>></label><?php if(is_manager($u)):?><datalist id="<?=h($id)?>-responsables"><?php foreach(available_teachers($u) as $x):?><option value="<?=h($x['username'])?>" label="<?=h($x['name'])?>"></option><?php endforeach;?></datalist><?php endif;?><?php endif;?>
+      <?php elseif($kind==='course'||$kind==='lesson'):?><label>Título<input name="titulo" required maxlength="180"></label><label><?=$kind==='course'?'Descripción':'Contenido'?><textarea name="<?=$kind==='course'?'descripcion':'contenido'?>" required></textarea></label><?php if($kind==='course'):?><label>Usuario responsable<input name="usuario_responsable" required maxlength="190" autocomplete="off" <?php if(is_manager($u)):?>list="<?=h($id)?>-responsables"<?php else:?>value="<?=h($u['username'])?>" readonly<?php endif;?>></label><?php if(is_manager($u)):?><datalist id="<?=h($id)?>-responsables"><?php foreach(available_teachers($u) as $x):?><option value="<?=h($x['username'])?>" label="<?=h($x['name'])?>"></option><?php endforeach;?></datalist><?php endif;?><?php require __DIR__.'/modules/course_fields.php'; ?><?php endif;?>
       <?php elseif($kind==='enroll'): if(!$course):?><label>Curso<select name="id_curso" required><option value="">Seleccionar</option><?php foreach(all('SELECT id,title FROM courses ORDER BY title') as $x):?><option value="<?=h($x['id'])?>">#<?=h($x['id'])?> · <?=h($x['title'])?></option><?php endforeach;?></select></label><?php endif;?><label>Usuario del estudiante<input name="usuario_estudiante" required maxlength="190" autocomplete="off" list="<?=h($id)?>-estudiantes"></label><datalist id="<?=h($id)?>-estudiantes"><?php foreach(all("SELECT ".user_identity_columns()." FROM users WHERE role='student' ORDER BY name") as $x):?><option value="<?=h($x['username'])?>" label="<?=h($x['name'])?>"></option><?php endforeach;?></datalist><?php endif;?>
       <div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Crear registro</button></div></form></div>
-      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla con una fila de ejemplo. Reemplaza o elimina esa fila, completa tus registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 8 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='course'):?><p class="muted">Usa el usuario exacto del responsable. Los docentes solo pueden asignarse a sí mismos.</p><?php endif;?><?php if($kind==='enroll'):?><p class="muted">Usa el usuario exacto del estudiante registrado.</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
+      <div role="tabpanel" id="<?=h($id)?>-bulk" aria-labelledby="<?=h($id)?>-bulk-tab" data-ve-panel="bulk" hidden><p>Descarga la plantilla con una fila de ejemplo. Reemplaza o elimina esa fila, completa tus registros y guarda el archivo como CSV UTF-8 separado por punto y coma (;).</p><a class="btn" href="<?=h($url)?>">↓ Descargar plantilla CSV</a><p class="ve-columns"><code><?=h(implode(';',$s['headers']))?></code></p><p class="muted">Máximo <?=h($s['limit'])?> registros y 2 MB. Si hay errores, no se guardará ningún registro.<?=$kind==='user'?' Usa contraseñas individuales de al menos 8 caracteres y protege el archivo.':''?></p><?php if($kind==='user'):?><p class="muted">Valores permitidos en rol: <?=h(implode(', ',creatable_roles($u)))?> (también se aceptan los nombres de los roles en español).</p><?php endif;?><?php if($kind==='course'):?><p class="muted">Usa el usuario exacto del responsable. Los docentes solo pueden asignarse a sí mismos. Modalidad: En línea, Presencial, Híbrida; nivel: Básico, Intermedio, Avanzado; duración en horas. Cada curso recibe un SVG al azar.</p><?php endif;?><?php if($kind==='enroll'):?><p class="muted">Usa el usuario exacto del estudiante registrado.</p><?php endif;?><?php if($kind==='enroll'&&!$course):?><p class="muted">Usa los ID de curso que aparecen en la tabla de matrículas.</p><?php endif;?><form method="post" enctype="multipart/form-data"><?php creation_hidden($kind,$role,$course,'bulk');?><label>Archivo CSV<input name="csv" type="file" accept=".csv,text/csv" required></label><div class="ve-dialog-actions"><button type="button" class="ve-quiet" data-ve-close>Cancelar</button><button>Validar e importar</button></div></form></div>
     </dialog>
     <?php
 }
