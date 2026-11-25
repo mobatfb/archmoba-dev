@@ -6,7 +6,7 @@ const safeJson=s=>{try{return JSON.parse(s)}catch{return null}};
 const rf=$('#raffle-form'),pf=$('#participant-form');
 const photoUrl=(id,slot)=>`index.php?photo=${encodeURIComponent(id)}&slot=${slot}`;
 const previewUrls=new Map();
-let wizardStep=1,lastPrizeType='',productPrice='1.00';
+let wizardStep=1,lastPrizeType='',productPrice='1.00',productCount='100',productLimit='100';
 const moneyCents=value=>{const m=String(value).match(/^(0|[1-9][0-9]{0,6})(?:[.,]([0-9]{1,2}))?$/);if(!m)return 0;const n=Number(m[1])*100+Number((m[2]||'').padEnd(2,'0'));return n>0&&n<=100000000?n:0;};
 const prizeAmount=value=>{const n=moneyCents(value);return n>=10000&&n%10000===0?n:0;};
 const cashLabel=cents=>'$'+(cents/100).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.');
@@ -21,10 +21,10 @@ function updatePotential(){
         e.money_amount.setCustomValidity(e.money_amount.value!==''&&!amount?'Ingresa un monto de $100 en $100 (100, 200, 300...).':'');
         p=amount&&quantity?Math.ceil(amount/quantity):0;n=quantity;
         e.price.value=p?(p/100).toFixed(2):'';e.price.setCustomValidity('');
-        if(!shared)e.ticket_count.value=quantity||'';
+        e.ticket_count.value=quantity||'';
         if(cap)e.participation_limit.value=quantity||'';
         $('[data-money-title]',rf).textContent=amount?cashTitle(amount):'Ingresa un monto múltiplo de $100';
-        $('[data-money-note]',rf).textContent=shared?(cap?'La cantidad indicada será la capacidad total de participaciones pagadas. Cada cuenta puede elegir varios números distintos.':'La cantidad indicada sirve para calcular el precio; no limita las ventas. Cada cuenta puede elegir varios números distintos.'):'Cada participación corresponde a un número exclusivo. Una persona puede adquirir varios números.';
+        $('[data-money-note]',rf).textContent=shared?(cap?'La cantidad indicada define los números disponibles y la capacidad total pagada. Cada cuenta puede elegir varios números distintos.':'La cantidad indicada define los números disponibles y el precio. Las ventas compartidas por fecha pueden superar esa cantidad.'):'Cada participación corresponde a un número exclusivo. Una persona puede adquirir varios números.';
         potentialLabel.textContent=shared&&!cap?'Ingreso estimado':'Ingreso a capacidad completa';
         rounding.hidden=!(amount&&quantity&&p*quantity>amount);
         rounding.textContent=rounding.hidden?'':`El boleto se redondea hacia arriba al centavo. Diferencia al alcanzar la cantidad prevista: ${cashLabel(p*quantity-amount)}.`;
@@ -44,8 +44,8 @@ function refreshRaffleSettings(){
     toggle('[data-close-date]',!cap,e.closes_at);toggle('[data-close-limit]',!cash&&cap&&shared,e.participation_limit);
     $('[data-close-note]',rf).textContent=cap?(shared?'Finaliza al alcanzar el total de participaciones pagadas indicado.':'Finaliza al pagar todos los números.'):'Finaliza a la fecha y hora anunciadas (Ecuador).';
     const product=$('[data-product-fields]',rf);product.hidden=cash;$$('input,textarea',product).forEach(el=>el.disabled=cash);e.title.required=!cash;
-    toggle('[data-money-fields]',cash);toggle('[data-ticket-count]',!cash||shared,e.ticket_count);
-    $('[data-number-price]',rf).classList.toggle('single',cash&&!shared);
+    toggle('[data-money-fields]',cash);toggle('[data-ticket-count]',!cash,e.ticket_count);
+    $('[data-number-price]',rf).classList.toggle('single',cash);
     $('[data-price-label]',rf).textContent=cash?'Precio por participación (automático)':'Valor del boleto ($)';e.price.readOnly=cash;
     updatePotential();
 }
@@ -74,14 +74,13 @@ function buildSummary(){
     photos.hidden=!photos.children.length;
     const rows=[['Tipo de premio',cash?'Dinero':'Producto físico'],['Modalidad',shared?'Números compartidos':'Números exclusivos']];
     if(cash||shared)rows.push([cash?'Monto del premio':'Equivalente económico',cashLabel(cash?amount:moneyCents(e.prize_value.value))]);
-    if(cash)rows.push(['Participaciones previstas',quantity.toLocaleString('es-EC')]);
-    rows.push(['Cantidad de números',Number(e.ticket_count.value).toLocaleString('es-EC')],['Precio por participación',cashLabel(moneyCents(e.price.value))],['Condición de finalización',cap?`Capacidad: ${Number(shared?e.participation_limit.value:e.ticket_count.value).toLocaleString('es-EC')} pagadas`:`Fecha: ${e.closes_at.value.replace('T',' ')} (Ecuador)`],[$('[data-potential-label]',rf).textContent,$('#potential').textContent]);
+    rows.push([cash?'Cantidad de números / participaciones previstas':'Cantidad de números',Number(cash?quantity:e.ticket_count.value).toLocaleString('es-EC')],['Precio por participación',cashLabel(moneyCents(e.price.value))],['Condición de finalización',cap?`Capacidad: ${Number(shared?e.participation_limit.value:e.ticket_count.value).toLocaleString('es-EC')} pagadas`:`Fecha: ${e.closes_at.value.replace('T',' ')} (Ecuador)`],[$('[data-potential-label]',rf).textContent,$('#potential').textContent]);
     details.replaceChildren();for(const [key,value] of rows){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=key;dd.textContent=value;details.append(dt,dd);}
-    const note=$('[data-summary-warning]',rf);note.textContent=[cash&&!cap&&shared?'El ingreso es estimado, no garantizado: la cantidad de participaciones solo se usa para calcular el precio.':(!cap?'La fecha puede llegar antes de completar la venta.':''),$('[data-rounding-note]',rf).hidden?'':$('[data-rounding-note]',rf).textContent].filter(Boolean).join(' ');
+    const note=$('[data-summary-warning]',rf);note.textContent=[cash&&!cap&&shared?'El ingreso es estimado, no garantizado: la cantidad indicada define el rango de números y el precio, no un límite de ventas.':(!cap?'La fecha puede llegar antes de completar la venta.':''),$('[data-rounding-note]',rf).hidden?'':$('[data-rounding-note]',rf).textContent].filter(Boolean).join(' ');
 }
 function wizardChoose(type){
     if(wizardStep!==1||!type)return;
-    if(type!==lastPrizeType){if(lastPrizeType==='producto')productPrice=rf.elements.price.value;rf.elements.participation_mode.value=type==='dinero'?'compartido':'exclusivo';if(type==='producto')rf.elements.price.value=productPrice;lastPrizeType=type;}
+    if(type!==lastPrizeType){const e=rf.elements;if(lastPrizeType==='producto'){productPrice=e.price.value;productCount=e.ticket_count.value;productLimit=e.participation_limit.value;}e.participation_mode.value=type==='dinero'?'compartido':'exclusivo';if(type==='producto'){e.price.value=productPrice;e.ticket_count.value=productCount;e.participation_limit.value=productLimit;}lastPrizeType=type;}
     refreshRaffleSettings();wizardShow(2);
 }
 function wizardReview(){if(validateRaffle()){buildSummary();wizardShow(3);}}
@@ -91,7 +90,7 @@ function movePhoto(box,delta){const boxes=$$('.photo-box',rf),i=boxes.indexOf(bo
 function clearPreviews(){if(!rf)return;for(const u of previewUrls.values())URL.revokeObjectURL(u);previewUrls.clear();$$('.photo-box',rf).forEach(box=>{const img=$('.preview',box);img.onload=null;img.onerror=null;img.removeAttribute('src');img.hidden=true;$('.remove',box).hidden=true;});}
 function resetRaffle(r){
     if(!rf)return;$$('[data-client-notice]',rf).forEach(n=>n.remove());rf.reset();resetPhotoOrder();clearPreviews();const e=rf.elements;
-    e.raffle_id.value=r?.id||0;$('#raffle-title').textContent=r?'Editar sorteo':'Crear sorteo';$('button[type=submit]',rf).textContent=r?'Guardar cambios':'Crear sorteo';lastPrizeType=r?.type||'';productPrice='1.00';
+    e.raffle_id.value=r?.id||0;$('#raffle-title').textContent=r?'Editar sorteo':'Crear sorteo';$('button[type=submit]',rf).textContent=r?'Guardar cambios':'Crear sorteo';lastPrizeType=r?.type||'';productPrice='1.00';productCount='100';productLimit='100';
     if(r){for(const k of ['title','description','type','ticket_count'])e[k].value=r[k];e.price.value=(Number(r.ticket_price_cents)/100).toFixed(2);if(r.type==='producto')productPrice=e.price.value;e.participation_mode.value=r.participation_mode||'exclusivo';const amount=r.prize_cents==null?'':(Number(r.prize_cents)/100).toFixed(2);e.prize_value.value=r.type==='producto'?amount:'';e.money_amount.value=r.type==='dinero'?amount:'';e.pricing_participations.value=r.pricing_participations||(r.close_mode==='capacidad'?r.participation_limit:r.ticket_count)||100;e.close_mode.value=r.close_mode||'fecha';e.participation_limit.value=r.participation_limit||r.ticket_count;e.closes_at.value=r.closes_at?new Date(Number(r.closes_at)*1000-5*3600000).toISOString().slice(0,16):'';if(r.type==='producto')$$('.photo-box',rf).forEach(box=>{const img=$('.preview',box);img.onload=()=>{img.hidden=false;$('.remove',box).hidden=false;};img.onerror=()=>{img.hidden=true;$('.remove',box).hidden=true;};img.src=photoUrl(r.id,Number(box.dataset.photoSlot));});}
     refreshRaffleSettings();wizardShow(r?2:1,false);
 }
