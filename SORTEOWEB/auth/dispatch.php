@@ -2,12 +2,14 @@
 declare(strict_types=1);
 if (!defined('SW_APP') || !SW_PUBLIC) { http_response_code(404); exit; }
 require __DIR__.'/otp.php';
-$view=$_GET['view']??'home';if(!is_string($view)||!in_array($view,['home','login','verify','profile','account','photo','payphone_return'],true))$view='home';
+$view=$_GET['view']??'home';if(!is_string($view)||!in_array($view,['home','login','verify','profile','account','photo','payphone_return','ticket_status'],true))$view='home';
 if(!$https&&!$local){http_response_code(400);pub_head('Conexión segura requerida');echo '<main class="public-wrap">';pub_message('Abre la página mediante HTTPS para proteger tu acceso.','error');echo '</main>';pub_footer();exit;}
 try {
     if($view==='photo'){public_photo();}
     if($view==='payphone_return'){require_once dirname(__DIR__).'/wallet/payphone.php';payphone_return();}
+    $lastSeen=$_SESSION['public_seen']??null;
     $u=public_user();
+    if($view==='ticket_status'){if($u&&is_int($lastSeen))$_SESSION['public_seen']=$lastSeen;require_once dirname(__DIR__).'/usuario/tickets.php';ticket_status_response($u);}
     if($_SERVER['REQUEST_METHOD']==='POST'){
         pub_csrf();$action=$_POST['action']??'';$target=$view;
         try {
