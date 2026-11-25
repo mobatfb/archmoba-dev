@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.33';
+const VE_VERSION = '0.1.34';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -26,6 +26,45 @@ header('X-Frame-Options: DENY');
 header('Referrer-Policy: same-origin');
 header("Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
 header('Cache-Control: no-store');
+
+// Versioned image URLs: private resources are isolated by login session.
+function image_cache_version(?string $path,string $kind,?array $stat=null,bool $private=true): string {
+    if ($path===null) return '';
+    if ($stat===null) { clearstatcache(true,$path); $stat=@stat($path)?:null; }
+    if ($stat===null) return '';
+    $revision=implode('|',[$kind,$path,$stat['dev'],$stat['ino'],$stat['size'],$stat['mtime'],$stat['ctime']]);
+    if (!$private) return hash('sha256',$revision);
+    $key=$_SESSION['image_cache_key']??=bin2hex(random_bytes(32));
+    return hash_hmac('sha256',session_id().'|'.$revision,$key);
+}
+function image_cache_url(string $url,string $version): string {
+    return $version===''?$url:$url.'&v='.$version;
+}
+function image_cache_request_version(string $version): ?string {
+    $requested=$_GET['v']??null;
+    return $version!=='' && is_string($requested) && hash_equals($version,$requested)?$version:null;
+}
+function image_cache_headers(?string $version,int $seconds): void {
+    if ($version===null) return; // Older links keep the default no-store policy.
+    header_remove('Pragma');
+    header_remove('Expires');
+    header('Cache-Control: private, max-age='.$seconds.', must-revalidate');
+    header('Vary: Cookie',false);
+    header('ETag: "'.$version.'"');
+}
+function image_cache_not_modified(?string $version,int $seconds): bool {
+    if ($version===null) return false;
+    $etag='"'.$version.'"';
+    foreach (explode(',',$_SERVER['HTTP_IF_NONE_MATCH']??'') as $candidate) {
+        $candidate=trim($candidate);
+        if ($candidate==='*' || $candidate===$etag || $candidate==='W/'.$etag) {
+            image_cache_headers($version,$seconds);
+            http_response_code(304);
+            return true;
+        }
+    }
+    return false;
+}
 
 function h(mixed $v): string {
     return htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
