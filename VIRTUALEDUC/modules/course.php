@@ -12,7 +12,7 @@ $tab=is_string($_GET['tab']??null)&&isset($tabs[$_GET['tab']])?$_GET['tab']:'con
 $empty=['activities'=>'Aún no hay actividades disponibles.','assessments'=>'Aún no hay evaluaciones disponibles.','grades'=>'Aún no hay calificaciones disponibles.','certificate'=>'Aún no hay certificados disponibles.'];
 $courseUrl='?course='.(string)$c['id'];
 ?>
-<div class="ve-course-breadcrumb"><a class="btn" href="?page=courses">← Cursos</a><span>Inicio / Cursos / <?=h($c['title'])?></span></div>
+<div class="ve-course-breadcrumb"><a class="btn" href="?page=courses">← Cursos</a><button type="button" class="ve-course-drawer-toggle" id="ve-course-drawer-toggle" aria-haspopup="dialog" aria-controls="ve-course-drawer" aria-expanded="false" hidden><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16m-7-8h4m-2-2 2 2-2 2"/></svg><span>Panel del curso</span></button><span>Inicio / Cursos / <?=h($c['title'])?></span></div>
 <div class="ve-course-hero<?=$canManage?' ve-course-hero-has-status':''?>">
   <?php if($canManage):?><span class="ve-course-hero-status <?=$c['published']?'ve-status-published':'ve-status-draft'?>"><span aria-hidden="true"></span><?=$c['published']?'Publicado':'Borrador'?></span><?php endif;?>
   <img class="ve-course-cover" src="<?=h(course_cover_url($c))?>" alt="Portada del curso" width="720" height="405">
@@ -39,9 +39,13 @@ $courseUrl='?course='.(string)$c['id'];
   <?php elseif($tab==='participants'): require __DIR__.'/course_participants.php'; ?>
   <?php else:?><h2><?=h($tabs[$tab])?></h2><div class="ve-course-empty"><strong><?=h($empty[$tab])?></strong><p class="muted">Este apartado queda preparado para una próxima fase.</p></div><?php endif;?>
   </section>
-  <aside class="ve-course-aside">
+  <aside class="ve-course-aside" id="ve-course-aside">
     <section class="ve-course-panel"><h2><?=$isStudent?'Mi progreso del curso':'Contenido del curso'?><?php if($isStudent):?><strong><?=$percent?> %</strong><?php endif;?></h2><?php if($isStudent):?><progress value="<?=$completed?>" max="<?=max(1,$total)?>" aria-label="Progreso del curso"></progress><p class="muted"><?=$completed?> de <?=$total?> lecciones completadas</p><?php else:?><p class="muted"><?=count($modules)?> módulo(s) · <?=$total?> lección(es)</p><?php endif;?></section>
     <section class="ve-course-panel"><h2>Responsable</h2><div class="ve-course-teacher"><?php if($teacher) profile_preview_avatar($teacher,'ve-course-teacher-avatar',(int)$c['id']); else { ?><span class="ve-course-teacher-avatar" aria-hidden="true">?</span><?php } ?><strong><?=h($teacher['name']??'Sin definir')?></strong></div></section>
     <section class="ve-course-panel"><h2>Recursos del curso</h2><p class="muted">Aún no hay recursos disponibles.</p></section>
   </aside>
 </div>
+<dialog id="ve-course-drawer" class="ve-course-drawer" aria-labelledby="ve-course-drawer-title">
+  <div class="ve-course-drawer-head"><h2 id="ve-course-drawer-title">Panel del curso</h2><button type="button" id="ve-course-drawer-close" aria-label="Cerrar panel" autofocus><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+  <div id="ve-course-drawer-body" class="ve-course-drawer-body"></div>
+</dialog>
