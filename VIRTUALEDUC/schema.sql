@@ -1,4 +1,4 @@
--- VIRTUALEDUC 0.1.40 | MySQL / MariaDB
+-- VIRTUALEDUC 0.1.41 | MySQL / MariaDB
 -- Importar dentro de una base de datos previamente creada.
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS courses (
     period VARCHAR(50) NOT NULL DEFAULT '',
     thumbnail_variant TINYINT UNSIGNED NOT NULL DEFAULT 1,
     thumbnail_path VARCHAR(255) NULL,
+    access_model ENUM('free','free_paid_certificate','paid_included') NOT NULL DEFAULT 'free',
+    access_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     published TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (teacher_id) REFERENCES users(id)
