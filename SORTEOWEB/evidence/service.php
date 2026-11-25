@@ -53,7 +53,7 @@ function draw_due(array $r,int $paid,?int $now=null): bool {
     return $r['close_mode']==='fecha'&&$r['closes_at']!==null&&(int)$r['closes_at']<=($now??time());
 }
 function draw_money_photo(): never {
-    session_write_close();header('Content-Type: image/svg+xml; charset=UTF-8');header('X-Content-Type-Options: nosniff');header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox");readfile(dirname(__DIR__).'/assets/premio-dinero.svg');exit;
+    session_write_close();header('Cache-Control: private, no-cache');header('Location: assets/premio-dinero.svg',true,302);exit;
 }
 function draw_close_label(array $r): string {
     if(($r['close_mode']??null)==='capacidad')return 'Al alcanzar '.number_format((int)$r['participation_limit']).' participaciones pagadas';

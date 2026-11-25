@@ -10,6 +10,7 @@ document.addEventListener('click',event=>{
     if(!previous)raffleDialogTrigger=trigger;
     if(previous?.open)previous.close();
     dialog.showModal();
+    dialog.querySelectorAll('img[data-src]').forEach(img=>{if(!img.getAttribute('src'))img.src=img.dataset.src;});
 });
 document.querySelectorAll('.user-raffle-dialog').forEach(dialog=>{
     dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});

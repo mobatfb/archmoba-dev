@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 if (!defined('SW_APP') || SW_PUBLIC) { http_response_code(404); exit; }
+require_once dirname(__DIR__).'/core/photos.php';
 require_once dirname(__DIR__).'/evidence/service.php';
 function go(string $page='sorteos',array $params=[]): never { header('Location: index.php?'.http_build_query(['page'=>$page]+$params),true,303);exit; }
 function verify_csrf(): void { $v=$_POST['csrf']??null;if(!is_string($v)||!hash_equals(token(),$v)){http_response_code(403);render_message('Solicitud inválida','Recarga la página e inténtalo de nuevo.');exit;} }
@@ -137,12 +138,6 @@ function raffle_list(?string $status=null): array {
 }
 function serve_photo(): never {
     $id=$_GET['photo']??null;$slot=filter_var($_GET['slot']??null,FILTER_VALIDATE_INT);if(!valid_id($id)||!in_array($slot,[1,2,3],true)){http_response_code(404);exit;}
-    if($slot===1&&one("SELECT id FROM raffles WHERE id=? AND type='dinero' AND draw_version=1",[$id])){draw_money_photo();}
-    $p=one('SELECT filename,mime,content FROM raffle_photos WHERE raffle_id=? AND slot=?',[$id,$slot]);if(!$p){http_response_code(404);exit;}
-    $mime=$p['mime'];$bytes=$p['content'];
-    if($bytes===null && preg_match('/^[a-f0-9]{24,64}\.(jpg|jpeg|png|webp)$/D',$p['filename'])){
-        $path=dirname(__DIR__).'/storage/uploads/'.$p['filename'];if(is_file($path)&&filesize($path)<=5242880){$mime=(new finfo(FILEINFO_MIME_TYPE))->file($path);$bytes=file_get_contents($path);}
-    }
-    if(!is_string($bytes)||!in_array($mime,['image/jpeg','image/png','image/webp'],true)){http_response_code(404);exit;}
-    session_write_close();header('Content-Type: '.$mime);header('Content-Length: '.strlen($bytes));echo $bytes;exit;
+    if($slot===1&&one("SELECT id FROM raffles WHERE id=? AND type='dinero' AND draw_version=1",[$id]))draw_money_photo();
+    photo_serve($id,$slot,false);
 }

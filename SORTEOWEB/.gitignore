@@ -11,3 +11,6 @@
 /wallet/config.local.php
 
 /evidence/config.local.php
+
+/storage/photo-cache/*
+!/storage/photo-cache/.htaccess

@@ -1,0 +1,6 @@
+<IfModule mod_headers.c>
+    <Files "premio-dinero.svg">
+        Header set Cache-Control "public, max-age=86400"
+        Header set X-Content-Type-Options "nosniff"
+    </Files>
+</IfModule>

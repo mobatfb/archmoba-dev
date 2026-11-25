@@ -4,7 +4,7 @@ const $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const money=n=>new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'}).format(n);
 const safeJson=s=>{try{return JSON.parse(s)}catch{return null}};
 const rf=$('#raffle-form'),pf=$('#participant-form');
-const photoUrl=(id,slot)=>`index.php?photo=${encodeURIComponent(id)}&slot=${slot}`;
+const photoUrl=(id,slot)=>`index.php?photo=${encodeURIComponent(id)}&slot=${slot}&size=medium`;
 const previewUrls=new Map();
 let wizardStep=1,lastPrizeType='',productPrice='1.00',productCount='100',productLimit='100';
 const moneyCents=value=>{const m=String(value).match(/^(0|[1-9][0-9]{0,6})(?:[.,]([0-9]{1,2}))?$/);if(!m)return 0;const n=Number(m[1])*100+Number((m[2]||'').padEnd(2,'0'));return n>0&&n<=100000000?n:0;};
@@ -97,7 +97,7 @@ function resetRaffle(r){
 }
 function resetParticipant(p){if(!pf)return;pf.reset();pf.elements.participant_id.value=p?.id||0;$('#participant-title').textContent=p?'Editar participante':'Registrar participante';for(const k of ['name','email','phone','ticket_number','payment_status'])if(p)pf.elements[k].value=p[k];if(pf.elements.link_user){pf.elements.link_user.checked=Boolean(p?.user_id);pf.elements.link_user.disabled=Boolean(p?.user_id);}}
 function show(id){const d=document.getElementById(id);if(d&&!d.open)d.showModal();}
-function viewRaffle(r){if(!r)return;$('#view-title').textContent=r.title;$('#view-description').textContent=r.description||'Sin descripción.';$('#view-info').textContent=`${r.type} · ${r.status} · ${r.ticket_count} boletos · ${money(Number(r.ticket_price_cents)/100)} por boleto`;const root=$('#view-photos');root.replaceChildren();for(let i=1;i<=3;i++){const img=document.createElement('img');img.alt=`Foto ${i}`;img.hidden=true;img.onload=()=>img.hidden=false;img.onerror=()=>img.remove();img.src=photoUrl(r.id,i);root.append(img);}show('view-dialog');}
+function viewRaffle(r){if(!r)return;$('#view-title').textContent=r.title;$('#view-description').textContent=r.description||'Sin descripción.';$('#view-info').textContent=`${r.type} · ${r.status} · ${r.ticket_count} boletos · ${money(Number(r.ticket_price_cents)/100)} por boleto`;const root=$('#view-photos');root.replaceChildren();const cash=r.type==='dinero'&&Number(r.draw_version)===1;for(let i=1;i<=(cash?1:3);i++){const img=document.createElement('img');img.alt=`Foto ${i}`;img.hidden=true;img.onload=()=>img.hidden=false;img.onerror=()=>img.remove();img.src=cash?'assets/premio-dinero.svg':photoUrl(r.id,i);root.append(img);}show('view-dialog');}
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-dismiss-notice')){b.closest('[data-notice]')?.remove();return;}if(b.dataset.open){if(b.dataset.open==='raffle-dialog')resetRaffle(null);if(b.dataset.open==='participant-dialog')resetParticipant(null);show(b.dataset.open);}if(b.hasAttribute('data-close'))b.closest('dialog')?.close();if(b.dataset.editRaffle){const r=safeJson(b.dataset.editRaffle);if(r){resetRaffle(r);show('raffle-dialog');}}if(b.dataset.viewRaffle)viewRaffle(safeJson(b.dataset.viewRaffle));if(b.dataset.editParticipant){const p=safeJson(b.dataset.editParticipant);if(p){resetParticipant(p);show('participant-dialog');}}});
 // Shared dismissible notifications and confirmations.
 function showClientNotice(root,message,kind='error'){

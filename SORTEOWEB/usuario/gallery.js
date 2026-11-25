@@ -19,7 +19,7 @@
         const gallery=trigger.closest('.user-details-gallery'),details=trigger.closest('.user-details-dialog');
         if(!gallery||!details?.open)return;
         const buttons=[...gallery.querySelectorAll('[data-gallery-photo]')];
-        photos=buttons.map(button=>{const img=button.querySelector('.user-details-photo-main');return {src:img.src,alt:img.alt};});
+        photos=buttons.map(button=>{const img=button.querySelector('.user-details-photo-main');return {src:button.dataset.fullSrc||img.src,alt:img.alt};});
         origin=trigger;title.textContent=details.querySelector('h2').textContent;
         show(buttons.indexOf(trigger));viewer.showModal();close.focus();
     });

@@ -1,6 +1,38 @@
 'use strict';
 document.addEventListener('click',e=>{const close=e.target.closest('[data-dismiss]');if(close)close.closest('.pub-notice')?.remove();});
-document.querySelectorAll('[data-carousel]').forEach(root=>{const slides=[...root.querySelectorAll('[data-slide]')],dots=[...root.querySelectorAll('[data-dot]')];if(slides.length<2)return;let index=slides.findIndex(s=>!s.hidden);if(index<0)index=0;let timer=null,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,hover=false,focused=false;const pause=root.querySelector('[data-pause]');function show(n){index=(n+slides.length)%slides.length;slides.forEach((s,i)=>s.hidden=i!==index);dots.forEach((d,i)=>d.setAttribute('aria-pressed',String(i===index)));}function stop(){clearInterval(timer);timer=null;}function start(){stop();if(!paused&&!hover&&!focused&&!document.hidden)timer=setInterval(()=>show(index+1),6500);}function update(){if(pause){pause.textContent=paused?'▶':'Ⅱ';pause.setAttribute('aria-label',paused?'Reproducir carrusel':'Pausar carrusel');}start();}const prev=root.querySelector('[data-prev]'),next=root.querySelector('[data-next]');if(prev)prev.addEventListener('click',()=>{show(index-1);start()});if(next)next.addEventListener('click',()=>{show(index+1);start()});dots.forEach(d=>d.addEventListener('click',()=>{show(Number(d.dataset.dot));start()}));if(pause)pause.addEventListener('click',()=>{paused=!paused;update()});root.addEventListener('mouseenter',()=>{hover=true;stop()});root.addEventListener('mouseleave',()=>{hover=false;start()});root.addEventListener('focusin',()=>{focused=true;stop()});root.addEventListener('focusout',e=>{focused=root.contains(e.relatedTarget);start()});document.addEventListener('visibilitychange',start);update();});
+// Keep the visible slide until the requested image has loaded and decoded.
+document.querySelectorAll('[data-carousel]').forEach(root=>{
+    const slides=[...root.querySelectorAll('[data-slide]')],dots=[...root.querySelectorAll('[data-dot]')];if(slides.length<2)return;
+    let index=Math.max(0,slides.findIndex(s=>!s.hidden)),timer=null,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,hover=false,focused=false,visible=false,request=0,desired=index;
+    const pause=root.querySelector('[data-pause]'),pending=new Map();
+    const normalize=n=>(n+slides.length)%slides.length;
+    function load(n){
+        const img=slides[n].querySelector('img');if(!img)return Promise.resolve(true);
+        if(pending.has(n))return pending.get(n);
+        const task=new Promise(resolve=>{
+            const finish=ok=>{img.removeEventListener('load',loaded);img.removeEventListener('error',failed);resolve(ok);};
+            const loaded=()=>{if(typeof img.decode==='function')img.decode().then(()=>finish(true),()=>finish(img.naturalWidth>0));else finish(true);};
+            const failed=()=>finish(false);
+            img.addEventListener('load',loaded,{once:true});img.addEventListener('error',failed,{once:true});
+            if(!img.getAttribute('src')&&img.dataset.src){img.loading='eager';img.src=img.dataset.src;}
+            else if(img.complete){if(img.naturalWidth>0)loaded();else failed();}
+        });pending.set(n,task);task.then(ok=>{if(!ok)pending.delete(n);});return task;
+    }
+    function prefetch(){if(visible&&!document.hidden)void load(normalize(index+1));}
+    async function show(n){const target=normalize(n),seq=++request;desired=target;if(target===index)return;
+        if(!await load(target)||seq!==request){if(seq===request)desired=index;return;}
+        index=target;slides.forEach((slide,i)=>slide.hidden=i!==index);dots.forEach((d,i)=>d.setAttribute('aria-pressed',String(i===index)));prefetch();
+    }
+    function stop(){clearInterval(timer);timer=null;}
+    function start(){stop();if(visible&&!paused&&!hover&&!focused&&!document.hidden)timer=setInterval(()=>{if(desired===index)void show(index+1);},6500);}
+    function update(){if(pause){pause.textContent=paused?'▶':'Ⅱ';pause.setAttribute('aria-label',paused?'Reproducir carrusel':'Pausar carrusel');}start();}
+    root.querySelector('[data-prev]')?.addEventListener('click',()=>{void show(desired-1);start();});root.querySelector('[data-next]')?.addEventListener('click',()=>{void show(desired+1);start();});
+    dots.forEach(d=>d.addEventListener('click',()=>{void show(Number(d.dataset.dot));start();}));pause?.addEventListener('click',()=>{paused=!paused;update();});
+    root.addEventListener('mouseenter',()=>{hover=true;stop();});root.addEventListener('mouseleave',()=>{hover=false;start();});root.addEventListener('focusin',()=>{focused=true;stop();});root.addEventListener('focusout',e=>{focused=root.contains(e.relatedTarget);start();});
+    document.addEventListener('visibilitychange',()=>{start();prefetch();});
+    if('IntersectionObserver' in window){new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;start();prefetch();},{rootMargin:'100px'}).observe(root);}else{visible=true;prefetch();}
+    update();
+});
 
 // Return to the previous public page when available. The normal link is a safe fallback.
 document.addEventListener('click',event=>{
