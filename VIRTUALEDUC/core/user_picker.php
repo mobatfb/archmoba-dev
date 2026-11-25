@@ -42,3 +42,13 @@ function render_user_picker(string $label,string $field,string $kind,?array $sel
   <?php if(!$readOnly):?><div class="ve-picker-results" data-ve-picker-results hidden role="group" aria-label="Resultados de búsqueda"><p class="muted" data-ve-picker-status role="status"></p><div data-ve-picker-list></div></div><?php endif;?>
 </div>
 <?php }
+
+function render_responsible_picker(array $selected,bool $readOnly=false,int $courseId=0): void { ?>
+<div class="ve-user-picker ve-responsible-picker" data-ve-user-picker="responsible" data-ve-picker-multiple data-ve-picker-course="<?=h($courseId)?>" data-ve-picker-limit="<?=COURSE_RESPONSIBLE_LIMIT?>">
+  <label>Responsables del curso<?php if(!$readOnly):?><input type="search" maxlength="190" autocomplete="off" placeholder="Buscar por usuario o nombre" aria-label="Buscar responsables"><?php endif;?></label>
+  <div class="ve-responsible-list" data-ve-picker-selected>
+    <?php foreach($selected as $person):?><div class="ve-picker-selected" data-ve-responsible-row><input type="hidden" name="usuarios_responsables[]" value="<?=h($person['username'])?>"><?php profile_preview_avatar($person,'ve-person-avatar',$courseId?:null); ?><strong><?=h($person['name'])?></strong><?php if(!$readOnly):?><button class="ve-quiet ve-responsible-remove" type="button" data-ve-responsible-remove aria-label="Quitar responsable">×</button><?php endif;?></div><?php endforeach;?>
+  </div>
+  <?php if(!$readOnly):?><div class="ve-picker-results" data-ve-picker-results hidden role="group" aria-label="Resultados de búsqueda"><p class="muted" data-ve-picker-status role="status"></p><div data-ve-picker-list></div></div><p class="muted ve-responsible-help">Selecciona uno o varios responsables (máximo <?=COURSE_RESPONSIBLE_LIMIT?>).</p><?php else:?><p class="muted ve-responsible-help">Las asignaciones se gestionan desde Administración.</p><?php endif;?>
+</div>
+<?php }
