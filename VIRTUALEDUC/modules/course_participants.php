@@ -21,7 +21,7 @@ $participants=all('SELECT '.$columns.$participantWhere.' ORDER BY u.name,u.id LI
 $participantUrl=$courseUrl.'&tab=participants&participant_q='.rawurlencode($participantSearch);
 ?>
 <h2>Participantes <span class="tag"><?=h($participantTotal)?> matriculados</span></h2>
-<div class="ve-participant-person ve-participant-owner"><?php if($teacher) profile_preview_avatar($teacher,'ve-person-avatar',(int)$c['id']); ?><span>Responsable: <?=h($teacher['name']??'Sin definir')?></span></div>
+<div class="ve-participant-owner ve-responsible-list"><?php foreach($responsibles as $person): ?><div class="ve-participant-person"><?php profile_preview_avatar($person,'ve-person-avatar',(int)$c['id']); ?><span>Responsable: <?=h($person['name'])?></span></div><?php endforeach; ?></div>
 <form method="get" class="ve-participant-search" role="search" aria-label="Buscar participantes">
   <input type="hidden" name="course" value="<?=h($c['id'])?>"><input type="hidden" name="tab" value="participants">
   <label>Buscar participante<input type="search" name="participant_q" value="<?=h($participantSearch)?>" maxlength="150" placeholder="<?=$canManage?'Nombre o usuario':'Nombre'?>"></label><button type="submit">Buscar</button><?php if($participantSearch!==''):?><a class="btn ve-quiet" href="<?=h($courseUrl.'&tab=participants')?>">Limpiar</a><?php endif;?>
