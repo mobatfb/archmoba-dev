@@ -23,7 +23,7 @@ try {
             if($action==='public_logout'&&$u){$_SESSION=[];session_regenerate_id(true);pub_go();}
             throw new DomainException('Operación no válida.');
         } catch(DomainException $e){pub_flash($e->getMessage(),'error');pub_go($target==='photo'?'home':$target);}
-        catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());pub_flash('No se pudo completar la operación. Revisa la configuración del correo o inténtalo más tarde.','error');pub_go($target==='photo'?'home':$target);}
+        catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());pub_flash('No se pudo completar la solicitud. Inténtalo de nuevo más tarde.','error');pub_go($target==='photo'?'home':$target);}
     }
     if(in_array($view,['home','account','results','evidence'],true))draw_process_due();
     if($view==='evidence'||$view==='results'){require_once dirname(__DIR__).'/evidence/public.php';draw_public_page($u,$view);exit;}
@@ -34,4 +34,4 @@ try {
     if(!$u)pub_go('login');
     if($view==='profile'){require dirname(__DIR__).'/usuario/modules/perfil.php';exit;}
     require dirname(__DIR__).'/usuario/index.php';
-} catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());http_response_code(503);pub_head('Servicio no disponible');echo '<main class="public-wrap">';pub_message('El servicio no está disponible en este momento. Si administras el sitio, revisa config.php y los parches SQL 1.1.0, 1.1.6 y 1.2.0.','error');echo '<a href="index.php">Volver al inicio</a></main>';pub_footer();}
+} catch(Throwable $e){error_log('SORTEOWEB público: '.get_class($e).' '.$e->getCode());http_response_code(503);pub_head('Servicio no disponible');echo '<main class="public-wrap">';pub_message('El servicio no está disponible en este momento. Inténtalo de nuevo más tarde.','error');echo '<a href="index.php">Volver al inicio</a></main>';pub_footer();}

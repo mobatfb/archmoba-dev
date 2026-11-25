@@ -31,7 +31,7 @@ function otp_issue(string $email): void {
     otp_secret();
     require_once dirname(__DIR__).'/mail/mailer.php';
     // A missing or invalid mail configuration is not a send attempt.
-    try{$mail=mail_settings();}catch(Throwable $e){error_log('SORTEOWEB OTP: configuración de correo incompleta o inválida');throw new DomainException('El servicio de correo no está configurado correctamente. Contacta al administrador.');}
+    try{$mail=mail_settings();}catch(Throwable $e){error_log('SORTEOWEB OTP: configuración de correo incompleta o inválida');throw new DomainException('No podemos enviar el código en este momento. Inténtalo más tarde o contacta con el equipo de soporte.');}
     $challenge=bin2hex(random_bytes(32));$code=str_pad((string)random_int(0,999999),6,'0',STR_PAD_LEFT);$mac=otp_mac($email,$challenge,$code);
     $result=tx(function()use($email,$challenge,$mac){
         // Check the rate limit without consuming it before creating an OTP row.
@@ -61,7 +61,7 @@ function otp_issue(string $email): void {
         if(otp_session_email()===$email)$_SESSION['otp_sent_at']=$now;
     }
     try{query('INSERT INTO mail_logs(email_digest,purpose,status) VALUES(?,?,?)',[otp_bucket('log',$email),'login_otp',$sent?'sent':'failed']);}catch(Throwable $e){error_log('SORTEOWEB OTP: fallo de bitácora');}
-    if(!$sent)throw new DomainException('No se pudo enviar el código. Revisa el servicio de correo o contacta al administrador. Puedes volver a intentarlo después de 60 segundos.');
+    if(!$sent)throw new DomainException('No se pudo enviar el código. Inténtalo de nuevo después de 60 segundos. Si el problema continúa, contacta con el equipo de soporte.');
     $_SESSION['otp_email']=$email;$_SESSION['otp_challenge']=$challenge;$_SESSION['otp_sent_at']=$now;
 }
 function otp_verify(string $email,string $challenge,mixed $code): ?int {

@@ -102,3 +102,14 @@ button.user-details-photo:hover{border-color:#245b9d}
 .ticket-number[data-state=shared]{background:#ffdc56;color:#604500;border-color:#d6b33f}.ticket-number[data-state=mine],.ticket-swatch.mine{background:#245b9d;color:white;border-color:#245b9d}.ticket-number small{display:block;font-size:10px;line-height:1.1;color:inherit}.ticket-number:has([data-buyers]){display:grid;align-content:center;gap:3px;min-height:46px}.draw-rule-mini{font-size:12px;color:var(--muted);margin:0}.draw-detail-rules{border-top:1px solid var(--border);padding:12px 0;font-size:13px;display:grid;gap:7px}.draw-detail-rules a{color:#245b9d;font-weight:700}.draw-public{display:grid;gap:15px;min-height:65vh;align-content:start}.draw-public>.pub-btn{justify-self:start}.draw-public h1{font-size:clamp(22px,4vw,32px)}.draw-evidence-card,.draw-result-row{background:white;border:1px solid var(--border);border-radius:12px;padding:18px;display:grid;gap:12px;overflow-wrap:anywhere}.draw-evidence-card>.pub-btn{justify-self:start}.draw-result-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.draw-hash{display:block;background:#edf3fa;border-radius:7px;padding:10px;font-size:13px;overflow-wrap:anywhere;user-select:all}.draw-evidence-card label{font-weight:bold;font-size:13px}
 
 .user-details-gallery[data-photo-count="1"]{grid-template-columns:1fr}.user-details-gallery[data-photo-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}.user-ticket-bar{display:block}
+
+/* Public-facing conditions: readable in full pages and in the details dialog. */
+.draw-transparency{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;display:grid;gap:12px;color:var(--ink,#10294d);font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.draw-transparency h2,.draw-transparency h3{font-size:clamp(17px,2.6vw,22px);line-height:1.35;margin:0;color:#10294d}
+.draw-transparency h4{font-size:14px;line-height:1.4;margin:3px 0 0}
+.draw-transparency p,.draw-transparency ul{margin:0}.draw-transparency ul{padding-inline-start:20px;display:grid;gap:8px}
+.draw-transparency-home{padding:24px;scroll-margin-top:80px}.draw-transparency-home>.pub-btn{justify-self:start}
+.draw-verify-link{color:#245b9d;text-decoration:underline;text-underline-offset:3px;font-weight:700}.ticket-conditions-link{font-size:13px;margin:4px 0 10px}
+.user-details-scroll .draw-transparency{margin-top:12px;padding:12px;font-size:13px;gap:9px}.user-details-scroll .draw-transparency h3{font-size:16px}
+.draw-evidence-card h2{font-size:19px;margin:6px 0 0}.draw-technical{border-top:1px solid var(--border);padding-top:12px;font-size:13px;color:var(--muted)}.draw-technical summary{cursor:pointer;font-weight:700;color:#245b9d}.draw-technical p{margin:10px 0 0;line-height:1.5}
+@media(max-width:650px){.draw-transparency,.draw-transparency-home{padding:14px}.draw-transparency-home>.pub-btn{max-width:100%}}

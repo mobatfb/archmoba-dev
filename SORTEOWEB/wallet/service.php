@@ -34,4 +34,4 @@ function wallet_amount(mixed $value,array $c): int {
     $min=max(100,(int)($c['min_cents']??100));$max=min(100000,(int)($c['max_cents']??5000));
     if($n<$min||$n>$max)throw new DomainException('El monto debe estar entre '.money($min).' y '.money($max).'.');return $n;
 }
-function wallet_recharge_status(string $state): string {return ['preparing'=>'En preparación','pending'=>'Pendiente de pago','review'=>'Por conciliar','approved'=>'Acreditada','canceled'=>'Cancelada','failed'=>'No completada'][$state]??'Por revisar';}
+function wallet_recharge_status(string $state): string {return ['preparing'=>'En preparación','pending'=>'Pendiente de pago','review'=>'En revisión','approved'=>'Acreditada','canceled'=>'Cancelada','failed'=>'No completada'][$state]??'Por revisar';}

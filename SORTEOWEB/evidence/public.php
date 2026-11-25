@@ -14,8 +14,32 @@ function draw_download(): never {
 function draw_public_page(?array $u,string $view): void {
     $r=$view==='evidence'?draw_public_record($_GET['id']??null):null;
     if($view==='evidence'&&!$r)http_response_code(404);
-    pub_head($view==='results'?'Resultados':'Evidencia del sorteo',$u);?><main class="public-wrap draw-public"><a class="pub-btn secondary" href="<?=h(pub_url('results'))?>">Resultados</a><h1><?=$view==='results'?'Resultados y evidencia':h($r['title']??'Evidencia no disponible')?></h1>
-    <?php if($view==='results'):$rows=all("SELECT r.id,r.title,r.status,r.draw_outcome,e.revealed_number FROM raffles r JOIN raffle_evidence e ON e.raffle_id=r.id WHERE r.draw_version=1 AND r.status IN ('activo','finalizado') AND e.published_at IS NOT NULL ORDER BY r.created_at DESC");if(!$rows):?><div class="user-empty">Aún no hay evidencia publicada.</div><?php else:foreach($rows as $x):?><article class="draw-result-row"><div><strong><?=h($x['title'])?></strong><p><?=h(state_name($x['status']))?><?=$x['status']==='finalizado'&&$x['revealed_number']!==null?' · Número '.h(str_pad((string)$x['revealed_number'],4,'0',STR_PAD_LEFT)):''?></p></div><a class="pub-btn primary" href="<?=h(pub_url('evidence',['id'=>$x['id']]))?>">Ver evidencia</a></article><?php endforeach;endif;
-    elseif($r):?><article class="draw-evidence-card"><p>Estado: <strong><?=h(state_name($r['status']))?></strong> · <?=h(draw_close_label($r))?></p><p>Modalidad: <?=h(ucfirst($r['participation_mode']))?> · <?=number_format((int)$r['total'])?> números · <?=money($r['price_cents'])?> por participación</p><?php if($r['prize_cents']!==null):?><p>Premio o equivalente: <strong><?=money($r['prize_cents'])?></strong></p><?php endif;?><p>Compromiso publicado: <?=h($r['published_at'])?> (fecha del servidor)</p><label>SHA-256 del ZIP original</label><code class="draw-hash"><?=h($r['sha256'])?></code><a class="pub-btn primary" href="<?=h(pub_url('evidence_zip',['id'=>$r['id']]))?>">Descargar ZIP original</a>
-    <?php if($r['status']==='finalizado'&&$r['revealed_password']!==null):?><h2>Número preseleccionado: <?=h(str_pad((string)$r['revealed_number'],4,'0',STR_PAD_LEFT))?></h2><label>Contraseña del ZIP (AES-256)</label><code class="draw-hash"><?=h($r['revealed_password'])?></code><p><?=$r['draw_outcome']==='premiado'?'Premio asignado a los titulares pagados.':'Sin adjudicación; devoluciones pendientes de revisión.'?></p><?php else:?><p>Contraseña oculta hasta el cierre.</p><?php endif;?><p>El número fue generado al activar mediante random_int de PHP. Conserva el ZIP y su hash antes de participar: el hash prueba la integridad, no el azar imparcial ni el secreto frente al propietario del servidor. No se repetirá la selección si no hay titulares pagados; en sorteos exclusivos con venta incompleta al cierre, se registrará devolución pendiente. En premios físicos compartidos, un titular recibe el producto y varios reciben su equivalente anunciado en dinero.</p></article><?php else:?><div class="user-empty">No existe evidencia pública de este sorteo.</div><?php endif;?></main><?php pub_footer();
+    pub_head($view==='results'?'Resultados':'Transparencia del sorteo',$u);
+    ?><main class="public-wrap draw-public">
+        <?php if($view!=='results'):?><a class="pub-btn secondary" href="<?=h(pub_url('results'))?>">← Volver a resultados</a><?php endif;?>
+        <h1><?=$view==='results'?'Sorteos y resultados':h($r['title']??'Información no disponible')?></h1>
+        <?php if($view==='results'):
+            $rows=all("SELECT r.id,r.title,r.status,r.draw_outcome,e.revealed_number FROM raffles r JOIN raffle_evidence e ON e.raffle_id=r.id WHERE r.draw_version=1 AND r.status IN ('activo','finalizado') AND e.published_at IS NOT NULL ORDER BY r.created_at DESC");
+            if(!$rows):?><div class="user-empty">Aún no hay sorteos con resultados protegidos publicados.</div><?php else:foreach($rows as $x):?>
+                <article class="draw-result-row"><div><strong><?=h($x['title'])?></strong><p><?=h(state_name($x['status']))?><?=$x['status']==='finalizado'&&$x['revealed_number']!==null?' · Número '.h(str_pad((string)$x['revealed_number'],4,'0',STR_PAD_LEFT)):''?></p></div><a class="pub-btn primary" href="<?=h(pub_url('evidence',['id'=>$x['id']]))?>">Ver condiciones y resultado</a></article>
+            <?php endforeach;endif;
+        elseif($r):?>
+            <article class="draw-evidence-card">
+                <p>Estado: <strong><?=h(state_name($r['status']))?></strong> · <?=h(draw_close_label($r))?></p>
+                <p>Modalidad: <?=h(ucfirst($r['participation_mode']))?> · <?=number_format((int)$r['total'])?> números · <?=money($r['price_cents'])?> por participación</p>
+                <?php if($r['prize_cents']!==null):?><p><?=$r['type']==='producto'?'Equivalente económico del producto':'Valor del premio'?>: <strong><?=money($r['prize_cents'])?></strong></p><?php endif;?>
+                <?php if($r['status']==='finalizado'&&$r['revealed_password']!==null):?>
+                    <h2><?=$r['draw_outcome']==='premiado'?'Número ganador: ':'Número seleccionado: '?><?=h(str_pad((string)$r['revealed_number'],4,'0',STR_PAD_LEFT))?></h2>
+                    <p><?=$r['draw_outcome']==='premiado'?'Premio asignado a las participaciones ganadoras pagadas. La entrega requiere gestión posterior.':'No se ha asignado el premio. Las devoluciones de las participaciones pagadas están pendientes de revisión.'?></p>
+                    <label>Contraseña del archivo protegido</label><code class="draw-hash"><?=h($r['revealed_password'])?></code>
+                <?php else:?><p>El resultado está protegido. La contraseña se publicará al finalizar el sorteo.</p><?php endif;?>
+                <h2>Verificación del resultado</h2>
+                <p>Archivo publicado: <?=h($r['published_at'])?> (hora del servidor).</p>
+                <label>Código de verificación del archivo original</label><code class="draw-hash"><?=h($r['sha256'])?></code>
+                <a class="pub-btn primary" href="<?=h(pub_url('evidence_zip',['id'=>$r['id']]))?>">Descargar archivo protegido (ZIP)</a>
+                <details class="draw-technical"><summary>Información técnica de verificación</summary><p>El código de verificación es el SHA-256 del ZIP original. Puedes calcular el SHA-256 del archivo descargado y compararlo con el código que conservaste antes de participar. El archivo usa cifrado AES-256.</p></details>
+            </article>
+            <?php pub_draw_conditions($r,false);
+        else:?><div class="user-empty">No hay información de verificación publicada para este sorteo.</div><?php endif;?>
+    </main><?php pub_footer();
 }

@@ -44,7 +44,7 @@ function save_raffle(array $u): void {
     $total=$isMoney?$planned:integer('ticket_count',1,1000000);$close=$closeMode==='fecha'?raffle_close_input():null;
     $limit=$closeMode==='capacidad'?($mode==='exclusivo'?$total:($isMoney?$planned:integer('participation_limit',1,1000000))):null;
     $price=$isMoney?money_raffle_price($prize,$planned):price_cents(field('price',15));$photos=$type==='producto'?load_photos():[];
-    if($type==='dinero')$desc='Premio en dinero de '.money($prize).'. '.($mode==='compartido'?'El importe se divide en partes iguales entre las cuentas titulares pagadas del número ganador.':'El titular pagado del número ganador recibe el importe total.').' La condición de cierre y la evidencia se publican antes de la venta.';
+    if($type==='dinero')$desc='Premio en dinero de '.money($prize).'. '.($mode==='compartido'?'El premio se reparte entre quienes hayan pagado una participación del número ganador.':'Quien haya comprado y pagado el número ganador recibe el premio completo.').' La condición de cierre y la evidencia se publican antes de la venta.';
     $order=explode(',',field('photo_order',5));$check=$order;sort($check);if($check!==['1','2','3'])throw new DomainException('Orden de fotografías inválido.');
     tx(function()use($u,$id,$title,$desc,$type,$mode,$prize,$close,$total,$price,$photos,$order,$closeMode,$limit,$planned){
         $new=$id==='';

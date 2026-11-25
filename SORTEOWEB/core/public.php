@@ -2,6 +2,7 @@
 declare(strict_types=1);
 if (!defined('SW_APP') || !SW_PUBLIC) { http_response_code(404); exit; }
 require_once dirname(__DIR__).'/evidence/service.php';
+require_once dirname(__DIR__).'/evidence/conditions.php';
 function pub_url(string $view='home',array $params=[]): string { return 'index.php'.($view==='home'&&!$params?'':'?'.http_build_query(['view'=>$view]+$params)); }
 function pub_go(string $view='home',array $params=[]): never { header('Location: '.pub_url($view,$params),true,303);exit; }
 function pub_flash(string $msg,string $kind='success'): void { $_SESSION['public_flash']=[$msg,$kind]; }

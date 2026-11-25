@@ -6,7 +6,7 @@
     const info=new Intl.NumberFormat('es-EC');
     let selected=null,busy=false,available=true,room=true,stopped=false,timer=null;
     const canPick=state=>room&&(state==='free'||state==='shared');
-    const message='La compra todavía no está habilitada. No se reservará el número ni se descontará saldo.';
+    const message='Las compras aún no están disponibles. Puedes consultar los números, pero no se reservarán ni se descontará saldo.';
     function status(button,state){
         button.dataset.state=state;
         button.disabled=!canPick(state)||!available;

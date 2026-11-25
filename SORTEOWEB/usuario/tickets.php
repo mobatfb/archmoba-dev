@@ -19,7 +19,7 @@ function ticket_snapshot(mixed $id,mixed $page,mixed $jump=null,?int $uid=null):
         $blocked=[];$buyers=[];
         foreach(all("SELECT number,COUNT(*) AS n,SUM(payment='pagado') AS paid,MAX(CASE WHEN user_id=? THEN 1 ELSE 0 END) AS mine FROM participants WHERE raffle_id=? AND number BETWEEN ? AND ? GROUP BY number",[$uid??0,$id,$start,$end]) as $p){$n=(int)$p['number'];$buyers[$n]=(int)$p['paid'];$blocked[$n]=$shared?((int)$p['mine']?'mine':((int)$p['paid']?'shared':'free')):((int)$p['paid']?'sold':'pending');}
         $active=$r['status']==='activo'&&!draw_due($r,$paid)&&($r['closes_at']===null||(int)$r['closes_at']>time());
-        return ['id'=>$id,'title'=>$r['title'],'active'=>$active,'total'=>$total,'price'=>(int)$r['price_cents'],'price_label'=>money($r['price_cents']),'page'=>$page,'pages'=>$pages,'start'=>$start,'end'=>$end,'paid'=>$paid,'pending'=>$occupied-$paid,'available'=>$available,'capacity'=>$capacity,'shared'=>$shared,'distinct'=>(int)$counts['distinct_numbers'],'close_label'=>draw_close_label($r),'blocked'=>(object)$blocked,'buyers'=>(object)$buyers];
+        return ['id'=>$id,'title'=>$r['title'],'active'=>$active,'total'=>$total,'price'=>(int)$r['price_cents'],'price_label'=>money($r['price_cents']),'page'=>$page,'pages'=>$pages,'start'=>$start,'end'=>$end,'paid'=>$paid,'pending'=>$occupied-$paid,'available'=>$available,'capacity'=>$capacity,'shared'=>$shared,'has_evidence'=>(int)$r['draw_version']===1,'distinct'=>(int)$counts['distinct_numbers'],'close_label'=>draw_close_label($r),'blocked'=>(object)$blocked,'buyers'=>(object)$buyers];
     });
 }
 function ticket_status_response(?array $u): never {
