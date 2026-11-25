@@ -1,0 +1,6 @@
+# Keep this project root OUTSIDE the public web directory.
+# Defense in depth if a hosting layout accidentally exposes the root.
+Options -Indexes
+<FilesMatch "^(config\.php|db_mysql\.php|app\.php|README\.md|INICIAR_WINDOWS\.bat|.*\.sql|.*\.json|migrate_json\.php)$">
+    Require all denied
+</FilesMatch>
