@@ -1,0 +1,57 @@
+name: FUTUREO v2.4.6 - dependencias Windows Python 3.12 y 3.14
+on:
+  push:
+    paths:
+      - 'MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_6.py'
+      - '.github/workflows/futureo-python314-v246.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-dependencies:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Comprobar instalador en entorno limpio sin compilacion
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:PYGAME_HIDE_SUPPORT_PROMPT='1'
+          $env:SDL_VIDEODRIVER='dummy'
+          $env:SDL_AUDIODRIVER='dummy'
+          $work=Join-Path $env:RUNNER_TEMP 'futureo-standalone'
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          Copy-Item MULTIMANDO/ANFITRION/MULTIMANDO_FUTUREO_Anfitrion_v2_4_6.py $work
+          python -m venv (Join-Path $work 'venv')
+          if($LASTEXITCODE -ne 0){throw 'Error creando entorno limpio'}
+          $py=Join-Path $work 'venv/Scripts/python.exe'
+          Set-Location $work
+          @'
+          import sys
+          import importlib.metadata
+          import MULTIMANDO_FUTUREO_Anfitrion_v2_4_6 as host
+          expected = "pygame-ce" if sys.version_info >= (3,14) else "pygame"
+          assert host.PYGAME_PACKAGE == expected
+          assert expected in host.missing_python_dependencies()
+          host.ensure_python_dependencies()
+          assert not host.missing_python_dependencies()
+          import pygame, mss, PIL
+          from websockets.sync.server import serve
+          print("Distribucion:", expected, importlib.metadata.version(expected))
+          bridge = host.LocalControllerBridge(lambda *_: None)
+          bridge.init_pygame()
+          assert bridge.pygame.joystick.get_init()
+          bridge.close()
+          host.ensure_python_dependencies()
+          host.selftest()
+          print("OK: instalacion limpia, pygame importable, SDL joystick y autopruebas")
+          '@ | Set-Content -Encoding utf8 test_install.py
+          & $py test_install.py
+          if($LASTEXITCODE -ne 0){throw 'Prueba de instalacion fallida'}
