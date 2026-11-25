@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.31
+# VIRTUALEDUC v0.1.32
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -128,6 +128,9 @@ El responsable del curso muestra su avatar junto al nombre. Se usa la miniatura 
 
 ## Actualización a v0.1.31
 Los participantes, las listas de estudiantes disponibles y seleccionados, los buscadores de responsables y de matrícula individual muestran avatares de 60 × 60 píxeles en JPEG al 50% o iniciales. Los buscadores individuales consultan hasta 30 resultados por petición y no descargan el padrón completo; los candidatos de matrícula múltiple mantienen su paginación de 50. Participantes incluye búsqueda paginada; los estudiantes solo ven los nombres y las miniaturas de miembros del curso al que tienen acceso. Las rutas de fotos verifican el rol y el curso; las fotos completas siguen siendo privadas. El selector de matrícula individual excluye inscritos y exige seleccionar un curso. Se conserva la creación masiva CSV y no se requiere SQL. Aplicar sobre v0.1.30. Requiere GD con JPEG para mostrar fotos; en su ausencia se muestran iniciales.
+
+## Actualización a v0.1.32
+En pantallas de hasta 900 píxeles, el panel derecho del curso se abre desde el botón Panel del curso como un lateral flotante. Permite cerrar con la X, tocar fuera o Escape; bloquea el desplazamiento del fondo y conserva el contenido y los permisos originales. En pantallas mayores se conserva la distribución anterior. Sin JavaScript o soporte de diálogo modal, el panel sigue disponible en línea. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
