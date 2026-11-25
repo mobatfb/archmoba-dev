@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.5 - PHP 7.4+
+// FUTUREO STUDIO v0.1.6 - PHP 7.4+
 date_default_timezone_set('America/Guayaquil');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
@@ -82,7 +82,7 @@ if ((!$adminPage || $logged) && isset($_GET['project'])) {
 }
 $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 ?><!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FUTUREO STUDIO<?= $adminPage ? ' | Administración' : '' ?></title><link rel="icon" type="image/png" href="assets/icono.png"><link rel="stylesheet" href="assets/studio.css?v=0.1.4"></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FUTUREO STUDIO<?= $adminPage ? ' | Administración' : '' ?></title><link rel="icon" type="image/png" href="assets/icono.png"><link rel="stylesheet" href="assets/studio.css?v=0.1.6"><?php if ($adminPage && $logged && $project !== null): ?><link rel="stylesheet" href="assets/tracks.css?v=0.1.6"><?php endif; ?></head>
 <body<?= $adminPage && $logged ? ' class="admin-orientation' . ($project !== null ? ' workspace-open' : '') . '" data-orientation="horizontal"' : '' ?>>
 <?php if (!($adminPage && $logged && $project !== null)): ?>
 <header class="top"><a class="brand" href="<?= e($page) ?>"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></a><nav><?php if ($adminPage && $logged): ?><a href="index.php">Vista pública</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form><?php elseif (!$adminPage): ?><a href="admin.php">Administración</a><?php else: ?><a href="index.php">Inicio</a><?php endif; ?></nav></header>
@@ -92,7 +92,7 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 <?php elseif ($project !== null): ?>
 <?php if ($adminPage && $logged): ?>
 <details class="workspace-controls"><summary title="Controles del proyecto" aria-label="Controles del proyecto"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></summary><div class="workspace-menu"><div class="brand workspace-brand"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></div><span class="workspace-name"><?= e($project) ?></span><a class="subtle" href="admin.php">← Proyectos</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><a class="subtle" href="index.php">Vista pública</a><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form></div></details>
-<div class="workspace-stage"><main class="workspace" aria-label="Espacio de trabajo vacío"></main></div>
+<div class="workspace-stage"><main class="workspace" aria-label="Editor de audio multipista"><section class="audio-editor" aria-label="Vista de diseño multipista"></section></main></div>
 <?php else: ?><div class="workspace-bar"><a href="<?= e($page) ?>">← Proyectos</a><span><?= e($project) ?></span></div><main class="workspace" aria-label="Espacio de trabajo vacío"></main><?php endif; ?>
 <?php else: ?>
 <main class="dashboard"><?php if ($adminPage): ?><div class="intro"><div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Proyectos</h1><p class="muted">Crea y abre tus proyectos locales.</p></div><span class="count"><?= count($list) ?> proyectos</span></div><?php endif; ?>
@@ -139,4 +139,5 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 })();
 </script>
 <?php endif; ?>
+<?php if ($adminPage && $logged && $project !== null): ?><script src="assets/tracks.js?v=0.1.6"></script><?php endif; ?>
 </body></html>
