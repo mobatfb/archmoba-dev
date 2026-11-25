@@ -33,7 +33,6 @@ $templateUrl='?'.http_build_query(['template'=>1,'kind'=>'course_enroll','course
     <p>Descarga la plantilla CSV, reemplaza o elimina la fila de ejemplo e introduce un usuario por fila. Guarda el archivo en formato CSV UTF-8.</p>
     <p class="muted">Curso: <strong><?=h($c['title'])?></strong>.</p>
     <a class="btn" href="<?=h($templateUrl)?>">↓ Descargar plantilla CSV</a>
-    <p class="ve-columns"><code>usuario</code></p>
     <p class="muted">Máximo <?=COURSE_ENROLL_LIMIT?> registros y 2 MB. Conserva los ceros iniciales de los usuarios. Los ya matriculados y las filas repetidas se omitirán. Si algún usuario no existe o no es estudiante, no se guardará ninguna matrícula.</p>
     <form method="post" enctype="multipart/form-data" data-ve-enroll-csv>
       <?php creation_hidden('course_enroll','',(int)$c['id'],'bulk'); ?>
