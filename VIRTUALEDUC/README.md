@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.39
+# VIRTUALEDUC v0.1.40
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -152,6 +152,9 @@ El icono de la pestaña del navegador (favicon) utiliza el mismo logo selecciona
 
 ## Actualización a v0.1.39
 Se corrige el contraste de los resultados del buscador de usuarios compartido (responsable del curso y matrícula individual). Los nombres, usuarios e iniciales conservan colores oscuros en fondos claros, incluso al pasar el cursor, enfocar o pulsar una opción. Se anula localmente el relleno de texto blanco de los botones generales, incluido WebKit. No cambia la búsqueda, los permisos ni la base de datos. No requiere SQL.
+
+## Actualización a v0.1.40
+Cada curso admite hasta 50 responsables, con búsqueda, avatares y selección múltiple en Crear curso y Editar curso. El primero sigue siendo el responsable principal (courses.teacher_id) y los adicionales se guardan en course_responsibles. Los administradores y subadministradores mantienen las reglas anteriores de asignación; los docentes asignados pueden gestionar el curso pero no cambiar la lista de responsables. Los docentes conservan la creación de cursos propios. Todos los responsables aparecen en el panel del curso y Participantes, con miniaturas autorizadas por curso. En CSV se conserva la columna usuario_responsable: admite uno o varios usuarios separados por comas. Antes de sustituir los archivos, ejecutar migrations/0.1.40.sql en phpMyAdmin. La migración no altera las asignaciones existentes, contenidos, matrículas ni progreso.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
