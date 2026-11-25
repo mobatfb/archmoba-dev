@@ -39,6 +39,15 @@ try {
                 try { update_user_identity($u); flash('Datos del usuario actualizados.'); }
                 catch (DomainException $e) { flash($e->getMessage(),'error'); }
                 go('page=users');
+            } elseif ($action==='course_edit') {
+                require_role($u,'admin','subadmin','teacher');
+                $id=id_field('course_id');
+                $target=course_for($id,$u);
+                if(!$target || !course_can_edit($u,$target)) { http_response_code(403); exit('Acceso denegado'); }
+                try { course_edit_update($u,$id,$_POST); flash('Curso actualizado correctamente.'); }
+                catch(DomainException $e) { flash($e->getMessage(),'error'); }
+                catch(Throwable $e) { error_log('VIRTUALEDUC course edit failed: '.get_class($e)); flash('No se pudieron guardar los cambios del curso.','error'); }
+                go('course='.$id);
             } elseif ($action==='create') { handle_creation($u); }
             elseif ($action==='login') {
                 if (!$installed) throw new DomainException('Primero importa el archivo SQL del administrador en phpMyAdmin.');
