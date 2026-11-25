@@ -15,7 +15,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         if($action==='logout'){logout_session();go();}
         if($action==='change_password')change_password($u);
         if((int)$u['must_change_password']===1)throw new DomainException('Cambia primero la contraseña temporal.');
-        match($action){'save_raffle'=>save_raffle($u),'activate','finish','delete_raffle'=>raffle_transition($u,$action),'save_participant'=>save_participant($u),'delete_participant'=>delete_participant($u),default=>throw new DomainException('Operación inválida.')};
+        match($action){'save_raffle'=>save_raffle($u),'duplicate_raffle'=>duplicate_raffle($u),'activate','finish','reactivate','delete_raffle'=>raffle_transition($u,$action),'save_participant'=>save_participant($u),'delete_participant'=>delete_participant($u),default=>throw new DomainException('Operación inválida.')};
     } catch(DomainException $e){flash($e->getMessage(),'error');}
     catch(Throwable $e){error_log('SORTEOWEB: '.get_class($e).' '.$e->getCode());flash('No se pudo completar la operación. Comprueba la configuración y los registros.','error');}
     $rid=$_POST['raffle_id']??null;$rid=valid_id($rid)?$rid:null;go($u&&$u['must_change_password']?'cuenta':$page,$page==='participantes'&&$rid?['id'=>$rid]:[]);
