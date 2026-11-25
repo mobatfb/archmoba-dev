@@ -6,7 +6,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     exit;
 }
 
-const VE_VERSION = '0.1.39';
+const VE_VERSION = '0.1.40';
 date_default_timezone_set('America/Guayaquil');
 
 ini_set('session.use_strict_mode', '1');
@@ -193,7 +193,7 @@ function course_for(int $id, array $u): ?array {
         return one('SELECT * FROM courses WHERE id=?', [$id]);
     }
     if ($u['role'] === 'teacher') {
-        return one('SELECT * FROM courses WHERE id=? AND teacher_id=?', [$id,$u['id']]);
+        return one('SELECT * FROM courses WHERE id=? AND (teacher_id=? OR EXISTS (SELECT 1 FROM course_responsibles cr WHERE cr.course_id=courses.id AND cr.user_id=?))', [$id,$u['id'],$u['id']]);
     }
     return one('SELECT c.* FROM courses c JOIN enrollments e ON e.course_id=c.id WHERE c.id=? AND e.student_id=? AND c.published=1', [$id,$u['id']]);
 }
