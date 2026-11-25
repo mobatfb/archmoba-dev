@@ -7,6 +7,11 @@
 <?php foreach($rows as $r):
     $slots=array_values(array_filter(explode(',',(string)($r['photo_slots']??'')),fn($n)=>in_array($n,['1','2','3'],true)));
     $id='raffle-'.h($r['id']);
+    $total=max(0,(int)$r['total']);
+    $registered=max(0,(int)$r['registered_count']);
+    $paid=min($registered,max(0,(int)$r['paid_count']));
+    $pending=$registered-$paid;
+    $available=max(0,$total-$registered);
 ?>
 <article class="user-raffle-card">
     <div class="user-raffle-media">
@@ -19,6 +24,15 @@
     </div>
     <div class="user-raffle-copy">
         <h2><?=h($r['title'])?></h2>
+        <div class="user-ticket-capacity">
+            <div class="user-ticket-labels"><span><strong><?=number_format($paid)?></strong> comprados</span><span><strong><?=number_format($available)?></strong> disponibles</span></div>
+            <div class="user-ticket-bar" role="img" aria-label="<?=h($paid.' comprados, '.$pending.' pendientes de pago y '.$available.' disponibles, de '.$total.' boletos')?>">
+                <?php if($paid>0):?><span class="ticket-paid" style="flex-grow:<?=$paid?>" aria-hidden="true"></span><?php endif;?>
+                <?php if($pending>0):?><span class="ticket-pending" style="flex-grow:<?=$pending?>" aria-hidden="true"></span><?php endif;?>
+                <?php if($available>0):?><span class="ticket-free" style="flex-grow:<?=$available?>" aria-hidden="true"></span><?php endif;?>
+            </div>
+            <div class="user-ticket-caption"><span>Total: <?=number_format($total)?> boletos</span><?php if($pending>0):?><span class="ticket-pending-label"><strong><?=number_format($pending)?></strong> pendientes de pago</span><?php endif;?></div>
+        </div>
         <div class="user-raffle-actions"><button type="button" class="pub-btn cta" data-user-dialog="<?=$id?>-details">Ver detalles y participar · <?=money($r['price_cents'])?></button></div>
     </div>
 </article>
