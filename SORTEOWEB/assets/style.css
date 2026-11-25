@@ -30,3 +30,17 @@
 .raffle-list-panel>.section-heading{padding-top:14px;padding-bottom:5px}
 .raffle-list-panel>.tabs a{padding-top:8px;padding-bottom:8px}
 @media(max-width:560px){.raffle-summary-bar{flex-wrap:wrap;gap:7px;padding:8px 11px}.raffle-summary-bar>.raffle-summary{flex:1 1 100%;padding:3px 0 5px}.raffle-summary-bar>.raffle-search{flex:0 1 100%;width:100%;min-width:0}}
+
+/* v1.0.5: dismissible mobile navigation. */
+.sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sidebar-close,.sidebar-overlay{display:none}
+@media(max-width:760px){
+    .sidebar{width:min(300px,88vw);height:100vh;height:100dvh;overflow-y:auto;overscroll-behavior:contain;visibility:hidden;transition:transform .18s,visibility .18s;box-shadow:none}
+    .sidebar.open{visibility:visible;box-shadow:8px 0 32px #10294d30}
+    .sidebar-head>.brand{flex:1;min-width:0;gap:8px}
+    .sidebar-close{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;padding:0;border:1px solid #426289;border-radius:8px;background:#1b3c63;color:#fff;font-size:27px;line-height:1}
+    .sidebar-close:focus-visible{outline:2px solid #fff;outline-offset:2px}
+    .sidebar-overlay:not([hidden]){display:block;position:fixed;inset:0;z-index:4;width:100%;height:100%;padding:0;border:0;background:#10294d80}
+    body.mobile-menu-open{overflow:hidden}
+}
+@media(prefers-reduced-motion:reduce){.sidebar{transition:none!important}}
