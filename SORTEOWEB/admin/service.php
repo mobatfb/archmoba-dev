@@ -30,22 +30,27 @@ function raffle_close_input(): int {
     $v=field('closes_at',16);$tz=new DateTimeZone('America/Guayaquil');$dt=DateTimeImmutable::createFromFormat('!Y-m-d\TH:i',$v,$tz);
     if(!$dt||$dt->format('Y-m-d\TH:i')!==$v||$dt->getTimestamp()<=time())throw new DomainException('Selecciona una fecha y hora de cierre futura (Ecuador).');return $dt->getTimestamp();
 }
+function money_raffle_title(int $prize): string {return 'Gana '.money($prize).' en efectivo';}
+function money_raffle_price(int $prize,int $quantity): int {if($prize<1||$quantity<1)throw new DomainException('Monto o cantidad inválidos.');return intdiv($prize+$quantity-1,$quantity);}
 function save_raffle(array $u): void {
-    $id=record_id('raffle_id',true);$title=field('title',180);$type=field('type',10);$desc=$type==='dinero'?'':field('description',10000,false);$mode=field('participation_mode',12);
+    $id=record_id('raffle_id',true);$type=field('type',10);$desc=$type==='dinero'?'':field('description',10000,false);$mode=field('participation_mode',12);
     if(!in_array($type,['producto','dinero'],true)||!in_array($mode,['exclusivo','compartido'],true))throw new DomainException('Selecciona el tipo de premio y la modalidad.');
-    $prize=$type==='dinero'||$mode==='compartido'?price_cents(field('prize_value',15)):null;
+    $isMoney=$type==='dinero';
+    $prize=$isMoney?price_cents(field('money_amount',15)):($mode==='compartido'?price_cents(field('prize_value',15)):null);
+    $title=$isMoney?money_raffle_title($prize):field('title',180);
+    $planned=$isMoney?integer('pricing_participations',1,1000000):null;
     $closeMode=field('close_mode',10);if(!in_array($closeMode,['fecha','capacidad'],true))throw new DomainException('Selecciona la condición de cierre.');
-    $total=integer('ticket_count',1,1000000);$close=$closeMode==='fecha'?raffle_close_input():null;
-    $limit=$closeMode==='capacidad'?($mode==='exclusivo'?$total:integer('participation_limit',1,1000000)):null;
-    $price=price_cents(field('price',15));$photos=$type==='producto'?load_photos():[];
+    $total=$isMoney&&$mode==='exclusivo'?$planned:integer('ticket_count',1,1000000);$close=$closeMode==='fecha'?raffle_close_input():null;
+    $limit=$closeMode==='capacidad'?($mode==='exclusivo'?$total:($isMoney?$planned:integer('participation_limit',1,1000000))):null;
+    $price=$isMoney?money_raffle_price($prize,$planned):price_cents(field('price',15));$photos=$type==='producto'?load_photos():[];
     if($type==='dinero')$desc='Premio en efectivo de '.money($prize).'. '.($mode==='compartido'?'El importe se divide en partes iguales entre las cuentas titulares pagadas del número ganador.':'El titular pagado del número ganador recibe el importe total.').' La condición de cierre y la evidencia se publican antes de la venta.';
     $order=explode(',',field('photo_order',5));$check=$order;sort($check);if($check!==['1','2','3'])throw new DomainException('Orden de fotografías inválido.');
-    tx(function()use($u,$id,$title,$desc,$type,$mode,$prize,$close,$total,$price,$photos,$order,$closeMode,$limit){
+    tx(function()use($u,$id,$title,$desc,$type,$mode,$prize,$close,$total,$price,$photos,$order,$closeMode,$limit,$planned){
         $new=$id==='';
         if(!$new){$r=raffle_lock($id);if($r['status']!=='borrador')throw new DomainException('Las condiciones publicadas no pueden modificarse. Duplica el sorteo para preparar otro.');
             if(one('SELECT raffle_id FROM raffle_evidence WHERE raffle_id=? FOR UPDATE',[$id])||one('SELECT id FROM participants WHERE raffle_id=? LIMIT 1 FOR UPDATE',[$id]))throw new DomainException('No se puede editar un sorteo con evidencia o boletos registrados.');
-            query('UPDATE raffles SET title=?,description=?,type=?,total=?,price_cents=?,participation_mode=?,prize_cents=?,closes_at=?,close_mode=?,participation_limit=?,draw_version=1,updated_at=NOW() WHERE id=?',[$title,$desc,$type,$total,$price,$mode,$prize,$close,$closeMode,$limit,$id]);
-        }else{$id=bin2hex(random_bytes(12));query('INSERT INTO raffles(id,title,description,type,total,price_cents,participation_mode,prize_cents,closes_at,close_mode,participation_limit,draw_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,NOW(),NOW())',[$id,$title,$desc,$type,$total,$price,$mode,$prize,$close,$closeMode,$limit]);}
+            query('UPDATE raffles SET title=?,description=?,type=?,total=?,price_cents=?,participation_mode=?,prize_cents=?,closes_at=?,close_mode=?,participation_limit=?,pricing_participations=?,draw_version=1,updated_at=NOW() WHERE id=?',[$title,$desc,$type,$total,$price,$mode,$prize,$close,$closeMode,$limit,$planned,$id]);
+        }else{$id=bin2hex(random_bytes(12));query('INSERT INTO raffles(id,title,description,type,total,price_cents,participation_mode,prize_cents,closes_at,close_mode,participation_limit,pricing_participations,draw_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(),NOW())',[$id,$title,$desc,$type,$total,$price,$mode,$prize,$close,$closeMode,$limit,$planned]);}
         $items=[];if($type==='producto'){foreach(all('SELECT slot,filename,mime,content FROM raffle_photos WHERE raffle_id=? FOR UPDATE',[$id]) as $p)$items[(int)$p['slot']]=$p;
         for($i=1;$i<=3;$i++){
             if(isset($_POST['remove_photo'.$i])&&!isset($photos[$i]))unset($items[$i]);
@@ -65,7 +70,9 @@ function duplicate_raffle(array $u): void {
         $title=substr($r['title'],0,172);
         while($title!==''&&!preg_match('//u',$title))$title=substr($title,0,-1);
         $title=rtrim($title).' (copia)';
-        query("INSERT INTO raffles(id,title,description,type,total,price_cents,participation_mode,prize_cents,close_mode,participation_limit,draw_version,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,1,'borrador',NOW(),NOW())",[$id,$title,$r['description'],$r['type'],$r['total'],$r['price_cents'],$r['participation_mode'],$r['prize_cents'],$r['close_mode'],$r['participation_limit']]);
+        $planned=$r['pricing_participations'];$price=$r['price_cents'];
+        if($r['type']==='dinero'&&(int)$r['prize_cents']>0){$title=money_raffle_title((int)$r['prize_cents']);$planned=(int)($planned??($r['close_mode']==='capacidad'?$r['participation_limit']:$r['total']));$price=money_raffle_price((int)$r['prize_cents'],$planned);}
+        query("INSERT INTO raffles(id,title,description,type,total,price_cents,participation_mode,prize_cents,close_mode,participation_limit,pricing_participations,draw_version,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,'borrador',NOW(),NOW())",[$id,$title,$r['description'],$r['type'],$r['total'],$price,$r['participation_mode'],$r['prize_cents'],$r['close_mode'],$r['participation_limit'],$planned]);
         if($r['type']==='producto')foreach(all('SELECT slot,filename,mime,content FROM raffle_photos WHERE raffle_id=? ORDER BY slot FOR UPDATE',[$source]) as $p){
             $bytes=$p['content'];$mime=$p['mime'];
             // Preserve legacy photos by reading the original file into an independent BLOB.
