@@ -54,7 +54,7 @@ function profile_avatar(array $u,string $class): void {
 function profile_preview_data(array $u,?int $courseId=null,string $scope='teacher'): array {
     $params=['profile_photo'=>1];
     if ($courseId===null) $params['thumb_id']=(string)$u['id'];
-    elseif ($scope==='teacher') $params['course_teacher']=$courseId;
+    elseif ($scope==='teacher') { $params['course_teacher']=$courseId; $params['thumb_id']=(string)$u['id']; }
     else { $params['thumb_id']=(string)$u['id']; $params[$scope==='candidate'?'course_candidate':'course_member']=$courseId; }
     $url=function_exists('imagejpeg') && profile_has_photo($u)?image_cache_url('?'.http_build_query($params,'','&',PHP_QUERY_RFC3986),image_cache_version(profile_path($u),'profile-jpeg-60-q50')):null;
     return ['initials'=>profile_initials($u),'avatar'=>$url];
@@ -72,12 +72,15 @@ function profile_photo_target(array $actor, mixed $id): ?array {
     return one("SELECT id,role FROM users WHERE id=? AND role IN ('teacher','student')",[$id]);
 }
 // Resolve the responsible teacher from an authorized course, never from an arbitrary user ID.
-function profile_course_teacher_target(array $actor,mixed $courseId): ?array {
+function profile_course_teacher_target(array $actor,mixed $courseId,mixed $personId=null): ?array {
     if (!is_string($courseId) || !preg_match('/\A[1-9][0-9]{0,19}\z/D',$courseId)) return null;
     $id=filter_var($courseId,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
     if (!$id) return null;
     $course=course_for($id,$actor);
-    return $course?one('SELECT id FROM users WHERE id=?',[$course['teacher_id']]):null;
+    if (!$course) return null;
+    $personId=$personId??(string)$course['teacher_id'];
+    if (!is_string($personId) || !preg_match('/\A[1-9][0-9]{0,19}\z/D',$personId) || !course_has_responsible($course,$personId)) return null;
+    return one('SELECT id FROM users WHERE id=?',[$personId]);
 }
 // Classmates require an active course membership; candidates require course management.
 function profile_course_person_target(array $actor,mixed $courseId,mixed $personId,bool $candidate): ?array {
@@ -119,8 +122,8 @@ function serve_profile_photo(?array $u): never {
     $courseTeacher=$_GET['course_teacher']??null;
     $member=$_GET['course_member']??null; $candidate=$_GET['course_candidate']??null;
     $scopes=($courseTeacher!==null?1:0)+($member!==null?1:0)+($candidate!==null?1:0);
-    if ($scopes>1 || ($courseTeacher!==null && $thumb!==null) || (($member!==null || $candidate!==null) && $thumb===null)) { http_response_code(404); exit; }
-    if ($courseTeacher!==null) $target=profile_course_teacher_target($u,$courseTeacher);
+    if ($scopes>1 || (($member!==null || $candidate!==null) && $thumb===null)) { http_response_code(404); exit; }
+    if ($courseTeacher!==null) $target=profile_course_teacher_target($u,$courseTeacher,$thumb);
     elseif ($member!==null || $candidate!==null) $target=profile_course_person_target($u,$member??$candidate,$thumb,$candidate!==null);
     else $target=profile_photo_target($u,$thumb);
     $path=$target?profile_path($target):null;
