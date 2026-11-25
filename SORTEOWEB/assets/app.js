@@ -24,6 +24,7 @@ function updatePotential(){
         e.ticket_count.value=quantity||'';
         if(cap)e.participation_limit.value=quantity||'';
         $('[data-money-title]',rf).textContent=amount?cashTitle(amount):'Ingresa un monto múltiplo de $100';
+        $('[data-money-ticket-price]',rf).textContent=p?cashLabel(p):'—';
         $('[data-money-note]',rf).textContent=shared?(cap?'La cantidad indicada define los números disponibles y la capacidad total pagada. Cada cuenta puede elegir varios números distintos.':'La cantidad indicada define los números disponibles y el precio. Las ventas compartidas por fecha pueden superar esa cantidad.'):'Cada participación corresponde a un número exclusivo. Una persona puede adquirir varios números.';
         potentialLabel.textContent=shared&&!cap?'Ingreso estimado':'Ingreso a capacidad completa';
         rounding.hidden=!(amount&&quantity&&p*quantity>amount);
