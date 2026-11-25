@@ -19,6 +19,14 @@
 .notice.warning{background:#fff6df;border-color:#eed59a;color:#80551c}.notice.info{background:#edf4fc;border-color:#c9daee;color:#245b9d}
 .login-card .notice,.dialog-body .notice{margin-bottom:0}
 .raffle-heading-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
-.raffle-heading-row>.btn{flex:none}.raffle-search-toolbar{justify-content:flex-end}
+.raffle-heading-row>.btn{flex:none}
 #action-confirm-dialog{max-width:440px}
 @media(max-width:760px){.raffle-heading-row h1{font-size:26px}.raffle-heading-row>.btn{font-size:12px;padding:9px 12px}.notice[data-notice]{padding-left:12px}}
+
+/* v1.0.4: search aligned with totals; no empty toolbar in the list. */
+.raffle-summary-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;margin:0 0 16px;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+.raffle-summary-bar>.raffle-summary{flex:1 1 auto;margin:0;padding:5px 2px;border:0;border-radius:0;background:transparent}
+.raffle-summary-bar>.raffle-search{flex:0 1 240px;width:240px;min-width:135px;margin:0;padding:7px 10px;font-size:13px}
+.raffle-list-panel>.section-heading{padding-top:14px;padding-bottom:5px}
+.raffle-list-panel>.tabs a{padding-top:8px;padding-bottom:8px}
+@media(max-width:560px){.raffle-summary-bar{flex-wrap:wrap;gap:7px;padding:8px 11px}.raffle-summary-bar>.raffle-summary{flex:1 1 100%;padding:3px 0 5px}.raffle-summary-bar>.raffle-search{flex:0 1 100%;width:100%;min-width:0}}
