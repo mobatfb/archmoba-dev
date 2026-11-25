@@ -20,11 +20,11 @@ document.querySelectorAll('[data-carousel]').forEach(root=>{
     }
     function prefetch(){if(visible&&!document.hidden)void load(normalize(index+1));}
     async function show(n){const target=normalize(n),seq=++request;desired=target;if(target===index)return;
-        if(!await load(target)||seq!==request){if(seq===request)desired=index;return;}
+        if(!await load(target)||seq!==request||root.hasAttribute('data-gallery-viewing')){if(seq===request)desired=index;return;}
         index=target;slides.forEach((slide,i)=>slide.hidden=i!==index);dots.forEach((d,i)=>d.setAttribute('aria-pressed',String(i===index)));prefetch();
     }
     function stop(){clearInterval(timer);timer=null;}
-    function start(){stop();if(visible&&!paused&&!hover&&!focused&&!document.hidden)timer=setInterval(()=>{if(desired===index)void show(index+1);},6500);}
+    function start(){stop();if(visible&&!paused&&!hover&&!focused&&!document.hidden)timer=setInterval(()=>{if(desired===index&&!root.hasAttribute('data-gallery-viewing'))void show(index+1);},6500);}
     function update(){if(pause){pause.textContent=paused?'▶':'Ⅱ';pause.setAttribute('aria-label',paused?'Reproducir carrusel':'Pausar carrusel');}start();}
     root.querySelector('[data-prev]')?.addEventListener('click',()=>{void show(desired-1);start();});root.querySelector('[data-next]')?.addEventListener('click',()=>{void show(desired+1);start();});
     dots.forEach(d=>d.addEventListener('click',()=>{void show(Number(d.dataset.dot));start();}));pause?.addEventListener('click',()=>{paused=!paused;update();});
