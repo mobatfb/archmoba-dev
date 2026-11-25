@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.28
+# VIRTUALEDUC v0.1.29
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -119,6 +119,9 @@ Dentro del curso, el botón Administrar reúne Editar curso y Crear matrícula p
 
 ## Actualización a v0.1.28
 El estado Publicado o Borrador se muestra en la esquina superior derecha de la portada del curso para sus gestores autorizados. Ocultar curso o Publicar curso es la última opción de Administrar, después de Crear matrícula. Se mantiene la validación de permisos y el envío POST con protección CSRF. Parche acumulativo sobre v0.1.26 o v0.1.27; no requiere SQL.
+
+## Actualización a v0.1.29
+El menú lateral conserva iconos SVG únicamente en las opciones hijas; los encabezados muestran texto y flecha de despliegue. Se conserva el avatar y el botón Salir queda con texto. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
