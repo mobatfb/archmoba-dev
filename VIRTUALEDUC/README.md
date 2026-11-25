@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.34
+# VIRTUALEDUC v0.1.35
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -137,6 +137,9 @@ La navegación móvil principal adopta el diseño lateral de SGA: barra superior
 
 ## Actualización a v0.1.34
 Las fotos de perfil y miniaturas de cursos utilizan URLs versionadas y caché privada del navegador durante cinco minutos; el logo institucional se conserva hasta 24 horas. Al reemplazar una imagen, su URL cambia automáticamente. Una vez vencida la caché, ETag permite responder 304 sin reenviar la imagen ni volver a generar la miniatura. Los avatares y portadas se identifican por sesión y todas las peticiones al servidor conservan las verificaciones de acceso. Una copia privada ya descargada puede permanecer disponible en el navegador hasta que venza su caché; los nuevos inicios de sesión generan otras URLs. Las páginas HTML, búsquedas, errores y enlaces antiguos conservan no-store. No requiere SQL.
+
+## Actualización a v0.1.35
+En Administrar > Crear matrícula, el flotante de cada curso incluye Selección manual y Masivo (CSV), con una plantilla descargable de una sola columna `usuario`. El curso se determina por el formulario y se comprueba el permiso del gestor o docente responsable en el servidor, también dentro de la transacción. Se aceptan hasta 500 filas y 2 MB por archivo; se preservan los ceros iniciales, se omiten usuarios repetidos y matrículas existentes, y se informa el resultado. Si un usuario no existe o no es estudiante, no se guarda ninguna matrícula. La importación general de Matrículas no cambia. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
