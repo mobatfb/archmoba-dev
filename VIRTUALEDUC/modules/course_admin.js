@@ -33,7 +33,7 @@
             else if (chosen.size < limit) chosen.set(student.id,student);
             render();
         });
-        row.append(info,button); return row;
+        row.append(vePreviewAvatar(student),info,button); return row;
     };
     function render() {
         const candidates = rows.filter(student => !chosen.has(student.id));
