@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.2 - PHP 7.4+
+// FUTUREO STUDIO v0.1.3 - PHP 7.4+
 date_default_timezone_set('America/Guayaquil');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
@@ -82,18 +82,44 @@ if ((!$adminPage || $logged) && isset($_GET['project'])) {
 }
 $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 ?><!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FUTUREO STUDIO<?= $adminPage ? ' | Administración' : '' ?></title><link rel="icon" type="image/png" href="assets/icono.png"><link rel="stylesheet" href="assets/studio.css"></head>
-<body>
-<header class="top"><a class="brand" href="<?= e($page) ?>"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></a><nav><?php if ($adminPage && $logged): ?><a href="index.php">Vista pública</a><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form><?php elseif (!$adminPage): ?><a href="admin.php">Administración</a><?php else: ?><a href="index.php">Inicio</a><?php endif; ?></nav></header>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FUTUREO STUDIO<?= $adminPage ? ' | Administración' : '' ?></title><link rel="icon" type="image/png" href="assets/icono.png"><link rel="stylesheet" href="assets/studio.css?v=0.1.3"></head>
+<body<?= $adminPage && $logged ? ' class="admin-orientation" data-orientation="horizontal"' : '' ?>>
+<header class="top"><a class="brand" href="<?= e($page) ?>"><img src="assets/logotipo.png" alt="FUTUREO" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><b hidden>FUTUREO</b><span>STUDIO</span></a><nav><?php if ($adminPage && $logged): ?><a href="index.php">Vista pública</a><button type="button" class="subtle orientation-control" id="orientation-toggle" aria-label="Cambiar a vertical" aria-pressed="false" title="Cambiar a vertical"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/></svg><span id="orientation-label">Horizontal</span></button><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="subtle" name="action" value="logout">Salir</button></form><?php elseif (!$adminPage): ?><a href="admin.php">Administración</a><?php else: ?><a href="index.php">Inicio</a><?php endif; ?></nav></header>
 <?php if ($adminPage && !$logged): ?>
 <main class="login-wrap"><section class="login"><img class="mark" src="assets/icono.png" alt="FUTUREO"><p class="eyebrow">FUTUREO STUDIO</p><h1>Iniciar sesión</h1><p class="muted">Acceso al panel de proyectos.</p><?php if ($error): ?><p class="error" role="alert"><?= e($error) ?></p><?php endif; ?><form method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><label for="user">Usuario</label><input id="user" name="user" autocomplete="username" required><label for="password">Contraseña</label><input id="password" name="password" type="password" autocomplete="current-password" required><button class="primary" name="action" value="login">Ingresar</button></form></section></main>
 <?php elseif ($project !== null): ?>
-<div class="workspace-bar"><a href="<?= e($page) ?>">← Proyectos</a><span><?= e($project) ?></span></div><main class="workspace" aria-label="Espacio de trabajo vacío"></main>
+<div class="workspace-bar"><a href="<?= e($page) ?>">← Proyectos</a><span><?= e($project) ?></span></div><?php if ($adminPage && $logged): ?><div class="workspace-stage"><?php endif; ?><main class="workspace" aria-label="Espacio de trabajo vacío"></main><?php if ($adminPage && $logged): ?></div><?php endif; ?>
 <?php else: ?>
 <main class="dashboard"><?php if ($adminPage): ?><div class="intro"><div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Proyectos</h1><p class="muted">Crea y abre tus proyectos locales.</p></div><span class="count"><?= count($list) ?> proyectos</span></div><?php endif; ?>
 <?php if ($error): ?><p class="error" role="alert"><?= e($error) ?></p><?php endif; ?>
 <?php if (!$list && $adminPage): ?><section class="empty"><div class="empty-icon">▱</div><h2>Sin proyectos todavía</h2><p>Pulsa Nuevo para comenzar.</p></section><?php elseif ($list): ?><section class="grid" aria-label="Proyectos"><?php foreach ($list as $item): ?><a class="project" href="<?= e($page . '?project=' . rawurlencode($item['name'])) ?>"><span class="file-icon">F</span><div class="project-info"><strong><?= e($item['name']) ?></strong><small><?= e(date('d/m/Y H:i', $item['mtime'])) ?> · FPRJ</small></div><span class="arrow">↗</span></a><?php endforeach; ?></section><?php endif; ?>
 </main>
 <?php if ($adminPage): ?><form class="new-form" method="post" action="admin.php"><input type="hidden" name="csrf" value="<?= e($csrf) ?>"><button class="fab" name="action" value="new"><span>＋</span> Nuevo</button></form><?php endif; ?>
+<?php endif; ?>
+<?php if ($adminPage && $logged): ?>
+<script>
+(() => {
+    const button = document.getElementById('orientation-toggle');
+    const label = document.getElementById('orientation-label');
+    const key = 'futureo.studio.orientation';
+    let orientation = 'horizontal';
+    try { if (localStorage.getItem(key) === 'vertical') orientation = 'vertical'; } catch (_) {}
+    function render() {
+        const vertical = orientation === 'vertical';
+        document.body.dataset.orientation = orientation;
+        label.textContent = vertical ? 'Vertical' : 'Horizontal';
+        button.setAttribute('aria-pressed', String(vertical));
+        const hint = vertical ? 'Cambiar a horizontal' : 'Cambiar a vertical';
+        button.title = hint;
+        button.setAttribute('aria-label', hint);
+    }
+    button.addEventListener('click', () => {
+        orientation = orientation === 'vertical' ? 'horizontal' : 'vertical';
+        try { localStorage.setItem(key, orientation); } catch (_) {}
+        render();
+    });
+    render();
+})();
+</script>
 <?php endif; ?>
 </body></html>
