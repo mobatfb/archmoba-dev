@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.35
+# VIRTUALEDUC v0.1.36
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -140,6 +140,9 @@ Las fotos de perfil y miniaturas de cursos utilizan URLs versionadas y caché pr
 
 ## Actualización a v0.1.35
 En Administrar > Crear matrícula, el flotante de cada curso incluye Selección manual y Masivo (CSV), con una plantilla descargable de una sola columna `usuario`. El curso se determina por el formulario y se comprueba el permiso del gestor o docente responsable en el servidor, también dentro de la transacción. Se aceptan hasta 500 filas y 2 MB por archivo; se preservan los ceros iniciales, se omiten usuarios repetidos y matrículas existentes, y se informa el resultado. Si un usuario no existe o no es estudiante, no se guarda ninguna matrícula. La importación general de Matrículas no cambia. No requiere SQL.
+
+## Actualización a v0.1.36
+Se elimina la aclaración sobre el ID del curso en el formulario de matrícula masiva. La plantilla CSV del curso contiene únicamente el encabezado `usuario` y la fila `usuarioejemplo`. Se conserva el enlace de descarga y no se modifican las demás plantillas ni las validaciones. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
