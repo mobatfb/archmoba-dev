@@ -97,3 +97,11 @@
 }
 @keyframes ve-drawer-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
 @media(prefers-reduced-motion:reduce){.ve-course-drawer[open]{animation:none}}
+
+/* Access model and course price. */
+.ve-access-fields{min-width:0;margin:4px 0 16px;padding:14px;border:1px solid #d5e3f3;border-radius:12px;background:#f4f8fd}
+.ve-access-fields legend{padding:0 6px;color:#173e70;font-size:14px;font-weight:700}
+.ve-access-fields label{font-size:14px}.ve-access-description,.ve-access-note{font-size:12px;margin:0 0 10px;line-height:1.5}.ve-access-note{margin:0}
+.ve-course-access-summary{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin-top:16px;padding:10px 12px;border:1px solid #ffffff38;border-radius:8px;background:#ffffff12;font-size:12px;color:#fff;overflow-wrap:anywhere}
+.ve-course-access-summary strong{font-size:13px}.ve-card-access{width:100%;border-top:1px solid #ffffff33;padding-top:7px;font-size:11px;font-weight:650;line-height:1.4;color:#fff;overflow-wrap:anywhere}
+@media(max-width:480px){.ve-card-access{font-size:10px}.ve-access-fields{padding:10px}}
