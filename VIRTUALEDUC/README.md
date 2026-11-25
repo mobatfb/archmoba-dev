@@ -1,4 +1,4 @@
-# VIRTUALEDUC v0.1.38
+# VIRTUALEDUC v0.1.39
 
 Sistema inicial de capacitaciones online en PHP nativo, sin frameworks ni Composer.
 
@@ -149,6 +149,9 @@ Se elimina el recuadro visual de la columna `usuario` del formulario de matrícu
 
 ## Actualización a v0.1.38
 El icono de la pestaña del navegador (favicon) utiliza el mismo logo seleccionado en Configuración institucional, también en el inicio de sesión. Reutiliza la URL versionada y su caché; al guardar un logo nuevo cambia automáticamente. Si no hay logo, se muestra el icono VE predeterminado. No requiere SQL ni una segunda carga de imagen.
+
+## Actualización a v0.1.39
+Se corrige el contraste de los resultados del buscador de usuarios compartido (responsable del curso y matrícula individual). Los nombres, usuarios e iniciales conservan colores oscuros en fondos claros, incluso al pasar el cursor, enfocar o pulsar una opción. Se anula localmente el relleno de texto blanco de los botones generales, incluido WebKit. No cambia la búsqueda, los permisos ni la base de datos. No requiere SQL.
 
 ## Arquitectura modular
 - index.php: punto de entrada.
