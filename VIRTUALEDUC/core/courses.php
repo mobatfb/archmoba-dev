@@ -43,7 +43,7 @@ function course_cover_file(?string $name): ?string {
     return !is_link($path) && is_file($path) && is_readable($path)?$path:null;
 }
 function course_cover_url(array $c): string {
-    if(course_cover_file($c['thumbnail_path']??null)) return '?course_cover='.(string)$c['id'];
+    if($file=course_cover_file($c['thumbnail_path']??null)) return image_cache_url('?course_cover='.(string)$c['id'],image_cache_version($file,'course-cover-jpeg'));
     $variant=(int)($c['thumbnail_variant']??1);
     return 'assets/courses/cover-'.(in_array($variant,[1,2,3],true)?$variant:1).'.svg';
 }
@@ -86,9 +86,13 @@ function serve_course_cover(?array $u): never {
     if(!$file||!($fp=@fopen($file,'rb'))) { http_response_code(404); exit; }
     $stat=fstat($fp);
     if(!$stat||$stat['size']<1||$stat['size']>1000000) { fclose($fp); http_response_code(404); exit; }
+    $version=image_cache_request_version(image_cache_version($file,'course-cover-jpeg',$stat));
     session_write_close();
+    header('Cross-Origin-Resource-Policy: same-origin');
+    if(image_cache_not_modified($version,300)) { fclose($fp); exit; }
+    image_cache_headers($version,300);
     header('Content-Type: image/jpeg'); header('Content-Disposition: inline');
-    header('Cache-Control: private, no-store'); header('Cross-Origin-Resource-Policy: same-origin'); header('Content-Length: '.$stat['size']);
+    header('Content-Length: '.$stat['size']);
     fpassthru($fp); fclose($fp); exit;
 }
 
