@@ -32,3 +32,9 @@ body .ve-user-picker button.ve-picker-person .ve-person-avatar,
 body .ve-user-picker .ve-picker-selected .ve-person-avatar{
     color:#1655a8!important;-webkit-text-fill-color:#1655a8!important;
 }
+
+/* Multiple course responsibles, including the existing light-button contrast rules. */
+.ve-responsible-list{display:grid;gap:8px}
+.ve-responsible-picker .ve-picker-selected strong{flex:1;min-width:0;overflow-wrap:anywhere}
+body .ve-responsible-picker button.ve-responsible-remove{flex:none;min-height:32px;width:32px;padding:0;font-size:20px;line-height:1}
+.ve-responsible-help{font-size:12px;margin:8px 0 0}
