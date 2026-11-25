@@ -13,6 +13,7 @@ try {
     }
     if (isset($_GET['profile_photo'])) { serve_profile_photo($u); }
     if (isset($_GET['course_cover'])) { serve_course_cover($u); }
+    if (isset($_GET['course_candidates'])) { serve_course_candidates($u); }
     if (isset($_GET['template'])) {
         try { creation_template($u); } catch (DomainException $e) { http_response_code(403); exit(h($e->getMessage())); }
     }
@@ -39,6 +40,15 @@ try {
                 try { update_user_identity($u); flash('Datos del usuario actualizados.'); }
                 catch (DomainException $e) { flash($e->getMessage(),'error'); }
                 go('page=users');
+            } elseif ($action==='course_enroll_many') {
+                require_role($u,'admin','subadmin','teacher');
+                $id=id_field('course_id');
+                try {
+                    $result=course_enroll_many($u,$id,$_POST['student_ids']??null);
+                    flash($result['added'].' estudiante(s) matriculado(s).'.($result['existing']?' '.$result['existing'].' ya estaba(n) matriculado(s).':''));
+                } catch(DomainException $e) { flash($e->getMessage(),'error'); }
+                catch(Throwable $e) { error_log('VIRTUALEDUC enrollment failed: '.get_class($e)); flash('No se guardaron matrículas. Inténtalo nuevamente.','error'); }
+                go('course='.$id.'&tab=participants');
             } elseif ($action==='course_edit') {
                 require_role($u,'admin','subadmin','teacher');
                 $id=id_field('course_id');
