@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.9 - authenticated voice recording storage.
+// FUTUREO STUDIO v0.1.12 - authenticated voice recording storage.
 date_default_timezone_set('America/Guayaquil');
 require_once __DIR__ . '/projects.php';
 header('X-Content-Type-Options: nosniff');
@@ -73,6 +73,51 @@ $action = $method === 'POST' ? ($_POST['action'] ?? '') : ($_GET['action'] ?? 'l
 define('FUTUREO_RECORDINGS',true);
 require_once __DIR__.'/stream.php';
 if ($method === 'POST' && in_array($action,['stream_start','stream_chunk','stream_finish'],true)) handleStream($action,$path,$folder,$dir);
+// Move only clip metadata. Audio bytes are never rewritten or moved.
+if ($method === 'POST' && $action === 'move_clip') {
+    $id = $_POST['recording_id'] ?? '';
+    $track = filter_var($_POST['track'] ?? null,FILTER_VALIDATE_INT);
+    $start = filter_var($_POST['start_ms'] ?? null,FILTER_VALIDATE_INT);
+    if (!is_string($id) || !preg_match('/\A[a-f0-9]{24}\z/',$id) || $track===false || $track<1 || $track>4 || $start===false || $start<0 || $start>600000) fail('Posición o pista inválida.');
+    if (!ensureDir($folder) || !ensureDir($dir) || is_link($dir.'/.lock')) fail('No se puede escribir en el proyecto.',500);
+    $lock=@fopen($dir.'/.lock','c+b');
+    if (!$lock || !flock($lock,LOCK_EX)) fail('No se pudo bloquear el proyecto.',500);
+    $data=readProject($path);
+    $items=savedRecordings($data);
+    $target=null;
+    foreach($items as $i=>$item) if($item['id']===$id){$target=$i;break;}
+    if ($target===null) fail('Grabación no encontrada.',404);
+    $media=$dir.'/'.$items[$target]['file'];
+    if (!is_file($media) || is_link($media)) fail('Audio no encontrado.',404);
+    // Preserve the displayed positions of earlier, pre-multitrack recordings.
+    $offsets=[1=>0,2=>0,3=>0,4=>0];
+    foreach($items as $i=>$item){
+        $t=(int)($item['track']??1); if($t<1||$t>4)$t=1;
+        $item['track']=$t;
+        if(!array_key_exists('start_ms',$item)||!is_numeric($item['start_ms'])&&$item['start_ms']!==null||(float)$item['start_ms']<0){
+            $item['start_ms']=$offsets[$t];
+            $info=waveInfo($item,$dir); $offsets[$t]+=max(0,(int)($info['duration_ms']??0));
+        } else $item['start_ms']=(int)$item['start_ms'];
+        $items[$i]=$item;
+    }
+    $items[$target]['track']=(int)$track;
+    $items[$target]['start_ms']=(int)$start;
+    // Keep unrelated or future-format recording entries intact.
+    foreach($data['content']['recordings'] as $k=>$original){
+        if(!is_array($original))continue;
+        foreach($items as $normalized){
+            if(($original['id']??null)===$normalized['id']){
+                $data['content']['recordings'][$k]['track']=$normalized['track'];
+                $data['content']['recordings'][$k]['start_ms']=$normalized['start_ms'];
+                break;
+            }
+        }
+    }
+    storeProject($path,$data);
+    $item=waveInfo($items[$target],$dir);
+    flock($lock,LOCK_UN);fclose($lock);
+    reply(['ok'=>true,'recording'=>$item]);
+}
 if ($method === 'POST' && $action === 'save') {
     $file = $_FILES['audio'] ?? null;
     if (!is_array($file) || !isset($file['error'],$file['tmp_name'],$file['size']) || is_array($file['error']) || is_array($file['tmp_name']) || is_array($file['size'])) fail('No se recibió el audio.');

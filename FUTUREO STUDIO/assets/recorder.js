@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.11 - per-track REC / MUTE / FX controls */
+/* FUTUREO STUDIO v0.1.12 - per-track REC / MUTE / FX controls */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -11,6 +11,7 @@
     const supported = window.isSecureContext && navigator.mediaDevices?.getUserMedia && AudioCtx && window.AudioWorkletNode && window.crypto?.getRandomValues;
     const palette = {1:{accent:'#33d5ff',fill:'#10323e',live:'#123c47',wave:'#32d7e8',liveWave:'#ff6785',name:'Pista 1'},2:{accent:'#c39cff',fill:'#241936',live:'#302140',wave:'#c8a7ff',liveWave:'#ff93d2',name:'Pista 2'},3:{accent:'#ffd166',fill:'#3a2d14',live:'#46361a',wave:'#ffd166',liveWave:'#ffe4a8',name:'Pista 3'},4:{accent:'#76e39a',fill:'#143021',live:'#193b29',wave:'#76e39a',liveWave:'#b6f4c8',name:'Pista 4'}};
     let selectedTrack = 1, clips = [], take = null, phase = 'loading', maxBytes = 0, position = 0, extent = 30, playback = null, playToken = 0, localUrl = null;
+    let drag = null, selectedClip = null, seekingPointer = null;
     const states = {1:{mute:false,fx:false},2:{mute:false,fx:false},3:{mute:false,fx:false},4:{mute:false,fx:false}};
     const duration = c => Math.max(0, Number(c.duration_ms || 0) / 1000);
     const startAt = c => Math.max(0, Number(c.start_ms || 0) / 1000);
@@ -92,7 +93,7 @@
             clips = normalizeClips(d.recordings || []);
             sortClips();
             phase = 'idle'; position = 0; ensureExtent();
-            msg(!supported ? 'Usa HTTPS y un navegador compatible con AudioWorklet para grabar.' : maxBytes < 1024 ? 'El hosting no admite fragmentos de audio.' : 'Cada pista tiene REC, MUTE y FX. Usa REC para armar la pista de grabación.');
+            msg(!supported ? 'Usa HTTPS y un navegador compatible con AudioWorklet para grabar.' : maxBytes < 1024 ? 'El hosting no admite fragmentos de audio.' : 'Arrastra cualquier clip para cambiar su posición o pista. REC arma la grabación.');
             update();
             for (const clip of clips){ if (clip.mime !== 'audio/wav') continue; fetch(endpoint + '&action=waveform&id=' + encodeURIComponent(clip.id), {credentials:'same-origin', cache:'no-store'}).then(response).then(d => { clip.peaks = d.peaks || []; draw(); }).catch(()=>{}); }
         } catch(e){ phase='idle'; msg(e.message,'error'); update(); }
@@ -124,10 +125,10 @@
             for(let t=0;t<=extent;t+=step){ const q=along(g,t); ctx.beginPath(); if(g.v){ctx.moveTo(lane.x,q);ctx.lineTo(lane.x+lane.w,q);}else{ctx.moveTo(q,lane.y);ctx.lineTo(q,lane.y+lane.h);}ctx.stroke(); }
             const laneClips = clips.filter(c => sanitizeTrack(c.track) === track);
             for (const clip of laneClips){
-                const s = startAt(clip), e = endAt(clip); if (e <= 0) continue;
+                const s = startAt(clip), e = endAt(clip); if (e <= s) continue;
                 const a = along(g, s), b = along(g, e), lo = Math.min(a,b), size = Math.max(1, Math.abs(b-a));
                 ctx.globalAlpha = muted ? .35 : 1;
-                ctx.fillStyle = fx ? '#2b2512' : p.fill; ctx.strokeStyle = muted ? '#5d6670' : p.accent;
+                ctx.fillStyle = fx ? '#2b2512' : p.fill; ctx.strokeStyle = clip===selectedClip ? '#ffffff' : muted ? '#5d6670' : p.accent; ctx.lineWidth=clip===selectedClip ? 2 : 1;
                 if (g.v){ ctx.fillRect(lane.x+4, lo, lane.w-8, size); ctx.strokeRect(lane.x+4, lo, lane.w-8, size); } else { ctx.fillRect(lo, lane.y+4, size, lane.h-8); ctx.strokeRect(lo, lane.y+4, size, lane.h-8); }
                 drawWaveform(clip.peaks || [], frac => along(g, s + frac * duration(clip)), Math.max(8, (g.v ? lane.w-14 : lane.h-14) / 2), center, muted ? '#7f8b98' : (fx ? '#ffd166' : p.wave));
                 ctx.globalAlpha = 1;
@@ -145,9 +146,84 @@
     }
     function move(p){ position = Math.max(0, Math.min(extent, p)); update(); }
     function seek(e){ if(!['idle','playing'].includes(phase)) return; const r = canvas.getBoundingClientRect(); const f = vertical() ? 1 - (e.clientY-r.top)/r.height : (e.clientX-r.left)/r.width; const target = Math.max(0, Math.min(projectTotal(), f * extent)); if(phase==='playing'){ pause(); position = target; startPlay(); } else move(target); }
-    canvas.addEventListener('pointerdown',e=>{ if(e.button!==0) return; canvas.setPointerCapture(e.pointerId); seek(e); });
-    canvas.addEventListener('pointermove',e=>{ if(canvas.hasPointerCapture(e.pointerId) && phase==='idle') seek(e); });
-    canvas.addEventListener('keydown',e=>{ if(phase!=='idle') return; let p = position; if(['ArrowUp','ArrowRight'].includes(e.key)) p++; else if(['ArrowDown','ArrowLeft'].includes(e.key)) p--; else if(e.key==='Home') p = 0; else if(e.key==='End') p = projectTotal(); else return; e.preventDefault(); move(Math.min(projectTotal(), p)); });
+    // The time axis runs rightward in landscape and upward in portrait.
+    function point(e){
+        const r=canvas.getBoundingClientRect(),g=geometry(),x=e.clientX-r.left,y=e.clientY-r.top;
+        const cross=g.v?x:y, axis=g.v?g.h-y:x, axisSize=g.v?g.h:g.w;
+        const track=g.lane>0&&cross>=g.timeline&&cross<g.timeline+g.trackArea?1+Math.floor((cross-g.timeline)/g.lane):0;
+        return {x,y,g,track,time:axis/Math.max(1,axisSize)*extent};
+    }
+    function hit(p){
+        if(!p.track)return null;
+        const lane=laneRect(p.g,p.track),cross=p.g.v?p.x:p.y,lo=p.g.v?lane.x:lane.y,hi=lo+(p.g.v?lane.w:lane.h);
+        if(cross<lo+2||cross>hi-2)return null;
+        const tolerance=extent/Math.max(1,p.g.v?p.g.h:p.g.w)*3;
+        return [...clips].reverse().find(c=>sanitizeTrack(c.track)===p.track&&duration(c)>0&&p.time>=startAt(c)-tolerance&&p.time<=endAt(c)+tolerance)||null;
+    }
+    function resetDrag(d){ d.clip.track=d.track;d.clip.start_ms=d.start;phase='idle';canvas.classList.remove('clip-dragging','clip-saving');draw();update(); }
+    function cancelDrag(){
+        if(!drag)return;const d=drag;drag=null;resetDrag(d);
+        if(canvas.hasPointerCapture(d.pointer))canvas.releasePointerCapture(d.pointer);
+        msg('Movimiento cancelado.');
+    }
+    async function saveClipMove(d){
+        const clip=d.clip,target={track:clip.track,start_ms:clip.start_ms};
+        if(target.track===d.track&&target.start_ms===d.start){phase='idle';update();return;}
+        phase='moving';canvas.classList.remove('clip-dragging');canvas.classList.add('clip-saving');msg('Guardando nueva posición...');update();
+        try{
+            const result=await post('move_clip',{recording_id:clip.id,...target});
+            if(result.recording?.id!==clip.id||Number(result.recording.track)!==target.track||Number(result.recording.start_ms)!==target.start_ms)throw Error('El servidor no confirmó la posición.');
+            Object.assign(clip,result.recording);sortClips();ensureExtent();position=startAt(clip);msg('Clip guardado en '+palette[clip.track].name+' · '+format(position),'ok');
+        }catch(e){
+            // A lost HTTP response may follow a successful write. Reconcile before rollback.
+            try{const data=await response(await fetch(endpoint,{cache:'no-store',credentials:'same-origin'}));const item=normalizeClips(data.recordings||[]).find(c=>c.id===clip.id);if(!item)throw Error('Clip no encontrado');const peaks=clip.peaks;Object.assign(clip,item,{peaks});sortClips();ensureExtent();position=startAt(clip);if(clip.track===target.track&&clip.start_ms===target.start_ms)msg('Posición guardada en el hosting.','ok');else msg('No se aplicó el movimiento: '+e.message,'error');}
+            catch(_){clip.track=d.track;clip.start_ms=d.start;msg('No se pudo confirmar el movimiento. Recarga para verificar: '+e.message,'error');}
+        }finally{phase='idle';canvas.classList.remove('clip-saving','clip-dragging');update();}
+    }
+    canvas.addEventListener('pointerdown',e=>{
+        if(e.button!==0||!e.isPrimary||drag||!['idle','playing'].includes(phase))return;
+        const p=point(e),clip=phase==='idle'?hit(p):null;
+        canvas.setPointerCapture(e.pointerId);
+        if(!clip){selectedClip=null;seekingPointer=e.pointerId;seek(e);return;}
+        selectedClip=clip;drag={clip,track:clip.track,start:clip.start_ms,offset:p.time-startAt(clip),pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false};
+        phase='dragging';canvas.classList.add('clip-dragging');canvas.classList.remove('clip-hover');update();
+    });
+    canvas.addEventListener('pointermove',e=>{
+        if(drag&&drag.pointer===e.pointerId){
+            if(!drag.moved&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4)return;
+            drag.moved=true;const p=point(e);
+            drag.clip.track=p.track||drag.clip.track;
+            drag.clip.start_ms=Math.max(0,Math.min(600000,Math.round((p.time-drag.offset)*1000)));
+            msg('Mover a '+palette[drag.clip.track].name+' · '+format(startAt(drag.clip)));draw();return;
+        }
+        if(seekingPointer===e.pointerId&&canvas.hasPointerCapture(e.pointerId)&&phase==='idle'){seek(e);return;}
+        canvas.classList.toggle('clip-hover',phase==='idle'&&!!hit(point(e)));
+    });
+    canvas.addEventListener('pointerup',e=>{
+        if(seekingPointer===e.pointerId)seekingPointer=null;
+        if(!drag||drag.pointer!==e.pointerId)return;
+        const d=drag;drag=null;canvas.classList.remove('clip-dragging');
+        if(d.moved){saveClipMove(d);}else{phase='idle';move(Math.max(0,Math.min(projectTotal(),point(e).time)));msg('Clip seleccionado. Arrastra para moverlo.');}
+    });
+    canvas.addEventListener('pointercancel',e=>{if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;});
+    canvas.addEventListener('lostpointercapture',e=>{if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drag){e.preventDefault();cancelDrag();}});
+    canvas.addEventListener('keydown',e=>{
+        if(phase!=='idle')return;
+        if(e.altKey&&selectedClip&&e.key.startsWith('Arrow')){
+            e.preventDefault();const clip=selectedClip,d={clip,track:clip.track,start:clip.start_ms};
+            const delta=e.shiftKey?1000:100;
+            if(vertical()){
+                if(e.key==='ArrowUp'||e.key==='ArrowDown')clip.start_ms+=e.key==='ArrowUp'?delta:-delta;
+                else clip.track+=e.key==='ArrowRight'?1:-1;
+            }else{
+                if(e.key==='ArrowRight'||e.key==='ArrowLeft')clip.start_ms+=e.key==='ArrowRight'?delta:-delta;
+                else clip.track+=e.key==='ArrowDown'?1:-1;
+            }
+            clip.track=Math.max(1,Math.min(4,clip.track));clip.start_ms=Math.max(0,Math.min(600000,clip.start_ms));saveClipMove(d);return;
+        }
+        let p=position;if(['ArrowUp','ArrowRight'].includes(e.key))p++;else if(['ArrowDown','ArrowLeft'].includes(e.key))p--;else if(e.key==='Home')p=0;else if(e.key==='End')p=projectTotal();else return;e.preventDefault();move(Math.min(projectTotal(),p));
+    });
     trackRows.forEach(row => row.addEventListener('click', e => {
         const button = e.target.closest('.track-action');
         if (!button) return;
@@ -157,7 +233,7 @@
         else if (action === 'fx') { states[track].fx = !states[track].fx; msg('FX de '+palette[track].name+': control visual; procesamiento pendiente.'); }
         update();
     }));
-    new ResizeObserver(draw).observe(canvas); new MutationObserver(update).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
+    new ResizeObserver(draw).observe(canvas); new MutationObserver(()=>{if(drag)cancelDrag();update();}).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
     function release(t){ if(t.node){ try{ t.node.disconnect(); }catch(_){} t.node.port.onmessage = null; } if(t.source){ try{ t.source.disconnect(); }catch(_){} } if(t.media) t.media.getTracks().forEach(x => x.stop()); if(t.context) t.context.close().catch(()=>{}); }
     function capture(t, buffer, peaks){ if(t !== take || !['recording','stopping'].includes(phase)) return; const available = Math.max(0, t.rate * 2 * 600 - t.captured); const bytes = buffer.byteLength > available ? buffer.slice(0, available) : buffer; if(bytes.byteLength){ const offset = t.captured; t.captured += bytes.byteLength; t.raw.push(bytes); t.peaks.push(...peaks); const block = Math.max(2, Math.min(1048576, maxBytes) & ~1); for(let i=0;i<bytes.byteLength;i+=block) t.queue.push({offset:offset+i, buffer:bytes.slice(i, i+block)}); position = t.start + t.captured / t.rate / 2; ensureExtent(); update(); pump(t); } if(t.captured >= t.rate * 2 * 600 && phase==='recording') endTake(); }
     async function pump(t){ if(t.pumping || t.error || t !== take) return; t.pumping = true; try{ while(t.queue.length){ const q = t.queue[0]; const d = await post('stream_chunk', {recording_id:t.id, offset:q.offset}, new Blob([q.buffer], {type:'application/octet-stream'})); if(Number(d.pcm_bytes) < q.offset + q.buffer.byteLength) throw Error('El servidor no confirmó el fragmento.'); t.ack = Number(d.pcm_bytes); t.item = d.recording; t.queue.shift(); update(); } }catch(e){ t.error = e.message; if(phase==='recording') endTake(); } finally { t.pumping = false; if(t.ended) finalize(t); } }
@@ -178,7 +254,7 @@
     home.addEventListener('click',()=>{ if(phase==='playing') pause(); move(0); });
     $('retry').addEventListener('click',()=>{ if(phase!=='recovery'||!take) return; take.error = null; phase = 'saving'; msg('Reintentando guardado...'); update(); pump(take); });
     $('discard').addEventListener('click',()=>{ if(phase!=='recovery'||!take||!confirm('¿Cerrar esta toma? Los fragmentos ya guardados se conservarán.')) return; if(take.item&&take.ack>0) clips.push({...take.item, track:take.track, start_ms:Math.round(take.start*1000), duration_ms:take.ack/take.rate/2*1000, peaks:take.peaks.slice(0,Math.ceil(take.ack/take.rate/2*40))}); sortClips(); take = null; phase = 'idle'; position = projectTotal(); if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Se conservaron los fragmentos confirmados por el servidor.'); update(); });
-    window.addEventListener('beforeunload',e=>{ if(take||phase==='starting'){ e.preventDefault(); e.returnValue=''; } });
+    window.addEventListener('beforeunload',e=>{ if(take||['starting','moving'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
     window.addEventListener('pagehide',()=>{ if(take) release(take); });
     load();
 })();
