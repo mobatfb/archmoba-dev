@@ -31,7 +31,7 @@ function raffle_close_input(): int {
     if(!$dt||$dt->format('Y-m-d\TH:i')!==$v||$dt->getTimestamp()<=time())throw new DomainException('Selecciona una fecha y hora de cierre futura (Ecuador).');return $dt->getTimestamp();
 }
 function validate_money_prize(int $prize): int {if($prize<10000||$prize>100000000||$prize%10000!==0)throw new DomainException('El premio en dinero debe ser de $100 en $100, desde $100 hasta $1.000.000.');return $prize;}
-function money_raffle_title(int $prize): string {return 'Gana '.money($prize).' en efectivo';}
+function money_raffle_title(int $prize): string {return 'Gana '.money($prize);}
 function money_raffle_price(int $prize,int $quantity): int {if($prize<1||$quantity<1)throw new DomainException('Monto o cantidad inválidos.');return intdiv($prize+$quantity-1,$quantity);}
 function save_raffle(array $u): void {
     $id=record_id('raffle_id',true);$type=field('type',10);$desc=$type==='dinero'?'':field('description',10000,false);$mode=field('participation_mode',12);
@@ -44,7 +44,7 @@ function save_raffle(array $u): void {
     $total=$isMoney?$planned:integer('ticket_count',1,1000000);$close=$closeMode==='fecha'?raffle_close_input():null;
     $limit=$closeMode==='capacidad'?($mode==='exclusivo'?$total:($isMoney?$planned:integer('participation_limit',1,1000000))):null;
     $price=$isMoney?money_raffle_price($prize,$planned):price_cents(field('price',15));$photos=$type==='producto'?load_photos():[];
-    if($type==='dinero')$desc='Premio en efectivo de '.money($prize).'. '.($mode==='compartido'?'El importe se divide en partes iguales entre las cuentas titulares pagadas del número ganador.':'El titular pagado del número ganador recibe el importe total.').' La condición de cierre y la evidencia se publican antes de la venta.';
+    if($type==='dinero')$desc='Premio en dinero de '.money($prize).'. '.($mode==='compartido'?'El importe se divide en partes iguales entre las cuentas titulares pagadas del número ganador.':'El titular pagado del número ganador recibe el importe total.').' La condición de cierre y la evidencia se publican antes de la venta.';
     $order=explode(',',field('photo_order',5));$check=$order;sort($check);if($check!==['1','2','3'])throw new DomainException('Orden de fotografías inválido.');
     tx(function()use($u,$id,$title,$desc,$type,$mode,$prize,$close,$total,$price,$photos,$order,$closeMode,$limit,$planned){
         $new=$id==='';

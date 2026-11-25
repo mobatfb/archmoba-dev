@@ -10,7 +10,7 @@ let wizardStep=1,lastPrizeType='',productPrice='1.00',productCount='100',product
 const moneyCents=value=>{const m=String(value).match(/^(0|[1-9][0-9]{0,6})(?:[.,]([0-9]{1,2}))?$/);if(!m)return 0;const n=Number(m[1])*100+Number((m[2]||'').padEnd(2,'0'));return n>0&&n<=100000000?n:0;};
 const prizeAmount=value=>{const n=moneyCents(value);return n>=10000&&n%10000===0?n:0;};
 const cashLabel=cents=>'$'+(cents/100).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.');
-const cashTitle=cents=>`Gana ${cashLabel(cents)} en efectivo`;
+const cashTitle=cents=>`Gana ${cashLabel(cents)}`;
 const integerValue=value=>{const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=1000000?n:0;};
 function updatePotential(){
     if(!rf)return;const e=rf.elements,shared=e.participation_mode.value==='compartido',cap=e.close_mode.value==='capacidad',cash=e.type.value==='dinero';
@@ -68,7 +68,7 @@ function validateRaffle(){
 function buildSummary(){
     const e=rf.elements,cash=e.type.value==='dinero',shared=e.participation_mode.value==='compartido',cap=e.close_mode.value==='capacidad',amount=prizeAmount(e.money_amount.value),quantity=integerValue(e.pricing_participations.value),details=$('[data-summary-details]',rf);
     $('[data-summary-title]',rf).textContent=cash?cashTitle(amount):e.title.value.trim();
-    $('[data-summary-description]',rf).textContent=cash?`Premio en efectivo de ${cashLabel(amount)}. ${shared?'El importe se divide entre las cuentas titulares pagadas del número ganador.':'El titular pagado recibe el importe total.'}`:e.description.value.trim();
+    $('[data-summary-description]',rf).textContent=cash?`Premio en dinero de ${cashLabel(amount)}. ${shared?'El importe se divide entre las cuentas titulares pagadas del número ganador.':'El titular pagado recibe el importe total.'}`:e.description.value.trim();
     const photos=$('[data-summary-photos]',rf);photos.replaceChildren();
     const addPhoto=(src,alt)=>{const frame=document.createElement('div');frame.className='summary-photo';const bg=document.createElement('img');bg.className='summary-photo-bg';bg.src=src;bg.alt='';bg.setAttribute('aria-hidden','true');const img=document.createElement('img');img.className='summary-photo-main';img.src=src;img.alt=alt;frame.append(bg,img);photos.append(frame);};
     if(cash)addPhoto('assets/premio-dinero.svg','Monedas de oro');else $$('.photo-box',rf).forEach(box=>{const img=$('.preview',box),file=$('input[type=file]',box),remove=$('input[type=checkbox]',box);if(img.getAttribute('src')&&!img.hidden&&(!remove.checked||file.files.length))addPhoto(img.src,`Fotografía ${photos.children.length+1}`);});
