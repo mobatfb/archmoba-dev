@@ -15,13 +15,37 @@ function course_enrollment_ids(mixed $raw): array {
     return array_values($ids);
 }
 function course_enroll_many(array $actor,int $courseId,mixed $raw): array {
+    return course_enroll_transaction($actor,$courseId,static fn():array=>course_enrollment_ids($raw));
+}
+// Resolve exact usernames within the same transaction as the enrollment writes.
+function course_enroll_csv(array $actor,int $courseId,array $rows): array {
+    if (!$rows || count($rows)>COURSE_ENROLL_LIMIT) throw new DomainException('El máximo es '.COURSE_ENROLL_LIMIT.' registros por archivo.');
+    $duplicates=0;
+    $result=course_enroll_transaction($actor,$courseId,static function() use($rows,&$duplicates): array {
+        $ids=[]; $errors=[];
+        foreach ($rows as $line=>$row) {
+            try {
+                $username=creation_value($row,'usuario',190);
+                $student=one('SELECT id,role FROM users WHERE '.username_sql().'=? FOR UPDATE',[$username]);
+                if (!$student || $student['role']!=='student') throw new DomainException('El usuario no existe o no tiene rol Estudiante.');
+                $id=(string)$student['id'];
+                if (isset($ids[$id])) $duplicates++; else $ids[$id]=$id;
+            } catch (DomainException $e) { $errors[]='Registro '.$line.': '.$e->getMessage(); }
+            if (count($errors)>=10) break;
+        }
+        if ($errors) throw new DomainException('No se guardó ninguna matrícula. '.implode(' | ',$errors));
+        return course_enrollment_ids(array_values($ids));
+    });
+    return $result+['duplicates'=>$duplicates];
+}
+function course_enroll_transaction(array $actor,int $courseId,callable $resolve): array {
     require_role($actor,'admin','subadmin','teacher');
-    $ids=course_enrollment_ids($raw);
     $pdo=db(); $pdo->beginTransaction();
     try {
         $fresh=one('SELECT id,role FROM users WHERE id=? FOR UPDATE',[$actor['id']]);
         $course=one('SELECT id,teacher_id FROM courses WHERE id=? FOR UPDATE',[$courseId]);
         if (!$fresh || !$course || !course_can_edit($fresh,$course)) throw new DomainException('Curso inexistente o no autorizado.');
+        $ids=$resolve();
         $slots=implode(',',array_fill(0,count($ids),'?'));
         $students=all("SELECT id FROM users WHERE role='student' AND id IN ($slots) ORDER BY id FOR UPDATE",$ids);
         if (count($students)!==count($ids) || array_diff($ids,array_map('strval',array_column($students,'id')))) throw new DomainException('Algún usuario seleccionado ya no es estudiante. No se guardó ninguna matrícula.');
