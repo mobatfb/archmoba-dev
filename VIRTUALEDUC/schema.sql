@@ -1,4 +1,4 @@
--- VIRTUALEDUC 0.1.16 | MySQL / MariaDB
+-- VIRTUALEDUC 0.1.25 | MySQL / MariaDB
 -- Importar dentro de una base de datos previamente creada.
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -17,19 +17,37 @@ CREATE TABLE IF NOT EXISTS courses (
     title VARCHAR(180) NOT NULL,
     description TEXT NOT NULL,
     teacher_id BIGINT UNSIGNED NOT NULL,
+    modality VARCHAR(20) NULL,
+    duration_hours DECIMAL(7,2) NULL,
+    level VARCHAR(20) NULL,
+    period VARCHAR(50) NOT NULL DEFAULT '',
+    thumbnail_variant TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    thumbnail_path VARCHAR(255) NULL,
     published TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (teacher_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS course_modules (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    course_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(180) NOT NULL,
+    position INT UNSIGNED NOT NULL DEFAULT 1,
+    UNIQUE KEY course_module_position (course_id,position),
+    UNIQUE KEY course_module_identity (course_id,id),
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS lessons (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     course_id BIGINT UNSIGNED NOT NULL,
+    module_id BIGINT UNSIGNED NOT NULL,
     title VARCHAR(180) NOT NULL,
     content TEXT NOT NULL,
     sort_order INT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+    CONSTRAINT lessons_course_module_fk FOREIGN KEY (course_id,module_id) REFERENCES course_modules(course_id,id) ON DELETE CASCADE,
     INDEX (course_id, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
