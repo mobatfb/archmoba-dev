@@ -90,7 +90,9 @@ try {
                 $id=id_field('course_id');
                 if (!$u || !($c=course_for($id,$u))) { http_response_code(403); exit('Acceso denegado'); }
                 if ($action==='complete') {
-                    require_role($u,'student'); $lesson=id_field('lesson_id');
+                    require_role($u,'student');
+                    if(course_content_locked($u,$c)) { flash('El contenido de este curso requiere un pago.','error'); go('course='.$id); }
+                    $lesson=id_field('lesson_id');
                     if (!one('SELECT id FROM lessons WHERE id=? AND course_id=?',[$lesson,$id])) throw new DomainException('Lección inválida.');
                     query('INSERT INTO progress(lesson_id,student_id) VALUES(?,?) ON DUPLICATE KEY UPDATE completed_at=completed_at',[$lesson,$u['id']]);
                 } elseif ($action==='publish') {
@@ -116,7 +118,7 @@ try {
         if (isset($_GET['course'])) {
             $c=course_for((int)$_GET['course'],$u);
             if (!$c) {http_response_code(404); exit('Curso no disponible.');}
-            $lessons=all('SELECT * FROM lessons WHERE course_id=? ORDER BY sort_order,id',[$c['id']]);
+            if(!course_content_locked($u,$c)) $lessons=all('SELECT * FROM lessons WHERE course_id=? ORDER BY sort_order,id',[$c['id']]);
             if ($u['role']==='student') $done=array_column(all('SELECT lesson_id FROM progress WHERE student_id=?',[$u['id']]),'lesson_id');
         }
     }
