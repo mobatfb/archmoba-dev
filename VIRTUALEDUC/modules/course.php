@@ -18,7 +18,8 @@ $courseUrl='?course='.(string)$c['id'];
   <div class="ve-course-metadata"><?php foreach(course_metadata_labels($c) as $label=>$value):?><div><small><?=h($label)?></small><strong><?=h($value)?></strong></div><?php endforeach;?></div></div>
 </div>
 <nav class="ve-course-tabs" aria-label="Secciones del curso"><?php foreach($tabs as $key=>$label):?><a href="<?=h($courseUrl.'&tab='.$key)?>" <?=$tab===$key?'aria-current="page"':''?>><?=h($label)?></a><?php endforeach;?></nav>
-<?php if(!$isStudent):?><div class="ve-course-tools"><span class="tag"><?=$c['published']?'Publicado':'Borrador'?></span><form method="post"><?php action('publish',(int)$c['id']);?><button class="ve-quiet"><?=$c['published']?'Ocultar curso':'Publicar curso'?></button></form><?php creation_dialog($u,'lesson','',(int)$c['id']); if(is_manager($u)) creation_dialog($u,'enroll','',(int)$c['id']); ?></div><?php endif;?>
+<?php if(!$isStudent):?><div class="ve-course-tools"><button type="button" data-ve-open="edit-course-dialog" aria-haspopup="dialog">Editar curso</button><span class="tag"><?=$c['published']?'Publicado':'Borrador'?></span><form method="post"><?php action('publish',(int)$c['id']);?><button class="ve-quiet"><?=$c['published']?'Ocultar curso':'Publicar curso'?></button></form><?php creation_dialog($u,'lesson','',(int)$c['id']); if(is_manager($u)) creation_dialog($u,'enroll','',(int)$c['id']); ?></div><?php endif;?>
+<?php if(!$isStudent) require __DIR__.'/course_edit.php'; ?>
 <div class="ve-course-layout">
   <section class="ve-course-panel">
   <?php if($tab==='content'):?><h2>Temario del curso</h2>
