@@ -31,7 +31,7 @@ function creation_context(array $data): array {
 }
 function creation_example(string $kind, array $headers): array {
     $values = [
-        'usuario'=>'estudiante.ejemplo',
+        'usuario'=>$kind==='course_enroll'?'usuarioejemplo':'estudiante.ejemplo',
         'nombres'=>'Ana María',
         'apellidos'=>'Pérez López',
         'correo'=>'estudiante@ejemplo.invalid',
