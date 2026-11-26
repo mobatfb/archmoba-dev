@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.14 - server-backed, synchronized audio playback */
+/* FUTUREO STUDIO v0.1.16 - server-backed, synchronized audio playback */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -11,10 +11,10 @@
     const supported = window.isSecureContext && navigator.mediaDevices?.getUserMedia && AudioCtx && window.AudioWorkletNode && window.crypto?.getRandomValues;
     const palette = {1:{accent:'#33d5ff',fill:'#10323e',live:'#123c47',wave:'#32d7e8',liveWave:'#ff6785',name:'Pista 1'},2:{accent:'#c39cff',fill:'#241936',live:'#302140',wave:'#c8a7ff',liveWave:'#ff93d2',name:'Pista 2'},3:{accent:'#ffd166',fill:'#3a2d14',live:'#46361a',wave:'#ffd166',liveWave:'#ffe4a8',name:'Pista 3'},4:{accent:'#76e39a',fill:'#143021',live:'#193b29',wave:'#76e39a',liveWave:'#b6f4c8',name:'Pista 4'}};
     let selectedTrack = 1, clips = [], take = null, phase = 'loading', maxBytes = 0, position = 0, extent = 30, playback = null, playToken = 0, localUrl = null;
-    let drag = null, selectedClip = null, seekingPointer = null, tool = 'pointer', editPointer = null;
-    const toolButtons = Array.from(root.querySelectorAll('[data-tool]'));
+    let drag = null, selectedClip = null, seekingPointer = null, tool = 'pointer', editPointer = null, cutPreview = null;
+    const toolButtons = Array.from(root.querySelectorAll('.daw-tool[data-tool]'));
     const toolHints = {pointer:'Puntero: selecciona clips o cambia el cursor.',hand:'Mano: arrastra un clip a otra posición o pista.',cut:'Cúter: pulsa dentro de un clip para dividirlo.',erase:'Borrar: pulsa un clip para quitarlo de la línea de tiempo.'};
-    function setTool(next){if(!toolHints[next]||!['idle','playing'].includes(phase))return;if(drag)cancelDrag();tool=next;editPointer=null;msg(toolHints[tool]);update();}
+    function setTool(next){if(!toolHints[next]||!['idle','playing'].includes(phase))return;if(drag)cancelDrag();tool=next;editPointer=null;cutPreview=null;msg(toolHints[tool]);update();}
     toolButtons.forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
     let playbackContext = null, playbackFrame = 0;
     const decodedCache = new Map();
@@ -75,6 +75,7 @@
     function ensureExtent(){ extent = Math.max(30, Math.ceil((projectTotal() + 5) / 10) * 10); }
     function update(){
         const live = phase === 'recording', idle = phase === 'idle';
+        if (!idle || tool !== 'cut') cutPreview=null;
         record.disabled = !supported || maxBytes < 1024 || !(idle || live);
         record.classList.toggle('is-recording', live);
         record.setAttribute('aria-label', live ? 'Detener grabación' : 'Grabar voz');
@@ -178,6 +179,7 @@
         const cursor = along(g, position), col = take ? '#ff5276' : '#33e7ff';
         ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); if (g.v){ ctx.moveTo(0,cursor); ctx.lineTo(g.w,cursor); } else { ctx.moveTo(cursor,0); ctx.lineTo(cursor,g.h); } ctx.stroke();
         ctx.fillStyle = col; if (g.v) ctx.fillRect(g.timeline-5,cursor-4,8,8); else ctx.fillRect(cursor-4,g.timeline-5,8,8);
+        drawCutPreview(g);
     }
     function move(p){ position = Math.max(0, Math.min(extent, p)); update(); }
     function seek(e){ if(!['idle','playing'].includes(phase)) return; const r = canvas.getBoundingClientRect(); const f = vertical() ? 1 - (e.clientY-r.top)/r.height : (e.clientX-r.left)/r.width; const target = Math.max(0, Math.min(projectTotal(), f * extent)); if(phase==='playing'){ pause(); position = target; startPlay(); } else move(target); }
@@ -194,6 +196,44 @@
         if(cross<lo+2||cross>hi-2)return null;
         const tolerance=extent/Math.max(1,p.g.v?p.g.h:p.g.w)*3;
         return [...clips].reverse().find(c=>sanitizeTrack(c.track)===p.track&&duration(c)>0&&p.time>=startAt(c)-tolerance&&p.time<=endAt(c)+tolerance)||null;
+    }
+    // Preview and actual split share the same millisecond resolution.
+    function cutAt(p){
+        if(tool!=='cut'||phase!=='idle')return null;
+        const clip=hit(p);
+        if(!clip)return null;
+        const lane=laneRect(p.g,p.track),cross=p.g.v?p.x:p.y,lo=p.g.v?lane.x:lane.y,hi=lo+(p.g.v?lane.w:lane.h);
+        if(cross<lo+4||cross>hi-4)return null;
+        const ms=Math.round((p.time-startAt(clip))*1000);
+        if(ms<1||ms>=Math.round(duration(clip)*1000))return null;
+        return {clip,time:startAt(clip)+ms/1000};
+    }
+    function clearCutPreview(){if(cutPreview){cutPreview=null;draw();}}
+    function previewCut(e){
+        const next=cutAt(point(e));
+        if((!next&&!cutPreview)||(next&&cutPreview&&next.clip===cutPreview.clip&&next.time===cutPreview.time))return;
+        cutPreview=next;draw();
+    }
+    function drawCutPreview(g){
+        if(tool!=='cut'||phase!=='idle'||!cutPreview||!clips.includes(cutPreview.clip))return;
+        const lane=laneRect(g,sanitizeTrack(cutPreview.clip.track)),p=along(g,cutPreview.time);
+        const totalMs=Math.round(cutPreview.time*1000),m=Math.floor(totalMs/60000),sec=Math.floor(totalMs/1000)%60;
+        const label=String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')+'.'+String(totalMs%1000).padStart(3,'0');
+        ctx.save();
+        // Dark outline and a bright amber guide remain visible on every waveform color.
+        for(const [color,width] of [['#07111c',4],['#ffe08a',2]]){
+            ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();
+            if(g.v){ctx.moveTo(lane.x+4,p);ctx.lineTo(lane.x+lane.w-4,p);}
+            else{ctx.moveTo(p,lane.y+4);ctx.lineTo(p,lane.y+lane.h-4);}
+            ctx.stroke();
+        }
+        ctx.font='600 11px system-ui';ctx.textAlign='left';ctx.textBaseline='middle';
+        const tw=ctx.measureText(label).width+12,th=19;
+        const x=Math.max(1,Math.min(g.w-tw-1,g.v?lane.x+4:p+7));
+        const y=Math.max(1,Math.min(g.h-th-1,g.v?p-th-5:lane.y+6));
+        ctx.fillStyle='#101927';ctx.fillRect(x,y,tw,th);ctx.strokeStyle='#ffe08a';ctx.lineWidth=1;ctx.strokeRect(x+.5,y+.5,tw-1,th-1);
+        ctx.fillStyle='#ffe08a';ctx.fillText(label,x+6,y+th/2);
+        ctx.restore();
     }
     function resetDrag(d){ d.clip.track=d.track;d.clip.start_ms=d.start;phase='idle';canvas.classList.remove('clip-dragging','clip-saving');draw();update(); }
     function cancelDrag(){
@@ -219,7 +259,12 @@
         if(e.button!==0||!e.isPrimary||drag||!['idle','playing'].includes(phase))return;
         const p=point(e),clip=phase==='idle'?hit(p):null;
         canvas.setPointerCapture(e.pointerId);
-        if(clip&&(tool==='cut'||tool==='erase')){selectedClip=clip;editPointer={pointer:e.pointerId,clip,time:p.time,x:e.clientX,y:e.clientY,tool};draw();return;}
+        if(tool==='cut'){
+            const target=cutAt(p);cutPreview=target;
+            if(target){selectedClip=target.clip;editPointer={pointer:e.pointerId,clip:target.clip,time:target.time,x:e.clientX,y:e.clientY,tool};}
+            draw();return;
+        }
+        if(clip&&tool==='erase'){selectedClip=clip;editPointer={pointer:e.pointerId,clip,time:p.time,x:e.clientX,y:e.clientY,tool};draw();return;}
         if(!clip||tool==='pointer'){selectedClip=clip;seekingPointer=e.pointerId;seek(e);return;}
         selectedClip=clip;drag={clip,track:clip.track,start:clip.start_ms,offset:p.time-startAt(clip),pointer:e.pointerId,x:e.clientX,y:e.clientY,moved:false};
         phase='dragging';canvas.classList.add('clip-dragging');canvas.classList.remove('clip-hover');update();
@@ -234,17 +279,27 @@
         }
         if(seekingPointer===e.pointerId&&canvas.hasPointerCapture(e.pointerId)&&phase==='idle'){seek(e);return;}
         canvas.classList.toggle('clip-hover',tool==='hand'&&phase==='idle'&&!!hit(point(e)));
+        if(tool==='cut'&&e.isPrimary)previewCut(e);else clearCutPreview();
     });
     canvas.addEventListener('pointerup',e=>{
         if(seekingPointer===e.pointerId)seekingPointer=null;
-        if(editPointer?.pointer===e.pointerId){const d=editPointer;editPointer=null;if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<8&&hit(point(e))===d.clip)editClip(d.clip,d.tool==='cut'?'split_clip':'delete_clip',d.time);return;}
+        if(editPointer?.pointer===e.pointerId){
+            const d=editPointer;editPointer=null;
+            if(d.tool==='cut'){
+                const target=cutAt(point(e));
+                if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<8&&target?.clip===d.clip){clearCutPreview();editClip(d.clip,'split_clip',target.time);}
+                else clearCutPreview();
+            }else if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<8&&hit(point(e))===d.clip)editClip(d.clip,'delete_clip',d.time);
+            return;
+        }
         if(!drag||drag.pointer!==e.pointerId)return;
         const d=drag;drag=null;canvas.classList.remove('clip-dragging');
         if(d.moved){saveClipMove(d);}else{phase='idle';move(Math.max(0,Math.min(projectTotal(),point(e).time)));msg('Clip seleccionado. Arrastra para moverlo.');}
     });
-    canvas.addEventListener('pointercancel',e=>{if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
-    canvas.addEventListener('lostpointercapture',e=>{if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
-    document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(drag){e.preventDefault();cancelDrag();}editPointer=null;return;}if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable=true]'))return;const modes={v:'pointer',h:'hand',c:'cut',e:'erase'};if(modes[e.key.toLowerCase()]&&['idle','playing'].includes(phase)){e.preventDefault();setTool(modes[e.key.toLowerCase()]);}});
+    canvas.addEventListener('pointerleave',clearCutPreview);
+    canvas.addEventListener('pointercancel',e=>{clearCutPreview();if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
+    canvas.addEventListener('lostpointercapture',e=>{if(editPointer?.pointer===e.pointerId)clearCutPreview();if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(drag){e.preventDefault();cancelDrag();}editPointer=null;clearCutPreview();return;}if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable=true]'))return;const modes={v:'pointer',h:'hand',c:'cut',e:'erase'};if(modes[e.key.toLowerCase()]&&['idle','playing'].includes(phase)){e.preventDefault();setTool(modes[e.key.toLowerCase()]);}});
     canvas.addEventListener('keydown',e=>{
         if(phase!=='idle')return;
         if(e.key==='Delete'&&selectedClip){e.preventDefault();editClip(selectedClip,'delete_clip',position);return;}
@@ -271,7 +326,7 @@
         else if (action === 'fx') { states[track].fx = !states[track].fx; msg('FX de '+palette[track].name+': control visual; procesamiento pendiente.'); }
         update();
     }));
-    new ResizeObserver(draw).observe(canvas); new MutationObserver(()=>{if(drag)cancelDrag();update();}).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
+    new ResizeObserver(()=>{cutPreview=null;draw();}).observe(canvas); new MutationObserver(()=>{cutPreview=null;editPointer=null;if(drag)cancelDrag();update();}).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
     function release(t){ if(t.node){ try{ t.node.disconnect(); }catch(_){} t.node.port.onmessage = null; } if(t.source){ try{ t.source.disconnect(); }catch(_){} } if(t.media) t.media.getTracks().forEach(x => x.stop()); if(t.context) t.context.close().catch(()=>{}); }
     function capture(t, buffer, peaks){ if(t !== take || !['recording','stopping'].includes(phase)) return; const available = Math.max(0, t.rate * 2 * 600 - t.captured); const bytes = buffer.byteLength > available ? buffer.slice(0, available) : buffer; if(bytes.byteLength){ const offset = t.captured; t.captured += bytes.byteLength; t.raw.push(bytes); t.peaks.push(...peaks); const block = Math.max(2, Math.min(1048576, maxBytes) & ~1); for(let i=0;i<bytes.byteLength;i+=block) t.queue.push({offset:offset+i, buffer:bytes.slice(i, i+block)}); position = t.start + t.captured / t.rate / 2; ensureExtent(); update(); pump(t); } if(t.captured >= t.rate * 2 * 600 && phase==='recording') endTake(); }
     async function pump(t){ if(t.pumping || t.error || t !== take) return; t.pumping = true; try{ while(t.queue.length){ const q = t.queue[0]; const d = await post('stream_chunk', {recording_id:t.id, offset:q.offset}, new Blob([q.buffer], {type:'application/octet-stream'})); if(Number(d.pcm_bytes) < q.offset + q.buffer.byteLength) throw Error('El servidor no confirmó el fragmento.'); t.ack = Number(d.pcm_bytes); t.item = d.recording; t.queue.shift(); update(); } }catch(e){ t.error = e.message; if(phase==='recording') endTake(); } finally { t.pumping = false; if(t.ended) finalize(t); } }
