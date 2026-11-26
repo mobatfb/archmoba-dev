@@ -1,29 +1,37 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.18 - validated, non-destructive per-track effect settings.
+// FUTUREO STUDIO v0.1.19 - validated, non-destructive per-track effect settings.
 if (!defined('FUTUREO_RECORDINGS')) { http_response_code(404); exit; }
 function fxDefaults(): array {
     return ['enabled'=>true,'tune'=>false,'tuneAmount'=>70,'key'=>0,'scale'=>'chromatic',
         'gate'=>false,'threshold'=>-45,'deess'=>false,'deessAmount'=>45,
         'eq'=>false,'low'=>0,'mid'=>0,'high'=>0,'comp'=>false,'compAmount'=>45,
         'leveler'=>false,'levelTarget'=>-18,'levelStrength'=>85,'levelBoost'=>12,
-        'reverb'=>false,'reverbMix'=>20,'delay'=>false,'delayMix'=>15,'delayTime'=>280];
+        'reverb'=>false,'reverbMix'=>20,'delay'=>false,'delayMix'=>15,'delayTime'=>280,
+        'tempoDelay'=>false,'delayDivision'=>2,'rhythm'=>false,'rhythmStyle'=>'futureo','rhythmPattern'=>46557,
+        'rhythmIntensity'=>65,'rhythmGate'=>35,'rhythmTremolo'=>15,'rhythmRepeat'=>20,'rhythmPan'=>35];
 }
 function normalizeFx($raw): array {
     $out=fxDefaults(); if(!is_array($raw)) return $out;
     $bounds=['tuneAmount'=>[0,100],'key'=>[0,11],'threshold'=>[-70,-25],'deessAmount'=>[0,100],
         'low'=>[-12,12],'mid'=>[-12,12],'high'=>[-12,12],'compAmount'=>[0,100],
         'levelTarget'=>[-30,-9],'levelStrength'=>[0,100],'levelBoost'=>[0,18],
-        'reverbMix'=>[0,60],'delayMix'=>[0,50],'delayTime'=>[80,800]];
+        'reverbMix'=>[0,60],'delayMix'=>[0,50],'delayTime'=>[80,800],'delayDivision'=>[0,3],'rhythmPattern'=>[0,65535],'rhythmIntensity'=>[0,100],'rhythmGate'=>[0,100],'rhythmTremolo'=>[0,100],'rhythmRepeat'=>[0,100],'rhythmPan'=>[0,100]];
     foreach($out as $key=>$value){
         if(!array_key_exists($key,$raw))continue;
         $v=$raw[$key];
         if(is_bool($value)){if(is_bool($v))$out[$key]=$v;}
         elseif($key==='scale'){if(in_array($v,['chromatic','major','minor'],true))$out[$key]=$v;}
+        elseif($key==='rhythmStyle'){if(in_array($v,['futureo','reggaeton','trap','hiphop','electronic','custom'],true))$out[$key]=$v;}
         elseif(is_int($v)||is_float($v)){if(is_finite((float)$v))$out[$key]=(int)round(max($bounds[$key][0],min($bounds[$key][1],$v)));}
     }
     return $out;
 }
+function fxTempo($value): int {
+    $v=filter_var($value,FILTER_VALIDATE_INT);
+    return $v===false?124:max(60,min(180,$v));
+}
+function savedTempo(array $project): int { return fxTempo($project['content']['tempo_bpm']??124); }
 function savedFx(array $project): array {
     $raw=$project['content']['track_fx']??[]; $out=[];
     for($t=1;$t<=4;$t++)$out[$t]=normalizeFx(is_array($raw)?($raw[$t]??[]):[]);
@@ -41,9 +49,10 @@ function saveTrackFx(string $path,string $folder,string $dir): void {
     $data=readProject($path); if(!isset($data['content'])||!is_array($data['content']))$data['content']=[];
     $all=savedFx($data); $all[$track]=normalizeFx($settings);
     $data['content']['track_fx']=$all;
+    if(isset($_POST['tempo_bpm']))$data['content']['tempo_bpm']=fxTempo($_POST['tempo_bpm']);
     storeProject($path,$data);
     flock($lock,LOCK_UN);fclose($lock);
-    reply(['ok'=>true,'track'=>$track,'settings'=>$all[$track]]);
+    reply(['ok'=>true,'track'=>$track,'settings'=>$all[$track],'tempo_bpm'=>savedTempo($data)]);
 }
 // Shared preset library, not part of the public project listing.
 function presetLibrary(string $root): array {
@@ -66,8 +75,8 @@ function saveFxPreset(string $root): void {
     $lock=@fopen($lp,'c+b');
     if(!$lock||!flock($lock,LOCK_EX))fail('No se pudo bloquear la biblioteca.',500);
     $items=presetLibrary($root); $found=false;
-    foreach($items as &$item){if(($item['name']??null)===$name){$item['settings']=normalizeFx($settings);$item['updated_at']=date(DATE_ATOM);$found=true;break;}}unset($item);
-    if(!$found){if(count($items)>=200)fail('La biblioteca alcanzó 200 presets.',409);$items[]=['name'=>$name,'settings'=>normalizeFx($settings),'updated_at'=>date(DATE_ATOM)];}
+    foreach($items as &$item){if(($item['name']??null)===$name){$item['settings']=normalizeFx($settings);$item['tempo_bpm']=fxTempo($_POST['tempo_bpm']??124);$item['updated_at']=date(DATE_ATOM);$found=true;break;}}unset($item);
+    if(!$found){if(count($items)>=200)fail('La biblioteca alcanzó 200 presets.',409);$items[]=['name'=>$name,'settings'=>normalizeFx($settings),'tempo_bpm'=>fxTempo($_POST['tempo_bpm']??124),'updated_at'=>date(DATE_ATOM)];}
     $json=json_encode($items,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     $tmp=@tempnam($root,'.fx-');
     if($tmp===false||$json===false||@file_put_contents($tmp,$json."\n")!==strlen($json)+1||!@chmod($tmp,0640)||!@rename($tmp,$root.'/.fx-presets.json')){if($tmp!==false)@unlink($tmp);fail('No se pudo guardar el preset.',500);}

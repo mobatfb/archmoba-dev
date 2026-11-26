@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.18 - server-backed, synchronized audio playback */
+/* FUTUREO STUDIO v0.1.19 - server-backed, synchronized audio playback */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -108,7 +108,7 @@
             const d = await response(await fetch(endpoint, {cache:'no-store', credentials:'same-origin'}));
             maxBytes = Number(d.max_bytes) || 0;
             clips = normalizeClips(d.recordings || []);
-            fxUI.load(d.track_fx);
+            fxUI.load(d.track_fx,d.tempo_bpm);
             sortClips();
             decodedCache.clear();
             phase = 'idle'; position = 0; ensureExtent();
@@ -423,13 +423,14 @@
             if(token!==playToken||p.abort.signal.aborted)return;
             p.gains={};p.fxChains={};for(let t=1;t<=4;t++){const gain=context.createGain();gain.gain.value=isMuted(t)?0:1;gain.connect(p.master);p.gains[t]=gain;const chain=window.FutureoFX.chain(context,gain,workletReady);chain.apply(fxUI.get(t),true);p.fxChains[t]=chain;}
             p.when=context.currentTime+.09;
+            p.origin=p.when-offset;for(const chain of Object.values(p.fxChains))chain.setTransport(fxUI.getTempo(),p.origin,true);
             for(const {clip,buffer,len} of results){
                 const source=context.createBufferSource();source.buffer=buffer;source.connect(p.fxChains[sanitizeTrack(clip.track)].input);p.nodes.push(source);
                 const skip=Math.max(0,offset-startAt(clip));
                 if(skip<len)source.start(p.when+Math.max(0,startAt(clip)-offset),sourceOffset(clip)+skip,len-skip);
             }
             p.started=true;p.warning=failures.length?'No se pudieron cargar '+failures.length+' toma(s): '+failures[0]:'';
-            if(Object.values(p.fxChains).some((chain,i)=>{const s=fxUI.get(i+1);return s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler));}))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: algunos FX (afinación, Gate, De-Esser o Nivelador) se omitieron.';
+            if(Object.values(p.fxChains).some((chain,i)=>{const s=fxUI.get(i+1);return s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)||(!chain.rhythm&&s.rhythm));}))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: algunos FX (afinación, Gate, De-Esser, Nivelador o Rhythm) se omitieron.';
             msg(p.warning||'Reproduciendo las pistas guardadas.',p.warning?'error':'ok');update();playbackTick(p);
         }catch(e){if(token===playToken){const aborted=p.abort.signal.aborted;pause();msg(aborted?'Se interrumpió la carga del audio. Vuelve a intentarlo.':e.message,'error');}}
         finally{if(timeout)clearTimeout(timeout);}
@@ -443,7 +444,8 @@
     window.addEventListener('beforeunload',e=>{ if(take||fxUI.dirty()||['starting','moving'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
     window.addEventListener('pagehide',()=>{ if(take) release(take); if(playback)pause(); if(playbackContext)playbackContext.close().catch(()=>{}); });
     const fxUI=window.FutureoFX.createUI({post,getPresets:()=>fetch(endpoint+'&action=fx_presets',{credentials:'same-origin',cache:'no-store'}).then(response),
-        change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},
+        change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)||(!chain.rhythm&&s.rhythm)))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},
+        changeTempo(bpm){if(playback?.fxChains)for(const chain of Object.values(playback.fxChains))chain.setTransport(bpm,playback.origin??0);},
         togglePlay(){if(phase==='playing')pause();else startPlay();},getPlaying:()=>phase==='playing',canPlay:()=>phase==='idle'&&activePlayableClips().length>0});
     load();
 })();

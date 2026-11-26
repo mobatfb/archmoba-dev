@@ -103,3 +103,51 @@ class FutureoLeveler extends AudioWorkletProcessor {
     }
 }
 registerProcessor('futureo-leveler',FutureoLeveler);
+
+/* FUTUREO Rhythm: sample-clock-synchronized amplitude pattern, repeat and stereo pan. */
+class FutureoRhythm extends AudioWorkletProcessor {
+    static get parameterDescriptors(){return [
+        {name:'enabled',defaultValue:0,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'bpm',defaultValue:124,minValue:60,maxValue:180,automationRate:'k-rate'},
+        {name:'origin',defaultValue:0,minValue:-100000000,maxValue:100000000,automationRate:'k-rate'},
+        {name:'pattern',defaultValue:46557,minValue:0,maxValue:65535,automationRate:'k-rate'},
+        {name:'intensity',defaultValue:.65,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'gate',defaultValue:.35,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'tremolo',defaultValue:.15,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'repeat',defaultValue:.2,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'pan',defaultValue:.35,minValue:0,maxValue:1,automationRate:'k-rate'}
+    ];}
+    constructor(){super();this.size=Math.ceil(sampleRate*1.2)+4;this.rings=[];this.history=0;this.amp=1;this.alpha=1-Math.exp(-1/(sampleRate*.004));}
+    ring(ch){while(this.rings.length<=ch)this.rings.push(new Float32Array(this.size));return this.rings[ch];}
+    read(ring,frame){const index=Math.floor(frame),f=frame-index,n=((index%this.size)+this.size)%this.size;return ring[n]*(1-f)+ring[(n+1)%this.size]*f;}
+    process(inputs,outputs,p){
+        const input=inputs[0]||[],out=outputs[0];if(!out.length)return true;
+        const enabled=p.enabled[0]>.5,depth=enabled?p.intensity[0]:0,pattern=Math.round(p.pattern[0])&65535;
+        const stepFrames=sampleRate*60/p.bpm[0]/4,origin=Math.round(p.origin[0]*sampleRate);
+        const gate=p.gate[0]*depth,tremolo=p.tremolo[0]*depth,repeat=p.repeat[0]*depth,pan=p.pan[0]*depth;
+        for(let i=0;i<out[0].length;i++){
+            const frame=currentFrame+i,pos=(frame-origin)/stepFrames,index=Math.floor(pos),phase=pos-index;
+            const step=((index%16)+16)%16,hit=!!(pattern&(1<<step)),write=((frame%this.size)+this.size)%this.size;
+            const ready=depth>0&&frame>=origin;
+            const target=ready?(hit?1:1-gate)*(1-tremolo*(.5-.5*Math.cos(Math.PI*pos))):1;
+            this.amp+= (target-this.amp)*this.alpha;
+            // On the last subdivision of a beat, replay the first half of the previous subdivision twice.
+            const repeatOn=ready&&hit&&step%4===3&&this.history>stepFrames*2&&repeat>0;
+            const sub=phase*2-Math.floor(phase*2),fade=Math.min(1,sub*18,(1-sub)*18),wet=repeatOn?repeat*fade:0;
+            const prevStart=origin+(index-1)*stepFrames;
+            const readFrame=prevStart+sub*stepFrames*.5;
+            const panValue=ready?Math.sin(pos*Math.PI/4)*pan:0;
+            for(let ch=0;ch<out.length;ch++){
+                const x=input[ch]?.[i]??input[0]?.[i]??0,r=this.ring(ch);r[write]=x;
+                if(!ready){out[ch][i]=x;continue;}
+                const y=wet>0?x+(this.read(r,readFrame)-x)*wet:x;
+                // Equal center level; attenuate the opposing channel during panning.
+                const stereo=out.length>1?(ch===0?1-Math.max(0,panValue):1+Math.min(0,panValue)):1;
+                out[ch][i]=y*this.amp*stereo;
+            }
+            this.history=Math.min(this.history+1,this.size);
+        }
+        return true;
+    }
+}
+registerProcessor('futureo-rhythm',FutureoRhythm);

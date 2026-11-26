@@ -218,7 +218,7 @@ if ($method === 'POST') fail('Acción no permitida.',405);
 $items = savedRecordings(readProject($path));
 if ($action === 'list' && $method === 'GET') {
     $items = array_values(array_filter($items,static function($r) use ($dir){return is_file($dir.'/'.$r['file']) && !is_link($dir.'/'.$r['file']);}));
-    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'track_fx'=>savedFx(readProject($path))]);
+    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'track_fx'=>savedFx(readProject($path)),'tempo_bpm'=>savedTempo(readProject($path))]);
 }
 if (!in_array($action,['play','waveform'],true)) fail('Acción no permitida.',405);
 $id = $_GET['id'] ?? '';
