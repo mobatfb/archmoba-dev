@@ -30,6 +30,10 @@ function waveInfo(array $item,string $dir): array {
         }
     }
     if (isset($item['clip_duration_ms'])) $item['duration_ms']=max(0,(int)$item['clip_duration_ms']);
+    if (($item['mime']??'')==='audio/wav' && isset($item['source_offset_frames'],$item['clip_frames'],$item['sample_rate'])) {
+        $rate=(int)$item['sample_rate'];
+        if ($rate>=8000 && $rate<=192000) $item['duration_ms']=(int)round(max(0,(int)$item['clip_frames'])/$rate*1000);
+    }
     return $item;
 }
 function handleStream(string $action,string $path,string $folder,string $dir): void {
@@ -66,7 +70,17 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
     }
     if ($index===null) fail('Grabación no encontrada.',404);
     $item=$items[$index];
-    if (isset($item['clip_duration_ms'])) fail('El clip editado no admite escritura de audio.',409);
+    // Retrying a completed adaptive recording must not rewrite the original WAV or
+    // overwrite subsequent timeline edits. Only identical finish requests are accepted.
+    if (isset($item['clip_duration_ms'])) {
+        $old=$item['capture_sync']??[];
+        if ($action==='stream_finish' && ($old['method']??'')==='adaptive' && ($_POST['sync_method']??'')==='adaptive' && ($item['status']??'')==='saved' && (string)($_POST['offset']??'')===(string)(2*(int)($old['sample_count']??-1))) {
+            $keys=['transport_start_frame','capture_start_frame','capture_end_frame','latency_frames','source_offset_frames','clip_frames','requested_transport_frames','alignment_method'];
+            foreach($keys as $key) if (!isset($_POST[$key],$old[$key]) || (string)$_POST[$key] !== (string)$old[$key]) fail('La alineación guardada no coincide.',409);
+            $item=waveInfo($item,$dir);flock($lock,LOCK_UN);fclose($lock);reply(['ok'=>true,'recording'=>$item,'pcm_bytes'=>$item['pcm_bytes'],'history'=>historyInfo($data)]);
+        }
+        fail('El clip editado no admite escritura de audio.',409);
+    }
     $rate=(int)($item['sample_rate']??0);
     if ($item['mime']!=='audio/wav'||$rate<8000||$rate>192000) fail('Grabación no compatible.',409);
     $media=$dir.'/'.$item['file'];
@@ -121,13 +135,24 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
             // v0.1.25: record the compensation method without storing hardware identifiers.
             if (isset($_POST['sync_method'])) {
                 $method=$_POST['sync_method'];
-                if (!in_array($method,['acoustic','input_estimate'],true)) fail('Método de sincronización no válido.',409);
+                if (!in_array($method,['acoustic','input_estimate','adaptive'],true)) fail('Método de sincronización no válido.',409);
                 $sync['method']=$method;
                 if ($method==='acoustic') {
                     $acoustic=filter_var($_POST['acoustic_latency_frames']??null,FILTER_VALIDATE_INT);
                     if ($acoustic===false||$acoustic<0||$acoustic>$rate*.75||$latency<$acoustic||$latency-$acoustic>$rate*.05) fail('Medición acústica no válida.',409);
                     $sync['acoustic_latency_frames']=$acoustic;
                     $sync['graph_latency_frames']=$latency-$acoustic;
+                } elseif ($method==='adaptive') {
+                    if (($item['status']??'')==='saved') fail('La grabación ya fue finalizada.',409);
+                    $alignment=$_POST['alignment_method']??'';
+                    $source=filter_var($_POST['source_offset_frames']??null,FILTER_VALIDATE_INT);
+                    $length=filter_var($_POST['clip_frames']??null,FILTER_VALIDATE_INT);
+                    $requested=filter_var($_POST['requested_transport_frames']??null,FILTER_VALIDATE_INT);
+                    $count=intdiv($bytes,2);
+                    if (!in_array($alignment,['reference','estimate'],true)||$latency!==0||$first!==$transport||$source===false||$length===false||$requested===false||$requested<1||$requested>$rate*599||$source<0||$source>min((int)ceil($rate*.8),max(0,$count-$requested))||$length<1||$length!==min($requested,$count-$source)) fail('Alineación de muestras no válida.',409);
+                    $sync['alignment_method']=$alignment;$sync['source_offset_frames']=$source;$sync['clip_frames']=$length;$sync['requested_transport_frames']=$requested;
+                    $item['source_offset_frames']=$source;$item['clip_frames']=$length;
+                    $item['source_offset_ms']=(int)round($source/$rate*1000);$item['clip_duration_ms']=(int)round($length/$rate*1000);
                 }
             }
         }

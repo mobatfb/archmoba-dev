@@ -114,6 +114,18 @@ if ($method === 'POST' && in_array($action,['split_clip','delete_clip'],true)) {
         $source=max(0,(int)($target['source_offset_ms']??0));
         $left=$target; $left['source_offset_ms']=$source; $left['clip_duration_ms']=$cut; $left['duration_ms']=$cut; $left['status']='saved';
         $right=$target; $right['id']=$rightId; $right['source_offset_ms']=$source+$cut; $right['clip_duration_ms']=$len-$cut; $right['duration_ms']=$len-$cut; $right['start_ms']=$target['start_ms']+$cut; $right['status']='saved';
+        // New takes retain their exact source sample boundaries when split.
+        if ($target['mime']==='audio/wav' && isset($target['source_offset_frames'],$target['clip_frames'],$target['sample_rate'])) {
+            $rate=(int)$target['sample_rate'];$frames=(int)$target['clip_frames'];$base=(int)$target['source_offset_frames'];
+            if ($rate>=8000&&$rate<=192000&&$frames>1&&$base>=0) {
+                $n=max(1,min($frames-1,(int)round($cut*$rate/1000)));
+                $left['source_offset_frames']=$base;$left['clip_frames']=$n;
+                $right['source_offset_frames']=$base+$n;$right['clip_frames']=$frames-$n;
+                $left['source_offset_ms']=(int)round($base/$rate*1000);$right['source_offset_ms']=(int)round(($base+$n)/$rate*1000);
+                $left['clip_duration_ms']=$left['duration_ms']=(int)round($n/$rate*1000);
+                $right['clip_duration_ms']=$right['duration_ms']=(int)round(($frames-$n)/$rate*1000);
+            }
+        }
         $segments=[$left,$right];
     }
     $out=[];
@@ -244,8 +256,13 @@ if ($action==='waveform') {
     if(isset($item['clip_duration_ms'])){
         $rate=(int)($item['sample_rate']??0);
         if($rate<8000||$rate>192000)reply(['ok'=>true,'peaks'=>[]]);
-        $offset=min($bytes,(int)round(max(0,(int)($item['source_offset_ms']??0))*$rate/1000)*2);
-        $bytes=min($bytes-$offset,(int)round(max(0,(int)$item['clip_duration_ms'])*$rate/1000)*2);
+        if (isset($item['source_offset_frames'],$item['clip_frames'])) {
+            $offset=min($bytes,max(0,(int)$item['source_offset_frames'])*2);
+            $bytes=min($bytes-$offset,max(0,(int)$item['clip_frames'])*2);
+        } else {
+            $offset=min($bytes,(int)round(max(0,(int)($item['source_offset_ms']??0))*$rate/1000)*2);
+            $bytes=min($bytes-$offset,(int)round(max(0,(int)$item['clip_duration_ms'])*$rate/1000)*2);
+        }
     }
     reply(['ok'=>true,'peaks'=>waveformPeaks($media,$bytes,$offset)]);
 }
