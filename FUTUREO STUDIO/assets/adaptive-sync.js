@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.26 - align the intact recording against the actual rendered mix. */
+/* FUTUREO STUDIO v0.1.27 - align the intact recording against the actual rendered mix. */
 (() => {
     'use strict';
     const MAX_LAG=.75, finiteLatency=x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=MAX_LAG;
@@ -59,5 +59,26 @@
         const offset=Math.min(nominal,Math.max(0,count-requested)),frames=Math.min(requested,Math.max(0,count-offset));
         return {offset,frames,method:m?'reference':'estimate',measurement:m,ms:offset/t.rate*1000,limited:offset!==nominal||frames!==requested};
     }
-    window.FutureoAdaptiveSync={estimate,measure,align};
+    // A global signed correction is applied AFTER automatic alignment. Positive
+    // advances the voice; negative delays it. The PCM file is never rewritten.
+    const MANUAL_LIMIT_MS=1000, MANUAL_STORAGE_KEY='futureo.sync.manual_ms.v1';
+    function normalizeManual(value){
+        if(value===null||value===undefined||String(value).trim()==='')return 0;
+        const n=Number(value);return Number.isFinite(n)?clamp(Math.round(n),-MANUAL_LIMIT_MS,MANUAL_LIMIT_MS):0;
+    }
+    function readManual(storage){try{return normalizeManual(storage.getItem(MANUAL_STORAGE_KEY));}catch(_){return 0;}}
+    function writeManual(storage,value){try{storage.setItem(MANUAL_STORAGE_KEY,String(normalizeManual(value)));return true;}catch(_){return false;}}
+    function shift(automatic,startMs,value,rate){
+        const manualMs=normalizeManual(value),wanted=startMs-manualMs;
+        const finalStartMs=clamp(wanted,0,600000);
+        const wantedCrop=Math.round(Math.max(0,-wanted)*rate/1000);
+        // If advancing across time zero, hide the pre-zero portion. A tiny take
+        // must never disappear entirely: limit the correction in that case.
+        const crop=wantedCrop<automatic.frames?wantedCrop:0;
+        const appliedMs=startMs-finalStartMs+crop/rate*1000;
+        return {...automatic,autoOffset:automatic.offset,autoFrames:automatic.frames,
+            startMs:finalStartMs,offset:automatic.offset+crop,frames:automatic.frames-crop,
+            manualMs,appliedMs,manualLimited:wanted>600000||crop!==wantedCrop,preZeroFrames:crop};
+    }
+    window.FutureoAdaptiveSync={estimate,measure,align,shift,normalizeManual,readManual,writeManual,MANUAL_LIMIT_MS};
 })();

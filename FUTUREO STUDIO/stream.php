@@ -77,6 +77,8 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
         if ($action==='stream_finish' && ($old['method']??'')==='adaptive' && ($_POST['sync_method']??'')==='adaptive' && ($item['status']??'')==='saved' && (string)($_POST['offset']??'')===(string)(2*(int)($old['sample_count']??-1))) {
             $keys=['transport_start_frame','capture_start_frame','capture_end_frame','latency_frames','source_offset_frames','clip_frames','requested_transport_frames','alignment_method'];
             foreach($keys as $key) if (!isset($_POST[$key],$old[$key]) || (string)$_POST[$key] !== (string)$old[$key]) fail('La alineación guardada no coincide.',409);
+            $manual=filter_var($_POST['manual_sync_ms']??0,FILTER_VALIDATE_INT);
+            if ($manual===false||$manual!==(int)($old['manual_sync_ms']??0)) fail('El ajuste general guardado no coincide.',409);
             $item=waveInfo($item,$dir);flock($lock,LOCK_UN);fclose($lock);reply(['ok'=>true,'recording'=>$item,'pcm_bytes'=>$item['pcm_bytes'],'history'=>historyInfo($data)]);
         }
         fail('El clip editado no admite escritura de audio.',409);
@@ -151,8 +153,21 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
                     $count=intdiv($bytes,2);
                     if (!in_array($alignment,['reference','estimate'],true)||$latency!==0||$first!==$transport||$source===false||$length===false||$requested===false||$requested<1||$requested>$rate*599||$source<0||$source>min((int)ceil($rate*.8),max(0,$count-$requested))||$length<1||$length!==min($requested,$count-$source)) fail('Alineación de muestras no válida.',409);
                     $sync['alignment_method']=$alignment;$sync['source_offset_frames']=$source;$sync['clip_frames']=$length;$sync['requested_transport_frames']=$requested;
-                    $item['source_offset_frames']=$source;$item['clip_frames']=$length;
-                    $item['source_offset_ms']=(int)round($source/$rate*1000);$item['clip_duration_ms']=(int)round($length/$rate*1000);
+                    // v0.1.27: apply the saved global correction after auto alignment.
+                    // Positive advances; negative delays. The original WAV stays intact.
+                    $manual=filter_var($_POST['manual_sync_ms']??0,FILTER_VALIDATE_INT);
+                    if ($manual===false||$manual < -1000||$manual > 1000) fail('Ajuste general de sincronización no válido.',409);
+                    $originalStart=(int)$item['start_ms'];$wanted=$originalStart-$manual;
+                    $finalStart=max(0,min(600000,$wanted));
+                    $wantedCrop=(int)round(max(0,-$wanted)*$rate/1000);
+                    $crop=$wantedCrop<$length?$wantedCrop:0;
+                    $finalSource=$source+$crop;$finalLength=$length-$crop;
+                    $sync['manual_sync_ms']=$manual;$sync['original_start_ms']=$originalStart;
+                    $sync['manual_applied_ms']=$originalStart-$finalStart+$crop/$rate*1000;
+                    $sync['manual_limited']=$wanted>600000||$crop!==$wantedCrop;
+                    $sync['final_start_ms']=$finalStart;$sync['final_source_offset_frames']=$finalSource;$sync['final_clip_frames']=$finalLength;
+                    $item['start_ms']=$finalStart;$item['source_offset_frames']=$finalSource;$item['clip_frames']=$finalLength;
+                    $item['source_offset_ms']=(int)round($finalSource/$rate*1000);$item['clip_duration_ms']=(int)round($finalLength/$rate*1000);
                 }
             }
         }

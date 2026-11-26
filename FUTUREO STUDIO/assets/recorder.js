@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.26 - capture first, align non-destructively against the rendered accompaniment */
+/* FUTUREO STUDIO v0.1.27 - adaptive alignment plus persistent global timing correction */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -23,6 +23,25 @@
     let playbackContext = null, playbackFrame = 0;
     const syncInfo=$('sync-info'),syncDetails=$('sync'),syncSummary=syncDetails.querySelector('summary'),dryMode=$('sync-dry');
     const Sync=window.FutureoAdaptiveSync, TAIL_SECONDS=1, MAX_TAKE_SECONDS=599;
+    const manualInput=$('sync-manual'),manualReset=$('sync-reset'),manualLess=$('sync-less'),manualMore=$('sync-more'),manualInfo=$('sync-manual-info');
+    let syncStorage=null;try{syncStorage=window.localStorage;}catch(_){}
+    let manualSyncMs=Sync?Sync.readManual(syncStorage):0,manualStored=!!syncStorage;
+    const signedMs=n=>(n>0?'+':'')+n+' ms';
+    function renderManual(){
+        manualInput.value=String(manualSyncMs);
+        manualInfo.textContent=(manualSyncMs===0?'Sin ajuste adicional.':signedMs(manualSyncMs)+(manualSyncMs>0?' · adelantar voz.':' · retrasar voz.'))+(manualStored?' Se aplica a todas las nuevas tomas.':' Solo esta página: el navegador bloquea el almacenamiento.');
+    }
+    function setManual(value){
+        if(phase!=='idle'||!Sync)return;
+        manualSyncMs=Sync.normalizeManual(value);manualStored=Sync.writeManual(syncStorage,manualSyncMs);renderManual();update();
+    }
+    manualInput.addEventListener('change',()=>setManual(manualInput.value));
+    manualInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();manualInput.blur();}});
+    manualLess.addEventListener('click',()=>setManual(manualSyncMs-1));
+    manualMore.addEventListener('click',()=>setManual(manualSyncMs+1));
+    manualReset.addEventListener('click',()=>setManual(0));
+    window.addEventListener('storage',e=>{if(phase==='idle'&&Sync){manualSyncMs=Sync.readManual(syncStorage);renderManual();update();}});
+    renderManual();
     const micConstraints={audio:{channelCount:1,latency:{ideal:.01},echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false};
     const validLatency=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=.75;
     const outputDelay=context=>(validLatency(context.baseLatency)?context.baseLatency:0)+(validLatency(context.outputLatency)?context.outputLatency:0);
@@ -60,8 +79,9 @@
     const playableDuration = (c,b) => Math.max(0,Math.min(trimmed(c)?duration(c):b.duration,b.duration-sourceOffset(c)));
     const startAt = c => Math.max(0, Number(c.start_ms || 0) / 1000);
     const endAt = c => startAt(c) + duration(c);
-    const liveDuration=t=>Math.min(t.transportFrames==null?MAX_TAKE_SECONDS:t.transportFrames/t.rate,Math.max(0,t.captured/2-(t.alignment?.offset??t.previewOffset??0))/t.rate);
-    const projectTotal = () => Math.max(0, ...clips.map(endAt), take ? take.start + liveDuration(take) : 0);
+    const liveStart=t=>t.alignment?t.alignment.startMs/1000:t.start;
+    const liveDuration=t=>t.alignment?t.alignment.frames/t.rate:Math.min(t.transportFrames==null?MAX_TAKE_SECONDS:t.transportFrames/t.rate,Math.max(0,t.captured/2-(t.previewOffset??0))/t.rate);
+    const projectTotal = () => Math.max(0, ...clips.map(endAt), take ? liveStart(take) + liveDuration(take) : 0);
     const format = s => { s = Math.max(0, s); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0') + '.' + Math.floor((s % 1) * 10); };
     const vertical = () => document.body.dataset.orientation === 'vertical';
     function msg(s, state = '') { status.textContent = s; status.dataset.state = state; }
@@ -121,6 +141,8 @@
         play.setAttribute('aria-label', phase === 'playing' ? 'Pausar' : 'Reproducir');
         stop.disabled = !['recording','playing'].includes(phase);
         dryMode.disabled=!idle;
+        manualInput.disabled=manualReset.disabled=!idle;
+        manualLess.disabled=!idle||manualSyncMs<=-1000;manualMore.disabled=!idle||manualSyncMs>=1000;
         home.disabled = !idle && phase !== 'playing';
         recovery.hidden = phase !== 'recovery';
         clock.textContent = format(position);
@@ -240,7 +262,7 @@
                 ctx.globalAlpha = 1;
             }
             if (take && take.track === track){
-                const s = take.start, d = liveDuration(take), a = along(g, s), b = along(g, s + d), lo = Math.min(a,b), size = Math.max(1, Math.abs(b-a));
+                const s = liveStart(take), d = liveDuration(take), a = along(g, s), b = along(g, s + d), lo = Math.min(a,b), size = Math.max(1, Math.abs(b-a));
                 ctx.fillStyle = p.live; ctx.strokeStyle = '#ff5e7e';
                 if (g.v){ ctx.fillRect(lane.x+4, lo, lane.w-8, size); ctx.strokeRect(lane.x+4, lo, lane.w-8, size); } else { ctx.fillRect(lo, lane.y+4, size, lane.h-8); ctx.strokeRect(lo, lane.y+4, size, lane.h-8); }
                 drawWaveform((take.peaks||[]).slice(Math.floor((take.alignment?.offset??take.previewOffset??0)/take.rate*40),Math.floor((take.alignment?.offset??take.previewOffset??0)/take.rate*40)+Math.ceil(d*40)), frac => along(g, s + frac * d), Math.max(8, (g.v ? lane.w-14 : lane.h-14) / 2), center, fx ? '#ffe4a8' : p.liveWave);
@@ -523,10 +545,11 @@
     function recover(t){ phase = 'recovery'; makeDownload(t); msg((t.error || 'No se pudo confirmar el guardado.') + ' · ' + format(t.ack/t.rate/2) + ' guardados en ' + palette[t.track].name + '.', 'error'); update(); }
     function alignTake(t,data){
         if(!Number.isSafeInteger(t.transportFrames))t.transportFrames=Math.min(Math.round(t.rate*MAX_TAKE_SECONDS),t.captured/2);
-        t.alignment=Sync.align(t,data);
+        t.alignment=Sync.shift(Sync.align(t,data),Math.round(t.start*1000),t.manualSyncMs,t.rate);
         if(t.alignment.frames<1)throw Error('La toma no contiene suficientes muestras.');
-        const a=t.alignment,detail=(a.ms).toFixed(1)+' ms · '+(a.method==='reference'?'referencia real detectada ('+a.measurement.matches+' ventanas)':'estimación del navegador; no se detectó retorno suficiente');
-        syncStatus(detail+(a.limited?' · tramo parcial.':'.'),a.method==='reference'&&!a.limited);
+        const a=t.alignment,detail='AUTO '+a.ms.toFixed(1)+' ms · '+(a.method==='reference'?'referencia real detectada ('+a.measurement.matches+' ventanas)':'estimación del navegador; no se detectó retorno suficiente');
+        const fine=' · Manual '+signedMs(a.manualMs)+(a.manualLimited?' (limitado por el inicio o fin de la línea de tiempo)':a.preZeroFrames?' (tramo anterior a 0 oculto, WAV intacto)':'');
+        syncStatus(detail+fine+(a.limited?' · tramo parcial.':'.'),a.method==='reference'&&!a.limited&&!a.manualLimited);
     }
     async function finalize(t){
         if(t!==take||!t.ended||t.pumping||t.finalizing)return;
@@ -537,11 +560,11 @@
             if(t.ack!==t.captured||t.endFrame!==t.captureFrame+t.captured/2)throw Error('No coincide el número de muestras grabadas y guardadas.');
             if(!t.alignment)alignTake(t,null);
             const a=t.alignment;
-            const d=await post('stream_finish',{recording_id:t.id,offset:t.ack,transport_start_frame:t.transportFrame,capture_start_frame:t.captureFrame,capture_end_frame:t.endFrame,latency_frames:0,sync_method:'adaptive',alignment_method:a.method,source_offset_frames:a.offset,clip_frames:a.frames,requested_transport_frames:t.transportFrames});
-            if(d.recording?.id!==t.id||Number(d.pcm_bytes)!==t.captured||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó la posición o duración exacta de la toma.');
-            if(d.recording.source_offset_frames!==a.offset||d.recording.clip_frames!==a.frames)throw Error('El hosting no confirmó la alineación exacta.');
-            const clip={...d.recording,peaks:[]};clips.push(clip);fetchPeaks(clip);sortClips();position=t.start+a.frames/t.rate;take=null;phase='idle';
-            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(a.frames/t.rate)+(a.method==='reference'?' · SYNC por referencia real.':' · SYNC estimado (sin retorno suficiente).')+(a.limited?' · tramo parcial.':''),a.method==='reference'&&!a.limited?'ok':'');update();
+            const d=await post('stream_finish',{recording_id:t.id,offset:t.ack,transport_start_frame:t.transportFrame,capture_start_frame:t.captureFrame,capture_end_frame:t.endFrame,latency_frames:0,sync_method:'adaptive',alignment_method:a.method,source_offset_frames:a.autoOffset,clip_frames:a.autoFrames,requested_transport_frames:t.transportFrames,manual_sync_ms:a.manualMs});
+            if(d.recording?.id!==t.id||Number(d.pcm_bytes)!==t.captured||Number(d.recording.start_ms)!==a.startMs||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó la posición o duración exacta de la toma.');
+            if(d.recording.source_offset_frames!==a.offset||d.recording.clip_frames!==a.frames||Number(d.recording.capture_sync?.manual_sync_ms)!==a.manualMs)throw Error('El hosting no confirmó la alineación exacta.');
+            const clip={...d.recording,peaks:[]};clips.push(clip);fetchPeaks(clip);sortClips();position=t.start+t.transportFrames/t.rate;take=null;phase='idle';
+            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(a.frames/t.rate)+(a.method==='reference'?' · SYNC por referencia real.':' · SYNC estimado (sin retorno suficiente).')+(a.manualMs?' · ajuste general '+signedMs(a.manualMs)+(a.manualLimited?' limitado':''):'')+(a.limited?' · tramo parcial.':''),a.method==='reference'&&!a.limited&&!a.manualLimited?'ok':'');update();
         }catch(e){t.error=e.message;recover(t);}finally{t.finalizing=false;}
     }
     function finishCapture(t,data){
@@ -551,7 +574,7 @@
         if(data.startFrame!==t.captureFrame||!Number.isSafeInteger(t.endFrame)||data.frames!==t.captured/2||t.endFrame!==t.captureFrame+t.captured/2){t.error=t.error||'El capturador no confirmó la secuencia completa de muestras. Puedes guardar el tramo continuo recibido.';t.endFrame=t.captureFrame+t.captured/2;}
         phase='stopping';cancelAnimationFrame(playbackFrame);playbackFrame=0;
         try{if(!Number.isSafeInteger(t.transportFrames))t.transportFrames=Math.min(Math.round(t.rate*MAX_TAKE_SECONDS),Math.max(0,t.captured/2-t.tailFrames));alignTake(t,data);}catch(e){t.error=t.error||e.message;}
-        stopMix(false);release(t);t.ended=true;position=t.start+(t.alignment?.frames||0)/t.rate;finalize(t);
+        stopMix(false);release(t);t.ended=true;position=t.start+(t.transportFrames||0)/t.rate;finalize(t);
     }
     function endTake(){
         const t=take;if(!t||phase!=='recording')return;
@@ -574,8 +597,10 @@
         if(!['idle','playing'].includes(phase)||!supported)return;
         if(phase==='playing')pause();
         if(position>600){msg('La posición de grabación supera el límite de 10 minutos.','error');return;}
+        // Commit the current field even when REC is clicked before it loses focus.
+        if(Sync){manualSyncMs=Sync.normalizeManual(manualInput.value);manualStored=Sync.writeManual(syncStorage,manualSyncMs);renderManual();}
         phase='starting';msg('Preparando micrófono y acompañamiento...');update();
-        const t={id:Array.from(crypto.getRandomValues(new Uint8Array(12)),x=>x.toString(16).padStart(2,'0')).join(''),track:selectedTrack,start:Math.round(position*1000)/1000,raw:[],queue:[],peaks:[],captured:0,ack:0,rate:48000,error:null,pumping:false,ended:false,finalizing:false};
+        const t={id:Array.from(crypto.getRandomValues(new Uint8Array(12)),x=>x.toString(16).padStart(2,'0')).join(''),track:selectedTrack,start:Math.round(position*1000)/1000,manualSyncMs,raw:[],queue:[],peaks:[],captured:0,ack:0,rate:48000,error:null,pumping:false,ended:false,finalizing:false};
         const p=newMix(t.start);playback=p;
         try{
             // Resume from the record gesture; both mic and playback use one sample clock.
@@ -600,7 +625,7 @@
             t.initialEstimate=Sync.estimate(t.context,t.media,p.graphLatency,audible);
             t.previewOffset=Math.round(t.initialEstimate.seconds*t.rate);
             if(p.output){p.output.connect(t.node,0,1);t.reference=p.output;}
-            syncStatus('La voz se alineará después de grabar, sin calibración previa.');
+            syncStatus('Alineación automática al detener · ajuste general '+signedMs(t.manualSyncMs)+'.');
             const d=await post('stream_start',{recording_id:t.id,sample_rate:t.rate,track:t.track,start_ms:Math.round(t.start*1000)});
             t.item=d.recording;
             if(d.recording?.id!==t.id||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó el inicio de la toma.');
