@@ -72,6 +72,10 @@ if (is_link($folder) || is_link($dir)) fail('Carpeta de audio no válida.',500);
 $action = $method === 'POST' ? ($_POST['action'] ?? '') : ($_GET['action'] ?? 'list');
 define('FUTUREO_RECORDINGS',true);
 require_once __DIR__.'/stream.php';
+require_once __DIR__.'/track-fx.php';
+if ($method === 'POST' && $action === 'save_track_fx') saveTrackFx($path,$folder,$dir);
+if ($method === 'POST' && $action === 'save_fx_preset') saveFxPreset($root);
+if ($method === 'GET' && $action === 'fx_presets') reply(['ok'=>true,'presets'=>presetLibrary($root)]);
 if ($method === 'POST' && in_array($action,['stream_start','stream_chunk','stream_finish'],true)) handleStream($action,$path,$folder,$dir);
 // Non-destructive edits: each segment references the same immutable source audio.
 if ($method === 'POST' && in_array($action,['split_clip','delete_clip'],true)) {
@@ -214,7 +218,7 @@ if ($method === 'POST') fail('Acción no permitida.',405);
 $items = savedRecordings(readProject($path));
 if ($action === 'list' && $method === 'GET') {
     $items = array_values(array_filter($items,static function($r) use ($dir){return is_file($dir.'/'.$r['file']) && !is_link($dir.'/'.$r['file']);}));
-    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload()]);
+    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'track_fx'=>savedFx(readProject($path))]);
 }
 if (!in_array($action,['play','waveform'],true)) fail('Acción no permitida.',405);
 $id = $_GET['id'] ?? '';

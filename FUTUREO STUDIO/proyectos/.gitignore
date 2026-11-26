@@ -1,3 +1,6 @@
 *.fprj
 */
 .fprj-*
+.fx-presets.json
+.fx-presets.lock
+.fx-*

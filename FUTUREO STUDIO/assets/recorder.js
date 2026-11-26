@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.16 - server-backed, synchronized audio playback */
+/* FUTUREO STUDIO v0.1.17 - server-backed, synchronized audio playback */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -66,6 +66,7 @@
             mute.setAttribute('aria-pressed', states[track].mute ? 'true' : 'false');
             fx.classList.toggle('is-on', states[track].fx);
             fx.setAttribute('aria-pressed', states[track].fx ? 'true' : 'false');
+            fx.disabled=!['idle','playing'].includes(phase); fx.setAttribute('aria-haspopup','dialog');
         });
         let note = palette[selectedTrack].name;
         if (states[selectedTrack].mute) note += ' · mute';
@@ -94,6 +95,7 @@
         canvas.setAttribute('aria-orientation', vertical() ? 'vertical' : 'horizontal');
         canvas.setAttribute('aria-valuetext', format(position));
         if (playback && playback.gains) for (let t=1;t<=4;t++) playback.gains[t].gain.value = isMuted(t) ? 0 : 1;
+        fxUI.sync();
         syncTrackButtons();
         canvas.dataset.tool=tool;
         toolButtons.forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.tool===tool));b.disabled=!['idle','playing'].includes(phase);});
@@ -106,6 +108,7 @@
             const d = await response(await fetch(endpoint, {cache:'no-store', credentials:'same-origin'}));
             maxBytes = Number(d.max_bytes) || 0;
             clips = normalizeClips(d.recordings || []);
+            fxUI.load(d.track_fx);
             sortClips();
             decodedCache.clear();
             phase = 'idle'; position = 0; ensureExtent();
@@ -299,7 +302,7 @@
     canvas.addEventListener('pointerleave',clearCutPreview);
     canvas.addEventListener('pointercancel',e=>{clearCutPreview();if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
     canvas.addEventListener('lostpointercapture',e=>{if(editPointer?.pointer===e.pointerId)clearCutPreview();if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
-    document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(drag){e.preventDefault();cancelDrag();}editPointer=null;clearCutPreview();return;}if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable=true]'))return;const modes={v:'pointer',h:'hand',c:'cut',e:'erase'};if(modes[e.key.toLowerCase()]&&['idle','playing'].includes(phase)){e.preventDefault();setTool(modes[e.key.toLowerCase()]);}});
+    document.addEventListener('keydown',e=>{if(fxUI.isOpen())return;if(e.key==='Escape'){if(drag){e.preventDefault();cancelDrag();}editPointer=null;clearCutPreview();return;}if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable=true]'))return;const modes={v:'pointer',h:'hand',c:'cut',e:'erase'};if(modes[e.key.toLowerCase()]&&['idle','playing'].includes(phase)){e.preventDefault();setTool(modes[e.key.toLowerCase()]);}});
     canvas.addEventListener('keydown',e=>{
         if(phase!=='idle')return;
         if(e.key==='Delete'&&selectedClip){e.preventDefault();editClip(selectedClip,'delete_clip',position);return;}
@@ -323,7 +326,7 @@
         const track = sanitizeTrack(button.dataset.track), action = button.dataset.action;
         if (action === 'rec') { if (!['idle','playing'].includes(phase)) return; selectedTrack = track; }
         else if (action === 'mute') states[track].mute = !states[track].mute;
-        else if (action === 'fx') { states[track].fx = !states[track].fx; msg('FX de '+palette[track].name+': control visual; procesamiento pendiente.'); }
+        else if (action === 'fx') { if(!['idle','playing'].includes(phase))return; fxUI.open(track); }
         update();
     }));
     new ResizeObserver(()=>{cutPreview=null;draw();}).observe(canvas); new MutationObserver(()=>{cutPreview=null;editPointer=null;if(drag)cancelDrag();update();}).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
@@ -342,6 +345,7 @@
             if(p.started && playbackContext) position=Math.min(p.end,Math.max(p.offset,p.offset+playbackContext.currentTime-p.when));
             p.abort.abort();
             for(const node of p.nodes){try{node.stop();}catch(_){} try{node.disconnect();}catch(_){}}
+            for(const chain of Object.values(p.fxChains || {}))chain.disconnect();
             for(const gain of Object.values(p.gains || {})){try{gain.disconnect();}catch(_){}}
             if(p.master)try{p.master.disconnect();}catch(_){}
         }
@@ -415,14 +419,17 @@
             ensureExtent();
             p.end=Math.max(...results.map(({clip,len})=>startAt(clip)+len));
             p.master=context.createDynamicsCompressor();p.master.connect(context.destination);
-            p.gains={};for(let t=1;t<=4;t++){const gain=context.createGain();gain.gain.value=isMuted(t)?0:1;gain.connect(p.master);p.gains[t]=gain;}
+            const workletReady=await window.FutureoFX.prepare(context);
+            if(token!==playToken||p.abort.signal.aborted)return;
+            p.gains={};p.fxChains={};for(let t=1;t<=4;t++){const gain=context.createGain();gain.gain.value=isMuted(t)?0:1;gain.connect(p.master);p.gains[t]=gain;const chain=window.FutureoFX.chain(context,gain,workletReady);chain.apply(fxUI.get(t),true);p.fxChains[t]=chain;}
             p.when=context.currentTime+.09;
             for(const {clip,buffer,len} of results){
-                const source=context.createBufferSource();source.buffer=buffer;source.connect(p.gains[sanitizeTrack(clip.track)]);p.nodes.push(source);
+                const source=context.createBufferSource();source.buffer=buffer;source.connect(p.fxChains[sanitizeTrack(clip.track)].input);p.nodes.push(source);
                 const skip=Math.max(0,offset-startAt(clip));
                 if(skip<len)source.start(p.when+Math.max(0,startAt(clip)-offset),sourceOffset(clip)+skip,len-skip);
             }
             p.started=true;p.warning=failures.length?'No se pudieron cargar '+failures.length+' toma(s): '+failures[0]:'';
+            if(Object.values(p.fxChains).some((chain,i)=>!chain.worklet&&['tune','gate','deess'].some(k=>fxUI.get(i+1).enabled&&fxUI.get(i+1)[k])))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: afinación, Gate y De-Esser omitidos.';
             msg(p.warning||'Reproduciendo las pistas guardadas.',p.warning?'error':'ok');update();playbackTick(p);
         }catch(e){if(token===playToken){const aborted=p.abort.signal.aborted;pause();msg(aborted?'Se interrumpió la carga del audio. Vuelve a intentarlo.':e.message,'error');}}
         finally{if(timeout)clearTimeout(timeout);}
@@ -433,7 +440,10 @@
     home.addEventListener('click',()=>{ if(phase==='playing') pause(); move(0); });
     $('retry').addEventListener('click',()=>{ if(phase!=='recovery'||!take) return; take.error = null; phase = 'saving'; msg('Reintentando guardado...'); update(); pump(take); });
     $('discard').addEventListener('click',()=>{ if(phase!=='recovery'||!take||!confirm('¿Cerrar esta toma? Los fragmentos ya guardados se conservarán.')) return; if(take.item&&take.ack>0) clips.push({...take.item, track:take.track, start_ms:Math.round(take.start*1000), duration_ms:take.ack/take.rate/2*1000, peaks:take.peaks.slice(0,Math.ceil(take.ack/take.rate/2*40))}); sortClips(); take = null; phase = 'idle'; position = projectTotal(); if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Se conservaron los fragmentos confirmados por el servidor.'); update(); });
-    window.addEventListener('beforeunload',e=>{ if(take||['starting','moving'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
+    window.addEventListener('beforeunload',e=>{ if(take||fxUI.dirty()||['starting','moving'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
     window.addEventListener('pagehide',()=>{ if(take) release(take); if(playback)pause(); if(playbackContext)playbackContext.close().catch(()=>{}); });
+    const fxUI=window.FutureoFX.createUI({post,getPresets:()=>fetch(endpoint+'&action=fx_presets',{credentials:'same-origin',cache:'no-store'}).then(response),
+        change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(!chain.worklet&&s.enabled&&(s.tune||s.gate||s.deess))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},
+        togglePlay(){if(phase==='playing')pause();else startPlay();},getPlaying:()=>phase==='playing',canPlay:()=>phase==='idle'&&activePlayableClips().length>0});
     load();
 })();
