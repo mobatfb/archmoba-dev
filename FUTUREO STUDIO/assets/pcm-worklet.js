@@ -1,10 +1,11 @@
 /* FUTUREO STUDIO - mono PCM16 capture, real sample clock. */
 class FutureoPCM extends AudioWorkletProcessor {
-    constructor() {
+    constructor(options) {
         super();
         this.block = new Int16Array(Math.round(sampleRate * .5));
         this.used = 0;
         this.active = true;
+        this.startFrame = Math.max(0, Number(options?.processorOptions?.startFrame) || 0);
         this.port.onmessage = e => {
             if (e.data === 'stop') {
                 this.active = false;
