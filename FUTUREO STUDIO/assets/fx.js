@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.19: per-track real-time playback FX and reusable hosting presets. */
+/* FUTUREO STUDIO v0.1.24: per-track real-time playback FX and reusable hosting presets. */
 (() => {
     'use strict';
     const defaults=()=>({enabled:true,tune:false,tuneAmount:70,key:0,scale:'chromatic',gate:false,threshold:-45,deess:false,deessAmount:45,eq:false,low:0,mid:0,high:0,comp:false,compAmount:45,leveler:false,levelTarget:-18,levelStrength:85,levelBoost:12,reverb:false,reverbMix:20,delay:false,delayMix:15,delayTime:280,tempoDelay:false,delayDivision:2,rhythm:false,rhythmStyle:"futureo",rhythmPattern:46557,rhythmIntensity:65,rhythmGate:35,rhythmTremolo:15,rhythmRepeat:20,rhythmPan:35});
@@ -35,8 +35,10 @@
         const low=own(context.createBiquadFilter()),mid=own(context.createBiquadFilter()),high=own(context.createBiquadFilter());
         low.type='lowshelf';low.frequency.value=180;mid.type='peaking';mid.frequency.value=1300;mid.Q.value=.8;high.type='highshelf';high.frequency.value=4800;
         prev.connect(low);low.connect(mid);mid.connect(high);
-        const comp=own(context.createDynamicsCompressor()),compWet=gain(),compDry=gain(),mixed=gain();
-        comp.knee.value=18;comp.attack.value=.006;comp.release.value=.13;high.connect(comp);comp.connect(compWet);compWet.connect(mixed);high.connect(compDry);compDry.connect(mixed);
+        const comp=own(context.createDynamicsCompressor()),compWet=gain(),compDry=gain(),mixed=gain(),dryDelay=own(context.createDelay(.05));
+        // The Web Audio compressor has a 6 ms lookahead; match its bypass.
+        const latencySeconds=.006;dryDelay.delayTime.value=latencySeconds;
+        comp.knee.value=18;comp.attack.value=.006;comp.release.value=.13;high.connect(comp);comp.connect(compWet);compWet.connect(mixed);high.connect(dryDelay);dryDelay.connect(compDry);compDry.connect(mixed);
         // One shared leveler per track, after dynamics and before spatial effects.
         let leveler=null, signal=mixed;
         if(workletReady){try{leveler=own(new AudioWorkletNode(context,'futureo-leveler'));mixed.connect(leveler);signal=leveler;}catch(_){leveler=null;}}
@@ -63,7 +65,7 @@
             put(output.gain,s.enabled&&(s.reverb||s.delay)?1/(1+(s.reverb?s.reverbMix:0)/180+(s.delay?s.delayMix:0)/150):1);
         }
         apply(defaults(),true);
-        return {input,apply,worklet:!!voice,leveler:!!leveler,rhythm:!!rhythm,setTransport(bpm,start,instant=false){tempo=tempoValue(bpm);origin=Number(start)||0;apply(current,instant);},disconnect(){for(const n of nodes){try{n.disconnect();}catch(_){}}}};
+        return {input,apply,latencySeconds,worklet:!!voice,leveler:!!leveler,rhythm:!!rhythm,setTransport(bpm,start,instant=false){tempo=tempoValue(bpm);origin=Number(start)||0;apply(current,instant);},disconnect(){for(const n of nodes){try{n.disconnect();}catch(_){}}}};
     }
     const schema=[
         ['tune','Afinación automática (AutoTune básico)',[['tuneAmount','Intensidad',0,100,'%'],['key','Tonalidad',['Do','Do♯','Re','Re♯','Mi','Fa','Fa♯','Sol','Sol♯','La','La♯','Si']],['scale','Escala',[['chromatic','Cromática'],['major','Mayor'],['minor','Menor']]]]],

@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.23 - sample-accurate overdub and device latency compensation */
+/* FUTUREO STUDIO v0.1.24 - sample-accurate overdub and device latency compensation */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -21,23 +21,39 @@
     function setTool(next){if(!toolHints[next]||!['idle','playing'].includes(phase))return;if(drag)cancelDrag();tool=next;editPointer=null;cutPreview=null;msg(toolHints[tool]);update();}
     toolButtons.forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
     let playbackContext = null, playbackFrame = 0;
-    const syncMode=$('sync-mode'), syncMs=$('sync-ms'), syncInfo=$('sync-info');
-    const syncKey='futureo.studio.recording.sync.v1';
-    const clampSync=n=>Math.max(-250,Math.min(500,Math.round(Number(n)||0)));
-    let syncSettings={mode:'auto',ms:0};
-    try{const stored=JSON.parse(localStorage.getItem(syncKey)||'null');if(stored)syncSettings={mode:stored.mode==='manual'?'manual':'auto',ms:clampSync(stored.ms)};}catch(_){}
-    syncMode.value=syncSettings.mode;syncMs.value=syncSettings.ms;
-    function syncUI(){syncMode.disabled=!['idle','playing'].includes(phase);syncMs.disabled=syncMode.disabled||syncSettings.mode!=='manual';}
-    function storeSync(){syncSettings={mode:syncMode.value==='manual'?'manual':'auto',ms:clampSync(syncMs.value)};syncMs.value=syncSettings.ms;try{localStorage.setItem(syncKey,JSON.stringify(syncSettings));}catch(_){}syncInfo.textContent=syncSettings.mode==='manual'?'Ajuste guardado para este navegador: '+syncSettings.ms+' ms.':'La estimación se calcula al iniciar una toma.';syncUI();}
-    syncMode.addEventListener('change',storeSync);syncMs.addEventListener('change',storeSync);
-    function compensation(t,audible){
-        if(syncSettings.mode==='manual')return syncSettings.ms;
-        if(!audible)return 0;
-        // Browser latency reports are estimates, not a calibrated acoustic measurement.
-        const seconds=x=>Number.isFinite(x)&&x>0?x:0;
-        const input=t.media.getAudioTracks()[0]?.getSettings?.().latency;
-        // DynamicsCompressor on the common master uses a 6 ms lookahead.
-        return clampSync((seconds(t.context.baseLatency)+seconds(t.context.outputLatency)+seconds(input)+.006)*1000);
+    const syncInfo=$('sync-info');
+    // No persistent manual offset. A fresh device estimate is used for every take.
+    const validLatency=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=.5;
+    const outputDelay=context=>(validLatency(context.baseLatency)?context.baseLatency:0)+(validLatency(context.outputLatency)?context.outputLatency:0);
+    function compensation(t,p,audible){
+        const context=t.context, reported=t.media.getAudioTracks()[0]?.getSettings?.().latency;
+        const inputKnown=validLatency(reported), input=inputKnown?reported:0;
+        const outputKnown=validLatency(context.outputLatency), output=audible?outputDelay(context):0;
+        const graph=audible?(p.graphLatency||0):0;
+        // Use the reported latencies, never a difference between the render clock and
+        // output timestamp as an estimate of hardware latency (Web Audio spec).
+        const frames=Math.round(Math.min(.5,input+output+graph)*t.rate);
+        return {frames,ms:Math.round(frames/t.rate*1000),inputKnown,outputKnown};
+    }
+    function audibleTime(context,p){
+        const render=context.currentTime, fallback=Math.max(0,render-outputDelay(context));
+        let time=fallback;
+        try{
+            const stamp=context.getOutputTimestamp?.(),now=performance.now();
+            if(stamp&&Number.isFinite(stamp.contextTime)&&stamp.contextTime>0&&Number.isFinite(stamp.performanceTime)&&stamp.performanceTime>0&&Math.abs(now-stamp.performanceTime)<500){
+                const projected=stamp.contextTime+(now-stamp.performanceTime)/1000;
+                if(projected>=0&&projected<=render+.02)time=Math.min(render,projected);
+            }
+        }catch(_){}
+        return Math.max(0,time-(p?.graphLatency||0));
+    }
+    function waitWorklet(node,type,send){
+        return new Promise((resolve,reject)=>{
+            const done=()=>{clearTimeout(timer);node.port.removeEventListener('message',receive);};
+            const receive=e=>{if(e.data?.type===type){done();resolve(e.data);}else if(e.data?.type==='arm-error'){done();reject(Error('No se pudo armar el reloj de grabación.'));}};
+            const timer=setTimeout(()=>{done();reject(Error('El motor de captura no respondió. Intenta grabar de nuevo.'));},3000);
+            node.port.addEventListener('message',receive);node.port.start();if(send)node.port.postMessage(send);
+        });
     }
     const decodedCache = new Map();
     const cacheLimit = 128 * 1024 * 1024;
@@ -122,7 +138,7 @@
         syncTrackButtons();
         canvas.dataset.tool=tool;
         toolButtons.forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.tool===tool));b.disabled=!['idle','playing'].includes(phase);});
-        syncHistory();syncUI();
+        syncHistory();
         draw();
     }
     async function response(r){ let d; try{ d = await r.json(); }catch(_){ throw Error('Respuesta no válida del hosting (' + r.status + ').'); } if(!r.ok || !d.ok) throw Error(d.error || 'Error del servidor'); if(d.history)historyState=d.history; return d; }
@@ -518,7 +534,7 @@
             const d=await post('stream_finish',{recording_id:t.id,offset:t.ack,transport_start_frame:t.transportFrame,capture_start_frame:t.captureFrame,capture_end_frame:t.endFrame,latency_frames:t.compFrames});
             if(d.recording?.id!==t.id||Number(d.pcm_bytes)!==t.captured||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó la posición o duración exacta de la toma.');
             clips.push({...d.recording,peaks:t.peaks});sortClips();position=t.start+t.captured/t.rate/2;take=null;phase='idle';
-            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(t.captured/t.rate/2)+' · SYNC '+t.compMs+' ms.','ok');update();
+            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(t.captured/t.rate/2)+' · SYNC automático.','ok');update();
         }catch(e){t.error=e.message;recover(t);}finally{t.finalizing=false;}
     }
     function finishCapture(t,data){
@@ -531,7 +547,7 @@
         phase='stopping';cancelAnimationFrame(playbackFrame);playbackFrame=0;
         const close=()=>{if(t!==take||t.ended)return;stopMix(false);release(t);t.ended=true;position=t.start+t.captured/t.rate/2;finalize(t);};
         const transportEnd=t.when+(t.captured/2)/t.rate;
-        const remaining=Math.max(0,(Math.min(Number(t.stopMixWhen||transportEnd),transportEnd)-t.context.currentTime)*1000);
+        const remaining=Math.max(0,(Math.min(Number(t.stopMixWhen||transportEnd),transportEnd)+(playback?.graphLatency||0)-t.context.currentTime)*1000);
         if(remaining>0)setTimeout(close,remaining+15);else close();
     }
     function endTake(){
@@ -540,12 +556,12 @@
         // Send a frame deadline ahead of the render quantum. Apply the same latency
         // offset at both boundaries so capture length equals transport length.
         const nowFrame=Math.ceil(t.context.currentTime*t.rate);
-        const lead=Math.ceil(t.rate*.08)+Math.max(0,-t.compFrames);
+        const lead=Math.max(512,Math.ceil(t.rate*.02));
         const transportEnd=Math.max(t.transportFrame,Math.min(t.transportFrame+Math.round(t.rate*600),nowFrame+lead));
         const captureEnd=transportEnd+t.compFrames;
         t.stopMixWhen=transportEnd/t.rate;
         for(const n of playback?.nodes||[]){try{n.stop(t.stopMixWhen);}catch(_){}}
-        const out=playback?.output;if(out){out.gain.cancelScheduledValues(t.context.currentTime);out.gain.setValueAtTime(1,t.context.currentTime);out.gain.setValueAtTime(0,t.stopMixWhen);}
+        const out=playback?.output;if(out){out.gain.cancelScheduledValues(t.context.currentTime);out.gain.setValueAtTime(1,t.context.currentTime);out.gain.setValueAtTime(0,t.stopMixWhen+(playback?.graphLatency||0));}
         position=t.start+(transportEnd-t.transportFrame)/t.rate;msg('Guardando las últimas muestras...');update();
         t.node.port.postMessage({type:'stop',frame:captureEnd});
         t.stopTimeout=setTimeout(()=>{if(!t.ended){t.error=t.error||'No se confirmó el final del reloj de audio. Puedes guardar el tramo continuo recibido.';t.endFrame=t.captureFrame+t.captured/2;stopMix(false);release(t);t.ended=true;finalize(t);}},Math.max(2500,(captureEnd-nowFrame)/t.rate*1000+2000));
@@ -562,50 +578,57 @@
             if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx({latencyHint:'interactive'});
             t.context=playbackContext;await t.context.resume();
             if(t.context.state!=='running')throw Error('El navegador bloqueó el audio. Pulsa Grabar nuevamente.');
-            t.media=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+            t.media=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,latency:{ideal:.01},echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
             t.rate=t.context.sampleRate;
-            await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.23');
+            await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.24');
             t.source=t.context.createMediaStreamSource(t.media);
+            // Warm up the actual input graph before starting the accompaniment.
+            // The processor emits silence and waits for an absolute start frame.
+            t.node=new AudioWorkletNode(t.context,'futureo-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
+            const ready=waitWorklet(t.node,'ready');
+            t.source.connect(t.node);t.node.connect(t.context.destination);
+            await ready;
             const results=await prepareMix(p,t.context,true);
             if(playback!==p||p.abort.signal.aborted)throw Error('Se canceló la preparación del acompañamiento.');
             const d=await post('stream_start',{recording_id:t.id,sample_rate:t.rate,track:t.track,start_ms:Math.round(t.start*1000)});
             t.item=d.recording;
             if(d.recording?.id!==t.id||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó el inicio de la toma.');
             const audible=results.some(x=>!isMuted(x.clip.track));
-            t.compMs=compensation(t,audible);t.compFrames=Math.round(t.compMs*t.rate/1000);
-            syncInfo.textContent=(syncSettings.mode==='auto'?'Última estimación: ':'Último ajuste: ')+t.compMs+' ms. Usa Manual si queda un desfase de tu dispositivo.';
-            // Schedule transport and capture on the very same AudioContext, by frame.
-            // A positive compensation captures later hardware input at the original timeline position.
-            const margin=Math.ceil(t.rate*.25)+Math.max(0,-t.compFrames);
+            const estimate=compensation(t,p,audible);
+            t.compFrames=estimate.frames;t.compMs=estimate.ms;t.audible=audible;
+            syncInfo.textContent='Última compensación automática: '+t.compMs+' ms.'+(estimate.inputKnown?'':' El navegador no informa la latencia del micrófono.')+(audible&&!estimate.outputKnown?' Latencia física de salida no disponible.':'');
+            // Schedule both capture and sources after the input worklet is running.
+            // The requested start frame is acknowledged before playback is scheduled.
+            const margin=Math.ceil(t.rate*.25);
             t.transportFrame=Math.ceil(t.context.currentTime*t.rate)+margin;
             t.captureFrame=t.transportFrame+t.compFrames;t.when=t.transportFrame/t.rate;
-            t.node=new AudioWorkletNode(t.context,'futureo-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{startFrame:t.captureFrame}});
+            const armed=await waitWorklet(t.node,'armed',{type:'arm',frame:t.captureFrame});
+            if(armed.frame!==t.captureFrame||t.context.currentTime>t.when-.025)throw Error('El reloj de audio no quedó listo. Vuelve a pulsar Grabar.');
             t.node.port.onmessage=e=>{if(e.data.type==='pcm')capture(t,e.data.buffer,e.data.peaks,e.data.frame);else if(e.data.type==='stopped')finishCapture(t,e.data);};
             t.node.onprocessorerror=()=>{if(t===take&&!t.ended){t.error='El procesador de captura se interrumpió. Puedes guardar el tramo continuo recibido.';t.endFrame=t.captureFrame+t.captured/2;stopMix(false);release(t);t.ended=true;finalize(t);}};
             t.media.getAudioTracks().forEach(tr=>tr.addEventListener('ended',()=>{if(t===take&&phase==='recording')endTake();}));
             take=t;position=t.start;phase='recording';
-            t.source.connect(t.node);t.node.connect(t.context.destination);
             scheduleMix(p,t.context,results,t.when);
             t.stopMixWhen=t.when+600;
             for(const n of p.nodes){try{n.stop(t.stopMixWhen);}catch(_){}}
-            if(p.output)p.output.gain.setValueAtTime(0,t.stopMixWhen);
-            msg('Grabando en '+palette[t.track].name+(audible?' · acompañamiento activo':' · sin acompañamiento audible')+' · SYNC '+t.compMs+' ms · guardado cada 0,5 s'+(p.warning?' · '+p.warning:''),p.warning?'error':'');
+            if(p.output)p.output.gain.setValueAtTime(0,t.stopMixWhen+(p.graphLatency||0));
+            msg('Grabando en '+palette[t.track].name+(audible?' · acompañamiento activo':' · sin acompañamiento audible')+' · SYNC AUTO · guardado cada 0,5 s'+(p.warning?' · '+p.warning:''),p.warning?'error':'');
             update();recordingTick(t);
         }catch(e){stopMix(false);release(t);take=null;phase='idle';msg(e.name==='NotAllowedError'?'Autoriza el micrófono en el navegador.':e.message,'error');update();}
     }
     function recordingTick(t){
         if(t!==take||phase!=='recording')return;
-        position=t.start+Math.min(600,Math.max(0,t.context.currentTime-t.when));
+        position=t.start+Math.min(600,Math.max(0,(t.audible?audibleTime(t.context,playback):t.context.currentTime)-t.when));
         if(position>extent-1)extent=Math.max(extent,Math.ceil((position+5)/10)*10);
         clock.textContent=format(position);canvas.setAttribute('aria-valuenow',position.toFixed(2));canvas.setAttribute('aria-valuetext',format(position));draw();
         playbackFrame=requestAnimationFrame(()=>recordingTick(t));
     }
-    function newMix(offset){return {offset,abort:new AbortController(),nodes:[],gains:null,master:null,started:false,end:offset,when:0,warning:''};}
+    function newMix(offset){return {offset,abort:new AbortController(),nodes:[],gains:null,master:null,started:false,end:offset,when:0,warning:'',graphLatency:0};}
     function stopMix(updatePosition){
         playToken++;cancelAnimationFrame(playbackFrame);playbackFrame=0;
         const p=playback;playback=null;
         if(p){
-            if(updatePosition&&p.started&&playbackContext)position=Math.min(p.end,Math.max(p.offset,p.offset+playbackContext.currentTime-p.when));
+            if(updatePosition&&p.started&&playbackContext)position=Math.min(p.end,Math.max(p.offset,p.offset+audibleTime(playbackContext,p)-p.when));
             p.abort.abort();
             for(const node of p.nodes){try{node.stop();}catch(_){}try{node.disconnect();}catch(_){}}
             for(const chain of Object.values(p.fxChains||{}))chain.disconnect();
@@ -641,7 +664,7 @@
     }
     function playbackTick(p){
         if(playback!==p||phase!=='playing')return;
-        position=Math.min(p.end,Math.max(p.offset,p.offset+playbackContext.currentTime-p.when));
+        position=Math.min(p.end,Math.max(p.offset,p.offset+audibleTime(playbackContext,p)-p.when));
         if(position>=p.end-.005){pause();position=p.end;msg(p.warning||'Reproducción finalizada.',p.warning?'error':'ok');update();return;}
         clock.textContent=format(position);
         canvas.setAttribute('aria-valuenow',position.toFixed(2));canvas.setAttribute('aria-valuetext',format(position));draw();
@@ -671,8 +694,9 @@
                 const workletReady=await window.FutureoFX.prepare(context);
                 if(p.abort.signal.aborted||playback!==p)throw Error('Se interrumpió la carga del audio.');
                 p.master=context.createDynamicsCompressor();p.output=context.createGain();p.master.connect(p.output);p.output.connect(context.destination);
-                p.gains={};p.fxChains={};
+                p.gains={};p.fxChains={};p.graphLatency=.006;
                 for(let t=1;t<=4;t++){const gain=context.createGain();gain.gain.value=isMuted(t)?0:1;gain.connect(p.master);p.gains[t]=gain;const chain=window.FutureoFX.chain(context,gain,workletReady);chain.apply(fxUI.get(t),true);p.fxChains[t]=chain;}
+                p.graphLatency+=Math.max(0,...Object.values(p.fxChains).map(chain=>chain.latencySeconds||0));
                 if(Object.values(p.fxChains).some((chain,i)=>{const s=fxUI.get(i+1);return s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)||(!chain.rhythm&&s.rhythm));}))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: algunos FX se omitieron.';
             }
             return results;
@@ -695,7 +719,7 @@
         const p=newMix(position);const token=++playToken;
         playback=p;phase='playing';msg('Cargando audios guardados en el hosting...');update();
         try{
-            if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx();
+            if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx({latencyHint:'interactive'});
             const context=playbackContext;await context.resume();
             if(token!==playToken)return;
             if(context.state!=='running')throw Error('El navegador bloqueó el audio. Pulsa Reproducir nuevamente.');

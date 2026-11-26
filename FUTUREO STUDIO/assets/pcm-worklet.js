@@ -1,16 +1,23 @@
-/* FUTUREO STUDIO v0.1.23 - absolute sample-frame capture on the transport clock. */
+/* FUTUREO STUDIO v0.1.24 - absolute sample-frame capture on the transport clock. */
 class FutureoPCM extends AudioWorkletProcessor {
     constructor(options) {
         super();
         const opts=options?.processorOptions||{};
-        this.startFrame=Math.max(0,Math.round(Number(opts.startFrame)||0));
+        this.armed=Number.isSafeInteger(opts.startFrame)&&opts.startFrame>=0;
+        this.ready=false;
+        this.startFrame=this.armed?opts.startFrame:0;
         this.nextFrame=this.startFrame;
         this.endFrame=this.startFrame+Math.round(sampleRate*600);
         this.block=new Int16Array(Math.round(sampleRate*.5));
         this.used=0;this.active=true;
         this.port.onmessage=e=>{
             // Stop at an absolute audio frame, never at the arrival time of the UI message.
-            if(e.data?.type==='stop'&&Number.isSafeInteger(e.data.frame)){
+            if(e.data?.type==='arm'&&!this.armed){
+                const frame=e.data.frame;
+                if(!Number.isSafeInteger(frame)||frame<currentFrame+128){this.port.postMessage({type:'arm-error'});return;}
+                this.startFrame=frame;this.nextFrame=frame;this.endFrame=frame+Math.round(sampleRate*600);this.armed=true;
+                this.port.postMessage({type:'armed',frame});
+            }else if(e.data?.type==='stop'&&Number.isSafeInteger(e.data.frame)&&this.armed){
                 const requested=Math.max(this.startFrame,e.data.frame);
                 this.endFrame=Math.min(this.endFrame,requested);
                 if(this.nextFrame>=this.endFrame)this.finish();
@@ -44,6 +51,8 @@ class FutureoPCM extends AudioWorkletProcessor {
         const out=outputs[0]||[];
         for(const channel of out)channel.fill(0); // no live mic feedback
         if(!this.active)return false;
+        if(!this.ready){this.ready=true;this.port.postMessage({type:'ready',frame:currentFrame});}
+        if(!this.armed)return true;
         const channels=inputs[0]||[],n=out[0]?.length||channels[0]?.length||128;
         const quantumStart=currentFrame,quantumEnd=quantumStart+n;
         if(quantumEnd<=this.startFrame)return true;

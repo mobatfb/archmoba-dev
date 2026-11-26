@@ -89,3 +89,6 @@
 
 /* v0.1.23 - device-local recording latency control. */
 .sync-control{position:relative;color:#b8d3e9;font-size:11px;flex:none}.sync-control summary{list-style:none;cursor:pointer;font-weight:800;border:1px solid #39526e;background:#142337;border-radius:7px;padding:8px 9px;letter-spacing:.04em}.sync-control summary::-webkit-details-marker{display:none}.sync-control[open] summary{color:#33d5ff;border-color:#33d5ff}.sync-panel{position:absolute;right:0;bottom:calc(100% + 8px);z-index:8;width:240px;max-width:calc(100vw - 34px);display:grid;gap:7px;padding:12px;background:#101c2c;border:1px solid #3c5a78;border-radius:9px;box-shadow:0 10px 30px #0008;color:#e3f4ff}.sync-panel label{font-size:11px;color:#b8cce1}.sync-panel select,.sync-panel input{width:100%;min-width:0;padding:6px;border:1px solid #3c526c;border-radius:5px;background:#0b1422;color:#e3f4ff;font-size:12px}.sync-panel small{font-size:10px;line-height:1.4;color:#a9bbd2}.sync-panel :disabled{opacity:.55}
+
+/* v0.1.24: automatic-only sync status */
+.sync-control summary{color:#70e3b0;border-color:#285f54;white-space:nowrap}.sync-panel strong{color:#70e3b0}
