@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.17 - server-backed, synchronized audio playback */
+/* FUTUREO STUDIO v0.1.18 - server-backed, synchronized audio playback */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -429,7 +429,7 @@
                 if(skip<len)source.start(p.when+Math.max(0,startAt(clip)-offset),sourceOffset(clip)+skip,len-skip);
             }
             p.started=true;p.warning=failures.length?'No se pudieron cargar '+failures.length+' toma(s): '+failures[0]:'';
-            if(Object.values(p.fxChains).some((chain,i)=>!chain.worklet&&['tune','gate','deess'].some(k=>fxUI.get(i+1).enabled&&fxUI.get(i+1)[k])))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: afinación, Gate y De-Esser omitidos.';
+            if(Object.values(p.fxChains).some((chain,i)=>{const s=fxUI.get(i+1);return s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler));}))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: algunos FX (afinación, Gate, De-Esser o Nivelador) se omitieron.';
             msg(p.warning||'Reproduciendo las pistas guardadas.',p.warning?'error':'ok');update();playbackTick(p);
         }catch(e){if(token===playToken){const aborted=p.abort.signal.aborted;pause();msg(aborted?'Se interrumpió la carga del audio. Vuelve a intentarlo.':e.message,'error');}}
         finally{if(timeout)clearTimeout(timeout);}
@@ -443,7 +443,7 @@
     window.addEventListener('beforeunload',e=>{ if(take||fxUI.dirty()||['starting','moving'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
     window.addEventListener('pagehide',()=>{ if(take) release(take); if(playback)pause(); if(playbackContext)playbackContext.close().catch(()=>{}); });
     const fxUI=window.FutureoFX.createUI({post,getPresets:()=>fetch(endpoint+'&action=fx_presets',{credentials:'same-origin',cache:'no-store'}).then(response),
-        change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(!chain.worklet&&s.enabled&&(s.tune||s.gate||s.deess))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},
+        change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},
         togglePlay(){if(phase==='playing')pause();else startPlay();},getPlaying:()=>phase==='playing',canPlay:()=>phase==='idle'&&activePlayableClips().length>0});
     load();
 })();

@@ -65,3 +65,41 @@ class FutureoVoiceFX extends AudioWorkletProcessor {
     }
 }
 registerProcessor('futureo-voice-fx',FutureoVoiceFX);
+
+/* Automatic gain riding. Shared detector preserves stereo balance. */
+class FutureoLeveler extends AudioWorkletProcessor {
+    static get parameterDescriptors(){return [
+        {name:'enabled',defaultValue:0,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'target',defaultValue:-18,minValue:-30,maxValue:-9,automationRate:'k-rate'},
+        {name:'strength',defaultValue:.85,minValue:0,maxValue:1,automationRate:'k-rate'},
+        {name:'boost',defaultValue:12,minValue:0,maxValue:18,automationRate:'k-rate'}
+    ];}
+    constructor(){super();this.power=0;this.gainDb=0;this.limiter=1;
+        this.rise=1-Math.exp(-1/(sampleRate*.055));this.fall=1-Math.exp(-1/(sampleRate*.16));
+        this.down=1-Math.exp(-1/(sampleRate*.045));this.up=1-Math.exp(-1/(sampleRate*.25));
+        this.limitRelease=1-Math.exp(-1/(sampleRate*.08));this.ceiling=Math.pow(10,-1/20);
+    }
+    process(inputs,outputs,p){
+        const input=inputs[0]||[],out=outputs[0];if(!out.length)return true;
+        const enabled=p.enabled[0]>.5&&p.strength[0]>0,target=p.target[0],strength=p.strength[0],boost=p.boost[0];
+        for(let i=0;i<out[0].length;i++){
+            let power=0,peak=0;
+            for(let ch=0;ch<out.length;ch++){
+                const x=input[ch]?.[i]??input[0]?.[i]??0;power+=x*x;peak=Math.max(peak,Math.abs(x));
+            }
+            power/=out.length;this.power+=(power-this.power)*(power>this.power?this.rise:this.fall);
+            if(!enabled){this.gainDb=0;this.limiter=1;for(let ch=0;ch<out.length;ch++)out[ch][i]=input[ch]?.[i]??input[0]?.[i]??0;continue;}
+            const rmsDb=10*Math.log10(Math.max(1e-12,this.power));
+            let desired=Math.max(-30,Math.min(boost,(target-rmsDb)*strength));
+            // Prevent automatic gain from lifting the noise floor in near-silence.
+            if(desired>0)desired*=Math.max(0,Math.min(1,(rmsDb+55)/10));
+            this.gainDb+=(desired-this.gainDb)*(desired<this.gainDb?this.down:this.up);
+            const gain=Math.pow(10,this.gainDb/20);
+            const allowed=Math.min(1,this.ceiling/Math.max(1e-12,peak*gain));
+            this.limiter=allowed<this.limiter?allowed:this.limiter+(allowed-this.limiter)*this.limitRelease;
+            const g=gain*this.limiter;
+            for(let ch=0;ch<out.length;ch++)out[ch][i]=(input[ch]?.[i]??input[0]?.[i]??0)*g;
+        }return true;
+    }
+}
+registerProcessor('futureo-leveler',FutureoLeveler);

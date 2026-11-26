@@ -1,17 +1,19 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.17 - validated, non-destructive per-track effect settings.
+// FUTUREO STUDIO v0.1.18 - validated, non-destructive per-track effect settings.
 if (!defined('FUTUREO_RECORDINGS')) { http_response_code(404); exit; }
 function fxDefaults(): array {
     return ['enabled'=>true,'tune'=>false,'tuneAmount'=>70,'key'=>0,'scale'=>'chromatic',
         'gate'=>false,'threshold'=>-45,'deess'=>false,'deessAmount'=>45,
         'eq'=>false,'low'=>0,'mid'=>0,'high'=>0,'comp'=>false,'compAmount'=>45,
+        'leveler'=>false,'levelTarget'=>-18,'levelStrength'=>85,'levelBoost'=>12,
         'reverb'=>false,'reverbMix'=>20,'delay'=>false,'delayMix'=>15,'delayTime'=>280];
 }
 function normalizeFx($raw): array {
     $out=fxDefaults(); if(!is_array($raw)) return $out;
     $bounds=['tuneAmount'=>[0,100],'key'=>[0,11],'threshold'=>[-70,-25],'deessAmount'=>[0,100],
         'low'=>[-12,12],'mid'=>[-12,12],'high'=>[-12,12],'compAmount'=>[0,100],
+        'levelTarget'=>[-30,-9],'levelStrength'=>[0,100],'levelBoost'=>[0,18],
         'reverbMix'=>[0,60],'delayMix'=>[0,50],'delayTime'=>[80,800]];
     foreach($out as $key=>$value){
         if(!array_key_exists($key,$raw))continue;

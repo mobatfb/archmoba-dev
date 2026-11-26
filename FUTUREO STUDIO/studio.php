@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.17 - PHP 7.4+
+// FUTUREO STUDIO v0.1.18 - PHP 7.4+
 date_default_timezone_set('America/Guayaquil');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
@@ -122,5 +122,5 @@ $list = (!$adminPage || $logged) && $project === null ? projects($storage) : [];
 })();
 </script>
 <?php endif; ?>
-<?php if ($adminPage && $logged && $project !== null): ?><script src="assets/fx.js?v=0.1.17"></script><script src="assets/recorder.js?v=0.1.17"></script><?php endif; ?>
+<?php if ($adminPage && $logged && $project !== null): ?><script src="assets/fx.js?v=0.1.18"></script><script src="assets/recorder.js?v=0.1.18"></script><?php endif; ?>
 </body></html>

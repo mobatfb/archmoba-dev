@@ -1,11 +1,12 @@
-/* FUTUREO STUDIO v0.1.17: per-track real-time playback FX and reusable hosting presets. */
+/* FUTUREO STUDIO v0.1.18: per-track real-time playback FX and reusable hosting presets. */
 (() => {
     'use strict';
-    const defaults=()=>({enabled:true,tune:false,tuneAmount:70,key:0,scale:'chromatic',gate:false,threshold:-45,deess:false,deessAmount:45,eq:false,low:0,mid:0,high:0,comp:false,compAmount:45,reverb:false,reverbMix:20,delay:false,delayMix:15,delayTime:280});
-    const effects=['tune','gate','deess','eq','comp','reverb','delay'];
+    const defaults=()=>({enabled:true,tune:false,tuneAmount:70,key:0,scale:'chromatic',gate:false,threshold:-45,deess:false,deessAmount:45,eq:false,low:0,mid:0,high:0,comp:false,compAmount:45,leveler:false,levelTarget:-18,levelStrength:85,levelBoost:12,reverb:false,reverbMix:20,delay:false,delayMix:15,delayTime:280});
+    const effects=['tune','gate','deess','eq','comp','leveler','reverb','delay'];
     const active=s=>s.enabled&&effects.some(k=>s[k]);
     const factory=[
         {name:'Voz natural',settings:defaults()},
+        {name:'Voz nivelada',settings:{...defaults(),leveler:true,levelStrength:100}},
         {name:'Voz profesional',settings:{...defaults(),gate:true,deess:true,eq:true,low:-2,mid:1,high:3,comp:true,compAmount:45,reverb:true,reverbMix:10}},
         {name:'Trap / Reggaetón',settings:{...defaults(),tune:true,tuneAmount:100,gate:true,deess:true,comp:true,compAmount:58,eq:true,low:-2,high:3,reverb:true,reverbMix:18,delay:true,delayMix:12}},
         {name:'Voz de radio',settings:{...defaults(),eq:true,low:-12,mid:7,high:-9,comp:true,compAmount:75,deess:true}},
@@ -14,7 +15,7 @@
     const modules=new WeakMap(), impulses=new WeakMap();
     async function prepare(context){
         if(!context.audioWorklet||!window.AudioWorkletNode)return false;
-        if(!modules.has(context))modules.set(context,context.audioWorklet.addModule('assets/fx-worklet.js?v=0.1.17').then(()=>true).catch(()=>false));
+        if(!modules.has(context))modules.set(context,context.audioWorklet.addModule('assets/fx-worklet.js?v=0.1.18').then(()=>true).catch(()=>false));
         return modules.get(context);
     }
     function impulse(context){
@@ -32,19 +33,23 @@
         prev.connect(low);low.connect(mid);mid.connect(high);
         const comp=own(context.createDynamicsCompressor()),compWet=gain(),compDry=gain(),mixed=gain();
         comp.knee.value=18;comp.attack.value=.006;comp.release.value=.13;high.connect(comp);comp.connect(compWet);compWet.connect(mixed);high.connect(compDry);compDry.connect(mixed);
-        mixed.connect(output);
-        const verb=own(context.createConvolver()),verbWet=gain();verb.buffer=impulse(context);mixed.connect(verb);verb.connect(verbWet);verbWet.connect(output);
-        const delay=own(context.createDelay(1)),feedback=gain(),delayWet=gain();mixed.connect(delay);delay.connect(feedback);feedback.connect(delay);delay.connect(delayWet);delayWet.connect(output);output.connect(destination);
+        // One shared leveler per track, after dynamics and before spatial effects.
+        let leveler=null, signal=mixed;
+        if(workletReady){try{leveler=own(new AudioWorkletNode(context,'futureo-leveler'));mixed.connect(leveler);signal=leveler;}catch(_){leveler=null;}}
+        signal.connect(output);
+        const verb=own(context.createConvolver()),verbWet=gain();verb.buffer=impulse(context);signal.connect(verb);verb.connect(verbWet);verbWet.connect(output);
+        const delay=own(context.createDelay(1)),feedback=gain(),delayWet=gain();signal.connect(delay);delay.connect(feedback);feedback.connect(delay);delay.connect(delayWet);delayWet.connect(output);output.connect(destination);
         function param(p,v){if(p)p.setTargetAtTime(v,context.currentTime,.012);}
         function apply(s,instant=false){
             const put=(p,v)=>{if(!p)return;if(instant)p.value=v;else param(p,v);};const on=k=>s.enabled&&s[k];
             if(voice){const q=(k,v)=>put(voice.parameters.get(k),v);q('gate',on('gate')?1:0);q('threshold',s.threshold);q('deess',on('deess')?s.deessAmount/100:0);q('tune',on('tune')?s.tuneAmount/100:0);q('key',s.key);q('scale',['chromatic','major','minor'].indexOf(s.scale));}
             put(low.gain,on('eq')?s.low:0);put(mid.gain,on('eq')?s.mid:0);put(high.gain,on('eq')?s.high:0);
             put(comp.threshold,-8-s.compAmount*.32);put(comp.ratio,1+s.compAmount*.075);put(compWet.gain,on('comp')?1:0);put(compDry.gain,on('comp')?0:1);
+            if(leveler){const q=(k,v)=>put(leveler.parameters.get(k),v);q('enabled',on('leveler')?1:0);q('target',s.levelTarget);q('strength',s.levelStrength/100);q('boost',s.levelBoost);}
             put(verbWet.gain,on('reverb')?s.reverbMix/100:0);put(delay.delayTime,s.delayTime/1000);put(delayWet.gain,on('delay')?s.delayMix/100:0);put(feedback.gain,on('delay')?.32:0);
         }
         apply(defaults(),true);
-        return {input,apply,worklet:!!voice,disconnect(){for(const n of nodes){try{n.disconnect();}catch(_){}}}};
+        return {input,apply,worklet:!!voice,leveler:!!leveler,disconnect(){for(const n of nodes){try{n.disconnect();}catch(_){}}}};
     }
     const schema=[
         ['tune','Afinación automática (AutoTune básico)',[['tuneAmount','Intensidad',0,100,'%'],['key','Tonalidad',['Do','Do♯','Re','Re♯','Mi','Fa','Fa♯','Sol','Sol♯','La','La♯','Si']],['scale','Escala',[['chromatic','Cromática'],['major','Mayor'],['minor','Menor']]]]],
@@ -52,13 +57,14 @@
         ['deess','De-Esser',[['deessAmount','Intensidad',0,100,'%']]],
         ['eq','Equalizer (EQ)',[['low','Graves',-12,12,' dB'],['mid','Medios',-12,12,' dB'],['high','Agudos',-12,12,' dB']]],
         ['comp','Compressor',[['compAmount','Compresión',0,100,'%']]],
+        ['leveler','Nivelador automático de volumen',[['levelTarget','Objetivo RMS',-30,-9,' dBFS'],['levelStrength','Intensidad',0,100,'%'],['levelBoost','Refuerzo máximo',0,18,' dB']]],
         ['reverb','Reverb',[['reverbMix','Mezcla',0,60,'%']]],
         ['delay','Delay',[['delayMix','Mezcla',0,50,'%'],['delayTime','Tiempo',80,800,' ms']]]
     ];
     function createUI({post,getPresets,change,togglePlay,getPlaying,canPlay}){
         const settings={1:defaults(),2:defaults(),3:defaults(),4:defaults()},dirty=new Set();let track=1,presets=[],busy=false,loading=false;
         const dialog=document.createElement('dialog');dialog.className='futureo-fx';dialog.setAttribute('aria-labelledby','fx-title');
-        dialog.innerHTML='<header class="fx-head"><h2 id="fx-title">FUTUREO FX</h2><label class="fx-bypass"><input type="checkbox" data-fx="enabled"> FX activos</label><button type="button" data-act="close" aria-label="Cerrar efectos">✕</button></header><div class="fx-body"><div class="fx-presets"><label for="fx-preset">Biblioteca de presets</label><div class="fx-line"><select id="fx-preset"></select><button type="button" data-act="load">Cargar</button></div><div class="fx-line"><input id="fx-name" maxlength="60" placeholder="Nombre de mi preset" aria-label="Nombre del nuevo preset"><button type="button" class="fx-primary" data-act="preset">Guardar preset</button></div><p class="fx-hint">Los presets se comparten entre todos los proyectos del hosting.</p></div><div class="fx-units"></div><p class="fx-hint">Afinación experimental para voz monofónica; Gate y De-Esser requieren AudioWorklet. Los efectos se escuchan al reproducir y no modifican los WAV originales.</p></div><footer class="fx-bottom"><button type="button" class="fx-play" data-act="play">▶ Escuchar mezcla</button><button type="button" data-act="reset">Restablecer</button><button type="button" class="fx-primary" data-act="save">Guardar pista</button><p class="fx-status" role="status" aria-live="polite"></p></footer>';
+        dialog.innerHTML='<header class="fx-head"><h2 id="fx-title">FUTUREO FX</h2><label class="fx-bypass"><input type="checkbox" data-fx="enabled"> FX activos</label><button type="button" data-act="close" aria-label="Cerrar efectos">✕</button></header><div class="fx-body"><div class="fx-presets"><label for="fx-preset">Biblioteca de presets</label><div class="fx-line"><select id="fx-preset"></select><button type="button" data-act="load">Cargar</button></div><div class="fx-line"><input id="fx-name" maxlength="60" placeholder="Nombre de mi preset" aria-label="Nombre del nuevo preset"><button type="button" class="fx-primary" data-act="preset">Guardar preset</button></div><p class="fx-hint">Los presets se comparten entre todos los proyectos del hosting.</p></div><div class="fx-units"></div><p class="fx-hint">Afinación experimental para voz monofónica; Gate, De-Esser y Nivelador requieren AudioWorklet. Los efectos se escuchan al reproducir y no modifican los WAV originales.</p></div><footer class="fx-bottom"><button type="button" class="fx-play" data-act="play">▶ Escuchar mezcla</button><button type="button" data-act="reset">Restablecer</button><button type="button" class="fx-primary" data-act="save">Guardar pista</button><p class="fx-status" role="status" aria-live="polite"></p></footer>';
         const q=s=>dialog.querySelector(s), units=q('.fx-units'),info=q('.fx-status'), name=q('#fx-name'), selection=q('#fx-preset');
         for(const [key,title,fields] of schema){
             const box=document.createElement('section');box.className='fx-unit';box.innerHTML=`<label class="fx-unit-title">${title}<input type="checkbox" class="fx-toggle" data-fx="${key}" aria-label="Activar ${title}"></label><div class="fx-fields"></div>`;const group=box.querySelector('.fx-fields');
@@ -66,7 +72,7 @@
                 if(Array.isArray(min)){row.className='fx-select';control=document.createElement('select');min.forEach((option,i)=>{const item=document.createElement('option');item.value=Array.isArray(option)?option[0]:String(i);item.textContent=Array.isArray(option)?option[1]:option;control.append(item);});row.append(control);}
                 else{control=document.createElement('input');control.type='range';control.min=min;control.max=max;control.step=1;const out=document.createElement('output');out.dataset.output=field;out.dataset.suffix=suffix||'';row.append(control,out);}
                 control.dataset.fx=field;group.append(row);
-            }units.append(box);
+            }if(key==='leveler'){const hint=document.createElement('p');hint.className='fx-hint';hint.textContent='Equilibra todos los clips de la pista, compensa los pasajes fuertes y suaves y limita picos de la señal directa a -1 dBFS. El refuerzo se reduce durante los silencios.';box.append(hint);}units.append(box);
         }
         document.body.append(dialog);
         function note(s,error=false){info.textContent=s;info.dataset.error=String(error);}
