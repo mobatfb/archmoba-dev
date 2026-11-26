@@ -109,9 +109,19 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
         if (!$fp||fwrite($fp,waveHeader($rate,$bytes))!==44||!fflush($fp)) fail('No se pudo finalizar el audio.',500);
         if (function_exists('fsync')) @fsync($fp);
         fclose($fp);
+        // Optional sample-clock metadata from v0.1.23. Preserve older clients.
+        $sync=null;
+        if (isset($_POST['transport_start_frame']) || isset($_POST['capture_start_frame']) || isset($_POST['capture_end_frame']) || isset($_POST['latency_frames'])) {
+            $transport=filter_var($_POST['transport_start_frame']??null,FILTER_VALIDATE_INT);
+            $first=filter_var($_POST['capture_start_frame']??null,FILTER_VALIDATE_INT);
+            $last=filter_var($_POST['capture_end_frame']??null,FILTER_VALIDATE_INT);
+            $latency=filter_var($_POST['latency_frames']??null,FILTER_VALIDATE_INT);
+            if ($transport===false||$first===false||$last===false||$latency===false||$transport<0||$first<0||$last<$first||$last-$first!==intdiv($bytes,2)||$first-$transport!==$latency||$latency < -$rate*.25||$latency > $rate*.5) fail('No coincide el reloj de muestras de la grabación.',409);
+            $sync=['transport_start_frame'=>$transport,'capture_start_frame'=>$first,'capture_end_frame'=>$last,'latency_frames'=>$latency,'sample_count'=>intdiv($bytes,2)];
+        }
         $alreadySaved=($item['status']??'')==='saved';
         $before=array_values(array_filter($items,static function($r)use($id){return $r['id']!==$id;}));
-        $item=waveInfo($item,$dir);$item['status']='saved';$items[$index]=$item;$data['content']['recordings']=$items;
+        $item=waveInfo($item,$dir);$item['status']='saved';if($sync!==null)$item['capture_sync']=$sync;$items[$index]=$item;$data['content']['recordings']=$items;
         if(!$alreadySaved)historyPush($data,$before,'Añadir grabación');
         storeProject($path,$data);
     } else fail('Acción no permitida.',405);

@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.22 - synchronized overdub and persistent undo/redo */
+/* FUTUREO STUDIO v0.1.23 - sample-accurate overdub and device latency compensation */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -21,6 +21,24 @@
     function setTool(next){if(!toolHints[next]||!['idle','playing'].includes(phase))return;if(drag)cancelDrag();tool=next;editPointer=null;cutPreview=null;msg(toolHints[tool]);update();}
     toolButtons.forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
     let playbackContext = null, playbackFrame = 0;
+    const syncMode=$('sync-mode'), syncMs=$('sync-ms'), syncInfo=$('sync-info');
+    const syncKey='futureo.studio.recording.sync.v1';
+    const clampSync=n=>Math.max(-250,Math.min(500,Math.round(Number(n)||0)));
+    let syncSettings={mode:'auto',ms:0};
+    try{const stored=JSON.parse(localStorage.getItem(syncKey)||'null');if(stored)syncSettings={mode:stored.mode==='manual'?'manual':'auto',ms:clampSync(stored.ms)};}catch(_){}
+    syncMode.value=syncSettings.mode;syncMs.value=syncSettings.ms;
+    function syncUI(){syncMode.disabled=!['idle','playing'].includes(phase);syncMs.disabled=syncMode.disabled||syncSettings.mode!=='manual';}
+    function storeSync(){syncSettings={mode:syncMode.value==='manual'?'manual':'auto',ms:clampSync(syncMs.value)};syncMs.value=syncSettings.ms;try{localStorage.setItem(syncKey,JSON.stringify(syncSettings));}catch(_){}syncInfo.textContent=syncSettings.mode==='manual'?'Ajuste guardado para este navegador: '+syncSettings.ms+' ms.':'La estimación se calcula al iniciar una toma.';syncUI();}
+    syncMode.addEventListener('change',storeSync);syncMs.addEventListener('change',storeSync);
+    function compensation(t,audible){
+        if(syncSettings.mode==='manual')return syncSettings.ms;
+        if(!audible)return 0;
+        // Browser latency reports are estimates, not a calibrated acoustic measurement.
+        const seconds=x=>Number.isFinite(x)&&x>0?x:0;
+        const input=t.media.getAudioTracks()[0]?.getSettings?.().latency;
+        // DynamicsCompressor on the common master uses a 6 ms lookahead.
+        return clampSync((seconds(t.context.baseLatency)+seconds(t.context.outputLatency)+seconds(input)+.006)*1000);
+    }
     const decodedCache = new Map();
     const cacheLimit = 128 * 1024 * 1024;
     const playbackLimit = 384 * 1024 * 1024;
@@ -104,7 +122,7 @@
         syncTrackButtons();
         canvas.dataset.tool=tool;
         toolButtons.forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.tool===tool));b.disabled=!['idle','playing'].includes(phase);});
-        syncHistory();
+        syncHistory();syncUI();
         draw();
     }
     async function response(r){ let d; try{ d = await r.json(); }catch(_){ throw Error('Respuesta no válida del hosting (' + r.status + ').'); } if(!r.ok || !d.ok) throw Error(d.error || 'Error del servidor'); if(d.history)historyState=d.history; return d; }
@@ -480,12 +498,58 @@
     }));
     new ResizeObserver(()=>{cutPreview=null;draw();}).observe(canvas); new MutationObserver(()=>{cutPreview=null;editPointer=null;if(drag)cancelDrag();update();}).observe(document.body, {attributes:true, attributeFilter:['data-orientation']});
     function release(t){ if(t.node){ try{ t.node.disconnect(); }catch(_){} t.node.port.onmessage = null; } if(t.source){ try{ t.source.disconnect(); }catch(_){} } if(t.media) t.media.getTracks().forEach(x => x.stop()); if(t.context && t.context!==playbackContext) t.context.close().catch(()=>{}); }
-    function capture(t, buffer, peaks){ if(t !== take || !['recording','stopping'].includes(phase)) return; const available = Math.max(0, t.rate * 2 * 600 - t.captured); const bytes = buffer.byteLength > available ? buffer.slice(0, available) : buffer; if(bytes.byteLength){ const offset = t.captured; t.captured += bytes.byteLength; t.raw.push(bytes); t.peaks.push(...peaks); const block = Math.max(2, Math.min(1048576, maxBytes) & ~1); for(let i=0;i<bytes.byteLength;i+=block) t.queue.push({offset:offset+i, buffer:bytes.slice(i, i+block)}); position = Math.max(position, t.start + t.captured / t.rate / 2); ensureExtent(); update(); pump(t); } if(t.captured >= t.rate * 2 * 600 && phase==='recording') endTake(); }
+    function capture(t, buffer, peaks, frame){
+        if(t!==take||!['recording','stopping'].includes(phase))return;
+        const expected=t.captureFrame+t.captured/2;
+        if(!Number.isSafeInteger(frame)||frame!==expected||buffer.byteLength%2){t.error='Se detectó un salto en el reloj de captura. Los fragmentos confirmados se conservan.';if(phase==='recording')endTake();return;}
+        const available=Math.max(0,t.rate*2*600-t.captured),bytes=buffer.byteLength>available?buffer.slice(0,available):buffer;
+        if(bytes.byteLength){const offset=t.captured;t.captured+=bytes.byteLength;t.raw.push(bytes);t.peaks.push(...peaks);const block=Math.max(2,Math.min(1048576,maxBytes)&~1);for(let i=0;i<bytes.byteLength;i+=block)t.queue.push({offset:offset+i,buffer:bytes.slice(i,i+block)});ensureExtent();update();pump(t);}
+    }
     async function pump(t){ if(t.pumping || t.error || t !== take) return; t.pumping = true; try{ while(t.queue.length){ const q = t.queue[0]; const d = await post('stream_chunk', {recording_id:t.id, offset:q.offset}, new Blob([q.buffer], {type:'application/octet-stream'})); if(Number(d.pcm_bytes) < q.offset + q.buffer.byteLength) throw Error('El servidor no confirmó el fragmento.'); t.ack = Number(d.pcm_bytes); t.item = d.recording; t.queue.shift(); update(); } }catch(e){ t.error = e.message; if(phase==='recording') endTake(); } finally { t.pumping = false; if(t.ended) finalize(t); } }
     function makeDownload(t){ if(localUrl) URL.revokeObjectURL(localUrl); const h = new ArrayBuffer(44), v = new DataView(h); const str = (off,s)=>{for(let i=0;i<s.length;i++)v.setUint8(off+i,s.charCodeAt(i));}; str(0,'RIFF'); v.setUint32(4,36+t.captured,true); str(8,'WAVEfmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,t.rate,true); v.setUint32(28,t.rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); str(36,'data'); v.setUint32(40,t.captured,true); localUrl = URL.createObjectURL(new Blob([h,...t.raw], {type:'audio/wav'})); download.href = localUrl; download.download = 'voz_' + t.id + '.wav'; }
     function recover(t){ phase = 'recovery'; makeDownload(t); msg((t.error || 'No se pudo confirmar el guardado.') + ' · ' + format(t.ack/t.rate/2) + ' guardados en ' + palette[t.track].name + '.', 'error'); update(); }
-    async function finalize(t){ if(t!==take||!t.ended||t.pumping||t.finalizing) return; if(t.error){ recover(t); return; } if(t.queue.length){ pump(t); return; } t.finalizing = true; phase = 'saving'; update(); try{ const d = await post('stream_finish', {recording_id:t.id, offset:t.ack}); clips.push({...d.recording, peaks:t.peaks, track:sanitizeTrack(d.recording.track || t.track), start_ms:Number(d.recording.start_ms ?? Math.round(t.start*1000))}); sortClips(); position = t.start + t.captured / t.rate / 2; take = null; phase = 'idle'; if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Grabación WAV guardada en assets del proyecto, en ' + palette[selectedTrack].name + '.', 'ok'); update(); }catch(e){ t.error = e.message; recover(t); } finally { t.finalizing = false; } }
-    function endTake(){ const t = take; if(!t || phase!=='recording') return; phase = 'stopping'; stopMix(false); msg('Guardando los últimos fragmentos...'); update(); t.node.port.postMessage('stop'); t.stopTimeout = setTimeout(()=>{ if(!t.ended){ t.error = t.error || 'No se confirmó el último bloque del micrófono.'; t.ended = true; release(t); finalize(t); } },2000); }
+    async function finalize(t){
+        if(t!==take||!t.ended||t.pumping||t.finalizing)return;
+        if(t.error){recover(t);return;}
+        if(t.queue.length){pump(t);return;}
+        t.finalizing=true;phase='saving';update();
+        try{
+            if(t.ack!==t.captured||t.endFrame!==t.captureFrame+t.captured/2)throw Error('No coincide el número de muestras grabadas y guardadas.');
+            const d=await post('stream_finish',{recording_id:t.id,offset:t.ack,transport_start_frame:t.transportFrame,capture_start_frame:t.captureFrame,capture_end_frame:t.endFrame,latency_frames:t.compFrames});
+            if(d.recording?.id!==t.id||Number(d.pcm_bytes)!==t.captured||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó la posición o duración exacta de la toma.');
+            clips.push({...d.recording,peaks:t.peaks});sortClips();position=t.start+t.captured/t.rate/2;take=null;phase='idle';
+            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(t.captured/t.rate/2)+' · SYNC '+t.compMs+' ms.','ok');update();
+        }catch(e){t.error=e.message;recover(t);}finally{t.finalizing=false;}
+    }
+    function finishCapture(t,data){
+        if(t!==take||t.ended)return;
+        clearTimeout(t.stopTimeout);
+        t.endFrame=Number(data.endFrame);
+        if(data.startFrame!==t.captureFrame||!Number.isSafeInteger(t.endFrame)||data.frames!==t.captured/2||t.endFrame!==t.captureFrame+t.captured/2){t.error=t.error||'El capturador no confirmó la secuencia completa de muestras. Puedes guardar el tramo continuo recibido.';t.endFrame=t.captureFrame+t.captured/2;}
+        // For negative compensation the mic ends before the transport. Sources already
+        // have a scheduled stop; keep the mix graph alive until that exact moment.
+        phase='stopping';cancelAnimationFrame(playbackFrame);playbackFrame=0;
+        const close=()=>{if(t!==take||t.ended)return;stopMix(false);release(t);t.ended=true;position=t.start+t.captured/t.rate/2;finalize(t);};
+        const transportEnd=t.when+(t.captured/2)/t.rate;
+        const remaining=Math.max(0,(Math.min(Number(t.stopMixWhen||transportEnd),transportEnd)-t.context.currentTime)*1000);
+        if(remaining>0)setTimeout(close,remaining+15);else close();
+    }
+    function endTake(){
+        const t=take;if(!t||phase!=='recording')return;
+        phase='stopping';cancelAnimationFrame(playbackFrame);playbackFrame=0;
+        // Send a frame deadline ahead of the render quantum. Apply the same latency
+        // offset at both boundaries so capture length equals transport length.
+        const nowFrame=Math.ceil(t.context.currentTime*t.rate);
+        const lead=Math.ceil(t.rate*.08)+Math.max(0,-t.compFrames);
+        const transportEnd=Math.max(t.transportFrame,Math.min(t.transportFrame+Math.round(t.rate*600),nowFrame+lead));
+        const captureEnd=transportEnd+t.compFrames;
+        t.stopMixWhen=transportEnd/t.rate;
+        for(const n of playback?.nodes||[]){try{n.stop(t.stopMixWhen);}catch(_){}}
+        const out=playback?.output;if(out){out.gain.cancelScheduledValues(t.context.currentTime);out.gain.setValueAtTime(1,t.context.currentTime);out.gain.setValueAtTime(0,t.stopMixWhen);}
+        position=t.start+(transportEnd-t.transportFrame)/t.rate;msg('Guardando las últimas muestras...');update();
+        t.node.port.postMessage({type:'stop',frame:captureEnd});
+        t.stopTimeout=setTimeout(()=>{if(!t.ended){t.error=t.error||'No se confirmó el final del reloj de audio. Puedes guardar el tramo continuo recibido.';t.endFrame=t.captureFrame+t.captured/2;stopMix(false);release(t);t.ended=true;finalize(t);}},Math.max(2500,(captureEnd-nowFrame)/t.rate*1000+2000));
+    }
     async function begin(){
         if(!['idle','playing'].includes(phase)||!supported)return;
         if(phase==='playing')pause();
@@ -495,28 +559,37 @@
         const p=newMix(t.start);playback=p;
         try{
             // Resume from the record gesture; both mic and playback use one sample clock.
-            if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx();
+            if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx({latencyHint:'interactive'});
             t.context=playbackContext;await t.context.resume();
             if(t.context.state!=='running')throw Error('El navegador bloqueó el audio. Pulsa Grabar nuevamente.');
-            t.media=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1},video:false});
+            t.media=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
             t.rate=t.context.sampleRate;
-            await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.21');
+            await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.23');
             t.source=t.context.createMediaStreamSource(t.media);
             const results=await prepareMix(p,t.context,true);
             if(playback!==p||p.abort.signal.aborted)throw Error('Se canceló la preparación del acompañamiento.');
             const d=await post('stream_start',{recording_id:t.id,sample_rate:t.rate,track:t.track,start_ms:Math.round(t.start*1000)});
             t.item=d.recording;
-            // Leave a short scheduling margin so sources and PCM capture start together.
-            const frame=Math.ceil((t.context.currentTime+.18)*t.rate);
-            t.when=frame/t.rate;
-            t.node=new AudioWorkletNode(t.context,'futureo-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{startFrame:frame}});
-            t.node.port.onmessage=e=>{if(e.data.type==='pcm')capture(t,e.data.buffer,e.data.peaks);else if(e.data.type==='stopped'){clearTimeout(t.stopTimeout);t.ended=true;release(t);finalize(t);}};
+            if(d.recording?.id!==t.id||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó el inicio de la toma.');
+            const audible=results.some(x=>!isMuted(x.clip.track));
+            t.compMs=compensation(t,audible);t.compFrames=Math.round(t.compMs*t.rate/1000);
+            syncInfo.textContent=(syncSettings.mode==='auto'?'Última estimación: ':'Último ajuste: ')+t.compMs+' ms. Usa Manual si queda un desfase de tu dispositivo.';
+            // Schedule transport and capture on the very same AudioContext, by frame.
+            // A positive compensation captures later hardware input at the original timeline position.
+            const margin=Math.ceil(t.rate*.25)+Math.max(0,-t.compFrames);
+            t.transportFrame=Math.ceil(t.context.currentTime*t.rate)+margin;
+            t.captureFrame=t.transportFrame+t.compFrames;t.when=t.transportFrame/t.rate;
+            t.node=new AudioWorkletNode(t.context,'futureo-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],processorOptions:{startFrame:t.captureFrame}});
+            t.node.port.onmessage=e=>{if(e.data.type==='pcm')capture(t,e.data.buffer,e.data.peaks,e.data.frame);else if(e.data.type==='stopped')finishCapture(t,e.data);};
+            t.node.onprocessorerror=()=>{if(t===take&&!t.ended){t.error='El procesador de captura se interrumpió. Puedes guardar el tramo continuo recibido.';t.endFrame=t.captureFrame+t.captured/2;stopMix(false);release(t);t.ended=true;finalize(t);}};
             t.media.getAudioTracks().forEach(tr=>tr.addEventListener('ended',()=>{if(t===take&&phase==='recording')endTake();}));
             take=t;position=t.start;phase='recording';
             t.source.connect(t.node);t.node.connect(t.context.destination);
             scheduleMix(p,t.context,results,t.when);
-            const audible=results.some(x=>!isMuted(x.clip.track));
-            msg('Grabando en '+palette[t.track].name+(audible?' · acompañamiento activo':' · sin acompañamiento audible')+' · guardado cada 0,5 s'+(p.warning?' · '+p.warning:''),p.warning?'error':'');
+            t.stopMixWhen=t.when+600;
+            for(const n of p.nodes){try{n.stop(t.stopMixWhen);}catch(_){}}
+            if(p.output)p.output.gain.setValueAtTime(0,t.stopMixWhen);
+            msg('Grabando en '+palette[t.track].name+(audible?' · acompañamiento activo':' · sin acompañamiento audible')+' · SYNC '+t.compMs+' ms · guardado cada 0,5 s'+(p.warning?' · '+p.warning:''),p.warning?'error':'');
             update();recordingTick(t);
         }catch(e){stopMix(false);release(t);take=null;phase='idle';msg(e.name==='NotAllowedError'?'Autoriza el micrófono en el navegador.':e.message,'error');update();}
     }
@@ -538,6 +611,7 @@
             for(const chain of Object.values(p.fxChains||{}))chain.disconnect();
             for(const gain of Object.values(p.gains||{})){try{gain.disconnect();}catch(_){}}
             if(p.master)try{p.master.disconnect();}catch(_){}
+            if(p.output)try{p.output.disconnect();}catch(_){}
         }
         audio.pause();
     }
@@ -596,7 +670,7 @@
             if(results.length){
                 const workletReady=await window.FutureoFX.prepare(context);
                 if(p.abort.signal.aborted||playback!==p)throw Error('Se interrumpió la carga del audio.');
-                p.master=context.createDynamicsCompressor();p.master.connect(context.destination);
+                p.master=context.createDynamicsCompressor();p.output=context.createGain();p.master.connect(p.output);p.output.connect(context.destination);
                 p.gains={};p.fxChains={};
                 for(let t=1;t<=4;t++){const gain=context.createGain();gain.gain.value=isMuted(t)?0:1;gain.connect(p.master);p.gains[t]=gain;const chain=window.FutureoFX.chain(context,gain,workletReady);chain.apply(fxUI.get(t),true);p.fxChains[t]=chain;}
                 if(Object.values(p.fxChains).some((chain,i)=>{const s=fxUI.get(i+1);return s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)||(!chain.rhythm&&s.rhythm));}))p.warning=(p.warning?p.warning+' · ':'')+'AudioWorklet no disponible: algunos FX se omitieron.';
