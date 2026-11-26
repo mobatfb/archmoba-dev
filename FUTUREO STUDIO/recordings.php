@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.20 - authenticated audio storage.
+// FUTUREO STUDIO v0.1.22 - authenticated audio storage and history.
 date_default_timezone_set('America/Guayaquil');
 require_once __DIR__ . '/projects.php';
 header('X-Content-Type-Options: nosniff');
@@ -74,6 +74,8 @@ define('FUTUREO_RECORDINGS',true);
 require_once __DIR__.'/stream.php';
 require_once __DIR__.'/track-fx.php';
 require_once __DIR__.'/import-mp3.php';
+require_once __DIR__.'/clip-history.php';
+if ($method === 'POST' && in_array($action,['undo_clip','redo_clip'],true)) handleClipHistory($action,$path,$folder,$dir);
 if ($method === 'POST' && in_array($action,['mp3_chunk','mp3_finish','mp3_cancel'],true)) handleMp3($action,$path,$folder,$dir);
 if ($method === 'POST' && $action === 'save_track_fx') saveTrackFx($path,$folder,$dir);
 if ($method === 'POST' && $action === 'save_fx_preset') saveFxPreset($root);
@@ -86,7 +88,7 @@ if ($method === 'POST' && in_array($action,['split_clip','delete_clip'],true)) {
     if (!ensureDir($folder)||!ensureDir($dir)||is_link($dir.'/.lock')) fail('No se puede escribir en el proyecto.',500);
     $lock=@fopen($dir.'/.lock','c+b');
     if (!$lock||!flock($lock,LOCK_EX)) fail('No se pudo bloquear el proyecto.',500);
-    $data=readProject($path); $items=savedRecordings($data);
+    $data=readProject($path); $items=savedRecordings($data); $before=$data['content']['recordings']??[];
     $offsets=[1=>0,2=>0,3=>0,4=>0]; $target=null; $normalized=[];
     foreach($items as $item){
         $t=(int)($item['track']??1); if($t<1||$t>4)$t=1;
@@ -98,7 +100,7 @@ if ($method === 'POST' && in_array($action,['split_clip','delete_clip'],true)) {
         if($item['id']===$id)$target=$item;
     }
     // Deletion is idempotent; a lost response can safely be retried.
-    if($target===null){if($action==='delete_clip')reply(['ok'=>true,'deleted'=>$id]);fail('Clip no encontrado.',404);}
+    if($target===null){if($action==='delete_clip')reply(['ok'=>true,'deleted'=>$id,'history'=>historyInfo($data)]);fail('Clip no encontrado.',404);}
     $segments=[];
     if($action==='split_clip'){
         $media=$dir.'/'.$target['file'];
@@ -120,10 +122,10 @@ if ($method === 'POST' && in_array($action,['split_clip','delete_clip'],true)) {
         if($key===$id){foreach($segments as $segment)$out[]=$segment;continue;}
         $out[]=is_string($key)&&isset($normalized[$key])?$normalized[$key]:$original;
     }
-    $data['content']['recordings']=$out; storeProject($path,$data);
+    $data['content']['recordings']=$out; historyPush($data,$before,$action==='split_clip'?'Dividir clip':'Borrar clip'); storeProject($path,$data);
     flock($lock,LOCK_UN); fclose($lock);
-    if($action==='delete_clip')reply(['ok'=>true,'deleted'=>$id]);
-    reply(['ok'=>true,'recordings'=>array_map(static function($r)use($dir){return waveInfo($r,$dir);},$segments)]);
+    if($action==='delete_clip')reply(['ok'=>true,'deleted'=>$id,'history'=>historyInfo($data)]);
+    reply(['ok'=>true,'recordings'=>array_map(static function($r)use($dir){return waveInfo($r,$dir);},$segments),'history'=>historyInfo($data)]);
 }
 // Move only clip metadata. Audio bytes are never rewritten or moved.
 if ($method === 'POST' && $action === 'move_clip') {
@@ -136,6 +138,7 @@ if ($method === 'POST' && $action === 'move_clip') {
     if (!$lock || !flock($lock,LOCK_EX)) fail('No se pudo bloquear el proyecto.',500);
     $data=readProject($path);
     $items=savedRecordings($data);
+    $before=$data['content']['recordings']??[];
     $target=null;
     foreach($items as $i=>$item) if($item['id']===$id){$target=$i;break;}
     if ($target===null) fail('Grabación no encontrada.',404);
@@ -165,10 +168,11 @@ if ($method === 'POST' && $action === 'move_clip') {
             }
         }
     }
+    historyPush($data,$before,'Mover clip');
     storeProject($path,$data);
     $item=waveInfo($items[$target],$dir);
     flock($lock,LOCK_UN);fclose($lock);
-    reply(['ok'=>true,'recording'=>$item]);
+    reply(['ok'=>true,'recording'=>$item,'history'=>historyInfo($data)]);
 }
 if ($method === 'POST' && $action === 'save') {
     $file = $_FILES['audio'] ?? null;
@@ -186,11 +190,12 @@ if ($method === 'POST' && $action === 'save') {
     $data = readProject($path);
     if (!isset($data['content']) || !is_array($data['content'])) $data['content'] = [];
     $items = savedRecordings($data);
+    $before=$data['content']['recordings']??[];
     $id = $_POST['recording_id'] ?? '';
     if (!is_string($id) || !preg_match('/\A[a-f0-9]{24}\z/',$id)) fail('Identificador de grabación inválido.');
     foreach ($items as $existing) {
         if ($existing['id'] === $id && is_file($dir.'/'.$existing['file']) && !is_link($dir.'/'.$existing['file'])) {
-            flock($lock,LOCK_UN); fclose($lock); reply(['ok'=>true,'recording'=>$existing]);
+            flock($lock,LOCK_UN); fclose($lock); reply(['ok'=>true,'recording'=>$existing,'history'=>historyInfo($data)]);
         }
     }
     if (count($items) >= 500) fail('El proyecto alcanzó el límite de 500 grabaciones.',409);
@@ -204,6 +209,7 @@ if ($method === 'POST' && $action === 'save') {
     $item = ['id'=>$id,'file'=>$filename,'path'=>'assets/'.$filename,'mime'=>$format[1],'size'=>$size,'created_at'=>date(DATE_ATOM),'duration_ms'=>max(0,min(600000,(int)$duration)),'track'=>($track !== false && $track >= 1 && $track <= 4 ? (int)$track : 1),'start_ms'=>max(0,min(600000,(int)$start))];
     $items[] = $item;
     $data['content']['recordings'] = $items;
+    historyPush($data,$before,'Añadir grabación');
     $data['updated_at'] = date(DATE_ATOM);
     $json = json_encode($data,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
     $draft = @tempnam(dirname($path),'.fprj-');
@@ -214,13 +220,14 @@ if ($method === 'POST' && $action === 'save') {
         fail('No se pudo actualizar el archivo FPRJ. La grabación sigue disponible para reintentar.',500);
     }
     flock($lock,LOCK_UN); fclose($lock);
-    reply(['ok'=>true,'recording'=>$item],201);
+    reply(['ok'=>true,'recording'=>$item,'history'=>historyInfo($data)],201);
 }
 if ($method === 'POST') fail('Acción no permitida.',405);
-$items = savedRecordings(readProject($path));
+$projectData=readProject($path);
+$items = savedRecordings($projectData);
 if ($action === 'list' && $method === 'GET') {
     $items = array_values(array_filter($items,static function($r) use ($dir){return is_file($dir.'/'.$r['file']) && !is_link($dir.'/'.$r['file']);}));
-    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'max_mp3_bytes'=>FUTUREO_MP3_MAX,'track_fx'=>savedFx(readProject($path)),'tempo_bpm'=>savedTempo(readProject($path))]);
+    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'max_mp3_bytes'=>FUTUREO_MP3_MAX,'track_fx'=>savedFx($projectData),'tempo_bpm'=>savedTempo($projectData),'history'=>historyInfo($projectData)]);
 }
 if (!in_array($action,['play','waveform'],true)) fail('Acción no permitida.',405);
 $id = $_GET['id'] ?? '';

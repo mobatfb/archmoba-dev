@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.21 - synchronized overdub and playback */
+/* FUTUREO STUDIO v0.1.22 - synchronized overdub and persistent undo/redo */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -14,6 +14,8 @@
     const palette = {1:{accent:'#33d5ff',fill:'#10323e',live:'#123c47',wave:'#32d7e8',liveWave:'#ff6785',name:'Pista 1'},2:{accent:'#c39cff',fill:'#241936',live:'#302140',wave:'#c8a7ff',liveWave:'#ff93d2',name:'Pista 2'},3:{accent:'#ffd166',fill:'#3a2d14',live:'#46361a',wave:'#ffd166',liveWave:'#ffe4a8',name:'Pista 3'},4:{accent:'#76e39a',fill:'#143021',live:'#193b29',wave:'#76e39a',liveWave:'#b6f4c8',name:'Pista 4'}};
     let selectedTrack = 1, clips = [], take = null, phase = 'loading', maxBytes = 0, position = 0, extent = 30, playback = null, playToken = 0, localUrl = null;
     let drag = null, selectedClip = null, seekingPointer = null, tool = 'pointer', editPointer = null, cutPreview = null;
+    const undoButton=$('undo'), redoButton=$('redo');
+    let historyState={undo_count:0,redo_count:0,undo_id:null,redo_id:null};
     const toolButtons = Array.from(root.querySelectorAll('.daw-tool[data-tool]'));
     const toolHints = {pointer:'Puntero: selecciona clips o cambia el cursor.',hand:'Mano: arrastra un clip a otra posición o pista.',cut:'Cúter: pulsa dentro de un clip para dividirlo.',erase:'Borrar: pulsa un clip para quitarlo de la línea de tiempo.'};
     function setTool(next){if(!toolHints[next]||!['idle','playing'].includes(phase))return;if(drag)cancelDrag();tool=next;editPointer=null;cutPreview=null;msg(toolHints[tool]);update();}
@@ -102,9 +104,10 @@
         syncTrackButtons();
         canvas.dataset.tool=tool;
         toolButtons.forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.tool===tool));b.disabled=!['idle','playing'].includes(phase);});
+        syncHistory();
         draw();
     }
-    async function response(r){ let d; try{ d = await r.json(); }catch(_){ throw Error('Respuesta no válida del hosting (' + r.status + ').'); } if(!r.ok || !d.ok) throw Error(d.error || 'Error del servidor'); return d; }
+    async function response(r){ let d; try{ d = await r.json(); }catch(_){ throw Error('Respuesta no válida del hosting (' + r.status + ').'); } if(!r.ok || !d.ok) throw Error(d.error || 'Error del servidor'); if(d.history)historyState=d.history; return d; }
     async function post(action, fields = {}, blob = null){ const f = new FormData(); f.append('action', action); f.append('project', root.dataset.project); f.append('csrf', root.dataset.csrf); for(const [k,v] of Object.entries(fields)) f.append(k, String(v)); if(blob) f.append('pcm', blob, 'pcm.bin'); return response(await fetch('recordings.php', {method:'POST', body:f, credentials:'same-origin', cache:'no-store'})); }
     async function load(){
         try{
@@ -123,6 +126,34 @@
     }
     function fetchPeaks(clip){if(!['audio/wav','audio/mpeg'].includes(clip.mime))return;fetch(endpoint+'&action=waveform&id='+encodeURIComponent(clip.id),{credentials:'same-origin',cache:'no-store'}).then(response).then(d=>{clip.peaks=d.peaks||[];draw();}).catch(()=>{});}
     async function reconcileEdits(){const d=await response(await fetch(endpoint,{cache:'no-store',credentials:'same-origin'}));clips=normalizeClips(d.recordings||[]);sortClips();selectedClip=null;for(const c of clips)fetchPeaks(c);}
+    function syncHistory(){
+        const available=['idle','playing'].includes(phase)&&!drag&&!editPointer&&!fxUI.isOpen();
+        for(const [direction,button,verb,key] of [['undo',undoButton,'Deshacer','Ctrl+Z'],['redo',redoButton,'Rehacer','Ctrl+Y']]){
+            const label=historyState[direction+'_label'];
+            button.disabled=!available||!historyState[direction+'_id'];
+            button.title=verb+(label?': '+label:'')+' ('+key+')';
+            button.setAttribute('aria-label',button.title);
+        }
+    }
+    async function applyHistory(direction){
+        if(!['idle','playing'].includes(phase)||drag||editPointer||fxUI.isOpen())return;
+        const id=historyState[direction+'_id'];if(!id)return;
+        if(phase==='playing')pause();
+        const undo=direction==='undo';phase='moving';cutPreview=null;selectedClip=null;canvas.classList.add('clip-saving');
+        msg(undo?'Deshaciendo edición...':'Rehaciendo edición...');update();
+        try{
+            const d=await post(undo?'undo_clip':'redo_clip',{history_id:id});
+            if(!Array.isArray(d.recordings)||!d.history)throw Error('El servidor no confirmó el historial.');
+            clips=normalizeClips(d.recordings);sortClips();position=Math.min(position,projectTotal());ensureExtent();
+            for(const c of clips)fetchPeaks(c);
+            msg((undo?'Deshecho: ':'Rehecho: ')+(d.label||'Edición')+'. Audio original conservado.','ok');
+        }catch(e){
+            try{await reconcileEdits();position=Math.min(position,projectTotal());ensureExtent();msg('Historial actualizado. '+e.message,'error');}
+            catch(_){historyState={undo_count:0,redo_count:0};msg('No se pudo confirmar el historial. Recarga la página: '+e.message,'error');}
+        }finally{phase='idle';canvas.classList.remove('clip-saving');update();}
+    }
+    undoButton.addEventListener('click',()=>applyHistory('undo'));
+    redoButton.addEventListener('click',()=>applyHistory('redo'));
     async function editClip(clip,action,time){
         if(phase!=='idle'||!clips.includes(clip))return;
         const cutting=action==='split_clip';
@@ -420,7 +451,7 @@
     canvas.addEventListener('pointerleave',clearCutPreview);
     canvas.addEventListener('pointercancel',e=>{clearCutPreview();if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
     canvas.addEventListener('lostpointercapture',e=>{if(editPointer?.pointer===e.pointerId)clearCutPreview();if(drag?.pointer===e.pointerId)cancelDrag();if(seekingPointer===e.pointerId)seekingPointer=null;if(editPointer?.pointer===e.pointerId)editPointer=null;});
-    document.addEventListener('keydown',e=>{if(fxUI.isOpen())return;if(e.key==='Escape'){if(drag){e.preventDefault();cancelDrag();}editPointer=null;clearCutPreview();return;}if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable=true]'))return;const modes={v:'pointer',h:'hand',c:'cut',e:'erase'};if(modes[e.key.toLowerCase()]&&['idle','playing'].includes(phase)){e.preventDefault();setTool(modes[e.key.toLowerCase()]);}});
+    document.addEventListener('keydown',e=>{if(fxUI.isOpen())return;const editable=e.target instanceof Element&&e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false])');const key=e.key.toLowerCase();if((e.ctrlKey||e.metaKey)&&!e.altKey&&!editable&&(key==='z'||key==='y')){e.preventDefault();if(!e.repeat)applyHistory(key==='y'||e.shiftKey?'redo':'undo');return;}if(e.key==='Escape'){if(drag){e.preventDefault();cancelDrag();}editPointer=null;clearCutPreview();return;}if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,[contenteditable=true]'))return;const modes={v:'pointer',h:'hand',c:'cut',e:'erase'};if(modes[e.key.toLowerCase()]&&['idle','playing'].includes(phase)){e.preventDefault();setTool(modes[e.key.toLowerCase()]);}});
     canvas.addEventListener('keydown',e=>{
         if(phase!=='idle')return;
         if(e.key==='Delete'&&selectedClip){e.preventDefault();editClip(selectedClip,'delete_clip',position);return;}

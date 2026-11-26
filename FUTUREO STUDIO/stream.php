@@ -109,11 +109,15 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
         if (!$fp||fwrite($fp,waveHeader($rate,$bytes))!==44||!fflush($fp)) fail('No se pudo finalizar el audio.',500);
         if (function_exists('fsync')) @fsync($fp);
         fclose($fp);
-        $item=waveInfo($item,$dir);$item['status']='saved';$items[$index]=$item;$data['content']['recordings']=$items;storeProject($path,$data);
+        $alreadySaved=($item['status']??'')==='saved';
+        $before=array_values(array_filter($items,static function($r)use($id){return $r['id']!==$id;}));
+        $item=waveInfo($item,$dir);$item['status']='saved';$items[$index]=$item;$data['content']['recordings']=$items;
+        if(!$alreadySaved)historyPush($data,$before,'Añadir grabación');
+        storeProject($path,$data);
     } else fail('Acción no permitida.',405);
     $item=waveInfo($item,$dir);
     flock($lock,LOCK_UN);fclose($lock);
-    reply(['ok'=>true,'recording'=>$item,'pcm_bytes'=>$bytes]);
+    reply(['ok'=>true,'recording'=>$item,'pcm_bytes'=>$bytes,'history'=>historyInfo($data)]);
 }
 function waveformPeaks(string $media,int $bytes,int $offset=0): array {
     $fp=@fopen($media,'rb');if(!$fp||$bytes<2) {if($fp)fclose($fp);return [];}

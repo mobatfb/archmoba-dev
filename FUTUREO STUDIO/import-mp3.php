@@ -55,7 +55,7 @@ function handleMp3(string $action,string $path,string $folder,string $dir): void
     if(is_link($part))fail('Archivo temporal no válido.',500);
     foreach($items as $item){if($item['id']!==$id)continue;
         if($action==='mp3_cancel')reply(['ok'=>true,'cancelled'=>false]);
-        if($action==='mp3_finish'&&$item['mime']==='audio/mpeg'&&is_file($dir.'/'.$item['file'])&&!is_link($dir.'/'.$item['file']))reply(['ok'=>true,'recording'=>$item]);
+        if($action==='mp3_finish'&&$item['mime']==='audio/mpeg'&&is_file($dir.'/'.$item['file'])&&!is_link($dir.'/'.$item['file']))reply(['ok'=>true,'recording'=>$item,'history'=>historyInfo($data)]);
         fail('Identificador ya utilizado.',409);
     }
     if($action==='mp3_cancel'){if(is_file($part)&&!@unlink($part))fail('No se pudo quitar el temporal.',500);reply(['ok'=>true,'cancelled'=>true]);}
@@ -107,10 +107,11 @@ function handleMp3(string $action,string $path,string $folder,string $dir): void
     $item=['id'=>$id,'file'=>$filename,'path'=>'assets/'.$filename,'original_name'=>$original,'mime'=>'audio/mpeg','size'=>$total,'created_at'=>date(DATE_ATOM),'duration_ms'=>$duration,'source_duration_ms'=>$duration,'source_peaks'=>$clean,'track'=>$track,'start_ms'=>$start,'status'=>'saved'];
     if(!isset($data['content'])||!is_array($data['content']))$data['content']=[];
     if(!isset($data['content']['recordings'])||!is_array($data['content']['recordings']))$data['content']['recordings']=[];
-    $data['content']['recordings'][]=$item;$data['module']='audio';$data['updated_at']=date(DATE_ATOM);
+    $before=$data['content']['recordings'];
+    $data['content']['recordings'][]=$item;historyPush($data,$before,'Importar MP3');$data['module']='audio';$data['updated_at']=date(DATE_ATOM);
     $json=json_encode($data,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);$draft=@tempnam(dirname($path),'.fprj-');
     if($draft===false||$json===false||@file_put_contents($draft,$json."\n")!==strlen($json)+1||!@chmod($draft,0640)||!@rename($draft,$path)){
         if($draft!==false)@unlink($draft);@rename($target,$part);fail('No se pudo actualizar el FPRJ.',500);
     }
-    flock($lock,LOCK_UN);fclose($lock);reply(['ok'=>true,'recording'=>$item],201);
+    flock($lock,LOCK_UN);fclose($lock);reply(['ok'=>true,'recording'=>$item,'history'=>historyInfo($data)],201);
 }

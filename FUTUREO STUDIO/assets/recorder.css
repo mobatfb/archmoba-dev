@@ -80,3 +80,9 @@
 /* v0.1.20: local MP3 import action, including narrow vertical workspaces. */
 .daw-import{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:auto;min-width:52px;padding:0 7px;flex:none;color:#b7f5ff;font-size:10px;font-weight:800}.daw-import svg{width:17px;height:17px;flex:none}.daw-import:disabled{opacity:.4}
 [data-orientation="vertical"] .daw-import{height:35px;width:auto;min-width:48px;padding:0 5px}
+
+/* v0.1.22: undo / redo on the transport. */
+.daw-history{display:flex;align-items:center;gap:5px;flex:none;padding-left:8px;border-left:1px solid #34465d}
+.daw-history .daw-tool:not(:disabled){color:#bdeaff}
+[data-orientation="vertical"] .daw-history{padding-left:0;border:0}
+@media(max-width:620px){.daw-history{gap:4px;padding-left:4px}}
