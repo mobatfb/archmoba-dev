@@ -1,10 +1,12 @@
-/* FUTUREO STUDIO v0.1.19 - server-backed, synchronized audio playback */
+/* FUTUREO STUDIO v0.1.20 - server-backed, synchronized audio playback */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
     const $ = id => document.getElementById('voice-' + id);
     const canvas = $('canvas'), ctx = canvas.getContext('2d'), audio = $('audio');
     const record = $('record'), play = $('play'), stop = $('stop'), home = $('home'), clock = $('clock'), status = $('status'), saved = $('saved'), recovery = $('recovery'), download = $('download'), trackName = $('track-name');
+    const importButton=$('import'), importInput=$('files');
+    let importPreview=null, maxMp3Bytes=25*1024*1024;
     const trackRows = Array.from(document.querySelectorAll('[data-track-row]'));
     const endpoint = 'recordings.php?' + new URLSearchParams({project: root.dataset.project}).toString();
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -77,6 +79,7 @@
     function update(){
         const live = phase === 'recording', idle = phase === 'idle';
         if (!idle || tool !== 'cut') cutPreview=null;
+        importButton.disabled=!AudioCtx||maxBytes<1024||!['idle','playing'].includes(phase);
         record.disabled = !supported || maxBytes < 1024 || !(idle || live);
         record.classList.toggle('is-recording', live);
         record.setAttribute('aria-label', live ? 'Detener grabación' : 'Grabar voz');
@@ -107,17 +110,18 @@
         try{
             const d = await response(await fetch(endpoint, {cache:'no-store', credentials:'same-origin'}));
             maxBytes = Number(d.max_bytes) || 0;
+            maxMp3Bytes=Number(d.max_mp3_bytes)||25*1024*1024;
             clips = normalizeClips(d.recordings || []);
             fxUI.load(d.track_fx,d.tempo_bpm);
             sortClips();
             decodedCache.clear();
             phase = 'idle'; position = 0; ensureExtent();
-            msg(!supported ? 'Usa HTTPS y un navegador compatible con AudioWorklet para grabar.' : maxBytes < 1024 ? 'El hosting no admite fragmentos de audio.' : 'Selecciona una herramienta de edición en la barra inferior. REC arma la grabación.');
+            msg(!supported ? 'Usa HTTPS y un navegador compatible con AudioWorklet para grabar.' : maxBytes < 1024 ? 'El hosting no admite fragmentos de audio.' : 'Arrastra un MP3 sobre una pista o pulsa MP3. REC arma la grabación.');
             update();
             for (const clip of clips) fetchPeaks(clip);
         } catch(e){ phase='idle'; msg(e.message,'error'); update(); }
     }
-    function fetchPeaks(clip){if(clip.mime!=='audio/wav')return;fetch(endpoint+'&action=waveform&id='+encodeURIComponent(clip.id),{credentials:'same-origin',cache:'no-store'}).then(response).then(d=>{clip.peaks=d.peaks||[];draw();}).catch(()=>{});}
+    function fetchPeaks(clip){if(!['audio/wav','audio/mpeg'].includes(clip.mime))return;fetch(endpoint+'&action=waveform&id='+encodeURIComponent(clip.id),{credentials:'same-origin',cache:'no-store'}).then(response).then(d=>{clip.peaks=d.peaks||[];draw();}).catch(()=>{});}
     async function reconcileEdits(){const d=await response(await fetch(endpoint,{cache:'no-store',credentials:'same-origin'}));clips=normalizeClips(d.recordings||[]);sortClips();selectedClip=null;for(const c of clips)fetchPeaks(c);}
     async function editClip(clip,action,time){
         if(phase!=='idle'||!clips.includes(clip))return;
@@ -170,6 +174,7 @@
                 ctx.fillStyle = fx ? '#2b2512' : p.fill; ctx.strokeStyle = clip===selectedClip ? '#ffffff' : muted ? '#5d6670' : p.accent; ctx.lineWidth=clip===selectedClip ? 2 : 1;
                 if (g.v){ ctx.fillRect(lane.x+4, lo, lane.w-8, size); ctx.strokeRect(lane.x+4, lo, lane.w-8, size); } else { ctx.fillRect(lo, lane.y+4, size, lane.h-8); ctx.strokeRect(lo, lane.y+4, size, lane.h-8); }
                 drawWaveform(clip.peaks || [], frac => along(g, s + frac * duration(clip)), Math.max(8, (g.v ? lane.w-14 : lane.h-14) / 2), center, muted ? '#7f8b98' : (fx ? '#ffd166' : p.wave));
+                if(clip.mime==='audio/mpeg')drawMp3Label(g,lane,lo,size,clip);
                 ctx.globalAlpha = 1;
             }
             if (take && take.track === track){
@@ -183,6 +188,7 @@
         ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); if (g.v){ ctx.moveTo(0,cursor); ctx.lineTo(g.w,cursor); } else { ctx.moveTo(cursor,0); ctx.lineTo(cursor,g.h); } ctx.stroke();
         ctx.fillStyle = col; if (g.v) ctx.fillRect(g.timeline-5,cursor-4,8,8); else ctx.fillRect(cursor-4,g.timeline-5,8,8);
         drawCutPreview(g);
+        drawImportPreview(g);
     }
     function move(p){ position = Math.max(0, Math.min(extent, p)); update(); }
     function seek(e){ if(!['idle','playing'].includes(phase)) return; const r = canvas.getBoundingClientRect(); const f = vertical() ? 1 - (e.clientY-r.top)/r.height : (e.clientX-r.left)/r.width; const target = Math.max(0, Math.min(projectTotal(), f * extent)); if(phase==='playing'){ pause(); position = target; startPlay(); } else move(target); }
@@ -193,6 +199,118 @@
         const track=g.lane>0&&cross>=g.timeline&&cross<g.timeline+g.trackArea?1+Math.floor((cross-g.timeline)/g.lane):0;
         return {x,y,g,track,time:axis/Math.max(1,axisSize)*extent};
     }
+    // Import original MP3 bytes; each chunk fits the hosting's PHP upload limit.
+    function drawMp3Label(g,lane,lo,size,clip){
+        if(size<18||Math.min(lane.w,lane.h)<18)return;
+        ctx.save();ctx.beginPath();
+        if(g.v){ctx.rect(lane.x+4,lo,lane.w-8,size);ctx.clip();ctx.translate(lane.x+8,lo+size-4);ctx.rotate(-Math.PI/2);}
+        else{ctx.rect(lo,lane.y+4,size,lane.h-8);ctx.clip();ctx.translate(lo+5,lane.y+7);}
+        ctx.font='600 10px system-ui';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillStyle='#f1f8ff';
+        ctx.fillText(clip.original_name||'Audio MP3',0,0);ctx.restore();
+    }
+    function drawImportPreview(g){
+        if(!importPreview)return;
+        const lane=laneRect(g,importPreview.track),q=along(g,importPreview.time);
+        ctx.save();ctx.fillStyle='#33d5ff19';ctx.fillRect(lane.x,lane.y,lane.w,lane.h);
+        ctx.strokeStyle='#33d5ff';ctx.lineWidth=2;ctx.strokeRect(lane.x+1,lane.y+1,lane.w-2,lane.h-2);
+        ctx.beginPath();if(g.v){ctx.moveTo(lane.x,q);ctx.lineTo(lane.x+lane.w,q);}else{ctx.moveTo(q,lane.y);ctx.lineTo(q,lane.y+lane.h);}ctx.stroke();
+        const label='MP3 · P'+importPreview.track+' · '+format(importPreview.time);ctx.font='600 11px system-ui';const w=ctx.measureText(label).width+12;
+        const x=Math.max(2,Math.min(g.w-w-2,g.v?lane.x:q+4)),y=Math.max(2,Math.min(g.h-22,g.v?q-22:lane.y+6));
+        ctx.fillStyle='#142638';ctx.fillRect(x,y,w,20);ctx.fillStyle='#b7f5ff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(label,x+6,y+10);ctx.restore();
+    }
+    function clearImportPreview(){if(importPreview){importPreview=null;draw();}}
+    const hasFiles=e=>Array.from(e.dataTransfer?.types||[]).includes('Files');
+    const canImport=()=>!!AudioCtx&&maxBytes>=1024&&['idle','playing'].includes(phase)&&!fxUI.isOpen();
+    function mp3Target(e){const p=point(e);return p.track?{track:p.track,time:Math.max(0,Math.min(600,p.time))}:null;}
+    // Never navigate away from the project when a desktop file is dropped.
+    window.addEventListener('dragover',e=>{if(hasFiles(e)){e.preventDefault();if(e.target!==canvas)e.dataTransfer.dropEffect='none';}});
+    window.addEventListener('drop',e=>{if(hasFiles(e)){e.preventDefault();clearImportPreview();}});
+    canvas.addEventListener('dragover',e=>{
+        if(!hasFiles(e))return;e.preventDefault();
+        const dest=canImport()?mp3Target(e):null;
+        e.dataTransfer.dropEffect=dest?'copy':'none';importPreview=dest;cutPreview=null;draw();
+    });
+    canvas.addEventListener('dragleave',clearImportPreview);
+    canvas.addEventListener('drop',e=>{
+        if(!hasFiles(e))return;e.preventDefault();e.stopPropagation();
+        const dest=canImport()?mp3Target(e):null,files=Array.from(e.dataTransfer.files||[]);clearImportPreview();
+        if(dest&&files.length)importMp3Files(files,dest.track,dest.time);
+        else if(files.length)msg('Suelta los MP3 dentro de una pista cuando el editor esté disponible.','error');
+    });
+    importButton.addEventListener('click',()=>{if(canImport())importInput.click();});
+    importInput.addEventListener('change',()=>{const files=Array.from(importInput.files||[]);importInput.value='';if(files.length&&canImport())importMp3Files(files,selectedTrack,position);});
+    function mp3Peaks(buffer){
+        const n=Math.min(720,buffer.length),peaks=Array(n).fill(0);
+        for(let ch=0;ch<buffer.numberOfChannels;ch++){
+            const data=buffer.getChannelData(ch);
+            for(let i=0;i<n;i++){
+                const a=Math.floor(i*data.length/n),b=Math.floor((i+1)*data.length/n);let peak=peaks[i];
+                const stride=Math.max(1,Math.floor((b-a)/2048));
+                for(let j=a;j<b;j+=stride)peak=Math.max(peak,Math.abs(data[j]));
+                peaks[i]=Math.min(1,peak);
+            }
+        }
+        return peaks.map(x=>Math.round(x*1000)/1000);
+    }
+    async function importRequest(action,fields,blob=null){
+        // Exact-byte retries are safe; the server also makes finalization idempotent.
+        let last;
+        for(let attempt=0;attempt<2;attempt++){
+            try{
+                const f=new FormData();f.append('action',action);f.append('project',root.dataset.project);f.append('csrf',root.dataset.csrf);
+                for(const [k,v] of Object.entries(fields))f.append(k,String(v));if(blob)f.append('pcm',blob,'mp3.part');
+                const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),60000);
+                try{return await response(await fetch('recordings.php',{method:'POST',body:f,credentials:'same-origin',cache:'no-store',signal:ctl.signal}));}finally{clearTimeout(timer);}
+            }catch(e){last=e;}
+        }
+        throw last;
+    }
+    async function importMp3Files(files,track,start){
+        if(!canImport())return;
+        if(phase==='playing')pause();
+        phase='importing';selectedTrack=track;update();
+        let next=Math.round(Math.max(0,start)*1000),count=0,lastError='';
+        try{
+            for(const file of files){
+                let id=null;
+                try{
+                    if(!/\.mp3$/i.test(file.name)&&file.type!=='audio/mpeg')throw Error('Selecciona un archivo MP3.');
+                    if(file.size<1||file.size>maxMp3Bytes)throw Error('Tamaño máximo por MP3: '+Math.floor(maxMp3Bytes/1048576)+' MB.');
+                    if(next>600000)throw Error('La posición inicial supera el límite actual de 10 minutos.');
+                    msg('Analizando '+file.name+'...');
+                    if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx();
+                    const buffer=await playbackContext.decodeAudioData(await file.arrayBuffer());
+                    const durationMs=Math.round(buffer.duration*1000);
+                    if(durationMs<1||durationMs>600000||bufferBytes(buffer)>playbackLimit)throw Error('El MP3 supera el límite de 10 minutos o la memoria disponible.');
+                    const peaks=mp3Peaks(buffer);
+                    id=Array.from(crypto.getRandomValues(new Uint8Array(12)),x=>x.toString(16).padStart(2,'0')).join('');
+                    const common={recording_id:id,total_bytes:file.size};
+                    const step=Math.max(1024,Math.min(1024*1024,maxBytes));
+                    let offset=0;
+                    while(offset<file.size){
+                        const end=Math.min(file.size,offset+step);
+                        const d=await importRequest('mp3_chunk',{...common,offset},file.slice(offset,end));
+                        if(Number(d.received)!==end)throw Error('El hosting no confirmó el fragmento MP3.');
+                        offset=end;msg('Subiendo '+file.name+' · '+Math.round(offset/file.size*100)+'%');
+                    }
+                    const d=await importRequest('mp3_finish',{...common,track,start_ms:next,duration_ms:durationMs,original_name:file.name,peaks:JSON.stringify(peaks)});
+                    if(d.recording?.id!==id||d.recording.mime!=='audio/mpeg'||Number(d.recording.track)!==track||Number(d.recording.start_ms)!==next)throw Error('El hosting no confirmó el clip MP3.');
+                    const clip=normalizeClips([d.recording])[0];clip.peaks=peaks;
+                    clips.push(clip);sortClips();selectedClip=clip;position=startAt(clip);next+=durationMs;
+                    cacheBuffer(clip.file+':'+String(clip.size||0)+':'+String(clip.pcm_bytes||0),buffer);
+                    ensureExtent();count++;update();
+                }catch(e){
+                    lastError=file.name+': '+e.message;
+                    if(id){
+                        // A lost final response must not duplicate an imported clip.
+                        try{const data=await response(await fetch(endpoint,{credentials:'same-origin',cache:'no-store'}));const found=normalizeClips(data.recordings||[]).find(c=>c.id===id);if(found&&!clips.some(c=>c.id===id)){clips.push(found);sortClips();selectedClip=found;position=startAt(found);next=Math.round(endAt(found)*1000);ensureExtent();count++;fetchPeaks(found);lastError='';update();continue;}}catch(_){}
+                        try{await importRequest('mp3_cancel',{recording_id:id});}catch(_){}
+                    }
+                }
+            }
+        }finally{phase='idle';clearImportPreview();msg(lastError?(count?count+' MP3 guardado(s). ':'')+lastError:count+' MP3 guardado(s) en assets de '+palette[track].name+'.',lastError?'error':'ok');update();}
+    }
+
     function hit(p){
         if(!p.track)return null;
         const lane=laneRect(p.g,p.track),cross=p.g.v?p.x:p.y,lo=p.g.v?lane.x:lane.y,hi=lo+(p.g.v?lane.w:lane.h);
@@ -441,7 +559,7 @@
     home.addEventListener('click',()=>{ if(phase==='playing') pause(); move(0); });
     $('retry').addEventListener('click',()=>{ if(phase!=='recovery'||!take) return; take.error = null; phase = 'saving'; msg('Reintentando guardado...'); update(); pump(take); });
     $('discard').addEventListener('click',()=>{ if(phase!=='recovery'||!take||!confirm('¿Cerrar esta toma? Los fragmentos ya guardados se conservarán.')) return; if(take.item&&take.ack>0) clips.push({...take.item, track:take.track, start_ms:Math.round(take.start*1000), duration_ms:take.ack/take.rate/2*1000, peaks:take.peaks.slice(0,Math.ceil(take.ack/take.rate/2*40))}); sortClips(); take = null; phase = 'idle'; position = projectTotal(); if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Se conservaron los fragmentos confirmados por el servidor.'); update(); });
-    window.addEventListener('beforeunload',e=>{ if(take||fxUI.dirty()||['starting','moving'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
+    window.addEventListener('beforeunload',e=>{ if(take||fxUI.dirty()||['starting','moving','importing'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
     window.addEventListener('pagehide',()=>{ if(take) release(take); if(playback)pause(); if(playbackContext)playbackContext.close().catch(()=>{}); });
     const fxUI=window.FutureoFX.createUI({post,getPresets:()=>fetch(endpoint+'&action=fx_presets',{credentials:'same-origin',cache:'no-store'}).then(response),
         change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)||(!chain.rhythm&&s.rhythm)))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},

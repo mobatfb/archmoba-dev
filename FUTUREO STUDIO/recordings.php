@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-// FUTUREO STUDIO v0.1.14 - authenticated voice recording storage.
+// FUTUREO STUDIO v0.1.20 - authenticated audio storage.
 date_default_timezone_set('America/Guayaquil');
 require_once __DIR__ . '/projects.php';
 header('X-Content-Type-Options: nosniff');
@@ -30,7 +30,7 @@ function readProject(string $path): array {
 function savedRecordings(array $data): array {
     $items = $data['content']['recordings'] ?? [];
     return is_array($items) ? array_values(array_filter($items, static function($r){
-        return is_array($r) && isset($r['id'],$r['file'],$r['mime']) && is_string($r['id']) && preg_match('/\A[a-f0-9]{24}\z/',$r['id']) && is_string($r['file']) && preg_match('/\Avoz_[0-9_]+_[a-f0-9]{24}\.(webm|ogg|m4a|wav)\z/',$r['file']) && in_array($r['mime'],['audio/webm','audio/ogg','audio/mp4','audio/wav'],true);
+        return is_array($r) && isset($r['id'],$r['file'],$r['mime']) && is_string($r['id']) && preg_match('/\A[a-f0-9]{24}\z/',$r['id']) && is_string($r['file']) && ((preg_match('/\Avoz_[0-9_]+_[a-f0-9]{24}\.(webm|ogg|m4a|wav)\z/',$r['file']) && in_array($r['mime'],['audio/webm','audio/ogg','audio/mp4','audio/wav'],true)) || (preg_match('/\Aaudio_[0-9_]+_[a-f0-9]{24}\.mp3\z/',$r['file']) && $r['mime']==='audio/mpeg'));
     })) : [];
 }
 function detectAudio(string $tmp): ?array {
@@ -73,6 +73,8 @@ $action = $method === 'POST' ? ($_POST['action'] ?? '') : ($_GET['action'] ?? 'l
 define('FUTUREO_RECORDINGS',true);
 require_once __DIR__.'/stream.php';
 require_once __DIR__.'/track-fx.php';
+require_once __DIR__.'/import-mp3.php';
+if ($method === 'POST' && in_array($action,['mp3_chunk','mp3_finish','mp3_cancel'],true)) handleMp3($action,$path,$folder,$dir);
 if ($method === 'POST' && $action === 'save_track_fx') saveTrackFx($path,$folder,$dir);
 if ($method === 'POST' && $action === 'save_fx_preset') saveFxPreset($root);
 if ($method === 'GET' && $action === 'fx_presets') reply(['ok'=>true,'presets'=>presetLibrary($root)]);
@@ -218,7 +220,7 @@ if ($method === 'POST') fail('Acción no permitida.',405);
 $items = savedRecordings(readProject($path));
 if ($action === 'list' && $method === 'GET') {
     $items = array_values(array_filter($items,static function($r) use ($dir){return is_file($dir.'/'.$r['file']) && !is_link($dir.'/'.$r['file']);}));
-    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'track_fx'=>savedFx(readProject($path)),'tempo_bpm'=>savedTempo(readProject($path))]);
+    reply(['ok'=>true,'recordings'=>array_map(static function($r) use ($dir){return waveInfo($r,$dir);},$items),'max_bytes'=>maxUpload(),'max_mp3_bytes'=>FUTUREO_MP3_MAX,'track_fx'=>savedFx(readProject($path)),'tempo_bpm'=>savedTempo(readProject($path))]);
 }
 if (!in_array($action,['play','waveform'],true)) fail('Acción no permitida.',405);
 $id = $_GET['id'] ?? '';
@@ -228,7 +230,9 @@ if ($item === null) fail('Grabación no encontrada.',404);
 $media = $dir.'/'.$item['file'];
 if (!is_file($media) || is_link($media)) fail('Audio no encontrado.',404);
 if ($action==='waveform') {
-    if ($method!=='GET'||$item['mime']!=='audio/wav') reply(['ok'=>true,'peaks'=>[]]);
+    if ($method!=='GET') reply(['ok'=>true,'peaks'=>[]]);
+    if ($item['mime']==='audio/mpeg') reply(['ok'=>true,'peaks'=>mp3ClipPeaks($item)]);
+    if ($item['mime']!=='audio/wav') reply(['ok'=>true,'peaks'=>[]]);
     $bytes=waveSize($media); $offset=0;
     if(isset($item['clip_duration_ms'])){
         $rate=(int)($item['sample_rate']??0);
