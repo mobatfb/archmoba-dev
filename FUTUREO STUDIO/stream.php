@@ -116,8 +116,20 @@ function handleStream(string $action,string $path,string $folder,string $dir): v
             $first=filter_var($_POST['capture_start_frame']??null,FILTER_VALIDATE_INT);
             $last=filter_var($_POST['capture_end_frame']??null,FILTER_VALIDATE_INT);
             $latency=filter_var($_POST['latency_frames']??null,FILTER_VALIDATE_INT);
-            if ($transport===false||$first===false||$last===false||$latency===false||$transport<0||$first<0||$last<$first||$last-$first!==intdiv($bytes,2)||$first-$transport!==$latency||$latency < -$rate*.25||$latency > $rate*.5) fail('No coincide el reloj de muestras de la grabación.',409);
+            if ($transport===false||$first===false||$last===false||$latency===false||$transport<0||$first<0||$last<$first||$last-$first!==intdiv($bytes,2)||$first-$transport!==$latency||$latency < -$rate*.25||$latency > $rate) fail('No coincide el reloj de muestras de la grabación.',409);
             $sync=['transport_start_frame'=>$transport,'capture_start_frame'=>$first,'capture_end_frame'=>$last,'latency_frames'=>$latency,'sample_count'=>intdiv($bytes,2)];
+            // v0.1.25: record the compensation method without storing hardware identifiers.
+            if (isset($_POST['sync_method'])) {
+                $method=$_POST['sync_method'];
+                if (!in_array($method,['acoustic','input_estimate'],true)) fail('Método de sincronización no válido.',409);
+                $sync['method']=$method;
+                if ($method==='acoustic') {
+                    $acoustic=filter_var($_POST['acoustic_latency_frames']??null,FILTER_VALIDATE_INT);
+                    if ($acoustic===false||$acoustic<0||$acoustic>$rate*.75||$latency<$acoustic||$latency-$acoustic>$rate*.05) fail('Medición acústica no válida.',409);
+                    $sync['acoustic_latency_frames']=$acoustic;
+                    $sync['graph_latency_frames']=$latency-$acoustic;
+                }
+            }
         }
         $alreadySaved=($item['status']??'')==='saved';
         $before=array_values(array_filter($items,static function($r)use($id){return $r['id']!==$id;}));

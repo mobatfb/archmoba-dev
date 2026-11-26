@@ -92,3 +92,6 @@
 
 /* v0.1.24: automatic-only sync status */
 .sync-control summary{color:#70e3b0;border-color:#285f54;white-space:nowrap}.sync-panel strong{color:#70e3b0}
+
+/* v0.1.25: acoustic calibration controls */
+.sync-control summary{color:#ffd166;border-color:#655334}.sync-control[data-measured="true"] summary{color:#70e3b0;border-color:#285f54}.sync-panel{width:300px}.sync-panel strong{color:#b7f5ff}.sync-panel button{width:100%;padding:8px 10px;border:1px solid #365670;border-radius:6px;background:#142d40;color:#b7f5ff;font-size:12px;font-weight:700;cursor:pointer}.sync-panel .sync-calibrate:not(:disabled){background:#33d5ff;color:#071522;border-color:#b7f5ff}.sync-panel button:disabled{opacity:.45;cursor:default}.sync-panel button[hidden]{display:none}.sync-panel small{font-size:11px}.sync-panel #voice-sync-info{padding-top:7px;border-top:1px solid #30445d;color:#e3f4ff}.sync-control[data-measured="true"] #voice-sync-info{color:#70e3b0}

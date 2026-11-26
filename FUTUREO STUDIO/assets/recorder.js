@@ -1,4 +1,4 @@
-/* FUTUREO STUDIO v0.1.24 - sample-accurate overdub and device latency compensation */
+/* FUTUREO STUDIO v0.1.25 - measured acoustic round-trip compensation */
 (() => {
     const root = document.querySelector('.voice-recorder');
     if (!root) return;
@@ -21,20 +21,59 @@
     function setTool(next){if(!toolHints[next]||!['idle','playing'].includes(phase))return;if(drag)cancelDrag();tool=next;editPointer=null;cutPreview=null;msg(toolHints[tool]);update();}
     toolButtons.forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
     let playbackContext = null, playbackFrame = 0;
-    const syncInfo=$('sync-info');
-    // No persistent manual offset. A fresh device estimate is used for every take.
-    const validLatency=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=.5;
+    const syncInfo=$('sync-info'),syncDetails=$('sync'),syncButton=$('calibrate'),syncCancel=$('calibrate-cancel'),syncSummary=syncDetails.querySelector('summary');
+    const Sync=window.FutureoSync;
+    let calibration=null;
+    const micConstraints={audio:{channelCount:1,latency:{ideal:.01},echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false};
+    const validLatency=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=.75;
     const outputDelay=context=>(validLatency(context.baseLatency)?context.baseLatency:0)+(validLatency(context.outputLatency)?context.outputLatency:0);
-    function compensation(t,p,audible){
-        const context=t.context, reported=t.media.getAudioTracks()[0]?.getSettings?.().latency;
-        const inputKnown=validLatency(reported), input=inputKnown?reported:0;
-        const outputKnown=validLatency(context.outputLatency), output=audible?outputDelay(context):0;
-        const graph=audible?(p.graphLatency||0):0;
-        // Use the reported latencies, never a difference between the render clock and
-        // output timestamp as an estimate of hardware latency (Web Audio spec).
-        const frames=Math.round(Math.min(.5,input+output+graph)*t.rate);
-        return {frames,ms:Math.round(frames/t.rate*1000),inputKnown,outputKnown};
+    function syncStatus(text,measured=false){syncInfo.textContent=text;syncSummary.textContent=measured?'SYNC ✓':'SYNC';syncDetails.dataset.measured=String(measured);}
+    function compensation(t,p,accompaniment,measured){
+        const reported=t.media.getAudioTracks()[0]?.getSettings?.().latency;
+        // Acoustic measurement already includes the input and output hardware paths.
+        // Add only the fixed delay of the actual mix graph, never hardware estimates again.
+        if(accompaniment){
+            if(!measured)throw Error('Primero calibra la latencia de tu dispositivo en SYNC.');
+            const acousticFrames=Math.round(measured.seconds*t.rate),graphFrames=Math.round((p.graphLatency||0)*t.rate);
+            const frames=acousticFrames+graphFrames;
+            return {frames,ms:Math.round(frames/t.rate*1000),method:'acoustic',acousticFrames};
+        }
+        // Without accompaniment there is no outgoing reference; use input-only timing.
+        const frames=Math.round((validLatency(reported)?reported:0)*t.rate);
+        return {frames,ms:Math.round(frames/t.rate*1000),method:'input_estimate',inputKnown:validLatency(reported)};
     }
+    async function calibrate(){
+        if(!supported||!Sync||!['idle','playing'].includes(phase))return;
+        if(phase==='playing')pause();
+        const job={controller:new AbortController(),media:null};calibration=job;phase='calibrating';syncDetails.open=true;
+        syncStatus('Preparando el micrófono…');msg('Calibración acústica: preparando la entrada y salida de audio.');update();
+        try{
+            if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx({latencyHint:'interactive'});
+            const context=playbackContext;await context.resume();
+            if(context.state!=='running')throw Error('El navegador suspendió el audio. Pulsa Calibrar nuevamente.');
+            if(job.controller.signal.aborted)throw Error('Calibración cancelada.');
+            job.media=await navigator.mediaDevices.getUserMedia(micConstraints);
+            if(job.controller.signal.aborted)throw Error('Calibración cancelada.');
+            const route=await Sync.route(context,job.media);Sync.forget(route);
+            const result=await Sync.measure(context,job.media,job.controller.signal,stage=>{syncStatus(stage);msg(stage);});
+            if(job.controller.signal.aborted)throw Error('Calibración cancelada.');
+            const after=await Sync.route(context,job.media);
+            if(after.key!==route.key)throw Error('Cambió el dispositivo durante la prueba. Calibra nuevamente.');
+            if(job.controller.signal.aborted)throw Error('Calibración cancelada.');
+            const savedResult=Sync.save(route,result);
+            const ms=(savedResult.seconds*1000).toFixed(1),summary=ms+' ms medidos · '+savedResult.matches+'/4 pulsos · variación '+savedResult.spreadMs.toFixed(1)+' ms.';
+            syncStatus(summary+(route.persistent?' Guardado en este navegador.':' Guardado para esta sesión.')+' Ya puedes grabar.',true);
+            msg('Calibración completada: '+summary+' La compensación se aplicará automáticamente.','ok');
+        }catch(e){const text=e.name==='NotAllowedError'?'Autoriza el micrófono para calibrar.':e.message;syncStatus(text);msg(text,'error');}
+        finally{job.media?.getTracks().forEach(tr=>tr.stop());if(calibration===job)calibration=null;phase='idle';update();}
+    }
+    function cancelCalibration(){if(calibration){calibration.controller.abort();syncStatus('Cancelando calibración…');calibration.media?.getTracks().forEach(tr=>tr.stop());}}
+    syncButton.addEventListener('click',calibrate);syncCancel.addEventListener('click',cancelCalibration);
+    navigator.mediaDevices?.addEventListener?.('devicechange',()=>{
+        // Permission changes can also emit devicechange. Compare the actual route
+        // before/after measurement instead of cancelling a first-time permission grant.
+        if(phase==='idle')syncStatus('Se comprobará la calibración del dispositivo al grabar.');
+    });
     function audibleTime(context,p){
         const render=context.currentTime, fallback=Math.max(0,render-outputDelay(context));
         let time=fallback;
@@ -123,7 +162,9 @@
         play.disabled = phase !== 'playing' && (!idle || activePlayableClips().length <= 0);
         play.textContent = phase === 'playing' ? 'Ⅱ' : '▶';
         play.setAttribute('aria-label', phase === 'playing' ? 'Pausar' : 'Reproducir');
-        stop.disabled = !['recording','playing'].includes(phase);
+        stop.disabled = !['recording','playing','calibrating'].includes(phase);
+        syncButton.disabled=!supported||!Sync||!['idle','playing'].includes(phase);
+        syncCancel.hidden=phase!=='calibrating';
         home.disabled = !idle && phase !== 'playing';
         recovery.hidden = phase !== 'recovery';
         clock.textContent = format(position);
@@ -531,10 +572,10 @@
         t.finalizing=true;phase='saving';update();
         try{
             if(t.ack!==t.captured||t.endFrame!==t.captureFrame+t.captured/2)throw Error('No coincide el número de muestras grabadas y guardadas.');
-            const d=await post('stream_finish',{recording_id:t.id,offset:t.ack,transport_start_frame:t.transportFrame,capture_start_frame:t.captureFrame,capture_end_frame:t.endFrame,latency_frames:t.compFrames});
+            const d=await post('stream_finish',{recording_id:t.id,offset:t.ack,transport_start_frame:t.transportFrame,capture_start_frame:t.captureFrame,capture_end_frame:t.endFrame,latency_frames:t.compFrames,sync_method:t.syncMethod,...(t.syncMethod==='acoustic'?{acoustic_latency_frames:t.acousticFrames}:{})});
             if(d.recording?.id!==t.id||Number(d.pcm_bytes)!==t.captured||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó la posición o duración exacta de la toma.');
             clips.push({...d.recording,peaks:t.peaks});sortClips();position=t.start+t.captured/t.rate/2;take=null;phase='idle';
-            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(t.captured/t.rate/2)+' · SYNC automático.','ok');update();
+            if(localUrl)URL.revokeObjectURL(localUrl);localUrl=null;ensureExtent();msg('Grabación WAV guardada · '+format(t.captured/t.rate/2)+(t.syncMethod==='acoustic'?' · SYNC medido.':' · captura directa.'),'ok');update();
         }catch(e){t.error=e.message;recover(t);}finally{t.finalizing=false;}
     }
     function finishCapture(t,data){
@@ -578,7 +619,7 @@
             if(!playbackContext||playbackContext.state==='closed')playbackContext=new AudioCtx({latencyHint:'interactive'});
             t.context=playbackContext;await t.context.resume();
             if(t.context.state!=='running')throw Error('El navegador bloqueó el audio. Pulsa Grabar nuevamente.');
-            t.media=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,latency:{ideal:.01},echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+            t.media=await navigator.mediaDevices.getUserMedia(micConstraints);
             t.rate=t.context.sampleRate;
             await t.context.audioWorklet.addModule('assets/pcm-worklet.js?v=0.1.24');
             t.source=t.context.createMediaStreamSource(t.media);
@@ -590,13 +631,20 @@
             await ready;
             const results=await prepareMix(p,t.context,true);
             if(playback!==p||p.abort.signal.aborted)throw Error('Se canceló la preparación del acompañamiento.');
+            const audible=results.some(x=>!isMuted(x.clip.track)),accompaniment=results.length>0;
+            let measured=null;
+            if(accompaniment){
+                if(!Sync)throw Error('No se cargó el módulo SYNC. Actualiza la página.');
+                const route=await Sync.route(t.context,t.media);measured=Sync.lookup(route);
+                if(!measured){syncDetails.open=true;syncStatus('Este dispositivo aún no tiene una calibración válida. Acerca el micrófono a tu salida de audio y pulsa Calibrar.');throw Error('Calibra SYNC antes de grabar con acompañamiento.');}
+            }
+            const estimate=compensation(t,p,accompaniment,measured);
+            t.compFrames=estimate.frames;t.compMs=estimate.ms;t.audible=audible;t.syncMethod=estimate.method;t.acousticFrames=estimate.acousticFrames;
+            if(measured)syncStatus((measured.seconds*1000).toFixed(1)+' ms medidos + '+Math.round((p.graphLatency||0)*1000)+' ms del motor = '+t.compMs+' ms aplicados automáticamente.',true);
+            else syncStatus('Captura sin acompañamiento: '+t.compMs+' ms de entrada estimada.');
             const d=await post('stream_start',{recording_id:t.id,sample_rate:t.rate,track:t.track,start_ms:Math.round(t.start*1000)});
             t.item=d.recording;
             if(d.recording?.id!==t.id||Number(d.recording.start_ms)!==Math.round(t.start*1000)||Number(d.recording.track)!==t.track)throw Error('El hosting no confirmó el inicio de la toma.');
-            const audible=results.some(x=>!isMuted(x.clip.track));
-            const estimate=compensation(t,p,audible);
-            t.compFrames=estimate.frames;t.compMs=estimate.ms;t.audible=audible;
-            syncInfo.textContent='Última compensación automática: '+t.compMs+' ms.'+(estimate.inputKnown?'':' El navegador no informa la latencia del micrófono.')+(audible&&!estimate.outputKnown?' Latencia física de salida no disponible.':'');
             // Schedule both capture and sources after the input worklet is running.
             // The requested start frame is acknowledged before playback is scheduled.
             const margin=Math.ceil(t.rate*.25);
@@ -612,7 +660,7 @@
             t.stopMixWhen=t.when+600;
             for(const n of p.nodes){try{n.stop(t.stopMixWhen);}catch(_){}}
             if(p.output)p.output.gain.setValueAtTime(0,t.stopMixWhen+(p.graphLatency||0));
-            msg('Grabando en '+palette[t.track].name+(audible?' · acompañamiento activo':' · sin acompañamiento audible')+' · SYNC AUTO · guardado cada 0,5 s'+(p.warning?' · '+p.warning:''),p.warning?'error':'');
+            msg('Grabando en '+palette[t.track].name+(audible?' · acompañamiento activo':' · sin acompañamiento audible')+(t.syncMethod==='acoustic'?' · SYNC medido':' · captura directa')+' · guardado cada 0,5 s'+(p.warning?' · '+p.warning:''),p.warning?'error':'');
             update();recordingTick(t);
         }catch(e){stopMix(false);release(t);take=null;phase='idle';msg(e.name==='NotAllowedError'?'Autoriza el micrófono en el navegador.':e.message,'error');update();}
     }
@@ -730,13 +778,13 @@
         }catch(e){if(token===playToken){const aborted=p.abort.signal.aborted;pause();msg(aborted?'Se interrumpió la carga del audio. Vuelve a intentarlo.':e.message,'error');}}
     }
     record.addEventListener('click',()=>phase==='recording' ? endTake() : begin());
-    stop.addEventListener('click',()=>{ if(phase==='recording') endTake(); else if(phase==='playing') pause(); });
+    stop.addEventListener('click',()=>{ if(phase==='recording') endTake(); else if(phase==='playing') pause(); else if(phase==='calibrating') cancelCalibration(); });
     play.addEventListener('click',()=>{if(phase==='playing'){pause();msg('Reproducción en pausa.');}else startPlay();});
     home.addEventListener('click',()=>{ if(phase==='playing') pause(); move(0); });
     $('retry').addEventListener('click',()=>{ if(phase!=='recovery'||!take) return; take.error = null; phase = 'saving'; msg('Reintentando guardado...'); update(); pump(take); });
     $('discard').addEventListener('click',()=>{ if(phase!=='recovery'||!take||!confirm('¿Cerrar esta toma? Los fragmentos ya guardados se conservarán.')) return; if(take.item&&take.ack>0) clips.push({...take.item, track:take.track, start_ms:Math.round(take.start*1000), duration_ms:take.ack/take.rate/2*1000, peaks:take.peaks.slice(0,Math.ceil(take.ack/take.rate/2*40))}); sortClips(); take = null; phase = 'idle'; position = projectTotal(); if(localUrl) URL.revokeObjectURL(localUrl); localUrl = null; ensureExtent(); msg('Se conservaron los fragmentos confirmados por el servidor.'); update(); });
     window.addEventListener('beforeunload',e=>{ if(take||fxUI.dirty()||['starting','moving','importing'].includes(phase)){ e.preventDefault(); e.returnValue=''; } });
-    window.addEventListener('pagehide',()=>{ if(take) release(take); if(playback)stopMix(false); if(playbackContext)playbackContext.close().catch(()=>{}); });
+    window.addEventListener('pagehide',()=>{ if(calibration)cancelCalibration(); if(take) release(take); if(playback)stopMix(false); if(playbackContext)playbackContext.close().catch(()=>{}); });
     const fxUI=window.FutureoFX.createUI({post,getPresets:()=>fetch(endpoint+'&action=fx_presets',{credentials:'same-origin',cache:'no-store'}).then(response),
         change(t,s,closed=false){states[t].fx=window.FutureoFX.active(s);if(playback?.fxChains?.[t]){const chain=playback.fxChains[t];chain.apply(s);if(s.enabled&&((!chain.worklet&&(s.tune||s.gate||s.deess))||(!chain.leveler&&s.leveler)||(!chain.rhythm&&s.rhythm)))msg('AudioWorklet no disponible para algunos FX.','error');}if(closed)msg('FX: cambios sin guardar. Abre el panel y pulsa Guardar pista.');update();},
         changeTempo(bpm){if(playback?.fxChains)for(const chain of Object.values(playback.fxChains))chain.setTransport(bpm,playback.origin??0);},
